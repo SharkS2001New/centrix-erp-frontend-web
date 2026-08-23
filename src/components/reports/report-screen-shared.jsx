@@ -23,6 +23,10 @@ import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-q
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
 import { AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
+import { requestAiAssist, buildPageContext } from "@/lib/ai-assist-bridge";
+import { canShowAiAssistant, isAiPlatformEnabled } from "@/lib/ai-settings";
+import { useAuth } from "@/contexts/auth-context";
+import { usePathname } from "next/navigation";
 
 const BADGE_TONES = {
   success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -201,9 +205,23 @@ export function ReportTable({
   footerTotals = {},
   groupBy = null,
   emptyLabel = "No rows for this filter.",
+  emptyAskAi = null,
 }) {
   if (!rows.length) {
-    return <div className={EMPTY_STATE_CLASS}>{emptyLabel}</div>;
+    return (
+      <div className={`${EMPTY_STATE_CLASS} space-y-2`}>
+        <p>{emptyLabel}</p>
+        {emptyAskAi ? (
+          <button
+            type="button"
+            onClick={emptyAskAi}
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Ask Centrix assistant
+          </button>
+        ) : null}
+      </div>
+    );
   }
 
   const sections = groupReportRows(rows, groupBy);
@@ -348,12 +366,31 @@ export function ReportPageShell({
   onAnalyzeWithAi = null,
   children,
 }) {
+  const pathname = usePathname();
+  const { hasPermission, capabilities } = useAuth();
+  const canAsk =
+    canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
+
+  function askAboutReport() {
+    requestAiAssist({
+      message: `Help me understand the "${title}" report${subtitle ? ` (${subtitle})` : ""}. What should I check next?`,
+      autoSend: true,
+      pageContext: buildPageContext({
+        screenKey: "report",
+        title,
+        pathname,
+        summary: { section: section || null, subtitle: subtitle || null },
+      }),
+    });
+  }
+
   const hasHeaderActions =
     Boolean(exportConfig) ||
     Boolean(printAction) ||
     Boolean(onAnalyzeWithAi) ||
     Boolean(onRefresh) ||
-    Boolean(onExport);
+    Boolean(onExport) ||
+    canAsk;
 
   return (
     <div>
@@ -371,6 +408,15 @@ export function ReportPageShell({
         </div>
         {hasHeaderActions ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {canAsk ? (
+              <button
+                type="button"
+                onClick={askAboutReport}
+                className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}
+              >
+                Ask Centrix
+              </button>
+            ) : null}
             {printAction ? (
               <button
                 type="button"

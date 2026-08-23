@@ -16,12 +16,14 @@ import {
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { PlatformAiUsagePanel } from "@/components/platform/platform-ai-usage-panel";
 
 const PREVIEW_ORG_STORAGE_KEY = "platform-ai-training-preview-org-id";
 
 const TRAINING_TABS = [
   { id: "knowledge", label: "Knowledge" },
   { id: "test", label: "Test console" },
+  { id: "usage", label: "Adoption" },
 ];
 
 function workspaceLabel(id) {
@@ -444,7 +446,7 @@ export function PlatformAiTrainingScreen() {
             </div>
           </div>
         </section>
-      ) : (
+      ) : activeTab === "test" ? (
         <section className="theme-panel flex min-h-[560px] flex-col rounded-xl border shadow-sm">
           <div className="border-b border-[var(--theme-border)] px-5 py-4">
             <h2 className="theme-heading text-sm font-semibold">Test across modules</h2>
@@ -604,7 +606,13 @@ export function PlatformAiTrainingScreen() {
             </div>
           </form>
         </section>
-      )}
+      ) : null}
+
+      {activeTab === "usage" ? (
+        <section className="theme-panel rounded-xl border p-6 shadow-sm">
+          <PlatformAiUsagePanel />
+        </section>
+      ) : null}
     </CatalogPageShell>
   );
 }

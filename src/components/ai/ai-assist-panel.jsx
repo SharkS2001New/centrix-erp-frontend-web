@@ -15,7 +15,7 @@ import {
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
-import { subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
+import { buildPageContext, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 
@@ -86,6 +86,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [formSpec, setFormSpec] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [actionResult, setActionResult] = useState(null);
+  const [pageContext, setPageContext] = useState(null);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
 
@@ -167,7 +168,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [clearActionState]);
 
   const send = useCallback(
-    async (text, { confirm = false, formValuesOverride = null } = {}) => {
+    async (text, { confirm = false, formValuesOverride = null, pageContextOverride = null } = {}) => {
       const message = text.trim();
       if (!message || loading) return;
       setError(null);
@@ -183,12 +184,17 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       setInput("");
       try {
         const history = messages.slice(-10);
+        const effectivePageContext =
+          pageContextOverride ??
+          pageContext ??
+          buildPageContext({ pathname, screenKey: workspaceId });
         const res = await apiRequest("/ai/chat", {
           method: "POST",
           body: {
             context: "erp",
             workspace_id: workspaceId,
             pathname,
+            page_context: Object.keys(effectivePageContext).length ? effectivePageContext : undefined,
             message,
             conversation_id: conversationId || undefined,
             history,
@@ -218,6 +224,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       workspaceId,
       pathname,
       conversationId,
+      pageContext,
     ],
   );
 
@@ -231,17 +238,42 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       setExpanded(false);
       setOpen(true);
 
+      if (request.pageContext) {
+        setPageContext(request.pageContext);
+      }
+
       const message = request.message?.trim() ?? "";
       if (!message) return;
 
       if (request.autoSend !== false) {
-        void sendRef.current?.(message);
+        void sendRef.current?.(message, { pageContextOverride: request.pageContext ?? null });
         return;
       }
 
       setInput(message);
     });
   }, [canUse]);
+
+  useEffect(() => {
+    if (!canUse) return undefined;
+
+    function onKeyDown(e) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      if (pathname === "/sales/pos") return;
+      const tag = e.target?.tagName?.toLowerCase?.();
+      if (tag === "input" || tag === "textarea" || e.target?.isContentEditable) {
+        // Still allow Cmd+K from search boxes to open assistant when Shift is held.
+        if (!e.shiftKey) return;
+      }
+      e.preventDefault();
+      setExpanded(false);
+      setOpen(true);
+      setPageContext(buildPageContext({ pathname, screenKey: workspaceId }));
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canUse, pathname, workspaceId]);
 
   const submitForm = useCallback(() => {
     if (!pendingAction) return;
@@ -299,7 +331,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             <div className="flex items-start justify-between border-b border-slate-200 px-4 py-3">
               <div className="min-w-0 pr-3">
                 <h2 className="font-semibold text-slate-900">{title}</h2>
-                <p className="text-xs text-slate-500">{statusHint}</p>
+                <p className="text-xs text-slate-500">
+                  {statusHint}
+                  {canUse ? " · ⌘K / Ctrl+K opens assistant" : ""}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {messages.length > 0 ? (
