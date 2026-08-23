@@ -9,21 +9,75 @@ import { aiTrainingApiBase } from "@/lib/platform-ai-training";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PasswordInput } from "@/components/auth/password-input";
 
+function SavedKeyField({
+  label,
+  value,
+  saved,
+  hint,
+  placeholder,
+  onChange,
+}) {
+  const hasDraft = Boolean(value && !String(value).startsWith("••••"));
+
+  return (
+    <Field label={label}>
+      {saved && !hasDraft ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <span
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white"
+            aria-hidden
+          >
+            ✓
+          </span>
+          <span className="font-medium">Saved on this platform</span>
+          {hint ? (
+            <span className="rounded bg-white/70 px-2 py-0.5 font-mono text-xs text-emerald-800">{hint}</span>
+          ) : null}
+        </div>
+      ) : null}
+      <PasswordInput
+        className={inputClassName()}
+        value={value}
+        savedHint={saved && !hasDraft ? hint : ""}
+        onChange={onChange}
+        placeholder={
+          saved && !hasDraft
+            ? "Paste a new key only if you want to replace the saved one"
+            : placeholder
+        }
+        autoComplete="off"
+      />
+      {saved && !hasDraft ? (
+        <p className="mt-1 text-xs theme-subtext">
+          A key is already stored. Leave this blank to keep it, or paste a replacement above.
+        </p>
+      ) : null}
+    </Field>
+  );
+}
+
 export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   const apiBase = aiTrainingApiBase();
   const [aiForm, setAiForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const [testingProvider, setTestingProvider] = useState(null);
   const [testResult, setTestResult] = useState(null);
+  /** When OpenAI is the free provider, optionally also show/edit Gemini credentials. */
+  const [useBoth, setUseBoth] = useState(false);
 
   const loadAiSettings = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiRequest(`${apiBase}/settings`);
-      setAiForm(aiFormFromApi(res));
+      const next = aiFormFromApi(res);
+      setAiForm(next);
+      // If OpenAI is active but a Gemini key already exists, leave "use both" off by default
+      // unless the operator explicitly opens it — user asked Gemini optional to stay hidden.
+      setUseBoth(false);
     } catch {
       setAiForm(aiFormFromApi({}));
+      setUseBoth(false);
     } finally {
       setLoading(false);
     }
@@ -44,7 +98,6 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
         body: aiPayloadFromForm(aiForm, { includeInsights: false, includePlatformGemini: true }),
       });
       const next = aiFormFromApi(res);
-      // Keep keys in memory after save so show/hide still works until reload.
       if (submittedApiKey && !submittedApiKey.startsWith("••••")) {
         next.api_key = submittedApiKey;
       }
@@ -60,12 +113,11 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     }
   }
 
-  async function testCredentials() {
-    setTesting(true);
+  async function testCredentials(provider) {
+    setTestingProvider(provider);
     setTestResult(null);
-    const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
-    const body = { provider: freeProvider };
-    if (freeProvider === "gemini") {
+    const body = { provider };
+    if (provider === "gemini") {
       if (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")) {
         body.gemini_api_key = aiForm.gemini_api_key;
       }
@@ -93,34 +145,36 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
         ok: true,
         message: res?.message || "Connection successful.",
         reply: res?.reply || "",
-        provider: res?.provider || freeProvider,
+        provider: res?.provider || provider,
         model: res?.model || "",
       });
       notifySuccess(res?.message || "Connection successful.");
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "Credential test failed.";
+      const message = err instanceof ApiError ? err.message : "Credential test failed.";
       const payload = err instanceof ApiError ? err.body : null;
       setTestResult({
         ok: false,
         message: payload?.message || message,
         reply: "",
-        provider: payload?.provider || freeProvider,
+        provider: payload?.provider || provider,
         model: payload?.model || "",
       });
       notifyError(payload?.message || message);
     } finally {
-      setTesting(false);
+      setTestingProvider(null);
     }
   }
 
   const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
-  const canTest =
-    freeProvider === "gemini"
-      ? Boolean(aiForm.gemini_api_key_set || (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")))
-      : Boolean(aiForm.api_key_set || (aiForm.api_key && !aiForm.api_key.startsWith("••••")));
+  const showGemini = freeProvider === "gemini" || useBoth;
+  const showOpenAi = freeProvider === "openai" || useBoth;
+  const busy = saving || testingProvider !== null;
+  const canTestGemini = Boolean(
+    aiForm.gemini_api_key_set || (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")),
+  );
+  const canTestOpenAi = Boolean(
+    aiForm.api_key_set || (aiForm.api_key && !aiForm.api_key.startsWith("••••")),
+  );
 
   const body = (
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
@@ -146,7 +200,11 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   type="radio"
                   name="free_ai_provider"
                   checked={freeProvider === "gemini"}
-                  onChange={() => setAiForm((f) => ({ ...f, free_ai_provider: "gemini" }))}
+                  onChange={() => {
+                    setAiForm((f) => ({ ...f, free_ai_provider: "gemini" }));
+                    setUseBoth(false);
+                    setTestResult(null);
+                  }}
                 />
                 Gemini (default)
               </label>
@@ -155,7 +213,11 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   type="radio"
                   name="free_ai_provider"
                   checked={freeProvider === "openai"}
-                  onChange={() => setAiForm((f) => ({ ...f, free_ai_provider: "openai" }))}
+                  onChange={() => {
+                    setAiForm((f) => ({ ...f, free_ai_provider: "openai" }));
+                    setUseBoth(false);
+                    setTestResult(null);
+                  }}
                 />
                 OpenAI
               </label>
@@ -182,29 +244,63 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           </label>
 
           {freeProvider === "openai" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Field label="OpenAI API key">
-                  <PasswordInput
-                    className={inputClassName()}
-                    value={aiForm.api_key}
-                    savedHint={aiForm.api_key_set ? aiForm.api_key_hint : ""}
-                    onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}
-                    placeholder={
-                      aiForm.api_key_set && !aiForm.api_key
-                        ? "Key saved — paste a new key to replace"
-                        : "sk-…"
-                    }
-                    autoComplete="off"
-                  />
-                  {aiForm.api_key_set && !aiForm.api_key ? (
-                    <p className="mt-1 text-xs theme-subtext">
-                      Saved key {aiForm.api_key_hint}. Leave blank to keep it, or paste a new key to replace.
-                    </p>
-                  ) : null}
-                </Field>
-              </div>
+            <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={useBoth}
+                onChange={(e) => {
+                  setUseBoth(e.target.checked);
+                  setTestResult(null);
+                }}
+              />
+              <span>
+                <span className="block text-sm font-medium theme-heading">Also configure Gemini (use both)</span>
+                <span className="mt-0.5 block text-xs theme-subtext">
+                  Optional. Keep a Gemini key on file for switching later, or for orgs that still use platform Gemini.
+                </span>
+              </span>
+            </label>
+          ) : null}
 
+          {freeProvider === "gemini" ? (
+            <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={useBoth}
+                onChange={(e) => {
+                  setUseBoth(e.target.checked);
+                  setTestResult(null);
+                }}
+              />
+              <span>
+                <span className="block text-sm font-medium theme-heading">Also configure OpenAI (use both)</span>
+                <span className="mt-0.5 block text-xs theme-subtext">
+                  Optional. Keep an OpenAI key on file if you may switch free AI to OpenAI later.
+                </span>
+              </span>
+            </label>
+          ) : null}
+
+          {showOpenAi ? (
+            <div className={freeProvider === "openai" ? "grid gap-4 sm:grid-cols-2" : "border-t pt-5 grid gap-4 sm:grid-cols-2"}>
+              {freeProvider === "gemini" && useBoth ? (
+                <div className="sm:col-span-2">
+                  <h3 className="text-sm font-semibold theme-heading">OpenAI credentials (optional)</h3>
+                  <p className="mt-1 text-xs theme-subtext">Stored for later; free AI remains Gemini until you switch.</p>
+                </div>
+              ) : null}
+              <div className="sm:col-span-2">
+                <SavedKeyField
+                  label="OpenAI API key"
+                  value={aiForm.api_key}
+                  saved={aiForm.api_key_set}
+                  hint={aiForm.api_key_hint}
+                  placeholder="sk-…"
+                  onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}
+                />
+              </div>
               <Field label="OpenAI model (optional)">
                 <input
                   className={inputClassName()}
@@ -213,7 +309,6 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   placeholder="gpt-4o-mini"
                 />
               </Field>
-
               <Field label="OpenAI base URL (optional)">
                 <input
                   className={inputClassName()}
@@ -225,34 +320,26 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             </div>
           ) : null}
 
-          {freeProvider === "gemini" ? (
+          {showGemini ? (
             <div className="border-t pt-5">
-              <h3 className="text-sm font-semibold theme-heading">Gemini credentials</h3>
+              <h3 className="text-sm font-semibold theme-heading">
+                {freeProvider === "gemini" ? "Gemini credentials" : "Gemini credentials (optional)"}
+              </h3>
               <p className="mt-1 text-xs theme-subtext">
-                Required for free tenant Gemini and for platform email/training when enabled above. Set the key, then
-                enable &quot;Offer free platform AI&quot; on chosen organizations.
+                {freeProvider === "gemini"
+                  ? "Required for free tenant Gemini and for platform email/training when enabled above."
+                  : "Stored for later; free AI remains OpenAI until you switch."}
               </p>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Field label="Gemini API key">
-                    <PasswordInput
-                      className={inputClassName()}
-                      value={aiForm.gemini_api_key}
-                      savedHint={aiForm.gemini_api_key_set ? aiForm.gemini_api_key_hint : ""}
-                      onChange={(e) => setAiForm((f) => ({ ...f, gemini_api_key: e.target.value }))}
-                      placeholder={
-                        aiForm.gemini_api_key_set && !aiForm.gemini_api_key
-                          ? "Key saved — paste a new key to replace"
-                          : "AQ.… or AIza…"
-                      }
-                      autoComplete="off"
-                    />
-                    {aiForm.gemini_api_key_set && !aiForm.gemini_api_key ? (
-                      <p className="mt-1 text-xs theme-subtext">
-                        Saved key {aiForm.gemini_api_key_hint}. Leave blank to keep it, or paste a new key to replace.
-                      </p>
-                    ) : null}
-                  </Field>
+                  <SavedKeyField
+                    label="Gemini API key"
+                    value={aiForm.gemini_api_key}
+                    saved={aiForm.gemini_api_key_set}
+                    hint={aiForm.gemini_api_key_hint}
+                    placeholder="AQ.… or AIza…"
+                    onChange={(e) => setAiForm((f) => ({ ...f, gemini_api_key: e.target.value }))}
+                  />
                 </div>
                 <Field label="Gemini model (optional)">
                   <input
@@ -264,40 +351,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 </Field>
               </div>
             </div>
-          ) : (
-            <div className="border-t pt-5">
-              <h3 className="text-sm font-semibold theme-heading">Gemini credentials (optional)</h3>
-              <p className="mt-1 text-xs theme-subtext">
-                Free AI is set to OpenAI. Keep a Gemini key if you plan to switch later.
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Field label="Gemini API key">
-                    <PasswordInput
-                      className={inputClassName()}
-                      value={aiForm.gemini_api_key}
-                      savedHint={aiForm.gemini_api_key_set ? aiForm.gemini_api_key_hint : ""}
-                      onChange={(e) => setAiForm((f) => ({ ...f, gemini_api_key: e.target.value }))}
-                      placeholder={
-                        aiForm.gemini_api_key_set && !aiForm.gemini_api_key
-                          ? "Key saved — paste a new key to replace"
-                          : "AQ.… or AIza…"
-                      }
-                      autoComplete="off"
-                    />
-                  </Field>
-                </div>
-                <Field label="Gemini model (optional)">
-                  <input
-                    className={inputClassName()}
-                    value={aiForm.gemini_model}
-                    onChange={(e) => setAiForm((f) => ({ ...f, gemini_model: e.target.value }))}
-                    placeholder="gemini-3.6-flash"
-                  />
-                </Field>
-              </div>
-            </div>
-          )}
+          ) : null}
 
           {testResult ? (
             <div
@@ -320,17 +374,29 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           ) : null}
 
           <div className="flex flex-wrap gap-3">
-            <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={saving || testing}>
+            <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={busy}>
               {saving ? "Saving…" : "Save platform credentials"}
             </PrimaryButton>
-            <button
-              type="button"
-              onClick={testCredentials}
-              disabled={saving || testing || !canTest}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {testing ? "Testing…" : `Test ${freeProvider === "openai" ? "OpenAI" : "Gemini"} connection`}
-            </button>
+            {showGemini ? (
+              <button
+                type="button"
+                onClick={() => testCredentials("gemini")}
+                disabled={busy || !canTestGemini}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingProvider === "gemini" ? "Testing Gemini…" : "Test Gemini connection"}
+              </button>
+            ) : null}
+            {showOpenAi ? (
+              <button
+                type="button"
+                onClick={() => testCredentials("openai")}
+                disabled={busy || !canTestOpenAi}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingProvider === "openai" ? "Testing OpenAI…" : "Test OpenAI connection"}
+              </button>
+            ) : null}
           </div>
         </div>
       )}

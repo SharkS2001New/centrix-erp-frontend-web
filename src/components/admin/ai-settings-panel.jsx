@@ -115,11 +115,14 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
           ) : null}
 
           <Toggle
-            checked={form.enabled || form.use_platform_gemini}
+            checked={form.enabled}
             onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
             label="Enable AI assistant"
-            description="When on, users with permission can use the floating assistant. Free platform AI keeps the assistant available even without an organization key."
-            disabled={form.use_platform_gemini && !form.has_org_api_key}
+            description={
+              form.use_platform_gemini
+                ? "When on, users with permission can use the floating assistant. Free platform AI remains available even if you leave the organization key blank."
+                : "When on, users with permission can use the floating assistant. Add a provider API key below, or ask the platform to offer free AI for this organization."
+            }
           />
 
           {(form.enabled || form.use_platform_gemini) ? (

@@ -49,7 +49,7 @@ export const TENANT_CORE_SETTINGS_TABS = new Set(["general", "printouts", "notif
 export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "printouts", "notifications", "security"]);
 
 /** Tabs only platform super-admins may configure (not exposed on tenant /admin/settings). */
-export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set(["ai", "whatsapp", "finance"]);
+export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set(["whatsapp", "finance"]);
 
 function moduleEnabled(capabilities, moduleKey) {
   return Boolean(capabilities?.modules?.[moduleKey]);
@@ -138,11 +138,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       if (!isPlatformAiEnabled(capabilities)) {
         return false;
       }
-      // Tenant Admin: AI is platform-managed only (see PLATFORM_ONLY_ORG_SETTINGS_TABS).
-      if (tenantSelfService) {
-        return false;
-      }
-      if (platformManaged) {
+      // Org Admin can configure AI (provider/key/insights). Platform still controls
+      // enable_ai + free platform Gemini offer under tenant Sales behaviour.
+      if (tenantSelfService || platformManaged) {
         return true;
       }
       return moduleEnabled(capabilities, "admin");

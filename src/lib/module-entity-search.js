@@ -217,7 +217,7 @@ export function filterEntityConfigsByAccess(configs, hasPermission) {
 
 export function workspaceSearchPlaceholder(workspaceId, workspaceLabel) {
   if (workspaceId === "admin") {
-    return "Search settings, users, pages…";
+    return "Search settings, users, pages… e.g. KRA, SMS, till float";
   }
   const configs = entitySearchConfigsForWorkspace(workspaceId);
   if (configs.length === 0) {

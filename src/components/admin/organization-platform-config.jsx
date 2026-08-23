@@ -671,7 +671,6 @@ export function OrganizationPlatformSalesSettings({
   deploymentProfile = "wholesale_retail",
 }) {
   const salesEnabled = Boolean(enabledModules.sales);
-  const distributionEnabled = Boolean(enabledModules.distribution);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const description =
     "Platform-only checkout mode for backoffice, mobile application access, and payment integrations.";
@@ -681,29 +680,6 @@ export function OrganizationPlatformSalesSettings({
   }
 
   const showBackofficeCheckout = salesPlatform?.show_checkout_on_create_order !== false;
-  const stockDeductOn = normalizeStockDeductOn(salesPlatform?.stock_deduct_on, {
-    hasPosSales: Boolean(enabledModules["sales.pos"]),
-    showCheckoutOnCreate: salesPlatform?.show_pos_checkout_on_create !== false,
-  });
-  const mobileTimingOptions = STOCK_DEDUCT_TIMING_OPTIONS.filter(
-    (opt) =>
-      opt.value === "order_created" ||
-      opt.value === "order_completed" ||
-      (distributionEnabled &&
-        (opt.value === "trip_pick" || opt.value === "trip_load" || opt.value === "trip_depart")),
-  );
-  const mobileStockTimingRaw = stockDeductOn.mobile ?? "order_created";
-  const mobileStockTiming = mobileTimingOptions.some((opt) => opt.value === mobileStockTimingRaw)
-    ? mobileStockTimingRaw
-    : "order_created";
-  const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const mobileDeductStage = wf?.deduct_stock_on?.mobile ?? "completed";
-  const mobileStageOptions = (wf.steps ?? [])
-    .filter((step) => step.enabled !== false && !["draft", "held", "cancelled"].includes(step.status))
-    .map((step) => ({
-      value: step.status,
-      label: step.label || ORDER_STATUS_OPTIONS.find((o) => o.value === step.status)?.label || step.status,
-    }));
 
   return (
     <PlatformFormSection title="Sales behaviour" description={description}>
@@ -781,61 +757,6 @@ export function OrganizationPlatformSalesSettings({
                 checked={Boolean(salesPlatform?.enable_mobile_orders_expenses_card)}
                 onChange={(v) => patch({ enable_mobile_orders_expenses_card: v })}
               />
-              <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Mobile stock deduction
-              </p>
-              <OrgRegisterField label="Deduct mobile stock when">
-                <SearchableSelect
-                  className={inputClass}
-                  value={mobileStockTiming}
-                  nativeEvent
-                  onChange={(e) =>
-                    patch({
-                      stock_deduct_on: {
-                        ...stockDeductOn,
-                        mobile: e.target.value,
-                      },
-                    })
-                  }
-                  options={mobileTimingOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  {mobileStockTiming === "order_created"
-                    ? "Shop and store stock reduce when the rep saves or checks out the order, including unpaid Save order."
-                    : mobileStockTiming === "order_completed"
-                      ? "Stock stays reserved until the order reaches the workflow stage below."
-                      : "Stock stays reserved until the selected distribution trip event."}
-                </p>
-              </OrgRegisterField>
-              {mobileStockTiming === "order_completed" ? (
-                <OrgRegisterField label="Deduct at workflow stage">
-                  <SearchableSelect
-                    className={inputClass}
-                    value={mobileDeductStage}
-                    nativeEvent
-                    onChange={(e) =>
-                      patch({
-                        order_workflow: {
-                          ...wf,
-                          deduct_stock_on: {
-                            ...(wf.deduct_stock_on ?? {}),
-                            mobile: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    options={
-                      mobileStageOptions.length > 0
-                        ? mobileStageOptions
-                        : [{ value: "completed", label: "Completed" }]
-                    }
-                  />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Inventory is reduced when the mobile order reaches this stage (at Save if already
-                    there, otherwise when staff move it in the workflow).
-                  </p>
-                </OrgRegisterField>
-              ) : null}
             </div>
           ) : null}
           <Toggle
