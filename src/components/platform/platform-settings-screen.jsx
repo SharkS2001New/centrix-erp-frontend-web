@@ -78,7 +78,7 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
         : activeTab === "whatsapp"
           ? "Shared WhatsApp webhook URL and verify token for all tenants."
           : activeTab === "ai"
-            ? "OpenAI API key and model for platform-admin AI tools (email assist, training console)."
+            ? "Gemini or OpenAI for free tenant AI and platform tools (email assist, training console)."
             : activeTab === "r2"
               ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
               : activeTab === "payroll"

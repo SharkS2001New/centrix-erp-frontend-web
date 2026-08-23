@@ -145,7 +145,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                     form.api_key_set
                       ? form.api_key_hint || "••••••••"
                       : form.provider === "gemini"
-                        ? "AIza…"
+                        ? "AQ.… or AIza…"
                         : "sk-…"
                   }
                   autoComplete="off"

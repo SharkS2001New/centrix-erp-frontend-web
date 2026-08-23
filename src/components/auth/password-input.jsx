@@ -67,9 +67,13 @@ export function PasswordInput({
   onChange,
   onPaste,
   onInput,
+  savedHint = "",
   ...props
 }) {
   const [visible, setVisible] = useState(false);
+  const hasValue = Boolean(String(props.value ?? "").length);
+  const savedOnly = Boolean(savedHint) && !hasValue;
+  const canToggleVisibility = hasValue;
 
   function handlePaste(e) {
     onPaste?.(e);
@@ -101,22 +105,25 @@ export function PasswordInput({
     <div className="relative">
       <input
         {...props}
-        type={visible ? "text" : "password"}
-        className={`${className} pr-10`.trim()}
+        type={visible && canToggleVisibility ? "text" : "password"}
+        className={`${className} ${canToggleVisibility ? "pr-10" : savedOnly ? "pr-3" : "pr-10"}`.trim()}
         onChange={handleChange}
         onInput={handleInput}
         onPaste={handlePaste}
+        aria-describedby={savedOnly ? undefined : props["aria-describedby"]}
       />
-      <button
-        type="button"
-        onClick={() => setVisible((v) => !v)}
-        onMouseDown={(e) => e.preventDefault()}
-        className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        aria-label={visible ? "Hide password" : "Show password"}
-        tabIndex={-1}
-      >
-        {visible ? <EyeOffIcon /> : <EyeIcon />}
-      </button>
+      {canToggleVisibility ? (
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          onMouseDown={(e) => e.preventDefault()}
+          className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          aria-label={visible ? "Hide password" : "Show password"}
+          tabIndex={-1}
+        >
+          {visible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      ) : null}
     </div>
   );
 }
