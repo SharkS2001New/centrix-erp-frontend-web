@@ -690,12 +690,13 @@ export function RecordSessionExpenseModal({
   embedded = false,
 }) {
   const [expenseGroups, setExpenseGroups] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
   const [expenseGroupId, setExpenseGroupId] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [amount, setAmount] = useState("");
-  /** Optional hint from expense-groups; server resolves Cash when omitted. */
   const [expensePaymentMethodId, setExpensePaymentMethodId] = useState("");
   const [loadError, setLoadError] = useState(null);
+  const [formError, setFormError] = useState(null);
   const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
 
   useEffect(() => {
@@ -705,26 +706,37 @@ export function RecordSessionExpenseModal({
     setExpenseGroupId("");
     setExpensePaymentMethodId("");
     setLoadError(null);
+    setFormError(null);
     setViewExpensesOpen(false);
   }, [open, session?.id]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    // Till payouts are always cash — do not call /payment-methods (often 403 for External POS cashiers).
+    // Payment methods come from /pos/expense-groups so External POS cashiers
+    // do not need Admin → Payment methods permission.
     apiRequest("/pos/expense-groups")
       .then((groupsRes) => {
         if (cancelled) return;
         const groups = groupsRes?.data ?? [];
+        const methods = Array.isArray(groupsRes?.payment_methods)
+          ? groupsRes.payment_methods.filter((row) => row && row.is_active !== false)
+          : [];
         setExpenseGroups(groups);
+        setPaymentMethods(methods);
         setLoadError(null);
         if (groups[0]) setExpenseGroupId(String(groups[0].id));
         const cashId = groupsRes?.cash_payment_method_id;
-        if (cashId) setExpensePaymentMethodId(String(cashId));
+        const defaultMethodId =
+          (cashId && methods.some((m) => String(m.id) === String(cashId)) ? cashId : null) ??
+          methods[0]?.id ??
+          "";
+        if (defaultMethodId) setExpensePaymentMethodId(String(defaultMethodId));
       })
       .catch((e) => {
         if (!cancelled) {
           setExpenseGroups([]);
+          setPaymentMethods([]);
           setExpensePaymentMethodId("");
           setLoadError(e instanceof ApiError ? e.message : "Could not load expense categories.");
         }
@@ -747,16 +759,18 @@ export function RecordSessionExpenseModal({
     ) {
       return;
     }
+    if (!expensePaymentMethodId) {
+      setFormError("Select a payment method.");
+      return;
+    }
+    setFormError(null);
     try {
-      const payload = {
+      await onRecordExpense({
         expense_group_id: Number(expenseGroupId),
         expense_amount: Number(amount),
         description,
-      };
-      if (expensePaymentMethodId) {
-        payload.payment_method_id = Number(expensePaymentMethodId);
-      }
-      await onRecordExpense(payload);
+        payment_method_id: Number(expensePaymentMethodId),
+      });
       onClose();
     } catch {
       /* error from parent */
@@ -797,13 +811,13 @@ export function RecordSessionExpenseModal({
           {session?.id ? ` · Session #${session.id}` : ""}
         </p>
         <p className="mt-2 text-xs text-slate-500">
-          Cash paid out from the till during this session. This reduces expected cash on your X/Z report.
+          Money paid out during this session. Cash tenders reduce expected cash on your X/Z report.
         </p>
 
         <div className="mt-5 space-y-4">
-          {error || loadError ? (
+          {error || loadError || formError ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error || loadError}
+              {error || loadError || formError}
             </p>
           ) : null}
           <Field label="Category">
@@ -815,6 +829,22 @@ export function RecordSessionExpenseModal({
               options={expenseGroups.map((group) => ({
                 value: String(group.id),
                 label: group.group_name,
+              }))}
+            />
+          </Field>
+          <Field label="Payment method">
+            <SearchableSelect
+              className={inputClassName()}
+              value={expensePaymentMethodId}
+              onChange={(next) => {
+                setExpensePaymentMethodId(next);
+                setFormError(null);
+              }}
+              disabled={busy || paymentMethods.length === 0}
+              placeholder={paymentMethods.length === 0 ? "No payment methods available" : "Select method"}
+              options={paymentMethods.map((method) => ({
+                value: String(method.id),
+                label: method.method_name || method.method_code || `Method #${method.id}`,
               }))}
             />
           </Field>
@@ -859,6 +889,7 @@ export function RecordSessionExpenseModal({
               !amount ||
               Number(amount) <= 0 ||
               !expenseGroupId ||
+              !expensePaymentMethodId ||
               !expenseDescription.trim()
             }
             onClick={() => void handleSaveExpense()}

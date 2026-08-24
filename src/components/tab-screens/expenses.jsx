@@ -32,7 +32,7 @@ import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
-import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -89,7 +89,7 @@ function sumAmounts(expenses) {
 
 export function ExpensesScreen() {
   const confirm = useConfirm();
-  const { user, capabilities } = useAuth();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const urlFromDate = searchParams.get("from_date") ?? "";
   const urlToDate = searchParams.get("to_date") ?? "";
@@ -132,16 +132,12 @@ export function ExpensesScreen() {
     try {
       const [groupRes, pmRes, usersData, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
-        apiRequest("/payment-methods", { searchParams: { per_page: 50 } }),
+        apiRequest("/payment-methods", { searchParams: { per_page: 200 } }),
         fetchUsersCached(user?.organization_id),
         apiRequest("/expenses/summary").catch(() => null),
       ]);
       setGroups(groupRes.data ?? []);
-      setPaymentMethods(
-        filterPaymentMethodsForOrg(pmRes.data ?? [], capabilities?.module_settings, {
-          capabilities,
-        }),
-      );
+      setPaymentMethods(listActiveOrgPaymentMethods(pmRes.data ?? []));
       setUsers(usersData ?? []);
       if (statsRes) setExpenseStats(statsRes);
     } catch (e) {
@@ -149,7 +145,7 @@ export function ExpensesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id, capabilities]);
+  }, [user?.organization_id]);
 
   const loadExpenses = useCallback(async () => {
     setListLoading(true);

@@ -13,7 +13,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatSaleKes } from "@/lib/sales";
 import { formatTripProfitMargin } from "@/lib/trip-status";
 import { useConfirm } from "@/lib/use-confirm";
-import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
 
 const EMPTY_FORM = {
   expense_group_id: "",
@@ -35,7 +35,7 @@ export function TripExpensesPanel({
   onChanged = null,
   readOnly = false,
 }) {
-  const { user, capabilities } = useAuth();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [expenses, setExpenses] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -71,15 +71,11 @@ export function TripExpensesPanel({
         apiRequest("/payment-methods", { searchParams: { per_page: 100 } }),
       ]);
       setGroups(groupsRes.data ?? []);
-      setPaymentMethods(
-        filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
-          capabilities,
-        }),
-      );
+      setPaymentMethods(listActiveOrgPaymentMethods(methodsRes.data ?? []));
     } catch {
       // Non-blocking — form will show validation if lists are empty.
     }
-  }, [capabilities]);
+  }, []);
 
   useEffect(() => {
     loadExpenses();

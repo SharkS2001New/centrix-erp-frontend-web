@@ -1,7 +1,9 @@
 /**
- * Org payment-method dropdowns should match External POS collection tenders
- * (Sales → Settings → Payment fields / platform sales config), not the full
- * Admin → Payment methods catalog (Card, Voucher, Points, etc.).
+ * Org payment-method dropdowns for External POS / Collect payment should match
+ * Sales → Settings → Payment fields (not the full Admin catalog).
+ *
+ * Expenses, supplier payments, and similar bookkeeping forms should use
+ * {@link listActiveOrgPaymentMethods} instead — the full Admin catalog.
  */
 
 import { getPaymentMethodKind } from "@/lib/sales";
@@ -36,6 +38,30 @@ function preferredRank(code) {
   if (CHEQUE_CODES.has(code)) return PREFERRED_ORDER.indexOf("CHEQUE");
   if (OTHER_BANK_CODES.has(code)) return PREFERRED_ORDER.indexOf("OTHER");
   return PREFERRED_ORDER.length + 1;
+}
+
+function sortOrgPaymentMethods(list) {
+  return list.slice().sort((a, b) => {
+    const rankDiff =
+      preferredRank(normalizeCode(a.method_code)) -
+      preferredRank(normalizeCode(b.method_code));
+    if (rankDiff !== 0) return rankDiff;
+    return String(a.method_name ?? "").localeCompare(String(b.method_name ?? ""));
+  });
+}
+
+/**
+ * All active Admin → Payment methods rows (Cash, M-Pesa, Equity, Card, …).
+ * Use for expenses, supplier payments, and other non-POS bookkeeping forms.
+ *
+ * @param {Array<object>|null|undefined} methods
+ * @returns {Array<object>}
+ */
+export function listActiveOrgPaymentMethods(methods) {
+  const list = (Array.isArray(methods) ? methods : []).filter(
+    (row) => row && row.is_active !== false,
+  );
+  return sortOrgPaymentMethods(list);
 }
 
 /**
@@ -115,11 +141,5 @@ export function filterPaymentMethodsForOrg(methods, moduleSettings, options = {}
     return false;
   });
 
-  return filtered.slice().sort((a, b) => {
-    const rankDiff =
-      preferredRank(normalizeCode(a.method_code)) -
-      preferredRank(normalizeCode(b.method_code));
-    if (rankDiff !== 0) return rankDiff;
-    return String(a.method_name ?? "").localeCompare(String(b.method_name ?? ""));
-  });
+  return sortOrgPaymentMethods(filtered);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterPaymentMethodsForOrg,
+  listActiveOrgPaymentMethods,
   resolveOrgPaymentMethodFlags,
 } from "@/lib/org-payment-methods";
 
@@ -15,6 +16,31 @@ const CATALOG = [
   { id: 8, method_code: "CREDIT", method_name: "Credit", is_active: true },
   { id: 9, method_code: "VOUCHER", method_name: "Voucher", is_active: true },
 ];
+
+describe("listActiveOrgPaymentMethods", () => {
+  it("returns all active Admin catalog rows including Card and Equity", () => {
+    const listed = listActiveOrgPaymentMethods(CATALOG);
+    expect(listed.map((m) => m.method_code)).toEqual([
+      "CASH",
+      "MPESA",
+      "EQUITY",
+      "KCB",
+      "BANK",
+      "CHEQUE",
+      "CREDIT",
+      "CARD",
+      "VOUCHER",
+    ]);
+  });
+
+  it("drops inactive rows", () => {
+    const listed = listActiveOrgPaymentMethods([
+      ...CATALOG,
+      { id: 10, method_code: "COOP", method_name: "Co-op", is_active: false },
+    ]);
+    expect(listed.some((m) => m.method_code === "COOP")).toBe(false);
+  });
+});
 
 describe("filterPaymentMethodsForOrg", () => {
   it("keeps Cash plus enabled External POS payment fields only", () => {
