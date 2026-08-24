@@ -42,6 +42,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Platform-wide knowledge notes and test console for the ERP assistant.",
       },
       {
+        href: "/platform/ai-usage",
+        label: "AI usage",
+        icon: "chart",
+        description: "Requests, tokens, estimated cost, and usage by organization and user.",
+      },
+      {
         href: "/platform/mailbox",
         label: "Mailbox",
         icon: "chat",

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
@@ -14,7 +14,14 @@ import {
 } from "@/lib/ai-settings";
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
-import { defaultWorkspaceId } from "@/lib/workspace-navigation";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import {
+  defaultWorkspaceId,
+  openAppPathAcrossWorkspaces,
+} from "@/lib/workspace-navigation";
+import { pathBelongsToWorkspace } from "@/lib/workspaces";
+import { notifyError } from "@/lib/notify";
+import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildPageContext, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
@@ -46,6 +53,7 @@ function MinimizeIcon({ className }) {
 
 export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const pathname = usePathname();
+  const router = useRouter();
   const {
     hasPermission,
     hasNavPermission,
@@ -54,6 +62,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     user,
     organization,
     isSuperAdmin,
+    switchWorkspace,
   } = useAuth();
   const workspaceId = useMemo(
     () =>
@@ -87,12 +96,72 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [formValues, setFormValues] = useState({});
   const [actionResult, setActionResult] = useState(null);
   const [pageContext, setPageContext] = useState(null);
+  const [openingWorkspaceId, setOpeningWorkspaceId] = useState(null);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
   const orgEnabled = isAiAssistantEnabledForOrg(capabilities);
+
+  const accessCtx = useMemo(
+    () =>
+      buildAccessContext({
+        user,
+        organization,
+        capabilities,
+        requireTillFloat: resolveTillFloatNavFlag(capabilities),
+        isSuperAdmin,
+      }),
+    [capabilities, isSuperAdmin, organization, user],
+  );
+
+  useEffect(() => {
+    if (!openingWorkspaceId) return;
+    if (pathBelongsToWorkspace(pathname, openingWorkspaceId)) {
+      setOpeningWorkspaceId(null);
+    }
+  }, [pathname, openingWorkspaceId]);
+
+  useEffect(() => {
+    if (!openingWorkspaceId) return;
+    const timeout = window.setTimeout(() => setOpeningWorkspaceId(null), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, [openingWorkspaceId]);
+
+  const navigateFromAi = useCallback(
+    async (href) => {
+      if (!href) return;
+      closePanel(setOpen, setExpanded);
+      try {
+        await openAppPathAcrossWorkspaces({
+          href,
+          currentPathname: pathname,
+          userId: user?.id,
+          organizationId: organization?.id,
+          capabilities,
+          ctx: accessCtx,
+          currentWorkspaceId: workspaceId,
+          switchWorkspace,
+          router,
+          onSwitchStart: (targetId) => setOpeningWorkspaceId(targetId),
+        });
+      } catch (err) {
+        setOpeningWorkspaceId(null);
+        notifyError(err instanceof Error ? err.message : "Could not open that screen.");
+      }
+    },
+    [
+      accessCtx,
+      capabilities,
+      organization?.id,
+      pathname,
+      router,
+      switchWorkspace,
+      user?.id,
+      workspaceId,
+    ],
+  );
 
   useEffect(() => {
     if (!canUse) return;
@@ -293,6 +362,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
   return (
     <>
+      {openingWorkspaceId ? <WorkspaceOpeningScreen message="Opening" /> : null}
+
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -406,7 +477,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 >
                   <AiMessageContent
                     content={m.content}
-                    onNavigate={() => closePanel(setOpen, setExpanded)}
+                    onNavigate={(_event, href) => void navigateFromAi(href)}
                   />
                 </div>
               ))}
@@ -461,7 +532,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   <Link
                     href={actionResult.path || actionResult.href}
                     className="mt-1 inline-block text-emerald-700 underline"
-                    onClick={() => setOpen(false)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void navigateFromAi(actionResult.path || actionResult.href);
+                    }}
                   >
                     {actionResult.path || actionResult.href}
                   </Link>

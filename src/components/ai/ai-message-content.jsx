@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { latexToPlain, parseMarkdownHeading } from "@/lib/ai-message-format";
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
 /** Match Centrix paths even when wrapped in markdown emphasis. */
@@ -9,7 +10,7 @@ const PATH_PATTERN = /(?<![A-Za-z0-9])(\/[a-z][\w\-\/]*(?:\/[\w\-]+)*)/gi;
 /**
  * @param {string} text
  * @param {string} keyPrefix
- * @param {(() => void) | undefined} onNavigate
+ * @param {((event: import("react").MouseEvent, href: string) => void) | undefined} onNavigate
  * @returns {import("react").ReactNode[]}
  */
 function renderInline(text, keyPrefix, onNavigate) {
@@ -92,7 +93,14 @@ function renderInline(text, keyPrefix, onNavigate) {
           key={key}
           href={seg.href}
           className="font-medium text-indigo-600 underline hover:text-indigo-800"
-          onClick={typeof onNavigate === "function" ? onNavigate : undefined}
+          onClick={
+            typeof onNavigate === "function"
+              ? (event) => {
+                  event.preventDefault();
+                  void onNavigate(event, seg.href);
+                }
+              : undefined
+          }
         >
           {seg.value}
         </Link>
@@ -137,15 +145,32 @@ function pushLinkedText(segments, content) {
   }
 }
 
+const HEADING_CLASS = {
+  1: "m-0 text-base font-semibold text-slate-900",
+  2: "m-0 text-[0.95rem] font-semibold text-slate-900",
+  3: "m-0 text-sm font-semibold text-slate-800",
+};
+
 /** Render assistant/user chat text with markdown emphasis and clickable Centrix paths. */
 export function AiMessageContent({ content, onNavigate, className = "" }) {
   if (!content) return null;
 
-  const lines = String(content).replace(/\r\n/g, "\n").split("\n");
+  const lines = latexToPlain(String(content)).replace(/\r\n/g, "\n").split("\n");
 
   return (
     <div className={`space-y-2 text-sm leading-relaxed ${className}`}>
       {lines.map((line, lineIndex) => {
+        const heading = parseMarkdownHeading(line);
+        if (heading) {
+          const Tag = heading.level === 1 ? "h3" : heading.level === 2 ? "h4" : "h5";
+          const nodes = renderInline(heading.text, `h${lineIndex}`, onNavigate);
+          return (
+            <Tag key={`line-${lineIndex}`} className={HEADING_CLASS[heading.level] ?? HEADING_CLASS[3]}>
+              {nodes}
+            </Tag>
+          );
+        }
+
         const bullet = line.match(/^\s*([-*•]|\d+\.)\s+(.*)$/);
         const body = bullet ? bullet[2] : line;
         const nodes = renderInline(body, `l${lineIndex}`, onNavigate);

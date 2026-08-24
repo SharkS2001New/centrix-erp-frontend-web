@@ -2,11 +2,15 @@ import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canAccessRoute } from "@/lib/route-access";
 import {
   isTabWorkspaceEnabled,
+  normalizeTabHref,
+  pathOnlyFromHref,
   recallWorkspaceTabLandingPath,
+  seedWorkspaceTabLanding,
 } from "@/lib/tab-workspace";
 import {
   filterNavSectionsForWorkspace,
   isTerminalWorkspace,
+  owningWorkspaceIdForPath,
   pathBelongsToWorkspace,
   resolveAvailableWorkspaces,
   workspaceHomePath,
@@ -287,4 +291,86 @@ export function clearAllWorkspaceRouteMemory() {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Open an in-app path, switching application when the route belongs to another module.
+ * Seeds tab/route memory before switch so WorkspaceGuard lands on the target href.
+ *
+ * @param {{
+ *   href: string,
+ *   currentPathname?: string | null,
+ *   userId?: string | number | null,
+ *   organizationId?: string | number | null,
+ *   capabilities?: object | null,
+ *   ctx?: object | null,
+ *   currentWorkspaceId?: string | null,
+ *   switchWorkspace: (workspaceId: string) => Promise<unknown>,
+ *   router: { push: (href: string) => void, replace: (href: string) => void, refresh?: () => void },
+ *   onSwitchStart?: (workspaceId: string) => void,
+ * }} args
+ * @returns {Promise<{ switched: boolean, workspaceId: string | null, href: string }>}
+ */
+export async function openAppPathAcrossWorkspaces({
+  href,
+  currentPathname = null,
+  userId = null,
+  organizationId = null,
+  capabilities = null,
+  ctx = null,
+  currentWorkspaceId = null,
+  switchWorkspace,
+  router,
+  onSwitchStart,
+}) {
+  const normalized = normalizeTabHref(href);
+  const pathOnly = pathOnlyFromHref(normalized);
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
+  const targetId = owningWorkspaceIdForPath(pathOnly, workspaces, currentWorkspaceId);
+
+  if (!targetId) {
+    const err = new Error("This screen is not available in your applications.");
+    err.code = "workspace_unavailable";
+    throw err;
+  }
+
+  if (ctx && !canAccessRoute(pathOnly, ctx, { workspaceId: targetId })) {
+    const err = new Error("You do not have permission to open this screen.");
+    err.code = "route_forbidden";
+    throw err;
+  }
+
+  if (targetId === currentWorkspaceId) {
+    router.push(normalized);
+    return { switched: false, workspaceId: currentWorkspaceId ?? null, href: normalized };
+  }
+
+  const target = workspaces.find((w) => w.id === targetId);
+  if (!target) {
+    const err = new Error("This screen is not available in your applications.");
+    err.code = "workspace_unavailable";
+    throw err;
+  }
+
+  onSwitchStart?.(targetId);
+
+  if (currentWorkspaceId && currentPathname) {
+    persistWorkspaceRouteBeforeSwitch(
+      userId,
+      organizationId,
+      currentWorkspaceId,
+      currentPathname,
+    );
+  }
+
+  rememberWorkspacePath(userId, organizationId, targetId, pathOnly);
+  if (isTabWorkspaceEnabled(capabilities)) {
+    seedWorkspaceTabLanding(organizationId, targetId, normalized);
+  }
+
+  await switchWorkspace(targetId);
+  router.replace(normalized);
+  router.refresh?.();
+
+  return { switched: true, workspaceId: targetId, href: normalized };
 }

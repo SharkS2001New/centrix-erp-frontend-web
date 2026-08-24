@@ -406,6 +406,53 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 }
 
 /**
+ * Which application owns a path for deep-links (AI chat, notifications).
+ * Stays on the current workspace when it already owns the route; otherwise
+ * picks the best match among accessible workspaces (longest path prefix).
+ *
+ * @param {string | null | undefined} pathname
+ * @param {Array<{ id: string }>} workspaces
+ * @param {string | null | undefined} currentWorkspaceId
+ * @returns {string | null}
+ */
+export function owningWorkspaceIdForPath(pathname, workspaces, currentWorkspaceId = null) {
+  const pathOnly = String(pathname || "").split("?")[0] || "";
+  if (!pathOnly) return currentWorkspaceId ?? null;
+
+  if (SHARED_WORKSPACE_PATHS.some((p) => pathOnly === p || pathOnly.startsWith(`${p}/`))) {
+    return currentWorkspaceId ?? null;
+  }
+
+  if (currentWorkspaceId && pathBelongsToWorkspace(pathOnly, currentWorkspaceId)) {
+    return currentWorkspaceId;
+  }
+
+  const owners = (workspaces ?? []).filter((w) => pathBelongsToWorkspace(pathOnly, w.id));
+  if (owners.length === 0) return null;
+  if (owners.length === 1) return owners[0].id;
+
+  let best = owners[0];
+  let bestLen = -1;
+  for (const w of owners) {
+    let matchLen = 0;
+    for (const p of WORKSPACE_PATH_PREFIXES[w.id] ?? []) {
+      if (pathOnly === p || pathOnly.startsWith(`${p}/`)) {
+        matchLen = Math.max(matchLen, p.length);
+      }
+    }
+    if (
+      matchLen > bestLen ||
+      (matchLen === bestLen && w.id !== "backoffice" && best.id === "backoffice")
+    ) {
+      bestLen = matchLen;
+      best = w;
+    }
+  }
+
+  return best.id;
+}
+
+/**
  * @param {object} ctx access context from buildAccessContext
  * @param {object} capabilities
  * @param {(workspaceId: string) => boolean} [isAccessible] optional filter — hide shells with no reachable routes
