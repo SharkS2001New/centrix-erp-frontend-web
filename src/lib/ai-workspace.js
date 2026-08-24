@@ -10,6 +10,22 @@ export const AI_WORKSPACE_STARTERS = {
     "Who are our top debtors?",
     "Where is the sales dashboard?",
   ],
+  hospitality_backoffice: [
+    "Where is front desk check-in?",
+    "How do I open a guest folio?",
+    "Where are room reservations?",
+    "How do I run night audit?",
+    "Where is housekeeping?",
+    "Which hospitality reports show occupancy?",
+    "Where do I manage hotel outlets?",
+  ],
+  hotel_bar_pos: [
+    "How do I open a bar check?",
+    "How do I room-charge a check to a folio?",
+    "Where do I settle a hotel POS check?",
+    "How do I void a check line?",
+    "Where are held / unpaid checks?",
+  ],
   accounting: [
     "How do I post a journal entry?",
     "Where are accounts receivable?",
@@ -61,6 +77,8 @@ export function aiWorkspaceLabel(workspaceId, capabilities) {
 
   const labels = {
     backoffice: "Backoffice",
+    hospitality_backoffice: "Hotel Backoffice",
+    hotel_bar_pos: "Hotel POS",
     accounting: "Accounting",
     hr: "Human Resources",
     distribution: "Distribution",

@@ -22,14 +22,22 @@ import {
 } from "@/components/platform/platform-ai-usage-charts";
 import { CHART_COLORS } from "@/components/reports/report-charts";
 import { defaultDateRange, formatAppDateTime } from "@/lib/datetime";
-import { notifyError } from "@/lib/notify";
-import { aiTrainingApiBase } from "@/lib/platform-ai-training";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  AI_TRAINING_WORKSPACES,
+  aiTrainingApiBase,
+  trainAiFromUsageQuestion,
+} from "@/lib/platform-ai-training";
 
 const PROVIDER_OPTIONS = [
   { value: "", label: "All providers" },
   { value: "gemini", label: "Gemini" },
   { value: "openai", label: "OpenAI" },
 ];
+
+function workspaceLabel(id) {
+  return AI_TRAINING_WORKSPACES.find((w) => w.id === id)?.label ?? id;
+}
 
 function statusTone(status) {
   const s = String(status ?? "").toLowerCase();
@@ -54,6 +62,9 @@ export function PlatformAiUsageScreen() {
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [trainingKey, setTrainingKey] = useState(null);
+  const [draftReview, setDraftReview] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const filterParams = useMemo(
     () => ({
@@ -147,11 +158,62 @@ export function PlatformAiUsageScreen() {
   }, [fromDate, toDate, organizationId, userId, provider]);
 
   const kpis = summary?.summary ?? {};
+  const commonQuestions = summary?.common_questions ?? [];
+
+  async function analyzeAndTrain(row) {
+    const key = row.fingerprint || row.question;
+    setTrainingKey(key);
+    setDraftReview(null);
+    try {
+      const res = await trainAiFromUsageQuestion({
+        question: row.question,
+        examples: row.examples ?? [],
+        count: row.count,
+        workspace_id: row.suggested_workspace_id || null,
+        save: false,
+      });
+      setDraftReview({
+        sourceQuestion: row.question,
+        draft: {
+          topic: res.draft?.topic ?? row.question,
+          content: res.draft?.content ?? "",
+          path: res.draft?.path ?? "",
+          workspace_id: res.draft?.workspace_id ?? row.suggested_workspace_id ?? "",
+        },
+      });
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not draft a training note.");
+    } finally {
+      setTrainingKey(null);
+    }
+  }
+
+  async function saveDraftNote() {
+    if (!draftReview?.draft?.topic || !draftReview?.draft?.content) return;
+    setSavingDraft(true);
+    try {
+      await apiRequest(`${apiBase}/knowledge`, {
+        method: "POST",
+        body: {
+          topic: draftReview.draft.topic.trim(),
+          content: draftReview.draft.content.trim(),
+          path: draftReview.draft.path?.trim() || null,
+          workspace_id: draftReview.draft.workspace_id || null,
+        },
+      });
+      notifySuccess("Training note saved — applies to all tenants, including hospitality.");
+      setDraftReview(null);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to save training note.");
+    } finally {
+      setSavingDraft(false);
+    }
+  }
 
   return (
     <CatalogPageShell
       title="AI usage"
-      subtitle="Track assistant requests, tokens, estimated cost, and who is using AI across tenants."
+      subtitle="Track assistant requests across retail and hospitality tenants, then train from the most common questions."
       action={
         <button
           type="button"
@@ -385,6 +447,156 @@ export function PlatformAiUsageScreen() {
               </ul>
             </section>
           </div>
+
+          <section className="theme-panel overflow-hidden rounded-xl border shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold theme-heading">Most common questions</h3>
+                <p className="text-xs theme-subtext">
+                  Clustered from real prompts — analyze with AI and save platform training notes (works for hospitality too).
+                </p>
+              </div>
+              <Link href="/platform/ai-training" className="text-xs font-medium text-[#185FA5] hover:underline">
+                Open training notes
+              </Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Question</th>
+                    <th className="px-4 py-3">Asks</th>
+                    <th className="px-4 py-3">Orgs</th>
+                    <th className="px-4 py-3">Module</th>
+                    <th className="px-4 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {commonQuestions.length ? (
+                    commonQuestions.map((row) => {
+                      const key = row.fingerprint || row.question;
+                      const busy = trainingKey === key;
+                      return (
+                        <tr key={key} className="align-top">
+                          <td className="max-w-[28rem] px-4 py-3 text-slate-700">
+                            <p className="line-clamp-2">{row.question}</p>
+                            {(row.examples ?? []).length > 1 ? (
+                              <p className="mt-1 text-[11px] text-slate-400">
+                                +{(row.examples.length - 1).toLocaleString()} similar phrasing
+                                {row.examples.length - 1 === 1 ? "" : "s"}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 tabular-nums">{formatCount(row.count)}</td>
+                          <td className="px-4 py-3 tabular-nums">{formatCount(row.organization_count)}</td>
+                          <td className="px-4 py-3 text-xs text-slate-600">
+                            {row.suggested_workspace_id ? workspaceLabel(row.suggested_workspace_id) : "All modules"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              disabled={Boolean(trainingKey)}
+                              onClick={() => analyzeAndTrain(row)}
+                              className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#134d88] disabled:opacity-50"
+                            >
+                              {busy ? "Analyzing…" : "Train with AI"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                        No prompt text logged in this period yet. Once users chat, common questions appear here.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {draftReview ? (
+              <div className="border-t border-slate-100 bg-slate-50/80 px-4 py-4">
+                <h4 className="text-sm font-semibold theme-heading">Review training note</h4>
+                <p className="mt-1 text-xs theme-subtext">From: {draftReview.sourceQuestion}</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="block text-xs theme-subtext">
+                    Topic
+                    <input
+                      className={`${FILTER_CONTROL_CLASS} mt-1 w-full`}
+                      value={draftReview.draft.topic}
+                      onChange={(e) =>
+                        setDraftReview((prev) =>
+                          prev ? { ...prev, draft: { ...prev.draft, topic: e.target.value } } : prev,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs theme-subtext">
+                    Path
+                    <input
+                      className={`${FILTER_CONTROL_CLASS} mt-1 w-full`}
+                      value={draftReview.draft.path}
+                      onChange={(e) =>
+                        setDraftReview((prev) =>
+                          prev ? { ...prev, draft: { ...prev.draft, path: e.target.value } } : prev,
+                        )
+                      }
+                      placeholder="/hospitality/front-desk"
+                    />
+                  </label>
+                  <label className="block text-xs theme-subtext md:col-span-2">
+                    Content
+                    <textarea
+                      className={`${FILTER_CONTROL_CLASS} mt-1 min-h-[7rem] w-full`}
+                      value={draftReview.draft.content}
+                      onChange={(e) =>
+                        setDraftReview((prev) =>
+                          prev ? { ...prev, draft: { ...prev.draft, content: e.target.value } } : prev,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs theme-subtext">
+                    Module scope
+                    <select
+                      className={`${FILTER_CONTROL_CLASS} mt-1 w-full`}
+                      value={draftReview.draft.workspace_id || ""}
+                      onChange={(e) =>
+                        setDraftReview((prev) =>
+                          prev ? { ...prev, draft: { ...prev.draft, workspace_id: e.target.value } } : prev,
+                        )
+                      }
+                    >
+                      <option value="">All modules</option>
+                      {AI_TRAINING_WORKSPACES.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={savingDraft}
+                    onClick={saveDraftNote}
+                    className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#134d88] disabled:opacity-50"
+                  >
+                    {savingDraft ? "Saving…" : "Save training note"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftReview(null)}
+                    className="rounded-lg border px-3 py-1.5 text-xs theme-heading hover:bg-white"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
 
           <section className="theme-panel overflow-hidden rounded-xl border shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">

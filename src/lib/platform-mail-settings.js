@@ -196,7 +196,7 @@ export function platformMailPayloadFromForm(form, extras = {}) {
       : "primary",
     contract_email_subject: form.contract_email_subject.trim(),
     contract_email_body: form.contract_email_body.trim(),
-    auth_mail_use_dedicated: Boolean(form.auth_mail_use_dedicated),
+    auth_mail_use_dedicated: Boolean(String(form.auth_smtp_host || "").trim()),
     auth_from_name: form.auth_from_name.trim(),
     auth_from_address: form.auth_from_address.trim(),
     auth_smtp_host: form.auth_smtp_host.trim(),

@@ -85,7 +85,7 @@ export function PlatformAlertNotificationsPanel() {
           <p className="mt-1 text-xs text-slate-500">
             Choose how platform admins receive system errors &amp; reports. Instant WhatsApp/email for
             high-priority repeats, new fingerprints, and user reports; daily email for the full open list.
-            Delivery uses Platform → Email delivery and WhatsApp credentials.
+            Delivery uses Platform → Email delivery → Notifications (SMTP) and WhatsApp credentials.
           </p>
         </div>
         <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>

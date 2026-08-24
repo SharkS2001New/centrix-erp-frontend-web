@@ -153,26 +153,26 @@ export function UsageDonutChart({ segments, title = "By provider" }) {
   const stroke = 22;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  let runningOffset = 0;
-  const circles = list.map((seg, i) => {
+  const dashes = list.map((seg) => {
     const value = Number(seg.value) || 0;
-    const dash = total > 0 ? (value / total) * circumference : 0;
-    const dashOffset = -runningOffset;
-    runningOffset += dash;
-    return (
-      <circle
-        key={seg.label ?? i}
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={seg.color ?? CHART_COLORS[i % CHART_COLORS.length]}
-        strokeWidth={stroke}
-        strokeDasharray={`${dash} ${circumference - dash}`}
-        strokeDashoffset={dashOffset}
-      />
-    );
+    return total > 0 ? (value / total) * circumference : 0;
   });
+  const offsets = dashes.map((_, i) =>
+    dashes.slice(0, i).reduce((sum, dash) => sum + dash, 0),
+  );
+  const circles = list.map((seg, i) => (
+    <circle
+      key={seg.label ?? i}
+      cx={size / 2}
+      cy={size / 2}
+      r={radius}
+      fill="none"
+      stroke={seg.color ?? CHART_COLORS[i % CHART_COLORS.length]}
+      strokeWidth={stroke}
+      strokeDasharray={`${dashes[i]} ${circumference - dashes[i]}`}
+      strokeDashoffset={-offsets[i]}
+    />
+  ));
 
   return (
     <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">

@@ -63,8 +63,8 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
   }
 
   const emailSubtitles = {
-    smtp: "Main outbound SMTP, From address, and test email.",
-    auth: "Dedicated sender for 2FA and email verification codes.",
+    smtp: "Mailboxes for contracts, quotes, renewals, and optional inbox sync.",
+    auth: "SMTP for 2FA, email verification, and system-error alerts — separate from mailboxes.",
     imap: "Inbox sync for Platform → Mailbox replies.",
     templates: "Contract and quote email subject and body templates.",
     renewals: "Automatic subscription renewal reminders and templates.",

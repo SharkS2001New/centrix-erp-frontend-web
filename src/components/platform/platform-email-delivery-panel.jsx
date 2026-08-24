@@ -25,14 +25,15 @@ const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
 
 const EMAIL_TABS = [
-  { id: "smtp", label: "SMTP & sender" },
-  { id: "auth", label: "Auth / 2FA" },
+  { id: "auth", label: "Notifications" },
+  { id: "smtp", label: "Mailboxes" },
   { id: "imap", label: "IMAP (optional)" },
   { id: "templates", label: "Contracts & quotes" },
   { id: "renewals", label: "Renewals" },
 ];
 
 function resolveEmailTab(tabId) {
+  if (tabId === "notifications") return "auth";
   return EMAIL_TABS.some((t) => t.id === tabId) ? tabId : "smtp";
 }
 
@@ -258,7 +259,7 @@ export function PlatformEmailDeliveryPanel() {
   async function handleTestAuthMail() {
     const to = authTestTo.trim() || testTo.trim();
     if (!to) {
-      notifyError("Enter a recipient for the auth / 2FA test email.");
+      notifyError("Enter a recipient for the notification test email.");
       return;
     }
     setTestingAuth(true);
@@ -267,7 +268,7 @@ export function PlatformEmailDeliveryPanel() {
         method: "POST",
         body: { to },
       });
-      notifySuccess(res.message ?? "Auth / 2FA test email sent.");
+      notifySuccess(res.message ?? "Notification / 2FA test email sent.");
       try {
         const statsRes = await apiRequest("/admin/platform-mail/stats", { loading: false });
         if (statsRes.stats) setMailStats(statsRes.stats);
@@ -275,10 +276,28 @@ export function PlatformEmailDeliveryPanel() {
         /* ignore */
       }
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Auth / 2FA test email failed.");
+      notifyError(err instanceof ApiError ? err.message : "Notification test email failed.");
     } finally {
       setTestingAuth(false);
     }
+  }
+
+  function handleCopyNotificationFromMailbox() {
+    if (!String(form.smtp_host || "").trim() && !String(form.from_address || "").trim()) {
+      notifyError("Add and save a mailbox first, or fill notification SMTP below.");
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      auth_mail_use_dedicated: true,
+      auth_from_name: f.from_name || f.auth_from_name || "Centrix",
+      auth_from_address: f.from_address || f.smtp_username || f.auth_from_address,
+      auth_smtp_host: f.smtp_host || f.auth_smtp_host || "smtp.gmail.com",
+      auth_smtp_port: f.smtp_port || f.auth_smtp_port || "587",
+      auth_smtp_username: f.smtp_username || f.auth_smtp_username,
+      auth_smtp_encryption: f.smtp_encryption || f.auth_smtp_encryption || "tls",
+    }));
+    notifySuccess("Copied mailbox SMTP into Notifications. Review, save, then send a test.");
   }
 
   async function handleTestRenewalReminder() {
@@ -374,8 +393,8 @@ export function PlatformEmailDeliveryPanel() {
           </div>
           <p className="w-full text-xs text-slate-500">
             {(form.accounts?.length || 0) === 0
-              ? "No mailbox is configured. Add a mailbox to send mail, or leave this empty if you are not using email."
-              : "SMTP sends mail. IMAP is optional for inbox sync — leave it off if your domain host does not allow IMAP."}
+              ? "No mailbox yet. Add one for contracts, quotes, and inbox. 2FA and system-error emails use the Notifications tab — they do not need a mailbox."
+              : "SMTP sends contracts and client mail. IMAP is optional for inbox sync — leave it off if your host blocks IMAP."}
           </p>
         </div>
       )}
@@ -383,10 +402,10 @@ export function PlatformEmailDeliveryPanel() {
       {activeEmailTab === "smtp" ? (
         <section className="theme-panel space-y-5 rounded-xl border p-5 shadow-sm">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">SMTP &amp; sender</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Mailboxes</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Outbound mail for this mailbox (contracts, invoices, replies, renewals). Inbox sync is
-              configured separately on the <strong>IMAP (optional)</strong> tab — not required to send.
+              Outbound mail for contracts, invoices, replies, and renewals — and optional IMAP for
+              Platform → Mailbox. Separate from <strong>Notifications</strong> (2FA and system alerts).
             </p>
           </div>
           <label className="block text-sm">
@@ -441,7 +460,7 @@ export function PlatformEmailDeliveryPanel() {
               onChange={(e) => setForm((f) => ({ ...f, reply_to: e.target.value }))}
             />
               <span className="mt-1 block text-[11px] text-slate-500">
-                Used for contracts, invoices, mailbox, and renewal reminders — not for 2FA codes.
+                Used for contracts, invoices, mailbox replies, and renewals — not for 2FA or system alerts.
               </span>
           </label>
         </div>
@@ -528,11 +547,26 @@ export function PlatformEmailDeliveryPanel() {
 
       {activeEmailTab === "auth" ? (
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Auth / 2FA email</h2>
-        <p className="mt-1 text-xs text-slate-500">
-            Separate sender for two-factor and email-verification codes. No Reply-To is set on these
-            messages. You can use a different mailbox than contracts and renewals (recommended).
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Notifications SMTP</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Dedicated sender for 2FA codes, email verification, and system-error alerts.
+                Independent of mailboxes — configure this even if you never add a support mailbox.
+                No Reply-To is set on these messages.
+              </p>
+            </div>
+            {(form.accounts?.length || 0) > 0 && String(form.smtp_host || "").trim() ? (
+              <button
+                type="button"
+                className={SECONDARY_BTN_CLASS}
+                disabled={saving}
+                onClick={handleCopyNotificationFromMailbox}
+              >
+                Copy from mailbox
+              </button>
+            ) : null}
+          </div>
 
           {mailStats ? (
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -566,54 +600,18 @@ export function PlatformEmailDeliveryPanel() {
             </div>
           ) : null}
           <p className="mt-2 text-[11px] text-slate-500">
-            Each send is logged under Platform → Mailbox → Sent (OTP codes are redacted in the stored copy).
+            Sends are logged under Platform → Mailbox → Sent when a mailbox exists (OTP codes redacted).
+            System alerts also use this SMTP (recipients are set under Alert notifications).
           </p>
 
-        <label className="mt-4 flex items-start gap-3">
-          <input
-            type="checkbox"
-            className="mt-1"
-              checked={form.auth_mail_use_dedicated}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, auth_mail_use_dedicated: e.target.checked }))
-              }
-            />
-            <span>
-              <span className="block text-sm font-medium text-slate-900">
-                Use a dedicated mailbox for 2FA / verification
-              </span>
-              <span className="mt-0.5 block text-xs text-slate-500">
-                When off, codes use the main SMTP with the no-reply From address.
-              </span>
-            </span>
-          </label>
-
-          {!form.auth_mail_use_dedicated ? (
-            <label className="mt-4 block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">
-                No-reply From (when using main SMTP)
-              </span>
-              <input
-                type="email"
-                className={inputClass}
-                value={form.noreply_address}
-                onChange={(e) => setForm((f) => ({ ...f, noreply_address: e.target.value }))}
-                placeholder="noreply@yourdomain.com"
-              />
-              <span className="mt-1 block text-[11px] text-slate-500">
-                With Gmail SMTP, From usually must match your Gmail account; Centrix still omits
-                Reply-To. Prefer a dedicated auth mailbox below for a true noreply sender.
-              </span>
-            </label>
-          ) : (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">From name</span>
                 <input
                   className={inputClass}
                   value={form.auth_from_name}
                   onChange={(e) => setForm((f) => ({ ...f, auth_from_name: e.target.value }))}
-                  placeholder={form.from_name || "Centrix Security"}
+                  placeholder="Centrix Security"
                 />
               </label>
               <label className="block text-sm">
@@ -623,8 +621,11 @@ export function PlatformEmailDeliveryPanel() {
                   className={inputClass}
                   value={form.auth_from_address}
                   onChange={(e) => setForm((f) => ({ ...f, auth_from_address: e.target.value }))}
-                  placeholder="noreply@yourdomain.com"
+                  placeholder="alpacke.tech@gmail.com"
                 />
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  For Gmail SMTP, use the same address as your SMTP username (app password).
+                </span>
               </label>
               <label className="block text-sm sm:col-span-2">
                 <span className="mb-1 block text-xs font-medium text-slate-600">SMTP host</span>
@@ -632,7 +633,7 @@ export function PlatformEmailDeliveryPanel() {
                   className={inputClass}
                   value={form.auth_smtp_host}
                   onChange={(e) => setForm((f) => ({ ...f, auth_smtp_host: e.target.value }))}
-                  placeholder="smtp.yourdomain.com"
+                  placeholder="smtp.gmail.com"
                 />
               </label>
               <label className="block text-sm">
@@ -675,7 +676,6 @@ export function PlatformEmailDeliveryPanel() {
                 />
               </label>
             </div>
-          )}
 
           <div className="mt-4 flex flex-wrap items-end gap-2">
             <label className="block min-w-[16rem] flex-1 text-sm">
@@ -690,11 +690,18 @@ export function PlatformEmailDeliveryPanel() {
             </label>
             <button
               type="button"
-              disabled={testingAuth || (!form.auth_mail_use_dedicated && !form.enabled)}
+              disabled={
+                testingAuth ||
+                !(
+                  String(form.auth_smtp_host || "").trim() &&
+                  (String(form.auth_from_address || "").trim() ||
+                    String(form.auth_smtp_username || "").trim())
+                )
+              }
               className={SECONDARY_BTN_CLASS}
               onClick={() => void handleTestAuthMail()}
             >
-              {testingAuth ? "Sending…" : "Send 2FA test email"}
+              {testingAuth ? "Sending…" : "Send notification test"}
             </button>
           </div>
         </section>
@@ -735,8 +742,8 @@ export function PlatformEmailDeliveryPanel() {
             <p className="font-medium text-slate-900">Recommended modes</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
               <li>
-                <strong>SMTP only</strong> — send contracts, 2FA, renewals (IMAP off). Works when IMAP is
-                blocked.
+                <strong>SMTP only</strong> — send contracts and renewals (IMAP off). Works when IMAP is
+                blocked. 2FA and system alerts use the <strong>Notifications</strong> tab.
               </li>
               <li>
                 <strong>SMTP + IMAP</strong> — also sync the inbox into Platform → Mailbox.
