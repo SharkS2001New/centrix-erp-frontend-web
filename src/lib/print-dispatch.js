@@ -21,6 +21,7 @@ import {
   printViaAgent,
   savePrintAgentConfig,
 } from "@/lib/print-agent";
+import { resolveSecondCopyPrinterName } from "@/lib/local-printing-settings";
 import { saveQzTrayConfig, getQzTrayConfig } from "@/lib/qz-tray-print";
 
 function preparePrintHtml(html, jobType = "receipt") {
@@ -264,4 +265,36 @@ export function applyLocalPrintProviderSelection(provider) {
 
   // Re-assert provider — save*Config must not clobber agent when disabling the other.
   return saveLocalPrintProvider(next);
+}
+
+/**
+ * Send a duplicate receipt to the optional second-copy printer after a successful agent print.
+ */
+export async function printSecondCopyIfConfigured(
+  html,
+  { documentId = null, jobType = "receipt", primaryResult } = {},
+) {
+  const printer = resolveSecondCopyPrinterName();
+  if (!printer || !html?.trim() || primaryResult?.mode !== "agent" || primaryResult?.ok === false) {
+    return primaryResult;
+  }
+
+  try {
+    await printViaAgent({
+      html: prepareThermalPrintHtml(html),
+      copies: 1,
+      jobType,
+      documentId,
+      config: { ...getPrintAgentConfig(), enabled: true, printerName: printer },
+    });
+    const extra = { ok: true, printer };
+    return { ...primaryResult, secondCopy: extra, kitchen: extra };
+  } catch (err) {
+    const extra = {
+      ok: false,
+      printer,
+      error: err instanceof Error ? err.message : "Second copy printer failed.",
+    };
+    return { ...primaryResult, secondCopy: extra, kitchen: extra };
+  }
 }

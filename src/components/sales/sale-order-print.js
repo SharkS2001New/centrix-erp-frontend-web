@@ -38,7 +38,7 @@ import {
   showPrintPreparing,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
-import { dispatchPrintJob, shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
+import { dispatchPrintJob, printSecondCopyIfConfigured, shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
 
 function ensureBatchPrintCache(cache = null) {
   if (cache && typeof cache === "object") {
@@ -656,7 +656,7 @@ export async function dispatchPreparedSalePrintJob(job, dispatchOptions = {}) {
     return lastResult;
   }
 
-  return dispatchPrintJob({
+  const result = await dispatchPrintJob({
     html: job.html,
     copies: job.copies,
     jobType: job.jobType ?? "receipt",
@@ -664,5 +664,11 @@ export async function dispatchPreparedSalePrintJob(job, dispatchOptions = {}) {
     printWindow: job.printWindow ?? null,
     windowFeatures: "width=420,height=720",
     allowBrowserFallback: dispatchOptions.allowBrowserFallback !== false,
+  });
+
+  if ((job.jobType ?? "receipt") !== "receipt") return result;
+  return printSecondCopyIfConfigured(job.html, {
+    documentId: job.documentId,
+    primaryResult: result,
   });
 }

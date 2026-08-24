@@ -259,6 +259,8 @@ export function PosPaymentPanel({
   cashOnlyOffline = false,
   /** KRA-on previous-order edit: collect only the top-up / return delta. */
   previousOrderEditAdjustment = null,
+  /** Loaded previous receipt (browse / pending sync) — never ask walk-in name on F10. */
+  isPreviousOrderSession = false,
 }) {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState("payment");
@@ -326,6 +328,7 @@ export function PosPaymentPanel({
 
   const cfg = paymentConfig ?? {};
   const adjustmentMode = Boolean(previousOrderEditAdjustment);
+  const skipCustomerNameStep = adjustmentMode || Boolean(isPreviousOrderSession);
   const signedEditDelta = adjustmentMode
     ? Number(previousOrderEditAdjustment.signedDelta ?? 0)
     : 0;
@@ -1528,11 +1531,9 @@ export function PosPaymentPanel({
       paymentAmountOverrideRef.current = null;
       const sale = await onComplete?.(body);
       if (!sale) {
-        setStep(
-          cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer
-            ? "customerName"
-            : "confirm",
-        );
+        // Stay on payment amounts — bouncing back to CUSTOMER after "No updates…"
+        // made cashiers re-enter the name and retry the same failed checkout loop.
+        setStep("payment");
         return;
       }
       // Previous-order edit: parent already reprinted and focused a new order.
@@ -1550,17 +1551,30 @@ export function PosPaymentPanel({
       tenderAmountsOverrideRef.current = null;
       paymentAmountOverrideRef.current = null;
       setLocalError(err instanceof Error ? err.message : "Checkout failed");
-      setStep(
-        cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer
-          ? "customerName"
-          : "confirm",
-      );
+      setStep("payment");
     }
   }
 
+  // Parent refused untouched previous-order checkout — leave the dialog immediately.
+  useEffect(() => {
+    if (!open) return;
+    const msg = String(error || localError || "");
+    if (
+      /no updates on this receipt|has no new line changes/i.test(msg)
+    ) {
+      onClose?.({ force: true, reason: "guard" });
+    }
+  }, [open, error, localError, onClose]);
+
   function handleConfirmYes() {
     setLocalError(null);
-    if (cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer) {
+    // Previous-order top-up/return (and any loaded receipt) already has the customer.
+    if (
+      !skipCustomerNameStep &&
+      cfg.enableCheckoutCustomerName &&
+      !hasCreditCustomer &&
+      !linkedReceiptCustomer
+    ) {
       if (customerNameMode === "walkin" && !walkInCustomerName.trim()) {
         const prefill = String(prefillWalkInCustomerName ?? "").trim();
         if (prefill) setWalkInCustomerName(prefill);
@@ -2658,8 +2672,8 @@ export function PosPaymentPanel({
             />
           <span className="mt-1 block text-[11px] text-slate-600">
             Registered customers only — walk-ins cannot be charged to accounts receivable.
-            Selecting a customer on direct checkout saves the order as fully unpaid (cash and other
-            tenders are ignored).
+            Invoice (I) books unpaid A/R only when the bill is not fully paid with Cash / M-Pesa /
+            bank. Paying in full with those tenders still completes as a paid sale.
           </span>
           {creditCustomer && creditCustomerSummary?.limit > 0 ? (
             <span className="mt-1 block text-[11px] text-slate-600">

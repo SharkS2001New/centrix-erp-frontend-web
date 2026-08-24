@@ -9,9 +9,13 @@ import {
   sampleHospitalityCheckPreviewData,
 } from "./hospitality-check-receipt-print";
 
-vi.mock("@/lib/print-dispatch", () => ({
-  dispatchPrintJob: vi.fn(async () => ({ mode: "agent", ok: true, printer: "Star TSP143" })),
-}));
+vi.mock("@/lib/print-dispatch", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    dispatchPrintJob: vi.fn(async () => ({ mode: "agent", ok: true, printer: "Star TSP143" })),
+  };
+});
 
 vi.mock("@/lib/print-agent", () => ({
   getPrintAgentConfig: vi.fn(() => ({
@@ -26,13 +30,14 @@ vi.mock("@/lib/local-printing-settings", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    resolveSecondCopyPrinterName: vi.fn(() => ""),
     resolveHotelKitchenPrinterName: vi.fn(() => ""),
   };
 });
 
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { printViaAgent } from "@/lib/print-agent";
-import { resolveHotelKitchenPrinterName } from "@/lib/local-printing-settings";
+import { resolveSecondCopyPrinterName } from "@/lib/local-printing-settings";
 
 const paidCheck = {
   id: 12,
@@ -61,7 +66,7 @@ describe("printHospitalityCheckReceipt", () => {
       printer: "Star TSP143",
     });
     vi.mocked(printViaAgent).mockClear().mockResolvedValue({ ok: true, jobId: "kitchen-1" });
-    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("");
+    vi.mocked(resolveSecondCopyPrinterName).mockReturnValue("");
   });
 
   it("sends the check through Centrix Print Agent dispatch (silent when agent is on)", async () => {
@@ -82,7 +87,7 @@ describe("printHospitalityCheckReceipt", () => {
   });
 
   it("sends a second copy to the kitchen printer when configured", async () => {
-    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("Kitchen EPSON");
+    vi.mocked(resolveSecondCopyPrinterName).mockReturnValue("Kitchen EPSON");
 
     const result = await printHospitalityCheckReceipt(paidCheck, {
       title: "Paid receipt",
@@ -106,7 +111,7 @@ describe("printHospitalityCheckReceipt", () => {
   });
 
   it("does not print kitchen when the guest receipt used the browser dialog", async () => {
-    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("Kitchen EPSON");
+    vi.mocked(resolveSecondCopyPrinterName).mockReturnValue("Kitchen EPSON");
     vi.mocked(dispatchPrintJob).mockResolvedValue({ mode: "browser", ok: true });
 
     const result = await printHospitalityCheckReceipt(paidCheck, {

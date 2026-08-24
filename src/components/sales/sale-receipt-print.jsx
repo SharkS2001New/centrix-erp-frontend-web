@@ -4,7 +4,7 @@ import {
   buildKraThermalQrHtml,
   resolveBuyerKraPinForReceipt,
 } from "@/lib/kra-receipt-qr";
-import { dispatchPrintJob } from "@/lib/print-dispatch";
+import { dispatchPrintJob, printSecondCopyIfConfigured } from "@/lib/print-dispatch";
 import { RECEIPT_POWERED_BY_LINE } from "@/lib/print-footer-settings";
 import {
   buildSalesDocumentBodyFooterHtml,
@@ -491,13 +491,16 @@ export async function printSaleReceipt(sale, options = {}) {
   if (!html) return { mode: "browser", ok: false };
 
   const copies = Math.max(1, Number(options.copies ?? 1) || 1);
+  const documentId = sale?.id ?? sale?.sale_id ?? null;
 
-  return dispatchPrintJob({
+  const result = await dispatchPrintJob({
     html,
     copies,
     jobType: "receipt",
-    documentId: sale?.id ?? sale?.sale_id ?? null,
+    documentId,
     printWindow: options.printWindow ?? null,
     windowFeatures: "width=420,height=720",
   });
+
+  return printSecondCopyIfConfigured(html, { documentId, primaryResult: result });
 }

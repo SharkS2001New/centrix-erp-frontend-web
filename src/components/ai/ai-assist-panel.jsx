@@ -25,6 +25,8 @@ import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-
 import { buildPageContext, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
+import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
+import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -87,6 +89,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [status, setStatus] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [entityRefs, setEntityRefs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
@@ -237,9 +240,18 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [clearActionState]);
 
   const send = useCallback(
-    async (text, { confirm = false, formValuesOverride = null, pageContextOverride = null } = {}) => {
+    async (
+      text,
+      {
+        confirm = false,
+        formValuesOverride = null,
+        pageContextOverride = null,
+        entityRefsOverride = null,
+      } = {},
+    ) => {
       const message = text.trim();
       if (!message || loading) return;
+      const refsForSend = serializeEntityRefs(entityRefsOverride ?? entityRefs);
       setError(null);
       setLastFailedMessage(null);
       setActionResult(null);
@@ -251,6 +263,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         setMessages((prev) => [...prev, { role: "user", content: message }]);
       }
       setInput("");
+      setEntityRefs([]);
       try {
         const history = messages.slice(-10);
         const effectivePageContext =
@@ -267,6 +280,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             message,
             conversation_id: conversationId || undefined,
             history,
+            entity_refs: refsForSend.length ? refsForSend : undefined,
             pending_action: confirm && pendingAction ? pendingAction : undefined,
             form_values: confirm && Object.keys(formValuesOverride ?? formValues).length
               ? formValuesOverride ?? formValues
@@ -294,6 +308,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       pathname,
       conversationId,
       pageContext,
+      entityRefs,
     ],
   );
 
@@ -565,22 +580,23 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               className="border-t border-slate-200 p-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                send(input);
+                send(input, { entityRefsOverride: entityRefs });
               }}
             >
-              <textarea
+              <EntityMentionTextarea
                 rows={expanded ? 5 : 4}
-                className="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
-                placeholder={`Ask about ${workspaceLabel}…`}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send(input);
-                  }
-                }}
+                entityRefs={entityRefs}
                 disabled={loading}
+                placeholder={`Ask about ${workspaceLabel}… Type @ for products, suppliers, customers`}
+                textareaClassName="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
+                onChange={({ text, entityRefs: nextRefs }) => {
+                  setInput(text);
+                  setEntityRefs(nextRefs);
+                }}
+                onSubmit={({ text, entityRefs: nextRefs }) => {
+                  send(text, { entityRefsOverride: nextRefs });
+                }}
               />
               <div className="mt-3 flex justify-start">
                 <button
@@ -591,7 +607,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   Send
                 </button>
               </div>
-              <p className="mt-1.5 text-center text-xs text-slate-500">Enter to send · Shift+Enter for a new line</p>
+              <p className="mt-1.5 text-center text-xs text-slate-500">
+                Enter to send · Shift+Enter for a new line · @ to mention
+              </p>
             </form>
           </div>
         </div>

@@ -3745,18 +3745,11 @@ export function PosScreen({ standalone = false }) {
   }, [isCartEditSession, editSourceSale, cart, enablePosCashRounding]);
   const previousOrderEditReadyToPrint = useMemo(() => {
     if (!instantAutoEditSync || !isCartEditSession) return false;
-    if (offlineSyncing || editAutosaveBusy) return false;
+    // Autosave for *this* edit only — global pendingSync must not block Print/Alt+P.
+    if (editAutosaveBusy) return false;
     if (editedOrderHasLocalDraftChanges(cart)) return false;
-    if (pendingSync > 0) return false;
     return (cart?.lines?.length ?? 0) > 0;
-  }, [
-    instantAutoEditSync,
-    isCartEditSession,
-    offlineSyncing,
-    editAutosaveBusy,
-    pendingSync,
-    cart,
-  ]);
+  }, [instantAutoEditSync, isCartEditSession, editAutosaveBusy, cart]);
 
   // Classic External POS: full theme palette on the cashier desk.
   // Leaving POS restores sidebar + button org theme (backoffice keeps default surfaces).
@@ -5008,8 +5001,87 @@ export function PosScreen({ standalone = false }) {
     searchInputRef.current?.blur?.();
   }
 
+  /**
+   * Close F10 checkout. Hard-locked while open:
+   * - `user-cancel` — Esc or Cancel Payment only
+   * - `sale-finished` — ORDER COMPLETE → OK / auto-continue / previous-order finish
+   * - `guard` — refuse untouched previous-order / sync-guard (close without "cancelled" tone)
+   * Any other caller (prepare-next race, F8, restore, stale print) is ignored so
+   * cashiers never lose the payment screen while typing amounts or pressing Page Down.
+   */
+  function closePaymentDialog({ reason = null } = {}) {
+    if (!paymentOpenRef.current) {
+      setPaymentOpen(false);
+      return true;
+    }
+    if (reason !== "user-cancel" && reason !== "sale-finished" && reason !== "guard") {
+      return false;
+    }
+    paymentOpenRef.current = false;
+    receiptPrintStatusRef.current = null;
+    setPaymentOpen(false);
+    setReceiptPrintStatus(null);
+    openCompletePaymentInFlightRef.current = false;
+    if (lineBusyRef.current) {
+      lineBusyRef.current = false;
+      setLineBusy(false);
+    }
+    return true;
+  }
+
+  function previousOrderUntouchedCheckoutMessage() {
+    // Pending / failed outbox must never change this message or block the till —
+    // unsynced receipts stay in background sync UI only.
+    return "No updates on this receipt — close payment and print with Alt+P, or edit qty/items first.";
+  }
+
+  function healPreviousOrderEditMarkers(cartNow) {
+    if (
+      cartNow?.held_order_num &&
+      !cartNow.superseded_sale_id &&
+      !cartNow.offline_client_sale_uuid &&
+      editSourceSale?.id
+    ) {
+      return {
+        ...cartNow,
+        superseded_sale_id: Number(editSourceSale.id),
+      };
+    }
+    return cartNow;
+  }
+
+  /** True when F10 must not open a full new-sale CHECKOUT on a loaded receipt. */
+  function isUntouchedPreviousOrderCheckout(cartNow) {
+    const healed = healPreviousOrderEditMarkers(cartNow);
+    if (!isPreviousOrderEditSession(healed) && !(editSourceSale?.id && healed?.held_order_num)) {
+      return false;
+    }
+    if (
+      previousOrderEditNeedsPaymentBreakdown(healed, editSourceSale, {
+        cashRound: enablePosCashRounding,
+      })
+    ) {
+      return false;
+    }
+    // Real line edits with no tender delta still must not re-checkout the full bill.
+    return true;
+  }
+
   /** Open the F10 payment dialog once — safe against keydown+keyup double fire. */
-  function openPaymentDialog() {
+  function openPaymentDialog(options = {}) {
+    const allowPreviousOrderAdjustment = options.allowPreviousOrderAdjustment === true;
+    let activeCart = healPreviousOrderEditMarkers(cartRef.current ?? cart);
+    if (activeCart !== (cartRef.current ?? cart)) {
+      cartRef.current = activeCart;
+      setCart(activeCart);
+    }
+
+    if (!allowPreviousOrderAdjustment && isUntouchedPreviousOrderCheckout(activeCart)) {
+      flashPosShortcutMessage(previousOrderUntouchedCheckoutMessage(), { error: false });
+      setPaymentError(null);
+      return false;
+    }
+
     paymentOpenRef.current = true;
     paymentOpenedAtRef.current = Date.now();
     // Drop leftover "printed" from the previous ticket so F10 keyup cannot treat
@@ -5028,32 +5100,6 @@ export function PosScreen({ standalone = false }) {
     setPaymentError(null);
     setPaymentDialogSession((n) => n + 1);
     setPaymentOpen(true);
-  }
-
-  /**
-   * Close F10 checkout. Hard-locked while open:
-   * - `user-cancel` — Esc or Cancel Payment only
-   * - `sale-finished` — ORDER COMPLETE → OK / auto-continue / previous-order finish
-   * Any other caller (prepare-next race, F8, restore, stale print) is ignored so
-   * cashiers never lose the payment screen while typing amounts or pressing Page Down.
-   */
-  function closePaymentDialog({ reason = null } = {}) {
-    if (!paymentOpenRef.current) {
-      setPaymentOpen(false);
-      return true;
-    }
-    if (reason !== "user-cancel" && reason !== "sale-finished") {
-      return false;
-    }
-    paymentOpenRef.current = false;
-    receiptPrintStatusRef.current = null;
-    setPaymentOpen(false);
-    setReceiptPrintStatus(null);
-    openCompletePaymentInFlightRef.current = false;
-    if (lineBusyRef.current) {
-      lineBusyRef.current = false;
-      setLineBusy(false);
-    }
     return true;
   }
 
@@ -10492,19 +10538,23 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (isPreviousOrderCashEdit) {
-      if (!editedOrderHasLocalDraftChanges(activeCart)) {
-        setPaymentError(
-          "No updates on this receipt — close payment and print with Alt+P, or edit qty/items first.",
-        );
+      const billDelta = computePreviousOrderEditPaymentDelta(editSourceSale, activeCart, {
+        cashRound: enablePosCashRounding,
+      });
+      const hasBillChange = Boolean(billDelta?.type) && Number(billDelta?.amount) > 0;
+      if (!editedOrderHasLocalDraftChanges(activeCart) || !hasBillChange) {
+        const msg = previousOrderUntouchedCheckoutMessage();
+        setPaymentError(msg);
+        flashPosShortcutMessage(msg, { error: false });
+        closePaymentDialog({ reason: "guard" });
+        setPaymentError(null);
         return null;
       }
       try {
         // F10 payment panel already collected the delta as tenders — convert to
         // payment_adjustments and skip the separate breakdown dialog.
         if (body?.__previous_order_edit_adjustment) {
-          const delta = computePreviousOrderEditPaymentDelta(editSourceSale, activeCart, {
-            cashRound: enablePosCashRounding,
-          });
+          const delta = billDelta;
           if (delta.type && Number(delta.amount) > 0) {
             const adjustments = buildPaymentAdjustmentsFromCheckoutBody(body, delta);
             if (adjustments.length) {
@@ -14722,20 +14772,18 @@ export function PosScreen({ standalone = false }) {
         lineBusyRef.current = false;
         setLineBusy(false);
       }
-      let activeCart = cartRef.current ?? cart;
+      let activeCart = healPreviousOrderEditMarkers(cartRef.current ?? cart);
       if (cartHasOptimisticLines(activeCart)) {
         activeCart = adoptCartWithoutOptimisticFlags(activeCart);
+      }
+      if (activeCart !== (cartRef.current ?? cart)) {
+        cartRef.current = activeCart;
+        setCart(activeCart);
       }
 
       const isPreviousOrderEdit = isPreviousOrderEditSession(activeCart);
 
       if (isPreviousOrderEdit) {
-        const summary = summarizeLocalPosCart(activeCart);
-        const kraOn = shouldSubmitKraOnCheckout(
-          capabilities?.module_settings,
-          capabilities,
-          summary?.total ?? summary?.amountDue,
-        );
         const isOfflineEdit = Boolean(
           offlineMode || activeCart.offline || activeCart.offline_client_sale_uuid,
         );
@@ -14743,18 +14791,12 @@ export function PosScreen({ standalone = false }) {
         // Online previous-order edit: payment methods → reprint → new order (same as offline).
         // KRA fiscalization still runs on background sync after the outbox upload.
         if (!isOfflineEdit) {
-          if (!editedOrderHasLocalDraftChanges(activeCart)) {
-            if (pendingSync > 0 || editAutosaveBusy || offlineSyncing) {
-              void flushOutboxAfterSale();
-              flashPosShortcutMessage("Syncing saved changes to the server…", { error: false });
-            } else {
-              flashPosShortcutMessage(
-                previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
-                  kraFiscalize: kraOn,
-                }).synced ?? "Order already saved — print with Alt+P.",
-                { error: false },
-              );
-            }
+          if (isUntouchedPreviousOrderCheckout(activeCart)) {
+            // Soft nudge only — never wait on or mention pending outbox.
+            void flushOutboxAfterSale();
+            flashPosShortcutMessage(previousOrderUntouchedCheckoutMessage(), {
+              error: false,
+            });
             return;
           }
           if (!activeCart?.lines?.length) {
@@ -14778,20 +14820,15 @@ export function PosScreen({ standalone = false }) {
             return;
           }
           setPaymentError(null);
-          openPaymentDialog();
+          openPaymentDialog({ allowPreviousOrderAdjustment: true });
           return;
         }
 
-        // Offline previous-order F10: Payment Breakdown (same as Alt+P) when the bill changed.
-        if (
-          !previousOrderEditNeedsPaymentBreakdown(activeCart, editSourceSale, {
-            cashRound: enablePosCashRounding,
-          })
-        ) {
-          flashPosShortcutMessage(
-            "No updates on this receipt — print with Alt+P, or edit qty/items first.",
-            { error: false },
-          );
+        // Offline / pending-sync previous-order F10: only when the bill changed.
+        if (isUntouchedPreviousOrderCheckout(activeCart)) {
+          flashPosShortcutMessage(previousOrderUntouchedCheckoutMessage(), {
+            error: false,
+          });
           return;
         }
 
@@ -14826,7 +14863,18 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // Held park / ticket markers without previous-order edit — complete like a normal sale.
+      // Held park (not a previous-order edit) — complete like a normal sale.
+      // Never treat a loaded previous receipt (editSourceSale / previous_order_edit) as a new sale.
+      if (
+        activeCart?.held_order_num &&
+        (editSourceSale?.id || activeCart.previous_order_edit) &&
+        !activeCart.offline_client_sale_uuid
+      ) {
+        flashPosShortcutMessage(previousOrderUntouchedCheckoutMessage(), {
+          error: false,
+        });
+        return;
+      }
       if (!activeCart?.id) {
         flashPosShortcutMessage("Cart is not ready — scan an item and try F10 again.");
         return;
@@ -16215,24 +16263,20 @@ export function PosScreen({ standalone = false }) {
                       <strong>Alt+P</strong> (or Reprint): if the bill changed, enter the
                       top-up/return method, then print without the fiscal QR. F10 is not
                       required.
-                      {editAutosaveBusy || pendingSync > 0
+                      {editAutosaveBusy
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
-                          : pendingSync > 0
-                            ? " Syncing in background…"
-                            : " Saving…"
+                          : " Saving…"
                         : null}
                     </>
                   ) : (
                     <>
                       Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits save instantly.
                       When finished, print with Alt+P or Reprint.
-                      {editAutosaveBusy || pendingSync > 0
+                      {editAutosaveBusy
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
-                          : pendingSync > 0
-                            ? " Syncing in background…"
-                            : " Saving…"
+                          : " Saving…"
                         : null}
                     </>
                   )}
@@ -17001,14 +17045,19 @@ export function PosScreen({ standalone = false }) {
         key={paymentDialogSession}
         open={paymentOpen}
         onClose={(opts) => {
-          // Only Esc / Cancel Payment may dismiss mid-checkout.
-          if (!closePaymentDialog({ reason: "user-cancel" })) return;
+          const reason = opts?.reason === "guard" ? "guard" : "user-cancel";
+          // Only Esc / Cancel Payment may dismiss mid-checkout (or sync/previous-order guard).
+          if (!closePaymentDialog({ reason })) return;
           setReceiptPrintStatus(null);
           setKraUploadPrompt(null);
           setKraUploadError(null);
           kraCheckoutRetryRef.current = null;
           setPaymentError(null);
           setBusy(false);
+          if (reason === "guard") {
+            window.requestAnimationFrame(() => focusScanCode());
+            return;
+          }
           setStatusMessage(
             "Payment cancelled — edit qty (F12 for kg/bags), swap items, then press F10 again.",
           );
@@ -17017,6 +17066,7 @@ export function PosScreen({ standalone = false }) {
         }}
         billTotal={paymentPanelBillTotal}
         previousOrderEditAdjustment={previousOrderEditAdjustment}
+        isPreviousOrderSession={Boolean(isCartEditSession)}
         channel={channel}
         workflow={channelWorkflow}
         paymentConfig={checkoutPaymentConfig}

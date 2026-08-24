@@ -7,6 +7,8 @@ import { cartTotals, formatSaleKes, getPaymentMethodKind } from "@/lib/sales";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { searchCreditCustomers } from "@/lib/credit-customer-search";
 import { resolveCheckoutStatus } from "@/lib/order-workflow";
+import { useAuth } from "@/contexts/auth-context";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
 const WALK_IN = { customer_num: null, label: "Walk-in" };
 
@@ -24,6 +26,7 @@ export function CheckoutModal({
   channel = "pos",
   workflow = null,
 }) {
+  const { capabilities } = useAuth();
   const [customerOptions, setCustomerOptions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -57,7 +60,11 @@ export function CheckoutModal({
       .catch(() => ({ data: [] }))
       .then((methodsRes) => {
         if (cancelled) return;
-        const methods = methodsRes.data ?? [];
+        const methods = filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
+          capabilities,
+          includeCredit: true,
+          checkoutContext: channel === "pos" ? "pos" : "order_payment",
+        });
         setPaymentMethods(methods);
         const cash = methods.find((m) => getPaymentMethodKind(m) === "cash");
         if (cash) setPaymentMethodCode(cash.method_code);
@@ -65,7 +72,7 @@ export function CheckoutModal({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, capabilities, channel]);
 
   useEffect(() => {
     if (open && totals.total > 0 && kind === "cash" && !creditSale) {

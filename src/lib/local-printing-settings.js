@@ -39,13 +39,33 @@ export function normalizeLocalPrintProviderKey(value) {
   return "browser";
 }
 
+function parseOptionalBool(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const key = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(key)) return true;
+  if (["0", "false", "no", "off"].includes(key)) return false;
+  return fallback;
+}
+
 export function normalizeLocalPrintingSettings(raw = {}) {
   const provider = normalizeLocalPrintProviderKey(raw.provider);
+  const kitchen_printer_name = String(raw.kitchen_printer_name ?? raw.kitchenPrinterName ?? "").trim();
+  const hasSecondCopyFlag =
+    (Object.prototype.hasOwnProperty.call(raw, "second_copy_enabled") &&
+      raw.second_copy_enabled !== undefined) ||
+    (Object.prototype.hasOwnProperty.call(raw, "secondCopyEnabled") &&
+      raw.secondCopyEnabled !== undefined);
 
   return {
     provider,
     printer_name: String(raw.printer_name ?? raw.printerName ?? "").trim(),
-    kitchen_printer_name: String(raw.kitchen_printer_name ?? raw.kitchenPrinterName ?? "").trim(),
+    kitchen_printer_name,
+    // Legacy: a saved kitchen/second printer implies the extra copy was in use.
+    second_copy_enabled: hasSecondCopyFlag
+      ? parseOptionalBool(raw.second_copy_enabled ?? raw.secondCopyEnabled, false)
+      : kitchen_printer_name !== "",
     copies: Math.max(1, Math.min(10, Number(raw.copies) || 1)),
     // Always fall back to the browser dialog when the silent provider is missing/offline.
     fallback_to_browser: true,
@@ -109,6 +129,7 @@ export function qzConfigFromLocalPrinting(settings = getCachedLocalPrintingSetti
     enabled: s.provider === "qz",
     printerName: s.printer_name,
     kitchenPrinterName: s.kitchen_printer_name,
+    secondCopyEnabled: s.second_copy_enabled,
     copies: s.copies,
     fallbackToBrowser: s.fallback_to_browser,
     requireQz: s.require_qz,
@@ -124,17 +145,26 @@ export function agentConfigFromLocalPrinting(settings = getCachedLocalPrintingSe
     baseUrl: PRINT_AGENT_DEFAULT_BASE_URL,
     printerName: s.printer_name,
     kitchenPrinterName: s.kitchen_printer_name,
+    secondCopyEnabled: s.second_copy_enabled,
     copies: s.copies,
     fallbackToBrowser: s.fallback_to_browser,
     requireAgent: false,
   };
 }
 
-/** Second Hotel POS destination, or empty when unset / same as the preferred printer. */
-export function resolveHotelKitchenPrinterName(settings = getCachedLocalPrintingSettings()) {
+/**
+ * Extra till-receipt destination, or empty when the second copy is off / unset / same as preferred.
+ */
+export function resolveSecondCopyPrinterName(settings = getCachedLocalPrintingSettings()) {
   const s = normalizeLocalPrintingSettings(settings);
+  if (!s.second_copy_enabled) return "";
   if (!s.kitchen_printer_name || s.kitchen_printer_name === s.printer_name) return "";
   return s.kitchen_printer_name;
+}
+
+/** @deprecated Use {@link resolveSecondCopyPrinterName} */
+export function resolveHotelKitchenPrinterName(settings = getCachedLocalPrintingSettings()) {
+  return resolveSecondCopyPrinterName(settings);
 }
 
 export function localPrintingFromProviderForm(provider, form = {}) {
@@ -142,6 +172,7 @@ export function localPrintingFromProviderForm(provider, form = {}) {
     provider,
     printer_name: form.printerName,
     kitchen_printer_name: form.kitchenPrinterName,
+    second_copy_enabled: form.secondCopyEnabled,
     copies: form.copies,
     use_signing: form.useSigning,
   });

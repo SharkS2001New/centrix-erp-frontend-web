@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import {
+  expandPosPaymentMethodCodes,
   posPaymentMethodHint,
-  resolvePosPaymentMethodCode,
+  splitAmountAcrossPaymentMethods,
 } from "@/lib/pos-edit-payment-adjustment";
 
 const POS_DIALOG_SHELL =
@@ -78,37 +79,45 @@ export function PosEditPaymentAdjustmentDialog({
 
   function submit() {
     if (submittingRef.current) return;
-    const methodCode = resolvePosPaymentMethodCode(methodInput, paymentMethods);
-    if (!methodCode) {
-      setError("Enter a payment method (e.g. C, M, E, ECO).");
+    const methodCodes = expandPosPaymentMethodCodes(methodInput, paymentMethods);
+    if (!methodCodes.length) {
+      setError("Enter a payment method (e.g. C, M, CM, E, ECO).");
       methodRef.current?.focus();
       return;
     }
-    const matched = paymentMethods.find(
-      (m) => String(m.method_code ?? "").toUpperCase() === methodCode,
-    );
-    if (
-      paymentMethods.length > 0 &&
-      !matched &&
-      !["CASH", "MPESA", "EQUITY", "KCB", "ECOBANK", "BANK", "CARD"].includes(methodCode)
-    ) {
-      setError(`Payment method ${methodCode} is not configured.`);
-      methodRef.current?.focus();
-      return;
-    }
-    if (matched?.requires_reference && !reference.trim()) {
-      setError("Enter a reference for this payment method.");
-      return;
+    const known = new Set([
+      "CASH",
+      "MPESA",
+      "EQUITY",
+      "KCB",
+      "ECOBANK",
+      "BANK",
+      "CARD",
+    ]);
+    for (const methodCode of methodCodes) {
+      const matched = paymentMethods.find(
+        (m) => String(m.method_code ?? "").toUpperCase() === methodCode,
+      );
+      if (paymentMethods.length > 0 && !matched && !known.has(methodCode)) {
+        setError(`Payment method ${methodCode} is not configured.`);
+        methodRef.current?.focus();
+        return;
+      }
+      if (matched?.requires_reference && !reference.trim()) {
+        setError("Enter a reference for this payment method.");
+        return;
+      }
     }
     submittingRef.current = true;
-    onConfirm?.([
-      {
-        method_code: methodCode,
-        amount: Number(delta.amount),
+    const parts = splitAmountAcrossPaymentMethods(delta.amount, methodCodes);
+    onConfirm?.(
+      parts.map((part) => ({
+        method_code: part.method_code,
+        amount: part.amount,
         adjustment_type: delta.type,
         reference_number: reference.trim() || null,
-      },
-    ]);
+      })),
+    );
   }
 
   return (
@@ -161,7 +170,7 @@ export function PosEditPaymentAdjustmentDialog({
                   setMethodInput(e.target.value);
                   setError(null);
                 }}
-                placeholder="C, M, E, ECO…"
+                placeholder="C, M, CM, E, ECO…"
                 autoComplete="off"
               />
               <span className="theme-subtext block text-[10px]">{posPaymentMethodHint()}</span>

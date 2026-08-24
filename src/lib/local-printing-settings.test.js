@@ -65,10 +65,29 @@ describe("local-printing-settings", () => {
       },
     });
     expect(merged.kitchen_printer_name).toBe("Kitchen EPSON");
+    expect(merged.second_copy_enabled).toBe(true);
     expect(resolveHotelKitchenPrinterName(merged)).toBe("Kitchen EPSON");
     expect(resolveHotelKitchenPrinterName({ printer_name: "Star", kitchen_printer_name: "Star" })).toBe(
       "",
     );
     expect(resolveHotelKitchenPrinterName({ kitchen_printer_name: "" })).toBe("");
+  });
+
+  it("leaves the second copy off until explicitly enabled", () => {
+    expect(normalizeLocalPrintingSettings({}).second_copy_enabled).toBe(false);
+    expect(
+      resolveHotelKitchenPrinterName({
+        second_copy_enabled: false,
+        kitchen_printer_name: "Office EPSON",
+        printer_name: "Till",
+      }),
+    ).toBe("");
+    expect(
+      resolveHotelKitchenPrinterName({
+        second_copy_enabled: true,
+        kitchen_printer_name: "Office EPSON",
+        printer_name: "Till",
+      }),
+    ).toBe("Office EPSON");
   });
 });

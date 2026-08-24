@@ -29,6 +29,7 @@ export const PRINT_AGENT_DEFAULTS = {
   baseUrl: DEFAULT_BASE_URL,
   printerName: "",
   kitchenPrinterName: "",
+  secondCopyEnabled: false,
   requireAgent: false,
   fallbackToBrowser: true,
   copies: 1,
@@ -40,6 +41,7 @@ export function normalizePrintAgentConfig(raw = {}) {
     baseUrl: String(raw.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "") || DEFAULT_BASE_URL,
     printerName: String(raw.printerName ?? "").trim(),
     kitchenPrinterName: String(raw.kitchenPrinterName ?? "").trim(),
+    secondCopyEnabled: Boolean(raw.secondCopyEnabled),
     requireAgent: Boolean(raw.requireAgent),
     fallbackToBrowser: raw.fallbackToBrowser !== false,
     copies: Math.max(1, Number(raw.copies) || 1),
@@ -58,6 +60,7 @@ export function savePrintAgentConfig(next) {
     ...(config.enabled ? { provider: "agent" } : {}),
     printer_name: config.printerName,
     kitchen_printer_name: config.kitchenPrinterName ?? current.kitchen_printer_name,
+    second_copy_enabled: config.secondCopyEnabled,
     copies: config.copies,
     fallback_to_browser: config.fallbackToBrowser,
   });

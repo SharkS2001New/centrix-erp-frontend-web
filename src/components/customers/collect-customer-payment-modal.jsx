@@ -5,6 +5,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { Field, inputClassName, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useAuth } from "@/contexts/auth-context";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
 /**
  * Collect AR payment against a customer's open invoices (FIFO by default).
@@ -15,6 +17,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
  * @param {(customer: object) => void} props.onSuccess
  */
 export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
+  const { capabilities } = useAuth();
   const outstanding = Number(customer?.current_balance ?? 0);
   const [methods, setMethods] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -47,7 +50,11 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
     ])
       .then(([methodsRes, invoicesRes]) => {
         if (cancelled) return;
-        setMethods((methodsRes.data ?? methodsRes ?? []).filter((m) => m.is_active !== false));
+        setMethods(
+          filterPaymentMethodsForOrg(methodsRes.data ?? methodsRes ?? [], capabilities?.module_settings, {
+            capabilities,
+          }),
+        );
         const open = (invoicesRes.data ?? []).filter((inv) => {
           const status = Number(inv.payment_status);
           const due =
@@ -80,7 +87,7 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
     return () => {
       cancelled = true;
     };
-  }, [customer?.customer_num]);
+  }, [customer?.customer_num, capabilities]);
 
   const selectedInvoiceBalance = useMemo(() => {
     if (!form.customer_invoice_id) return null;

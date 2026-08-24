@@ -294,7 +294,13 @@ export function PosSessionProvider({ children }) {
 
   const recordSessionExpense = useCallback(
     async ({ expense_group_id, expense_amount, description, payment_method_id }) => {
-      if (!tillFloatEnabled || !activeSession?.id) return null;
+      if (!tillFloatEnabled || !activeSession?.id) {
+        const message = !tillFloatEnabled
+          ? "Till float sessions are not enabled."
+          : "No open till session. Open a session before recording expenses.";
+        setError(message);
+        throw new Error(message);
+      }
       const trimmedDescription = String(description ?? "").trim();
       if (!trimmedDescription) {
         setError("Enter a description for this expense.");
@@ -303,14 +309,18 @@ export function PosSessionProvider({ children }) {
       setBusy(true);
       setError(null);
       try {
+        const body = {
+          expense_group_id: Number(expense_group_id),
+          expense_amount: Number(expense_amount),
+          description: trimmedDescription,
+        };
+        const methodId = Number(payment_method_id);
+        if (Number.isFinite(methodId) && methodId > 0) {
+          body.payment_method_id = methodId;
+        }
         await apiRequest(`/pos/sessions/${activeSession.id}/expenses`, {
           method: "POST",
-          body: {
-            expense_group_id: Number(expense_group_id),
-            expense_amount: Number(expense_amount),
-            description: trimmedDescription,
-            payment_method_id: Number(payment_method_id),
-          },
+          body,
         });
         await refreshReport(activeSession.id);
         const verified = await verifySession(activeSession);

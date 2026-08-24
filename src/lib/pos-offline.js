@@ -64,7 +64,7 @@ import { collapseCombineableCartLines as collapseCombineableLocalLines } from "@
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { vatFromInclusiveGross, vatRateFromProduct } from "@/lib/sales-vat";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
-import { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
+import { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders, normalizePaymentAdjustmentMethodCodes, expandPosPaymentMethodCodes, resolvePosPaymentMethodCode, splitAmountAcrossPaymentMethods } from "@/lib/pos-edit-payment-adjustment";
 import { alignPaymentSplitsToPayNow } from "@/lib/checkout-payment-splits";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
@@ -2340,7 +2340,7 @@ export async function completeOfflineCashSale({
         cart.offline_edit_snapshot?.payment_method_code,
       ];
       for (const raw of candidates) {
-        const code = String(raw ?? "").trim().toUpperCase();
+        const code = resolvePosPaymentMethodCode(raw);
         if (!code) continue;
         // Non-credit revise must not keep a CREDIT tender code (server rejects / partial A/R).
         if (code === "CREDIT" && !isCreditSale) return "CASH";
@@ -2348,7 +2348,8 @@ export async function completeOfflineCashSale({
       }
       return "CASH";
     }
-    const fromOpt = String(paymentMethodCodeOpt ?? "").trim().toUpperCase();
+    const fromOpt = resolvePosPaymentMethodCode(paymentMethodCodeOpt) ||
+      String(paymentMethodCodeOpt ?? "").trim().toUpperCase();
     if (fromOpt && fromOpt !== "CREDIT") return fromOpt;
     if (fromOpt === "CREDIT" && !isCreditSale) {
       // Stale CREDIT after full C/M/E/K pay — settle as cash.
@@ -2540,16 +2541,23 @@ export async function completeOfflineCashSale({
         )
           .trim()
           .toUpperCase() || "CASH";
-      editAdjustmentsForCheckout = [
-        {
-          method_code: method,
-          amount: Math.round(priorTotal * 100) / 100,
-          adjustment_type: "return",
-          reference_number: null,
-        },
-      ];
+      editAdjustmentsForCheckout = normalizePaymentAdjustmentMethodCodes(
+        [
+          {
+            method_code: method,
+            amount: Math.round(priorTotal * 100) / 100,
+            adjustment_type: "return",
+            reference_number: null,
+          },
+        ],
+        editSourceSale,
+      );
     }
   }
+  editAdjustmentsForCheckout = normalizePaymentAdjustmentMethodCodes(
+    editAdjustmentsForCheckout,
+    editSourceSale,
+  );
   const editTenders = isPreviousOrderEdit
     ? rebuildPreviousOrderEditTenders(editSourceSale, editAdjustmentsForCheckout, summary.total)
     : null;
@@ -2886,9 +2894,12 @@ export function buildPreviousOrderEditPrintSale(
         },
       };
     });
-  const adjustments = Array.isArray(cart.payment_adjustments)
-    ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
-    : [];
+  const adjustments = normalizePaymentAdjustmentMethodCodes(
+    Array.isArray(cart.payment_adjustments)
+      ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
+      : [],
+    sourceSale,
+  );
   const returnGivenPreview = adjustments
     .filter((row) => row.adjustment_type === "return")
     .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
@@ -2947,9 +2958,9 @@ export function buildPreviousOrderEditPrintSale(
     if (kcbAmount >= cash && kcbAmount > 0) return "KCB";
     if (cash > 0) return "CASH";
     return (
-      String(cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH")
-        .trim()
-        .toUpperCase() || "CASH"
+      resolvePosPaymentMethodCode(
+        cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
+      ) || "CASH"
     );
   })();
 
@@ -3068,9 +3079,65 @@ export function isPreviousOrderEditEmptyCancel(row) {
  * PUT /carts/{id}/lines rejects an empty `lines` array ("The lines field is required").
  */
 async function cancelPreviousOrderEditOutboxRow(row, orderNum) {
-  const saleId = await findLiveSaleIdForPreviousOrderEdit(row);
+  let saleId = await findLiveSaleIdForPreviousOrderEdit(row);
+
+  // Already cancelled (or tombstone) — findLive skips cancelled rows, so treat as done.
   if (!saleId) {
-    throw new Error("Missing sale for empty previous-order cancel.");
+    const startId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
+    if (startId) {
+      try {
+        const existing = await apiRequest(`/sales/${startId}`, {
+          loading: false,
+          reportIssues: false,
+        });
+        const status = String(existing?.status ?? "").toLowerCase();
+        if (status === "cancelled") {
+          return existing;
+        }
+        // Non-restorable but still cancellable (e.g. archived live ticket).
+        if (existing?.id && Number(existing.order_num ?? 0) < SUPERSEDED_ORDER_NUM_BASE) {
+          saleId = Number(existing.id);
+        }
+      } catch (err) {
+        const status = err instanceof ApiError ? err.status : null;
+        if (status === 404 || status === 410) {
+          return {
+            id: startId,
+            order_num: orderNum,
+            status: "cancelled",
+            payment_status: "refunded",
+          };
+        }
+      }
+    }
+  }
+
+  if (!saleId) {
+    // Search may still surface a cancelled match for this Cash Sales #.
+    const orderNumKey = previousOrderEditOrgOrderNum(row);
+    const { posNum, posDate } = outboxRowPosTicket(row);
+    const candidates = await collectPosSalesSearchCandidates({
+      orderNum: orderNumKey,
+      posNum,
+      posDate,
+      forPosOrderEdit: true,
+    }).catch(() => []);
+    const cancelledMatch = (candidates ?? []).find((sale) => {
+      if (!sale?.id) return false;
+      if (String(sale.status ?? "").toLowerCase() !== "cancelled") return false;
+      if (orderNumKey > 0 && Number(sale.order_num) === orderNumKey) return true;
+      if (posNum != null && Number(sale.pos_order_num ?? 0) === posNum) return true;
+      return false;
+    });
+    if (cancelledMatch) return cancelledMatch;
+
+    // Nothing left to cancel — drain the outbox so Pending sync cannot stick forever.
+    return {
+      id: startIdOrNull(row),
+      order_num: orderNum,
+      status: "cancelled",
+      payment_status: "refunded",
+    };
   }
 
   try {
@@ -3104,6 +3171,11 @@ async function cancelPreviousOrderEditOutboxRow(row, orderNum) {
   }
 
   return cancelled ?? { id: saleId, order_num: orderNum, status: "cancelled", payment_status: "refunded" };
+}
+
+function startIdOrNull(row) {
+  const id = Number(row?.superseded_sale_id ?? row?.server_sale_id ?? 0);
+  return id > 0 ? id : null;
 }
 
 function buildOutboxLineBody(line) {
@@ -3505,16 +3577,24 @@ function healOfflineCheckoutPaymentSplits(body) {
     return body;
   }
 
-  const normalized = rawSplits
-    .filter((part) => part && Number(part.amount) > 0)
-    .map((part) => ({
-      method_code: String(part.method_code ?? part.code ?? "").trim().toUpperCase(),
-      amount: Math.round(Number(part.amount ?? 0) * 100) / 100,
-      ...(String(part.reference_number ?? "").trim()
-        ? { reference_number: String(part.reference_number).trim() }
-        : {}),
-    }))
-    .filter((part) => part.method_code);
+  const normalized = [];
+  for (const part of rawSplits) {
+    if (!part || !(Number(part.amount) > 0)) continue;
+    const rawCode = String(part.method_code ?? part.code ?? "").trim().toUpperCase();
+    if (!rawCode) continue;
+    const ref = String(part.reference_number ?? "").trim();
+    const pieces = splitAmountAcrossPaymentMethods(
+      Math.round(Number(part.amount ?? 0) * 100) / 100,
+      expandPosPaymentMethodCodes(rawCode),
+    );
+    for (const piece of pieces) {
+      normalized.push({
+        method_code: piece.method_code,
+        amount: piece.amount,
+        ...(ref ? { reference_number: ref } : {}),
+      });
+    }
+  }
 
   if (normalized.length === 0) {
     delete body.payment_splits;
@@ -3531,11 +3611,9 @@ function healOfflineCheckoutPaymentSplits(body) {
     return body;
   }
 
-  const fallbackMethod = String(
+  const fallbackMethod = resolvePosPaymentMethodCode(
     body.payment_method_code ?? aligned[0]?.method_code ?? normalized[0]?.method_code ?? "",
-  )
-    .trim()
-    .toUpperCase();
+  );
   if (!fallbackMethod || target <= 0.01) {
     delete body.payment_splits;
     return body;
@@ -3670,6 +3748,24 @@ export async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
       // Non-credit revise accidentally kept CREDIT — settle as cash full pay.
       body.is_credit_sale = false;
       body.payment_method_code = "CASH";
+    }
+
+    // Heal CM / CE mixed shorthand left in queued adjustments (Pending sync).
+    const priorSnap =
+      row.prior_sale_snapshot && typeof row.prior_sale_snapshot === "object"
+        ? row.prior_sale_snapshot
+        : row.sale_payload;
+    if (Array.isArray(body.payment_adjustments) && body.payment_adjustments.length) {
+      body.payment_adjustments = normalizePaymentAdjustmentMethodCodes(
+        body.payment_adjustments,
+        priorSnap,
+      );
+    }
+    const expandedHeader = expandPosPaymentMethodCodes(body.payment_method_code);
+    if (expandedHeader.length >= 2) {
+      body.payment_method_code = expandedHeader[0];
+    } else if (expandedHeader[0]) {
+      body.payment_method_code = expandedHeader[0];
     }
   }
 

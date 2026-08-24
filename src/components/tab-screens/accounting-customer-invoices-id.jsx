@@ -20,12 +20,13 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
 export function AccountingCustomerInvoicesIdScreen() {
   const params = useParams();
   const invoiceId = routeParamValue(params?.id);
   const invoiceIdValid = isNumericRouteId(invoiceId);
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, capabilities } = useAuth();
   const confirm = useConfirm();
   const { currency, date } = useOrgFormat();
   const canPay =
@@ -80,7 +81,11 @@ export function AccountingCustomerInvoicesIdScreen() {
       ]);
       setInvoice(normalizeCustomerInvoice(inv));
       setPayments(payRes.data ?? []);
-      setMethods(methodsRes.data ?? []);
+      setMethods(
+        filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
+          capabilities,
+        }),
+      );
       const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
       const customerName = inv.customer_name || inv.customer?.customer_name || "";
       setPayForm((f) => ({
@@ -93,7 +98,7 @@ export function AccountingCustomerInvoicesIdScreen() {
     } finally {
       setLoading(false);
     }
-  }, [invoiceId, invoiceIdValid]);
+  }, [invoiceId, invoiceIdValid, capabilities]);
 
   useTabAwareDataLoad(load);
 

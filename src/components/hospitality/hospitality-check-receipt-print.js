@@ -6,10 +6,7 @@ import {
 import { formatThermalReceiptDateTime } from "@/lib/datetime";
 import { formatHotelMoney } from "@/lib/hotel-pos-settings";
 import { RECEIPT_POWERED_BY_LINE } from "@/lib/print-footer-settings";
-import { dispatchPrintJob } from "@/lib/print-dispatch";
-import { prepareThermalPrintHtml } from "@/lib/print-document-baseline";
-import { resolveHotelKitchenPrinterName } from "@/lib/local-printing-settings";
-import { getPrintAgentConfig, printViaAgent } from "@/lib/print-agent";
+import { dispatchPrintJob, printSecondCopyIfConfigured } from "@/lib/print-dispatch";
 import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
@@ -291,30 +288,7 @@ export async function printHospitalityCheckReceipt(check, options = {}) {
     allowBrowserFallback: options.allowBrowserFallback !== false,
   });
 
-  const kitchenPrinter = resolveHotelKitchenPrinterName();
-  if (!kitchenPrinter || result?.mode !== "agent" || result?.ok === false) {
-    return result;
-  }
-
-  try {
-    await printViaAgent({
-      html: prepareThermalPrintHtml(html),
-      copies: 1,
-      jobType: "receipt",
-      documentId,
-      config: { ...getPrintAgentConfig(), enabled: true, printerName: kitchenPrinter },
-    });
-    return { ...result, kitchen: { ok: true, printer: kitchenPrinter } };
-  } catch (err) {
-    return {
-      ...result,
-      kitchen: {
-        ok: false,
-        printer: kitchenPrinter,
-        error: err instanceof Error ? err.message : "Kitchen printer failed.",
-      },
-    };
-  }
+  return printSecondCopyIfConfigured(html, { documentId, primaryResult: result });
 }
 
 /** Sample check for Admin → Printouts live preview. */

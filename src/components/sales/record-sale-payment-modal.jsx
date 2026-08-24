@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { Field, FormModal, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { formatSaleKes, getPaymentMethodKind } from "@/lib/sales";
+import { useAuth } from "@/contexts/auth-context";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
 export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floatSessionId = null, onSaved }) {
+  const { capabilities } = useAuth();
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [amount, setAmount] = useState("");
@@ -25,12 +28,14 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
     setAmount(balanceDue != null ? String(balanceDue) : "");
     apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } })
       .then((res) => {
-        const methods = (res.data ?? []).filter((m) => getPaymentMethodKind(m) !== "credit");
+        const methods = filterPaymentMethodsForOrg(res.data ?? [], capabilities?.module_settings, {
+          capabilities,
+        }).filter((m) => getPaymentMethodKind(m) !== "credit");
         setPaymentMethods(methods);
         if (methods[0]) setPaymentMethodId(String(methods[0].id));
       })
       .catch(() => setPaymentMethods([]));
-  }, [open, balanceDue]);
+  }, [open, balanceDue, capabilities]);
 
   async function handleSubmit() {
     setSaving(true);

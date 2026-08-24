@@ -690,11 +690,12 @@ export function RecordSessionExpenseModal({
   embedded = false,
 }) {
   const [expenseGroups, setExpenseGroups] = useState([]);
-  const [paymentMethods, setPaymentMethods] = useState([]);
   const [expenseGroupId, setExpenseGroupId] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [amount, setAmount] = useState("");
+  /** Optional hint from expense-groups; server resolves Cash when omitted. */
   const [expensePaymentMethodId, setExpensePaymentMethodId] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
 
   useEffect(() => {
@@ -703,29 +704,29 @@ export function RecordSessionExpenseModal({
     setAmount("");
     setExpenseGroupId("");
     setExpensePaymentMethodId("");
+    setLoadError(null);
     setViewExpensesOpen(false);
   }, [open, session?.id]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([
-      apiRequest("/pos/expense-groups"),
-      apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } }),
-    ])
-      .then(([groupsRes, methodsRes]) => {
+    // Till payouts are always cash — do not call /payment-methods (often 403 for External POS cashiers).
+    apiRequest("/pos/expense-groups")
+      .then((groupsRes) => {
         if (cancelled) return;
         const groups = groupsRes?.data ?? [];
-        const methods = (methodsRes?.data ?? []).filter((m) => String(m.method_code ?? "").toUpperCase() === "CASH");
         setExpenseGroups(groups);
-        setPaymentMethods(methods);
+        setLoadError(null);
         if (groups[0]) setExpenseGroupId(String(groups[0].id));
-        if (methods[0]) setExpensePaymentMethodId(String(methods[0].id));
+        const cashId = groupsRes?.cash_payment_method_id;
+        if (cashId) setExpensePaymentMethodId(String(cashId));
       })
-      .catch(() => {
+      .catch((e) => {
         if (!cancelled) {
           setExpenseGroups([]);
-          setPaymentMethods([]);
+          setExpensePaymentMethodId("");
+          setLoadError(e instanceof ApiError ? e.message : "Could not load expense categories.");
         }
       });
     return () => {
@@ -742,18 +743,20 @@ export function RecordSessionExpenseModal({
       Number(amount) <= 0 ||
       !onRecordExpense ||
       !expenseGroupId ||
-      !expensePaymentMethodId ||
       !description
     ) {
       return;
     }
     try {
-      await onRecordExpense({
+      const payload = {
         expense_group_id: Number(expenseGroupId),
         expense_amount: Number(amount),
         description,
-        payment_method_id: Number(expensePaymentMethodId),
-      });
+      };
+      if (expensePaymentMethodId) {
+        payload.payment_method_id = Number(expensePaymentMethodId);
+      }
+      await onRecordExpense(payload);
       onClose();
     } catch {
       /* error from parent */
@@ -798,15 +801,17 @@ export function RecordSessionExpenseModal({
         </p>
 
         <div className="mt-5 space-y-4">
-          {error ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          {error || loadError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error || loadError}
+            </p>
           ) : null}
           <Field label="Category">
             <SearchableSelect
               className={inputClassName()}
               value={expenseGroupId}
               onChange={setExpenseGroupId}
-              disabled={busy}
+              disabled={busy || expenseGroups.length === 0}
               options={expenseGroups.map((group) => ({
                 value: String(group.id),
                 label: group.group_name,
@@ -850,10 +855,10 @@ export function RecordSessionExpenseModal({
             showIcon={false}
             disabled={
               busy ||
+              Boolean(loadError) ||
               !amount ||
               Number(amount) <= 0 ||
               !expenseGroupId ||
-              !expensePaymentMethodId ||
               !expenseDescription.trim()
             }
             onClick={() => void handleSaveExpense()}

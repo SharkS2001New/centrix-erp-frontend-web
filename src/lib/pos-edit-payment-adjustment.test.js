@@ -16,6 +16,23 @@ describe("resolvePosPaymentMethodCode", () => {
     expect(resolvePosPaymentMethodCode("ECO")).toBe("ECOBANK");
   });
 
+  it("maps CM mixed shorthand to Cash (primary) and expands to Cash+M-Pesa", async () => {
+    const { expandPosPaymentMethodCodes, normalizePaymentAdjustmentMethodCodes } = await import(
+      "@/lib/pos-edit-payment-adjustment",
+    );
+    expect(expandPosPaymentMethodCodes("CM")).toEqual(["CASH", "MPESA"]);
+    expect(expandPosPaymentMethodCodes("mc")).toEqual(["MPESA", "CASH"]);
+    expect(resolvePosPaymentMethodCode("CM")).toBe("CASH");
+    const rows = normalizePaymentAdjustmentMethodCodes(
+      [{ method_code: "CM", amount: 1000, adjustment_type: "topup" }],
+      { cash: 600, mpesa_amount: 400 },
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ method_code: "CASH", adjustment_type: "topup" });
+    expect(rows[1]).toMatchObject({ method_code: "MPESA", adjustment_type: "topup" });
+    expect(rows[0].amount + rows[1].amount).toBeCloseTo(1000, 2);
+  });
+
   it("matches catalog method codes", () => {
     const catalog = [{ method_code: "COOP", method_name: "Co-op Bank" }];
     expect(resolvePosPaymentMethodCode("COOP", catalog)).toBe("COOP");

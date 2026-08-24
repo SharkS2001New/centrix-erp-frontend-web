@@ -167,7 +167,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       const form =
         provider === "agent"
           ? { ...agentForm, enabled: true }
-          : { printerName: "", kitchenPrinterName: agentForm.kitchenPrinterName, copies: 1, useSigning: false };
+          : {
+              printerName: "",
+              kitchenPrinterName: agentForm.kitchenPrinterName,
+              secondCopyEnabled: agentForm.secondCopyEnabled,
+              copies: 1,
+              useSigning: false,
+            };
       const payload = localPrintingFromProviderForm(provider, form);
       const savedSettings = await saveLocalPrintingSettings(payload);
       setProvider(savedSettings.provider);
@@ -339,8 +345,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           <h2 className="theme-heading text-lg font-medium">{LOCAL_PRINTING_ADMIN_LABEL}</h2>
           <p className="theme-subtext mt-1 text-sm">
             Organization-wide print method for this company. Choose browser print or the Centrix
-            Print Agent for silent Windows printing of Hotel POS receipts, retail POS receipts, and
-            all ERP documents.
+            Print Agent for silent Windows printing of till receipts and all ERP documents.
           </p>
         </div>
         <span
@@ -401,26 +406,50 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               ]}
             />
           </Field>
-          <Field label="Kitchen printer (Hotel POS)">
-            <SearchableSelect
-              className={inputClassName()}
-              value={agentForm.kitchenPrinterName ?? ""}
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
+              agentForm.secondCopyEnabled
+                ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
+                : "border-[var(--theme-border)] bg-white/40"
+            } ${!canEdit ? "cursor-not-allowed opacity-70" : ""}`}
+          >
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Boolean(agentForm.secondCopyEnabled)}
               disabled={!canEdit}
-              onChange={(v) => updateAgent("kitchenPrinterName", v)}
-              placeholder="None — cashier printer only"
-              options={[
-                { value: "", label: "None — cashier printer only" },
-                ...(health?.printers ?? []).map((name) => ({
-                  value: name,
-                  label: name,
-                })),
-              ]}
+              onChange={(e) => updateAgent("secondCopyEnabled", e.target.checked)}
             />
-          </Field>
+            <span>
+              <span className="theme-heading block text-sm font-medium">Print a second copy</span>
+              <span className="theme-subtext mt-0.5 block text-xs">
+                Optional extra copy of till receipts on another printer (office, packing bench, or
+                kitchen). Off unless you tick this box.
+              </span>
+            </span>
+          </label>
+          {agentForm.secondCopyEnabled ? (
+            <Field label="Second copy printer">
+              <SearchableSelect
+                className={inputClassName()}
+                value={agentForm.kitchenPrinterName ?? ""}
+                disabled={!canEdit}
+                onChange={(v) => updateAgent("kitchenPrinterName", v)}
+                placeholder="Select printer"
+                options={[
+                  { value: "", label: "Select printer" },
+                  ...(health?.printers ?? []).map((name) => ({
+                    value: name,
+                    label: name,
+                  })),
+                ]}
+              />
+            </Field>
+          ) : null}
           <p className="theme-subtext text-xs">
-            Hotel POS receipts print one copy on the preferred printer and a second copy on the
-            kitchen printer. Leave kitchen as None to print only at the till. Retail POS is
-            unchanged.
+            {agentForm.secondCopyEnabled
+              ? "Receipts print on the preferred printer, then a second copy on the printer above. Choose a different printer from the till."
+              : "Only the preferred printer is used. Tick the box if you need a duplicate copy."}
           </p>
           {!health?.printers?.length ? (
             <p className="theme-subtext text-xs">

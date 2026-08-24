@@ -17,34 +17,107 @@ export const POS_PAYMENT_METHOD_ALIASES = {
   BANK: "BANK",
 };
 
+/** Single-letter tenders cashiers combine as CM / CE / MK (mixed payment). */
+export const POS_PAYMENT_METHOD_LETTERS = {
+  C: "CASH",
+  M: "MPESA",
+  E: "EQUITY",
+  K: "KCB",
+};
+
 const METHOD_HINT =
-  "C Cash · M M-Pesa · E Equity · K KCB · ECO Ecobank · or type the full method code";
+  "C Cash · M M-Pesa · E Equity · K KCB · CM Cash+M-Pesa · ECO Ecobank · or full code";
+
+/**
+ * Expand cashier mix shorthand (CM, CE, MK…) into real method codes.
+ * Single aliases (C, M, ECO) stay one code. Unknown catalog codes stay as-is.
+ *
+ * @param {string} raw
+ * @param {Array<{ method_code?: string, method_name?: string }>} [catalog]
+ * @returns {string[]}
+ */
+export function expandPosPaymentMethodCodes(raw, catalog = []) {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return [];
+
+  const upperLoose = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
+  if (POS_PAYMENT_METHOD_ALIASES[upperLoose]) {
+    return [POS_PAYMENT_METHOD_ALIASES[upperLoose]];
+  }
+  if (POS_PAYMENT_METHOD_ALIASES[trimmed.toUpperCase()]) {
+    return [POS_PAYMENT_METHOD_ALIASES[trimmed.toUpperCase()]];
+  }
+
+  const exact = catalog.find(
+    (row) => String(row.method_code ?? "").toUpperCase() === upperLoose.replace(/-/g, "_"),
+  );
+  if (exact?.method_code) return [String(exact.method_code).toUpperCase()];
+
+  // CM / MC / CE / … — two or more of C/M/E/K with no other letters.
+  const lettersOnly = trimmed.toUpperCase().replace(/[\s\-_./+]+/g, "");
+  if (/^[CMEK]{2,4}$/.test(lettersOnly) && !POS_PAYMENT_METHOD_ALIASES[lettersOnly]) {
+    const codes = [];
+    for (const ch of lettersOnly) {
+      const code = POS_PAYMENT_METHOD_LETTERS[ch];
+      if (code && !codes.includes(code)) codes.push(code);
+    }
+    if (codes.length >= 2) return codes;
+  }
+
+  const prefix = catalog.find((row) =>
+    String(row.method_code ?? "")
+      .toUpperCase()
+      .startsWith(upperLoose),
+  );
+  if (prefix?.method_code) return [String(prefix.method_code).toUpperCase()];
+
+  return [upperLoose.replace(/-/g, "_")];
+}
 
 /**
  * @param {string} raw
  * @param {Array<{ method_code?: string, method_name?: string }>} [catalog]
  */
 export function resolvePosPaymentMethodCode(raw, catalog = []) {
-  const trimmed = String(raw ?? "").trim();
-  if (!trimmed) return "";
-  const upper = trimmed.toUpperCase().replace(/[\s-]+/g, "_");
-  if (POS_PAYMENT_METHOD_ALIASES[upper]) {
-    return POS_PAYMENT_METHOD_ALIASES[upper];
+  const codes = expandPosPaymentMethodCodes(raw, catalog);
+  return codes[0] ?? "";
+}
+
+/**
+ * Split a money amount across method codes (prior tender weights when provided).
+ *
+ * @param {number} amount
+ * @param {string[]} methodCodes
+ * @param {number[]|null} [weights]
+ * @returns {Array<{ method_code: string, amount: number }>}
+ */
+export function splitAmountAcrossPaymentMethods(amount, methodCodes, weights = null) {
+  const codes = (Array.isArray(methodCodes) ? methodCodes : [])
+    .map((c) => String(c ?? "").trim().toUpperCase())
+    .filter(Boolean);
+  const total = Math.round(Math.max(0, Number(amount) || 0) * 100) / 100;
+  if (!codes.length) return [{ method_code: "CASH", amount: total }];
+  if (codes.length === 1 || total <= 0.009) {
+    return [{ method_code: codes[0], amount: total }];
   }
-  if (POS_PAYMENT_METHOD_ALIASES[trimmed.toUpperCase()]) {
-    return POS_PAYMENT_METHOD_ALIASES[trimmed.toUpperCase()];
+
+  let w = Array.isArray(weights) ? weights.map((n) => Math.max(0, Number(n) || 0)) : [];
+  if (w.length !== codes.length) w = codes.map(() => 1);
+  const wSum = w.reduce((s, n) => s + n, 0);
+  if (wSum <= 0.009) w = codes.map(() => 1);
+  const denom = w.reduce((s, n) => s + n, 0) || codes.length;
+
+  const parts = codes.map((method_code, i) => ({
+    method_code,
+    amount: Math.round(((total * w[i]) / denom) * 100) / 100,
+  }));
+  const sum = Math.round(parts.reduce((s, p) => s + p.amount, 0) * 100) / 100;
+  const drift = Math.round((total - sum) * 100) / 100;
+  if (Math.abs(drift) >= 0.01 && parts.length) {
+    parts[parts.length - 1].amount =
+      Math.round((parts[parts.length - 1].amount + drift) * 100) / 100;
   }
-  const exact = catalog.find(
-    (row) => String(row.method_code ?? "").toUpperCase() === upper.replace(/-/g, "_"),
-  );
-  if (exact?.method_code) return String(exact.method_code).toUpperCase();
-  const prefix = catalog.find((row) =>
-    String(row.method_code ?? "")
-      .toUpperCase()
-      .startsWith(upper),
-  );
-  if (prefix?.method_code) return String(prefix.method_code).toUpperCase();
-  return upper.replace(/-/g, "_");
+  return parts.filter((p) => Number(p.amount) > 0.009);
 }
 
 export function posPaymentMethodHint() {
@@ -92,13 +165,23 @@ export function priorSaleTenderMap(sourceSale) {
   if (cash + mpesa + equity + kcb <= 0.009) {
     const paid = Math.round(Math.max(0, Number(sourceSale.amount_paid) || 0) * 100) / 100;
     if (paid > 0.009) {
-      const code = String(sourceSale.payment_method_code ?? "CASH")
-        .trim()
-        .toUpperCase();
-      if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa = paid;
-      else if (code.includes("EQUITY") || code.includes("ECOBANK") || code === "ECO") equity = paid;
-      else if (code.includes("KCB")) kcb = paid;
-      else cash = paid;
+      const codes = expandPosPaymentMethodCodes(sourceSale.payment_method_code ?? "CASH");
+      if (codes.length >= 2) {
+        const parts = splitAmountAcrossPaymentMethods(paid, codes);
+        for (const part of parts) {
+          const bucket = previousOrderEditTenderBucket(part.method_code);
+          if (bucket === "mpesa") mpesa += part.amount;
+          else if (bucket === "equity") equity += part.amount;
+          else if (bucket === "kcb") kcb += part.amount;
+          else cash += part.amount;
+        }
+      } else {
+        const code = codes[0] || "CASH";
+        if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa = paid;
+        else if (code.includes("EQUITY") || code.includes("ECOBANK") || code === "ECO") equity = paid;
+        else if (code.includes("KCB")) kcb = paid;
+        else cash = paid;
+      }
     }
   }
 
@@ -127,11 +210,13 @@ export function reconcilePreviousOrderEditAdjustments(
   const type = expectedSigned < 0 ? "return" : "topup";
   const expectedAbs = Math.round(Math.abs(expectedSigned) * 100) / 100;
   const fallback = String(fallbackMethodCode ?? "CASH").trim().toUpperCase() || "CASH";
+  const fallbackCodes = expandPosPaymentMethodCodes(fallback);
+  const fallbackPrimary = fallbackCodes[0] || "CASH";
 
   const rows = (Array.isArray(adjustments) ? adjustments : [])
     .filter((row) => row?.adjustment_type === type && Number(row?.amount) > 0)
     .map((row) => ({
-      method_code: String(row.method_code ?? fallback).trim().toUpperCase() || fallback,
+      method_code: String(row.method_code ?? fallbackPrimary).trim().toUpperCase() || fallbackPrimary,
       amount: Math.round(Number(row.amount) * 100) / 100,
       adjustment_type: type,
       reference_number:
@@ -140,49 +225,61 @@ export function reconcilePreviousOrderEditAdjustments(
           : null,
     }));
 
+  let reconciled;
   if (!rows.length) {
-    return [
+    reconciled = [
       {
-        method_code: fallback,
+        method_code: fallbackPrimary,
         amount: expectedAbs,
         adjustment_type: type,
         reference_number: null,
       },
     ];
+  } else {
+    const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+    if (Math.abs(sum - expectedAbs) < 0.02) {
+      reconciled = rows;
+    } else if (sum <= 0.009) {
+      reconciled = [
+        {
+          method_code: rows[0].method_code,
+          amount: expectedAbs,
+          adjustment_type: type,
+          reference_number: rows[0].reference_number,
+        },
+      ];
+    } else {
+      const factor = expectedAbs / sum;
+      const scaled = rows.map((row) => ({
+        ...row,
+        amount: Math.round(Number(row.amount) * factor * 100) / 100,
+      }));
+      const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+      const drift = Math.round((expectedAbs - scaledSum) * 100) / 100;
+      if (Math.abs(drift) >= 0.01 && scaled.length) {
+        let largest = 0;
+        scaled.forEach((row, i) => {
+          if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
+        });
+        scaled[largest] = {
+          ...scaled[largest],
+          amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
+        };
+      }
+      reconciled = scaled.filter((row) => Number(row.amount) > 0.009);
+    }
   }
 
-  const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-  if (Math.abs(sum - expectedAbs) < 0.02) return rows;
-
-  if (sum <= 0.009) {
-    return [
-      {
-        method_code: rows[0].method_code,
-        amount: expectedAbs,
-        adjustment_type: type,
-        reference_number: rows[0].reference_number,
-      },
-    ];
-  }
-
-  const factor = expectedAbs / sum;
-  const scaled = rows.map((row) => ({
-    ...row,
-    amount: Math.round(Number(row.amount) * factor * 100) / 100,
-  }));
-  const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-  const drift = Math.round((expectedAbs - scaledSum) * 100) / 100;
-  if (Math.abs(drift) >= 0.01 && scaled.length) {
-    let largest = 0;
-    scaled.forEach((row, i) => {
-      if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
-    });
-    scaled[largest] = {
-      ...scaled[largest],
-      amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
-    };
-  }
-  return scaled.filter((row) => Number(row.amount) > 0.009);
+  // CM / CE typed as one method → Cash + M-Pesa (etc.) rows before sync.
+  return normalizePaymentAdjustmentMethodCodes(
+    reconciled.length
+      ? reconciled
+      : splitAmountAcrossPaymentMethods(expectedAbs, fallbackCodes).map((part) => ({
+          ...part,
+          adjustment_type: type,
+          reference_number: null,
+        })),
+  );
 }
 
 /**
@@ -273,9 +370,11 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
       }));
     if (!rows.length) return [];
     const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-    if (Math.abs(sum - expected) < 0.02) return rows;
-    if (sum <= 0.009) {
-      return [
+    let reconciled;
+    if (Math.abs(sum - expected) < 0.02) {
+      reconciled = rows;
+    } else if (sum <= 0.009) {
+      reconciled = [
         {
           method_code: rows[0].method_code,
           amount: expected,
@@ -283,29 +382,31 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
           reference_number: rows[0].reference_number,
         },
       ];
+    } else {
+      const factor = expected / sum;
+      const scaled = rows.map((row) => ({
+        ...row,
+        amount: Math.round(Number(row.amount) * factor * 100) / 100,
+      }));
+      const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+      const drift = Math.round((expected - scaledSum) * 100) / 100;
+      if (Math.abs(drift) >= 0.01 && scaled.length) {
+        let largest = 0;
+        scaled.forEach((row, i) => {
+          if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
+        });
+        scaled[largest] = {
+          ...scaled[largest],
+          amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
+        };
+      }
+      reconciled = scaled.filter((row) => Number(row.amount) > 0.009);
     }
-    const factor = expected / sum;
-    const scaled = rows.map((row) => ({
-      ...row,
-      amount: Math.round(Number(row.amount) * factor * 100) / 100,
-    }));
-    const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-    const drift = Math.round((expected - scaledSum) * 100) / 100;
-    if (Math.abs(drift) >= 0.01 && scaled.length) {
-      let largest = 0;
-      scaled.forEach((row, i) => {
-        if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
-      });
-      scaled[largest] = {
-        ...scaled[largest],
-        amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
-      };
-    }
-    return scaled.filter((row) => Number(row.amount) > 0.009);
+    return normalizePaymentAdjustmentMethodCodes(reconciled);
   }
   const methodCode = String(body?.payment_method_code ?? "CASH").toUpperCase();
   // Ignore pay_now when it is the full revised bill — always use the edit delta.
-  return [
+  return normalizePaymentAdjustmentMethodCodes([
     {
       method_code: methodCode,
       amount: expected,
@@ -314,7 +415,7 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
         ? String(body.payment_reference).trim()
         : null,
     },
-  ];
+  ]);
 }
 
 /**
@@ -330,6 +431,45 @@ export function previousOrderEditTenderBucket(code) {
   }
   if (normalized.includes("KCB")) return "kcb";
   return "cash";
+}
+
+/**
+ * Expand CM-style method codes on payment_adjustments so sync never sends "CM".
+ *
+ * @param {Array<{ method_code?: string, amount?: number, adjustment_type?: string, reference_number?: string|null }>} rows
+ * @param {object|null|undefined} [sourceSale]
+ * @param {Array<{ method_code?: string }>} [catalog]
+ */
+export function normalizePaymentAdjustmentMethodCodes(rows, sourceSale = null, catalog = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const out = [];
+  const prior = priorSaleTenderMap(sourceSale);
+
+  for (const row of list) {
+    if (!row || !(Number(row.amount) > 0)) continue;
+    const codes = expandPosPaymentMethodCodes(row.method_code, catalog);
+    if (codes.length <= 1) {
+      out.push({
+        ...row,
+        method_code: codes[0] || String(row.method_code ?? "CASH").trim().toUpperCase() || "CASH",
+        amount: Math.round(Number(row.amount) * 100) / 100,
+      });
+      continue;
+    }
+    const weights = codes.map((code) => {
+      const bucket = previousOrderEditTenderBucket(code);
+      return Number(prior[bucket] ?? 0) || 0;
+    });
+    const parts = splitAmountAcrossPaymentMethods(row.amount, codes, weights);
+    for (const part of parts) {
+      out.push({
+        ...row,
+        method_code: part.method_code,
+        amount: part.amount,
+      });
+    }
+  }
+  return out;
 }
 
 /**
