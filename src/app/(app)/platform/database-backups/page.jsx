@@ -8,6 +8,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
   PrimaryButton,
+  SearchableSelect,
 } from "@/components/catalog/catalog-shared";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -40,11 +41,30 @@ export default function PlatformDatabaseBackupsPage() {
   const confirm = useConfirm();
   const [backups, setBackups] = useState([]);
   const [r2Status, setR2Status] = useState(null);
+  const [schedule, setSchedule] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    schedule_enabled: true,
+    frequency: "hourly",
+    schedule_time: "02:00",
+    retention_days: "3",
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState(null);
   const [busyFilename, setBusyFilename] = useState(null);
   const [creating, setCreating] = useState(false);
   const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the database backup runs…");
+
+  const applySchedule = useCallback((payload) => {
+    const settings = payload?.settings ?? payload?.effective ?? {};
+    setSchedule(payload);
+    setScheduleForm({
+      schedule_enabled: settings.enabled !== false,
+      frequency: settings.frequency || "daily",
+      schedule_time: settings.schedule_time || "02:00",
+      retention_days: String(settings.retention_days ?? 7),
+    });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,12 +72,13 @@ export default function PlatformDatabaseBackupsPage() {
       const res = await apiRequest("/admin/database-backups");
       setBackups(res.data ?? []);
       setR2Status(res.r2 ?? null);
+      if (res.schedule) applySchedule(res.schedule);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load database backups.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applySchedule]);
 
   useEffect(() => {
     load();
@@ -119,10 +140,35 @@ export default function PlatformDatabaseBackupsPage() {
     }
   }
 
+  async function handleSaveSchedule(e) {
+    e.preventDefault();
+    setSavingSchedule(true);
+    try {
+      const res = await apiRequest("/admin/database-backup-settings", {
+        method: "PUT",
+        body: {
+          schedule_enabled: Boolean(scheduleForm.schedule_enabled),
+          frequency: scheduleForm.frequency,
+          schedule_time: scheduleForm.schedule_time,
+          retention_days: Number(scheduleForm.retention_days) || 7,
+        },
+      });
+      if (res.schedule) applySchedule(res.schedule);
+      notifySuccess("Backup schedule saved. The next scheduler tick will use this cadence.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save backup schedule.");
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  const scheduleLabel = schedule?.effective?.label || "Daily (default)";
+  const retentionDays = schedule?.effective?.retention_days ?? 7;
+
   return (
     <CatalogPageShell
       title="Database backups"
-      subtitle="Download compressed SQL dumps or trigger a manual backup. Super-admin only."
+      subtitle="Scheduled snapshots, downloads, and manual runs. Super-admin only."
       action={
         <PrimaryButton type="button" showIcon={false} disabled={creating} onClick={handleCreateBackup}>
           {creating ? "Running backup…" : "Run manual backup"}
@@ -134,21 +180,89 @@ export default function PlatformDatabaseBackupsPage() {
       />
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Scheduled backups run daily via the API server cron job. Files are stored on the server
-        {r2Status?.upload_ready
-          ? " and uploaded to Cloudflare R2 after each backup."
-          : "."}
-        {" "}
-        Local backups older than 7 days are deleted automatically after each backup run.
-        {" "}
-        Large files may be emailed as a notification only (without attachment).
-        {" "}
-        Configure offsite upload in{" "}
+        Scheduled backups currently run <strong>{scheduleLabel}</strong> via the API cron job.
+        Files stay on the server
+        {r2Status?.upload_ready ? " and are copied to Cloudflare R2 after each run." : "."} Local
+        files older than {retentionDays} day{retentionDays === 1 ? "" : "s"} are pruned after each
+        backup. Configure offsite upload in{" "}
         <Link href="/platform/settings?tab=r2" className="font-medium text-[#185FA5] hover:underline">
           Platform settings → Cloudflare R2
         </Link>
         .
       </div>
+
+      <form
+        onSubmit={(e) => void handleSaveSchedule(e)}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Backup schedule</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              How often Centrix snapshots the database. Hourly is recommended so a failure loses at
+              most ~1 hour of data. The scheduler must be running (`php artisan schedule:run` every
+              minute).
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={scheduleForm.schedule_enabled}
+              onChange={(e) =>
+                setScheduleForm((f) => ({ ...f, schedule_enabled: e.target.checked }))
+              }
+            />
+            Scheduled backups on
+          </label>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Frequency</span>
+            <SearchableSelect
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={scheduleForm.frequency}
+              nativeEvent
+              onChange={(e) => setScheduleForm((f) => ({ ...f, frequency: e.target.value }))}
+              options={[
+                { value: "hourly", label: "Every hour" },
+                { value: "every_6_hours", label: "Every 6 hours" },
+                { value: "every_12_hours", label: "Every 12 hours" },
+                { value: "daily", label: "Once per day" },
+              ]}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              {scheduleForm.frequency === "daily" ? "Time (local)" : "Minute past the hour"}
+            </span>
+            <input
+              type="time"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={scheduleForm.schedule_time}
+              onChange={(e) => setScheduleForm((f) => ({ ...f, schedule_time: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Keep local files (days)</span>
+            <input
+              type="number"
+              min={1}
+              max={90}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={scheduleForm.retention_days}
+              onChange={(e) => setScheduleForm((f) => ({ ...f, retention_days: e.target.value }))}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500">
+          Hourly snapshots grow quickly — 2–3 days of retention is usually enough if R2 offsite is on.
+        </p>
+        <div className="mt-3">
+          <PrimaryButton type="submit" showIcon={false} disabled={savingSchedule || loading}>
+            {savingSchedule ? "Saving…" : "Save schedule"}
+          </PrimaryButton>
+        </div>
+      </form>
 
       {r2Status?.upload_ready ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -199,7 +313,7 @@ export default function PlatformDatabaseBackupsPage() {
           <p className="px-5 py-8 text-sm text-slate-500">Loading backups…</p>
         ) : backups.length === 0 ? (
           <p className="px-5 py-8 text-sm text-slate-500">
-            No backup files found yet. Use &ldquo;Run manual backup&rdquo; or wait for the nightly job.
+            No backup files found yet. Use &ldquo;Run manual backup&rdquo; or wait for the next scheduled run.
           </p>
         ) : (
           <div className="overflow-x-auto">

@@ -83,7 +83,7 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
               ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
               : activeTab === "payroll"
                 ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
-                : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
+                : "Email digest, instant WhatsApp/email, and test sends for System errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>

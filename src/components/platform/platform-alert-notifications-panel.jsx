@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   PrimaryButton,
@@ -14,6 +15,8 @@ const alertInputClass =
 export function PlatformAlertNotificationsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(null);
+  const [delivery, setDelivery] = useState(null);
   const [form, setForm] = useState({
     email_digest_enabled: true,
     digest_email: "",
@@ -22,24 +25,29 @@ export function PlatformAlertNotificationsPanel() {
     whatsapp_number: "",
   });
 
+  const applyPayload = useCallback((res) => {
+    const settings = res.settings ?? res.data?.settings ?? {};
+    setForm({
+      email_digest_enabled: settings.email_digest_enabled !== false,
+      digest_email: settings.digest_email ?? "",
+      instant_email_enabled: Boolean(settings.instant_email_enabled),
+      whatsapp_instant_enabled: Boolean(settings.whatsapp_instant_enabled),
+      whatsapp_number: settings.whatsapp_number ?? "",
+    });
+    setDelivery(res.delivery ?? null);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiRequest("/admin/system-issue-alert-settings");
-      const settings = res.settings ?? res.data?.settings ?? {};
-      setForm({
-        email_digest_enabled: settings.email_digest_enabled !== false,
-        digest_email: settings.digest_email ?? "",
-        instant_email_enabled: Boolean(settings.instant_email_enabled),
-        whatsapp_instant_enabled: Boolean(settings.whatsapp_instant_enabled),
-        whatsapp_number: settings.whatsapp_number ?? "",
-      });
+      applyPayload(res);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load alert settings.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyPayload]);
 
   useEffect(() => {
     void load();
@@ -59,14 +67,7 @@ export function PlatformAlertNotificationsPanel() {
           whatsapp_number: form.whatsapp_number.trim() || null,
         },
       });
-      const settings = res.settings ?? {};
-      setForm({
-        email_digest_enabled: settings.email_digest_enabled !== false,
-        digest_email: settings.digest_email ?? "",
-        instant_email_enabled: Boolean(settings.instant_email_enabled),
-        whatsapp_instant_enabled: Boolean(settings.whatsapp_instant_enabled),
-        whatsapp_number: settings.whatsapp_number ?? "",
-      });
+      applyPayload(res);
       notifySuccess("Alert notification settings saved.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save settings.");
@@ -74,6 +75,38 @@ export function PlatformAlertNotificationsPanel() {
       setSaving(false);
     }
   }
+
+  async function handleTest(channels) {
+    setTesting(channels.join("+"));
+    try {
+      const res = await apiRequest("/admin/system-issue-alert-settings/test", {
+        method: "POST",
+        body: { channels },
+      });
+      const detail = Object.values(res.channels ?? {})
+        .map((row) => row.message)
+        .filter(Boolean)
+        .join(" ");
+      notifySuccess(detail || res.message || "Test notification sent.");
+    } catch (err) {
+      const body = err instanceof ApiError ? err.body : null;
+      const detail = body?.channels
+        ? Object.values(body.channels)
+            .map((row) => row.message)
+            .filter(Boolean)
+            .join(" ")
+        : null;
+      notifyError(
+        detail ||
+          (err instanceof ApiError ? err.message : "Test notification failed."),
+      );
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  const fromAddress = delivery?.from_address || "";
+  const smtpReady = Boolean(delivery?.ready);
 
   return (
     <section className="theme-panel rounded-xl border p-4 shadow-sm">
@@ -83,14 +116,48 @@ export function PlatformAlertNotificationsPanel() {
             Alert notifications
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Choose how platform admins receive system errors &amp; reports. Instant WhatsApp/email for
-            high-priority repeats, new fingerprints, and user reports; daily email for the full open list.
-            Delivery uses Platform → Email delivery → Notifications (SMTP) and WhatsApp credentials.
+            How platform admins receive <strong>System errors &amp; reports</strong>. Instant
+            WhatsApp/email for high-priority repeats, new fingerprints, and user reports; daily
+            email for the full open list.
           </p>
         </div>
         <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>
           {loading ? "Loading…" : "Refresh"}
         </button>
+      </div>
+
+      <div
+        className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+          smtpReady
+            ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+            : "border-amber-200 bg-amber-50 text-amber-950"
+        }`}
+      >
+        {smtpReady ? (
+          <p>
+            Sending as <span className="font-mono font-medium">{fromAddress}</span>
+            {delivery?.from_name ? ` (${delivery.from_name})` : ""}
+            {delivery?.smtp_host ? (
+              <>
+                {" "}
+                via <span className="font-mono">{delivery.smtp_host}</span>
+              </>
+            ) : null}
+            . Recipients:{" "}
+            <span className="font-mono">{delivery?.to_email || form.digest_email || "not set"}</span>.
+          </p>
+        ) : (
+          <p>
+            Notification SMTP is not ready — alerts cannot send yet. Configure{" "}
+            <Link
+              href="/platform/settings?tab=email&email_tab=auth"
+              className="font-medium underline"
+            >
+              Email delivery → Notifications
+            </Link>{" "}
+            (this is separate from mailboxes).
+          </p>
+        )}
       </div>
 
       <form onSubmit={(e) => void handleSave(e)} className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -158,10 +225,26 @@ export function PlatformAlertNotificationsPanel() {
           </p>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
           <PrimaryButton type="submit" showIcon={false} disabled={loading || saving}>
             {saving ? "Saving…" : "Save notification settings"}
           </PrimaryButton>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={loading || saving || Boolean(testing)}
+            onClick={() => void handleTest(["email"])}
+          >
+            {testing === "email" ? "Sending…" : "Send test email"}
+          </button>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={loading || saving || Boolean(testing) || !form.whatsapp_number.trim()}
+            onClick={() => void handleTest(["whatsapp"])}
+          >
+            {testing === "whatsapp" ? "Sending…" : "Send test WhatsApp"}
+          </button>
         </div>
       </form>
     </section>

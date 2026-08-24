@@ -18,6 +18,7 @@ import {
   UsageRankChart,
   UsageTrendChart,
   formatCount,
+  formatKes,
   formatUsd,
 } from "@/components/platform/platform-ai-usage-charts";
 import { CHART_COLORS } from "@/components/reports/report-charts";
@@ -159,6 +160,12 @@ export function PlatformAiUsageScreen() {
 
   const kpis = summary?.summary ?? {};
   const commonQuestions = summary?.common_questions ?? [];
+  const costExplanation = summary?.cost_explanation ?? null;
+  const usdToKes = Number(costExplanation?.usd_to_kes ?? summary?.usd_to_kes) || 129;
+  const costKes =
+    kpis.estimated_cost_kes != null
+      ? Number(kpis.estimated_cost_kes)
+      : Number(kpis.estimated_cost || 0) * usdToKes;
 
   async function analyzeAndTrain(row) {
     const key = row.fingerprint || row.question;
@@ -273,7 +280,7 @@ export function PlatformAiUsageScreen() {
             <StatCard
               label={`Est. cost (${summary.cost_currency ?? "USD"})`}
               value={formatUsd(kpis.estimated_cost)}
-              hint="Approximate provider list price"
+              hint={`≈ ${formatKes(costKes)} · ${usdToKes.toLocaleString("en-KE")} KES / USD`}
             />
             <StatCard
               label="Active tenants"
@@ -281,6 +288,54 @@ export function PlatformAiUsageScreen() {
               hint={`${formatCount(kpis.active_users)} users · avg ${kpis.avg_latency_ms ?? "—"} ms`}
             />
           </div>
+
+          <details className="theme-panel rounded-xl border px-4 py-3 text-sm shadow-sm">
+            <summary className="cursor-pointer text-xs font-medium text-slate-700">
+              How this cost is calculated
+            </summary>
+            <div className="mt-3 space-y-3 text-xs text-slate-600">
+              <p>
+                {costExplanation?.note ??
+                  "Approximate provider list prices from input and output tokens — not the provider invoice."}
+              </p>
+              <p className="font-mono text-[11px] text-slate-500">
+                {costExplanation?.formula ??
+                  "USD = (input tokens / 1,000,000 × input $/1M) + (output tokens / 1,000,000 × output $/1M). KES = USD × configured rate."}
+              </p>
+              {(costExplanation?.by_model ?? []).length ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-[11px]">
+                    <thead className="text-slate-500">
+                      <tr>
+                        <th className="py-1 pr-3 font-medium">Model</th>
+                        <th className="py-1 pr-3 font-medium">Tokens in / out</th>
+                        <th className="py-1 pr-3 font-medium">Rate $/1M</th>
+                        <th className="py-1 pr-3 font-medium">USD</th>
+                        <th className="py-1 font-medium">KES</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {costExplanation.by_model.map((row) => (
+                        <tr key={`${row.provider}-${row.model}`}>
+                          <td className="py-1.5 pr-3 text-slate-700">
+                            {row.provider}/{row.model}
+                          </td>
+                          <td className="py-1.5 pr-3 tabular-nums">
+                            {formatCount(row.input_tokens)} / {formatCount(row.output_tokens)}
+                          </td>
+                          <td className="py-1.5 pr-3 tabular-nums">
+                            {Number(row.input_rate_per_million).toFixed(2)} / {Number(row.output_rate_per_million).toFixed(2)}
+                          </td>
+                          <td className="py-1.5 pr-3 tabular-nums">{formatUsd(row.estimated_cost)}</td>
+                          <td className="py-1.5 tabular-nums">{formatKes(row.estimated_cost_kes)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </details>
 
           <div className="grid gap-4 xl:grid-cols-3">
             <div className="xl:col-span-2">
@@ -466,7 +521,7 @@ export function PlatformAiUsageScreen() {
                   <tr>
                     <th className="px-4 py-3">Question</th>
                     <th className="px-4 py-3">Asks</th>
-                    <th className="px-4 py-3">Orgs</th>
+                    <th className="px-4 py-3">Orgs / users</th>
                     <th className="px-4 py-3">Module</th>
                     <th className="px-4 py-3">Action</th>
                   </tr>
@@ -486,9 +541,36 @@ export function PlatformAiUsageScreen() {
                                 {row.examples.length - 1 === 1 ? "" : "s"}
                               </p>
                             ) : null}
+                            {(row.organizations ?? []).length ? (
+                              <p className="mt-2 text-[11px] text-slate-600">
+                                Orgs:{" "}
+                                {row.organizations
+                                  .slice(0, 4)
+                                  .map((org) => `${org.name}${org.company_code ? ` (${org.company_code})` : ""} ×${org.count}`)
+                                  .join(" · ")}
+                                {(row.organizations.length > 4 || (row.organization_count ?? 0) > row.organizations.length)
+                                  ? ` · +${Math.max(0, (row.organization_count ?? row.organizations.length) - 4)} more`
+                                  : ""}
+                              </p>
+                            ) : null}
+                            {(row.users ?? []).length ? (
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Users:{" "}
+                                {row.users
+                                  .slice(0, 4)
+                                  .map((u) => `${u.name}${u.organization_name ? ` @ ${u.organization_name}` : ""} ×${u.count}`)
+                                  .join(" · ")}
+                                {(row.users.length > 4 || (row.user_count ?? 0) > row.users.length)
+                                  ? ` · +${Math.max(0, (row.user_count ?? row.users.length) - 4)} more`
+                                  : ""}
+                              </p>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 tabular-nums">{formatCount(row.count)}</td>
-                          <td className="px-4 py-3 tabular-nums">{formatCount(row.organization_count)}</td>
+                          <td className="px-4 py-3 text-xs text-slate-600">
+                            <p className="tabular-nums font-medium text-slate-800">{formatCount(row.organization_count)}</p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">{formatCount(row.user_count)} users</p>
+                          </td>
                           <td className="px-4 py-3 text-xs text-slate-600">
                             {row.suggested_workspace_id ? workspaceLabel(row.suggested_workspace_id) : "All modules"}
                           </td>

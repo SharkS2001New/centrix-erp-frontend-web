@@ -9,6 +9,9 @@ import {
   resolvePosBrowseNumber,
   resolvePosNextBrowseNumber,
   resolvePosSessionTicketNumber,
+  saleHasRecordedPayment,
+  salePaymentMethodDisplay,
+  salePaymentMethods,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
@@ -22,6 +25,85 @@ import {
   resolveSalesOrderQueue,
   workflowPipelineSteps,
 } from "@/lib/order-workflow";
+
+describe("salePaymentMethodDisplay", () => {
+  it("shows Cash from tender buckets on paid orders", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 500,
+        order_total: 500,
+        cash: 500,
+        payment_method_code: "CASH",
+      }).label,
+    ).toBe("Cash");
+  });
+
+  it("shows Cheque from payment_method_code when tender buckets are empty", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 1200,
+        order_total: 1200,
+        cash: 0,
+        mpesa_amount: 0,
+        payment_method_code: "CHEQUE",
+      }).label,
+    ).toBe("Cheque");
+  });
+
+  it("shows Paid when money was collected but method code and buckets are missing", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 800,
+        order_total: 800,
+        cash: 0,
+        payment_method_code: null,
+      }).label,
+    ).toBe("Paid");
+  });
+
+  it("uses sale.payments rows when denormalized tender columns are empty", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 900,
+        order_total: 900,
+        cash: 0,
+        payment_method_code: null,
+        payments: [
+          {
+            amount: 900,
+            payment_method: { method_code: "CHEQUE", method_name: "Cheque" },
+          },
+        ],
+      }).label,
+    ).toBe("Cheque");
+  });
+
+  it("shows Credit for unpaid credit sales instead of Not paid", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 0,
+        order_total: 1500,
+        is_credit_sale: true,
+        payment_method_code: "CREDIT",
+        status: "completed",
+      }).label,
+    ).toBe("Credit");
+  });
+
+  it("shows Not paid for unpaid cash orders (does not invent Cash from default code)", () => {
+    expect(
+      salePaymentMethodDisplay({
+        amount_paid: 0,
+        order_total: 500,
+        cash: 0,
+        payment_method_code: "CASH",
+        status: "completed",
+      }).label,
+    ).toBe("Not paid");
+    expect(saleHasRecordedPayment({ amount_paid: 0, cash: 0 })).toBe(false);
+    expect(salePaymentMethods({ amount_paid: 0, payment_method_code: "CASH", order_total: 500 })).toEqual([]);
+  });
+});
 
 describe("resolvePaymentMethodByCode", () => {
   const methods = [

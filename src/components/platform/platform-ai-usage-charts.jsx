@@ -10,6 +10,12 @@ export function formatUsd(value) {
   return `$${n.toFixed(2)}`;
 }
 
+export function formatKes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return "KES 0.00";
+  return `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function formatCount(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";

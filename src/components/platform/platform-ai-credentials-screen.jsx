@@ -69,8 +69,15 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     setLoading(true);
     try {
       const res = await apiRequest(`${apiBase}/settings`);
-      setAiForm(aiFormFromApi(res));
-      setUseBoth(false);
+      const next = aiFormFromApi(res);
+      setAiForm(next);
+      const geminiSaved = Boolean(next.gemini_api_key_set);
+      const openaiSaved = Boolean(next.api_key_set);
+      const preferred = next.free_ai_provider === "openai" ? "openai" : "gemini";
+      // Keep the other saved provider visible so Gemini/OpenAI aren't "lost" when switching.
+      setUseBoth(
+        (preferred === "openai" && geminiSaved) || (preferred === "gemini" && openaiSaved),
+      );
     } catch {
       setAiForm(aiFormFromApi({}));
       setUseBoth(false);
@@ -84,6 +91,27 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   }, [loadAiSettings]);
 
   const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
+  const geminiSaved = Boolean(
+    aiForm.gemini_api_key_set || (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")),
+  );
+  const openaiSaved = Boolean(
+    aiForm.api_key_set || (aiForm.api_key && !aiForm.api_key.startsWith("••••")),
+  );
+  // Always show a provider that already has a key, even if the radio points elsewhere.
+  const showGemini = freeProvider === "gemini" || useBoth || geminiSaved;
+  const showOpenAi = freeProvider === "openai" || useBoth || openaiSaved;
+  const effectiveProvider =
+    freeProvider === "openai"
+      ? openaiSaved
+        ? "openai"
+        : geminiSaved
+          ? "gemini"
+          : "openai"
+      : geminiSaved
+        ? "gemini"
+        : openaiSaved
+          ? "openai"
+          : "gemini";
 
   async function saveAiSettings() {
     setSaving(true);
@@ -159,33 +187,40 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     }
   }
 
-  const showGemini = freeProvider === "gemini" || useBoth;
-  const showOpenAi = freeProvider === "openai" || useBoth;
   const busy = saving || testingProvider !== null;
-  const canTestGemini = Boolean(
-    aiForm.gemini_api_key_set || (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")),
-  );
-  const canTestOpenAi = Boolean(
-    aiForm.api_key_set || (aiForm.api_key && !aiForm.api_key.startsWith("••••")),
-  );
+  const canTestGemini = geminiSaved;
+  const canTestOpenAi = openaiSaved;
 
   const body = (
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
       <p className="mt-1 text-sm theme-subtext">
-        Choose which provider to offer free to selected tenant organizations. The same provider powers platform-admin
-        tools (email drafting, training console) when enabled below. Tenants may still add their own API key to
-        override.
+        Centrix uses the provider that already has a saved key. Prefer Gemini when a Gemini key is saved, or OpenAI
+        (including Groq-compatible keys) when that key is saved. The radio below is only used when both keys are on
+        file. Tenants may still add their own API key to override.
       </p>
 
       {loading ? (
         <p className="mt-4 text-sm theme-subtext">Loading…</p>
       ) : (
         <div className="mt-5 space-y-6">
+          {geminiSaved || openaiSaved ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              Currently using{" "}
+              <span className="font-semibold">
+                {effectiveProvider === "openai" ? "OpenAI-compatible" : "Gemini"}
+              </span>
+              {effectiveProvider !== freeProvider
+                ? ` (preferred radio is ${freeProvider === "openai" ? "OpenAI" : "Gemini"}, but that key is missing — using the saved key instead)`
+                : null}
+              .
+            </div>
+          ) : null}
           <div className="rounded-lg border px-4 py-3 theme-panel">
-            <p className="text-sm font-medium theme-heading">Free AI for selected organizations</p>
+            <p className="text-sm font-medium theme-heading">Preferred free AI provider</p>
             <p className="mt-0.5 text-xs theme-subtext">
-              Used when an org has &quot;Offer free platform AI&quot; enabled and no tenant API key of its own.
+              Used when both Gemini and OpenAI keys are saved. If only one is saved, Centrix uses that one
+              automatically.
             </p>
             <div className="mt-3 flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm theme-heading">
@@ -195,7 +230,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   checked={freeProvider === "gemini"}
                   onChange={() => {
                     setAiForm((f) => ({ ...f, free_ai_provider: "gemini" }));
-                    setUseBoth(false);
+                    setUseBoth(openaiSaved);
                     setTestResult(null);
                   }}
                 />
@@ -208,7 +243,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   checked={freeProvider === "openai"}
                   onChange={() => {
                     setAiForm((f) => ({ ...f, free_ai_provider: "openai" }));
-                    setUseBoth(false);
+                    setUseBoth(geminiSaved);
                     setTestResult(null);
                   }}
                 />
@@ -229,14 +264,13 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 Enable platform AI tools (email assist &amp; training)
               </span>
               <span className="mt-0.5 block text-xs theme-subtext">
-                {freeProvider === "gemini"
-                  ? "Uses the Gemini key below — no OpenAI key required."
-                  : "Uses the OpenAI key below for email assist and the AI training console."}
+                Uses the saved {effectiveProvider === "openai" ? "OpenAI-compatible" : "Gemini"} key — no need to
+                reconfigure if that key is already on file.
               </span>
             </span>
           </label>
 
-          {freeProvider === "openai" ? (
+          {freeProvider === "openai" && !geminiSaved ? (
             <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">
               <input
                 type="checkbox"
@@ -250,13 +284,13 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               <span>
                 <span className="block text-sm font-medium theme-heading">Also configure Gemini (use both)</span>
                 <span className="mt-0.5 block text-xs theme-subtext">
-                  Optional. Keep a Gemini key on file for switching later, or for orgs that still use platform Gemini.
+                  Optional. Keep a Gemini key on file for switching later, or as a fallback if OpenAI is unavailable.
                 </span>
               </span>
             </label>
           ) : null}
 
-          {freeProvider === "gemini" ? (
+          {freeProvider === "gemini" && !openaiSaved ? (
             <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">
               <input
                 type="checkbox"
@@ -270,7 +304,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               <span>
                 <span className="block text-sm font-medium theme-heading">Also configure OpenAI (use both)</span>
                 <span className="mt-0.5 block text-xs theme-subtext">
-                  Optional. Keep an OpenAI key on file if you may switch free AI to OpenAI later.
+                  Optional. Keep an OpenAI / Groq key on file if you may switch later.
                 </span>
               </span>
             </label>
@@ -278,10 +312,16 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
 
           {showOpenAi ? (
             <div className={freeProvider === "openai" ? "grid gap-4 sm:grid-cols-2" : "border-t pt-5 grid gap-4 sm:grid-cols-2"}>
-              {freeProvider === "gemini" && useBoth ? (
+              {freeProvider !== "openai" ? (
                 <div className="sm:col-span-2">
-                  <h3 className="text-sm font-semibold theme-heading">OpenAI credentials (optional)</h3>
-                  <p className="mt-1 text-xs theme-subtext">Stored for later; free AI remains Gemini until you switch.</p>
+                  <h3 className="text-sm font-semibold theme-heading">
+                    {openaiSaved ? "OpenAI credentials (saved)" : "OpenAI credentials (optional)"}
+                  </h3>
+                  <p className="mt-1 text-xs theme-subtext">
+                    {openaiSaved
+                      ? "Saved on this platform. Used automatically if Gemini is not available."
+                      : "Stored for later; free AI remains Gemini until you switch."}
+                  </p>
                 </div>
               ) : null}
               <div className="sm:col-span-2">
@@ -320,12 +360,18 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           {showGemini ? (
             <div className="border-t pt-5">
               <h3 className="text-sm font-semibold theme-heading">
-                {freeProvider === "gemini" ? "Gemini credentials" : "Gemini credentials (optional)"}
+                {freeProvider === "gemini"
+                  ? "Gemini credentials"
+                  : geminiSaved
+                    ? "Gemini credentials (saved)"
+                    : "Gemini credentials (optional)"}
               </h3>
               <p className="mt-1 text-xs theme-subtext">
                 {freeProvider === "gemini"
-                  ? "Required for free tenant Gemini and for platform email/training when enabled above."
-                  : "Stored for later; free AI remains OpenAI until you switch."}
+                  ? "Required for free tenant Gemini and for platform email/training when that key is the one in use."
+                  : geminiSaved
+                    ? "Saved on this platform. Used automatically if OpenAI is not available."
+                    : "Stored for later; free AI remains OpenAI until you switch."}
               </p>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">

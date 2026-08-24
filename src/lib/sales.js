@@ -645,31 +645,96 @@ export function saleHasRecordedPayment(sale) {
   return false;
 }
 
-/** Checkout methods used on an order (amount buckets + credit flag). */
+/** Amount-derived full settlement (includes zero-total / free orders). */
+export function saleIsFullySettledByAmounts(sale) {
+  const total = Number(sale?.order_total ?? 0);
+  const paid = Number(sale?.amount_paid ?? 0);
+  const eps = 0.01;
+  return total <= eps || paid + eps >= total;
+}
+
+function pushUniqueMethod(methods, label) {
+  const text = String(label ?? "").trim();
+  if (!text || text === "—") return;
+  if (!methods.includes(text)) methods.push(text);
+}
+
+/** Method labels from eager-loaded sale.payments rows (cheque/bank often skip tender columns). */
+function salePaymentMethodsFromPaymentRows(sale) {
+  const rows = sale?.payments;
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const methods = [];
+  for (const row of rows) {
+    if (Number(row?.amount ?? 0) <= 0.001) continue;
+    const name = row?.payment_method?.method_name ?? row?.method_name;
+    if (name) {
+      pushUniqueMethod(methods, name);
+      continue;
+    }
+    const code =
+      row?.payment_method?.method_code ??
+      row?.method_code ??
+      row?.payment_method_code;
+    if (code) pushUniqueMethod(methods, formatPaymentMethodCode(code));
+  }
+  return methods;
+}
+
+function saleIsCreditMethod(sale) {
+  if (sale?.is_credit_sale) return true;
+  return String(sale?.payment_method_code ?? "")
+    .toUpperCase()
+    .includes("CREDIT");
+}
+
+/**
+ * Checkout methods used on an order (tender buckets, payment rows, credit flag).
+ * Does not invent Cash from a default unpaid payment_method_code.
+ */
 export function salePaymentMethods(sale) {
-  if (!saleHasRecordedPayment(sale)) {
+  const methods = [];
+  if (Number(sale?.cash ?? 0) > 0) pushUniqueMethod(methods, "Cash");
+  if (Number(sale?.mpesa_amount ?? 0) > 0) pushUniqueMethod(methods, "M-Pesa");
+  if (Number(sale?.equity_amount ?? 0) > 0) pushUniqueMethod(methods, "Equity");
+  if (Number(sale?.kcb_amount ?? 0) > 0) pushUniqueMethod(methods, "KCB");
+  if (Number(sale?.voucher_payment_amount ?? 0) > 0) pushUniqueMethod(methods, "Voucher");
+  if (Number(sale?.points_payment_amount ?? 0) > 0) pushUniqueMethod(methods, "Points");
+
+  for (const label of salePaymentMethodsFromPaymentRows(sale)) {
+    pushUniqueMethod(methods, label);
+  }
+
+  const recorded = saleHasRecordedPayment(sale) || methods.length > 0;
+  const credit = saleIsCreditMethod(sale);
+
+  if (credit) {
+    pushUniqueMethod(methods, "Credit");
+  }
+
+  if (!methods.length && sale?.payment_method_code && (recorded || saleIsFullySettledByAmounts(sale))) {
+    pushUniqueMethod(methods, formatPaymentMethodCode(sale.payment_method_code));
+  }
+
+  // Unpaid non-credit: hide default checkout method codes (e.g. CASH on an open cart).
+  if (!recorded && !credit && !saleIsFullySettledByAmounts(sale)) {
     return [];
   }
 
-  const methods = [];
-  if (Number(sale?.cash ?? 0) > 0) methods.push("Cash");
-  if (Number(sale?.mpesa_amount ?? 0) > 0) methods.push("M-Pesa");
-  if (Number(sale?.equity_amount ?? 0) > 0) methods.push("Equity");
-  if (Number(sale?.kcb_amount ?? 0) > 0) methods.push("KCB");
-  if (Number(sale?.voucher_payment_amount ?? 0) > 0) methods.push("Voucher");
-  if (Number(sale?.points_payment_amount ?? 0) > 0) methods.push("Points");
-  if (sale?.is_credit_sale && !methods.includes("Credit")) methods.push("Credit");
-  if (!methods.length && sale?.payment_method_code) {
-    methods.push(formatPaymentMethodCode(sale.payment_method_code));
-  }
   return methods;
 }
 
 export function salePaymentMethodDisplay(sale) {
   const methods = salePaymentMethods(sale);
-  if (!methods.length) return { label: "Not paid", methods: [], isMixed: false };
   if (methods.length === 1) return { label: methods[0], methods: [], isMixed: false };
-  return { label: "Mixed", methods, isMixed: true };
+  if (methods.length > 1) return { label: "Mixed", methods, isMixed: true };
+
+  // Money collected (or free order) but no tender label — never call that "Not paid".
+  if (saleHasRecordedPayment(sale) || saleIsFullySettledByAmounts(sale)) {
+    return { label: "Paid", methods: [], isMixed: false };
+  }
+
+  return { label: "Not paid", methods: [], isMixed: false };
 }
 
 export function cartTotals(lines, orderDiscount = 0) {
