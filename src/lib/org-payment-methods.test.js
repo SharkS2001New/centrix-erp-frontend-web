@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterPaymentMethodsForOrg,
   listActiveOrgPaymentMethods,
+  pickPreferredPaymentMethodId,
   resolveOrgPaymentMethodFlags,
 } from "@/lib/org-payment-methods";
 
@@ -39,6 +40,25 @@ describe("listActiveOrgPaymentMethods", () => {
       { id: 10, method_code: "COOP", method_name: "Co-op", is_active: false },
     ]);
     expect(listed.some((m) => m.method_code === "COOP")).toBe(false);
+  });
+});
+
+describe("pickPreferredPaymentMethodId", () => {
+  it("defaults Cash then M-Pesa then Equity then KCB", () => {
+    expect(pickPreferredPaymentMethodId(CATALOG)).toBe("1");
+    expect(
+      pickPreferredPaymentMethodId(CATALOG.filter((m) => m.method_code !== "CASH")),
+    ).toBe("2");
+    expect(
+      pickPreferredPaymentMethodId(
+        CATALOG.filter((m) => !["CASH", "MPESA"].includes(m.method_code)),
+      ),
+    ).toBe("3");
+    expect(
+      pickPreferredPaymentMethodId(
+        CATALOG.filter((m) => !["CASH", "MPESA", "EQUITY"].includes(m.method_code)),
+      ),
+    ).toBe("4");
   });
 });
 

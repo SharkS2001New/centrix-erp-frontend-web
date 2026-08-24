@@ -32,7 +32,7 @@ import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
-import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { listActiveOrgPaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -249,7 +249,7 @@ export function ExpensesScreen() {
     setForm({
       ...EMPTY_EXPENSE_FORM,
       expense_date: new Date().toISOString().slice(0, 10),
-      payment_method_id: String(paymentMethods[0]?.id ?? ""),
+      payment_method_id: pickPreferredPaymentMethodId(paymentMethods),
     });
     setFormError(null);
     setDrawerOpen(true);

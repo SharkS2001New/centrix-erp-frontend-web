@@ -13,7 +13,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatSaleKes } from "@/lib/sales";
 import { formatTripProfitMargin } from "@/lib/trip-status";
 import { useConfirm } from "@/lib/use-confirm";
-import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { listActiveOrgPaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
 const EMPTY_FORM = {
   expense_group_id: "",
@@ -70,8 +70,13 @@ export function TripExpensesPanel({
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 100 } }),
       ]);
+      const methods = listActiveOrgPaymentMethods(methodsRes.data ?? []);
       setGroups(groupsRes.data ?? []);
-      setPaymentMethods(listActiveOrgPaymentMethods(methodsRes.data ?? []));
+      setPaymentMethods(methods);
+      setForm((current) => ({
+        ...current,
+        payment_method_id: current.payment_method_id || pickPreferredPaymentMethodId(methods),
+      }));
     } catch {
       // Non-blocking — form will show validation if lists are empty.
     }

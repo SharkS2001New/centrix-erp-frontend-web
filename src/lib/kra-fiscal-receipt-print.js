@@ -45,10 +45,19 @@ function formatReceiptDate(value) {
 }
 
 /** Line items from KRA device request payload (plu_data). */
-export function parseKraPluLines(requestPayload) {
+export function parseKraPluLines(requestPayload, options = {}) {
   const payload = parseJsonMaybe(requestPayload);
   const raw = payload?.plu_data ?? payload?.PluData ?? [];
   if (!Array.isArray(raw)) return [];
+
+  const nameByCode = new Map();
+  for (const item of Array.isArray(options.saleItems) ? options.saleItems : []) {
+    const code = String(item?.product_code ?? "")
+      .trim()
+      .toUpperCase();
+    const name = String(item?.product_name ?? "").trim();
+    if (code && name) nameByCode.set(code, name);
+  }
 
   return raw.map((line) => {
     const qty = Number(line?.SaleQty ?? line?.sale_qty ?? 0);
@@ -64,11 +73,29 @@ export function parseKraPluLines(requestPayload) {
     const barcode = String(
       line?.Barcode || line?.barcode || line?.product_code || line?.itemCd || "",
     ).trim();
+    const productCode = String(line?.product_code ?? "").trim() || barcode || null;
+    let name =
+      String(line?.item_Name ?? line?.ItemName ?? line?.product_name ?? "Item").trim() || "Item";
+    const codeKey = String(productCode ?? barcode ?? "")
+      .trim()
+      .toUpperCase();
+    const catalogName = codeKey ? nameByCode.get(codeKey) : null;
+    // Legacy KRA payloads often stored product_code as item_Name when the sale line
+    // name was missing — prefer the linked sale/catalogue name for display.
+    if (
+      catalogName &&
+      (name === "Item" ||
+        name === barcode ||
+        name === productCode ||
+        (codeKey && name.toUpperCase() === codeKey))
+    ) {
+      name = catalogName;
+    }
 
     return {
-      name: String(line?.item_Name ?? line?.ItemName ?? line?.product_name ?? "Item").trim() || "Item",
+      name,
       barcode: barcode || null,
-      productCode: String(line?.product_code ?? "").trim() || barcode || null,
+      productCode,
       qty: Number.isFinite(qty) ? qty : 0,
       unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
       amount: Number.isFinite(amount) ? amount : 0,
@@ -166,8 +193,13 @@ function lineMatchesKraDeviceToken(line, token) {
  * Never mark every line as the cause when the device did not name a SKU.
  * @returns {{ lines: ReturnType<typeof parseKraPluLines>, culpritIndexes: number[], suspectsAll: boolean }}
  */
-export function matchKraFailureLineIndexes(errorMessage, requestPayload, responsePayload) {
-  const lines = parseKraPluLines(requestPayload);
+export function matchKraFailureLineIndexes(
+  errorMessage,
+  requestPayload,
+  responsePayload,
+  options = {},
+) {
+  const lines = parseKraPluLines(requestPayload, options);
   if (!lines.length) {
     return { lines, culpritIndexes: [], suspectsAll: false };
   }
@@ -260,7 +292,9 @@ export function enrichKraReportRow(row) {
     response_payload: responsePayload,
   });
 
-  const lines = parseKraPluLines(requestPayload);
+  const lines = parseKraPluLines(requestPayload, {
+    saleItems: normalized.sale_items,
+  });
   const linesTotal = lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
   const orderTotal = Number(normalized.order_total ?? 0);
   const totalVat = Number(normalized.total_vat ?? 0);

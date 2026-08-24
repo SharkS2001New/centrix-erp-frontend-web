@@ -461,7 +461,13 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         aria-autocomplete="list"
         aria-activedescendant={activeOptionId}
         disabled={disabled || loading}
-        placeholder={loading ? "Loading…" : searchPlaceholder || placeholder}
+        placeholder={
+          loading
+            ? "Loading…"
+            : open
+              ? searchPlaceholder || placeholder
+              : placeholder || searchPlaceholder
+        }
         value={inputDisplayValue}
         autoComplete="off"
         spellCheck={false}

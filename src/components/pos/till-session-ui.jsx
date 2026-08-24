@@ -25,6 +25,17 @@ import {
   SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { listActiveOrgPaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
+
+/** Normalize list payloads from /pos/expense-groups or /payment-methods. */
+function coercePaymentMethodRows(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (raw && typeof raw === "object") {
+    return Object.values(raw).filter((row) => row && typeof row === "object" && row.id != null);
+  }
+  return [];
+}
 
 const EMPTY = {
   till_number: "",
@@ -698,6 +709,7 @@ export function RecordSessionExpenseModal({
   const [loadError, setLoadError] = useState(null);
   const [formError, setFormError] = useState(null);
   const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
+  const [methodsLoading, setMethodsLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -713,34 +725,56 @@ export function RecordSessionExpenseModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    // Payment methods come from /pos/expense-groups so External POS cashiers
-    // do not need Admin → Payment methods permission.
-    apiRequest("/pos/expense-groups")
-      .then((groupsRes) => {
+    setMethodsLoading(true);
+    // Prefer /pos/expense-groups (includes methods so cashiers need no Admin permission).
+    // Fall back to /payment-methods when the payload omits or empties payment_methods.
+    (async () => {
+      try {
+        const groupsRes = await apiRequest("/pos/expense-groups");
         if (cancelled) return;
-        const groups = groupsRes?.data ?? [];
-        const methods = Array.isArray(groupsRes?.payment_methods)
-          ? groupsRes.payment_methods.filter((row) => row && row.is_active !== false)
-          : [];
+        const groups = Array.isArray(groupsRes?.data)
+          ? groupsRes.data
+          : Array.isArray(groupsRes)
+            ? groupsRes
+            : [];
+        let methods = listActiveOrgPaymentMethods(
+          coercePaymentMethodRows(groupsRes?.payment_methods),
+        );
+        if (methods.length === 0) {
+          try {
+            const pmRes = await apiRequest("/payment-methods", {
+              searchParams: { per_page: 200 },
+              reportIssues: false,
+            });
+            if (cancelled) return;
+            methods = listActiveOrgPaymentMethods(
+              coercePaymentMethodRows(pmRes?.data ?? pmRes),
+            );
+          } catch {
+            /* keep empty — surface below */
+          }
+        }
         setExpenseGroups(groups);
         setPaymentMethods(methods);
-        setLoadError(null);
+        setLoadError(
+          methods.length === 0
+            ? "No payment methods available. Ask an admin to enable methods under Administration → Payment methods."
+            : null,
+        );
         if (groups[0]) setExpenseGroupId(String(groups[0].id));
-        const cashId = groupsRes?.cash_payment_method_id;
-        const defaultMethodId =
-          (cashId && methods.some((m) => String(m.id) === String(cashId)) ? cashId : null) ??
-          methods[0]?.id ??
-          "";
+        const defaultMethodId = pickPreferredPaymentMethodId(methods);
         if (defaultMethodId) setExpensePaymentMethodId(String(defaultMethodId));
-      })
-      .catch((e) => {
+      } catch (e) {
         if (!cancelled) {
           setExpenseGroups([]);
           setPaymentMethods([]);
           setExpensePaymentMethodId("");
           setLoadError(e instanceof ApiError ? e.message : "Could not load expense categories.");
         }
-      });
+      } finally {
+        if (!cancelled) setMethodsLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -840,8 +874,16 @@ export function RecordSessionExpenseModal({
                 setExpensePaymentMethodId(next);
                 setFormError(null);
               }}
-              disabled={busy || paymentMethods.length === 0}
-              placeholder={paymentMethods.length === 0 ? "No payment methods available" : "Select method"}
+              disabled={busy || methodsLoading || paymentMethods.length === 0}
+              loading={methodsLoading}
+              placeholder={
+                methodsLoading
+                  ? "Loading…"
+                  : paymentMethods.length === 0
+                    ? "No payment methods available"
+                    : "Select method"
+              }
+              searchPlaceholder="Search methods…"
               options={paymentMethods.map((method) => ({
                 value: String(method.id),
                 label: method.method_name || method.method_code || `Method #${method.id}`,

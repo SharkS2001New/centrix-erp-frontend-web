@@ -138,6 +138,40 @@ describe("kra fiscal receipt print", () => {
     expect(lines[0].productCode).toBe("RICE25");
   });
 
+  it("replaces item_Name that is only the product code with sale item name", () => {
+    const lines = parseKraPluLines(
+      {
+        plu_data: [
+          {
+            item_Name: "1192003",
+            Barcode: "",
+            product_code: "1192003",
+            SaleQty: "1",
+            SalePrice: "10",
+            SaleAmount: "10",
+          },
+          {
+            item_Name: "BANJAB RICE 25KG",
+            Barcode: "",
+            product_code: "1324005",
+            SaleQty: "1",
+            SalePrice: "10",
+            SaleAmount: "10",
+          },
+        ],
+      },
+      {
+        saleItems: [
+          { product_code: "1192003", product_name: "Sugar 1kg" },
+          { product_code: "1324005", product_name: "BANJAB RICE 25KG" },
+        ],
+      },
+    );
+    expect(lines[0].name).toBe("Sugar 1kg");
+    expect(lines[0].barcode).toBe("1192003");
+    expect(lines[1].name).toBe("BANJAB RICE 25KG");
+  });
+
   it("builds printable html with fiscal metadata and line items", () => {
     const enriched = enrichKraReportRow({
       kra_response_id: 228,

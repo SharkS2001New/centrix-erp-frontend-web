@@ -26,7 +26,8 @@ function payloadNeedsFetch(row) {
     response == null ||
     (typeof response === "object" && !Array.isArray(response) && Object.keys(response).length === 0);
   const errorMissing = !String(row.error_message ?? row.last_kra_error ?? "").trim();
-  return (requestMissing && responseMissing) || errorMissing;
+  const saleItemsMissing = !Array.isArray(row.sale_items);
+  return (requestMissing && responseMissing) || errorMissing || saleItemsMissing;
 }
 
 function resolveDisplayReason(row, match = null) {
@@ -133,6 +134,7 @@ export function KraFailureReasonDialog({
         activeRow?.error_message ?? activeRow?.last_kra_error,
         activeRow?.request_payload,
         activeRow?.response_payload,
+        { saleItems: activeRow?.sale_items },
       ),
     [activeRow],
   );

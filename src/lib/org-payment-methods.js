@@ -65,6 +65,25 @@ export function listActiveOrgPaymentMethods(methods) {
 }
 
 /**
+ * Default payment method for Record expense: Cash → M-Pesa → Equity → KCB → first active.
+ *
+ * @param {Array<object>|null|undefined} methods
+ * @returns {string} method id as string, or ""
+ */
+export function pickPreferredPaymentMethodId(methods) {
+  const list = listActiveOrgPaymentMethods(methods);
+  if (list.length === 0) return "";
+
+  const preferred = ["CASH", "MPESA", "EQUITY", "KCB"];
+  for (const code of preferred) {
+    const hit = list.find((row) => preferredRank(normalizeCode(row.method_code)) === preferredRank(code));
+    if (hit?.id != null) return String(hit.id);
+  }
+
+  return String(list[0].id ?? "");
+}
+
+/**
  * Which tender slots External POS / Collect payment are configured to collect.
  *
  * @param {object|null} moduleSettings
