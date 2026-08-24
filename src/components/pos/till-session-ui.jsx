@@ -25,7 +25,7 @@ import {
   SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { listActiveOrgPaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
+import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
 /** Normalize list payloads from /pos/expense-groups or /payment-methods. */
 function coercePaymentMethodRows(raw) {
@@ -737,7 +737,7 @@ export function RecordSessionExpenseModal({
           : Array.isArray(groupsRes)
             ? groupsRes
             : [];
-        let methods = listActiveOrgPaymentMethods(
+        let methods = listExpensePaymentMethods(
           coercePaymentMethodRows(groupsRes?.payment_methods),
         );
         if (methods.length === 0) {
@@ -747,7 +747,7 @@ export function RecordSessionExpenseModal({
               reportIssues: false,
             });
             if (cancelled) return;
-            methods = listActiveOrgPaymentMethods(
+            methods = listExpensePaymentMethods(
               coercePaymentMethodRows(pmRes?.data ?? pmRes),
             );
           } catch {

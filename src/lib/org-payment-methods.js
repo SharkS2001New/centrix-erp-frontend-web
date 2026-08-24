@@ -58,9 +58,12 @@ function sortOrgPaymentMethods(list) {
  * @returns {Array<object>}
  */
 export function listActiveOrgPaymentMethods(methods) {
-  const list = (Array.isArray(methods) ? methods : []).filter(
-    (row) => row && row.is_active !== false,
-  );
+  const list = (Array.isArray(methods) ? methods : []).filter((row) => {
+    if (!row) return false;
+    const active = row.is_active;
+    if (active === false || active === 0 || active === "0") return false;
+    return true;
+  });
   return sortOrgPaymentMethods(list);
 }
 
@@ -71,16 +74,20 @@ export function listActiveOrgPaymentMethods(methods) {
  * @returns {string} method id as string, or ""
  */
 export function pickPreferredPaymentMethodId(methods) {
-  const list = listActiveOrgPaymentMethods(methods);
+  const list = listExpensePaymentMethods(methods);
   if (list.length === 0) return "";
-
-  const preferred = ["CASH", "MPESA", "EQUITY", "KCB"];
-  for (const code of preferred) {
-    const hit = list.find((row) => preferredRank(normalizeCode(row.method_code)) === preferredRank(code));
-    if (hit?.id != null) return String(hit.id);
-  }
-
   return String(list[0].id ?? "");
+}
+
+/**
+ * Payment methods for Record expense pickers.
+ * Prefers Cash → M-Pesa → Equity → KCB, then other active methods.
+ *
+ * @param {Array<object>|null|undefined} methods
+ * @returns {Array<object>}
+ */
+export function listExpensePaymentMethods(methods) {
+  return listActiveOrgPaymentMethods(methods);
 }
 
 /**
