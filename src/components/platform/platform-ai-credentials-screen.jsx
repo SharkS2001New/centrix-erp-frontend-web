@@ -286,29 +286,33 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               ) : null}
               <div className="sm:col-span-2">
                 <SavedKeyField
-                  label="OpenAI API key"
+                  label="API key"
                   value={aiForm.api_key}
                   saved={aiForm.api_key_set}
                   hint={aiForm.api_key_hint}
-                  placeholder="gsk_… (Groq) or sk-… (OpenAI)"
+                  placeholder="sk-… / gsk_… / any OpenAI-compatible key"
                   onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}
                 />
               </div>
-              <Field label="OpenAI model (optional)">
+              <Field label="Model (optional)">
                 <input
                   className={inputClassName()}
                   value={aiForm.model}
                   onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
-                  placeholder="llama-3.3-70b-versatile (Groq) or gpt-4o-mini"
+                  placeholder="gpt-4o-mini — or provider model e.g. llama-3.3-70b-versatile"
                 />
               </Field>
-              <Field label="OpenAI base URL (optional)">
+              <Field label="Base URL (optional)">
                 <input
                   className={inputClassName()}
                   value={aiForm.base_url}
                   onChange={(e) => setAiForm((f) => ({ ...f, base_url: e.target.value }))}
-                  placeholder="https://api.groq.com/openai/v1 or https://api.openai.com/v1"
+                  placeholder="Leave blank for OpenAI — or set e.g. https://api.groq.com/openai/v1"
                 />
+                <p className="mt-1 text-xs theme-subtext">
+                  Defaults to OpenAI. For Groq, OpenRouter, Together, or any OpenAI-compatible API, paste that
+                  provider&apos;s base URL with the key (and a model that provider supports).
+                </p>
               </Field>
             </div>
           ) : null}
