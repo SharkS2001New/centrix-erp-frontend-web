@@ -126,9 +126,11 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
           );
           return null;
         }
+        // Surface via onError only — callers use void handleAdvance / requestAssignment,
+        // so rethrowing left "You do not have permission…" as an unhandledrejection.
         const message = e instanceof ApiError ? e.message : "Could not update order.";
         onError?.(message);
-        throw e;
+        return null;
       } finally {
         setBusy(false);
       }
@@ -199,7 +201,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
         return;
       }
 
-      requestTransition(sale, assignStatus);
+      void requestTransition(sale, assignStatus);
     },
     [distributionSettings, requestTransition],
   );

@@ -15,6 +15,7 @@ const WALK_IN = { customer_num: null, label: "Walk-in" };
 /**
  * Legacy direct-checkout modal (payment methods + optional credit).
  * Credit method always books a fully unpaid sale — amount received is ignored.
+ * Methods follow Settings → Sales → Recording payments for this organization.
  */
 export function CheckoutModal({
   open,
@@ -56,23 +57,24 @@ export function CheckoutModal({
     setCustomerOptions([]);
     setAmountReceived("");
     setReference("");
-    apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } })
+    apiRequest("/payment-methods", { searchParams: { per_page: 200, "filter[is_active]": 1 } })
       .catch(() => ({ data: [] }))
       .then((methodsRes) => {
         if (cancelled) return;
-        const methods = filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
-          capabilities,
-          includeCredit: true,
-          checkoutContext: channel === "pos" ? "pos" : "order_payment",
-        });
+        const methods = filterPaymentMethodsForOrg(
+          methodsRes.data ?? [],
+          capabilities?.module_settings,
+          { capabilities, checkoutContext: "order_payment", includeCredit: true },
+        );
         setPaymentMethods(methods);
         const cash = methods.find((m) => getPaymentMethodKind(m) === "cash");
         if (cash) setPaymentMethodCode(cash.method_code);
+        else if (methods[0]?.method_code) setPaymentMethodCode(methods[0].method_code);
       });
     return () => {
       cancelled = true;
     };
-  }, [open, capabilities, channel]);
+  }, [open, capabilities]);
 
   useEffect(() => {
     if (open && totals.total > 0 && kind === "cash" && !creditSale) {
@@ -173,7 +175,9 @@ export function CheckoutModal({
       <Field label="Payment method">
         <div className="space-y-2">
           {paymentMethods.length === 0 ? (
-            <p className="text-sm text-slate-500">No payment methods configured.</p>
+            <p className="text-sm text-slate-500">
+              No payment methods enabled. Turn them on under Settings → Sales → Recording payments.
+            </p>
           ) : (
             paymentMethods.map((method) => (
               <label

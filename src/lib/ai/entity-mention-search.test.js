@@ -38,9 +38,15 @@ describe("entity mention helpers", () => {
     expect(
       serializeEntityRefs([
         { type: "customer", code: "12", label: "Acme", id: null },
+        { type: "user", id: "9", label: "Diana", code: null },
+        { type: "employee", id: "3", code: "E001", label: "Jane Doe" },
         { type: "bad", label: "x" },
       ]),
-    ).toEqual([{ type: "customer", id: null, code: "12", label: "Acme" }]);
+    ).toEqual([
+      { type: "customer", id: null, code: "12", label: "Acme" },
+      { type: "user", id: "9", code: null, label: "Diana" },
+      { type: "employee", id: "3", code: "E001", label: "Jane Doe" },
+    ]);
     expect(mentionDisplayLabel({ label: "Acme Ltd" })).toBe("@Acme Ltd");
   });
 });

@@ -12,6 +12,9 @@ import {
   AI_TRAINING_WORKSPACES,
   aiTrainingApiBase,
   aiTrainingWorkspacePath,
+  bulkImportTrainingNotes,
+  installFoundationTrainingNotes,
+  parseTrainingQaPaste,
 } from "@/lib/platform-ai-training";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -58,6 +61,9 @@ export function PlatformAiTrainingScreen() {
   const [status, setStatus] = useState(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [savingKnowledge, setSavingKnowledge] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [savingBulk, setSavingBulk] = useState(false);
+  const [installingFoundation, setInstallingFoundation] = useState(false);
   const [form, setForm] = useState({
     id: null,
     topic: "",
@@ -232,6 +238,43 @@ export function PlatformAiTrainingScreen() {
     }
   }
 
+  async function installFoundation() {
+    setInstallingFoundation(true);
+    try {
+      const res = await installFoundationTrainingNotes();
+      await loadKnowledge();
+      await loadStatus();
+      notifySuccess(
+        `Foundation notes: ${res.created ?? 0} added, ${res.skipped ?? 0} already present.`,
+      );
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to install foundation notes.");
+    } finally {
+      setInstallingFoundation(false);
+    }
+  }
+
+  async function importBulkQa(e) {
+    e.preventDefault();
+    const notes = parseTrainingQaPaste(bulkText);
+    if (notes.length === 0) {
+      notifyError("Paste Q:/A: blocks separated by blank lines.");
+      return;
+    }
+    setSavingBulk(true);
+    try {
+      const res = await bulkImportTrainingNotes(notes);
+      setBulkText("");
+      await loadKnowledge();
+      await loadStatus();
+      notifySuccess(`Imported ${res.created ?? notes.length} training note(s).`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Bulk import failed.");
+    } finally {
+      setSavingBulk(false);
+    }
+  }
+
   const clearChatState = useCallback(() => {
     setPendingAction(null);
     setFormSpec(null);
@@ -314,100 +357,149 @@ export function PlatformAiTrainingScreen() {
       {activeTab === "knowledge" ? (
         <section className="theme-panel rounded-xl border p-6 shadow-sm">
           <div className="border-b border-[var(--theme-border)] pb-5">
-            <h2 className="theme-heading text-base font-semibold">Platform-wide knowledge</h2>
-            <p className="theme-subtext mt-2 max-w-4xl text-sm">
-              Use these notes for how the product works, standard workflows, and consistent terminology — not
-              tenant-specific data like customer names or prices.
-            </p>
-            <p className="theme-text-muted mt-2 text-xs">
-              {noteCount} platform note{noteCount === 1 ? "" : "s"} active
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="theme-heading text-base font-semibold">Train Centrix AI (Q&A notes)</h2>
+                <p className="theme-subtext mt-2 max-w-4xl text-sm">
+                  Teach the assistant once for every tenant: questions users ask, the correct Centrix answer, and the
+                  screen path. Notes are matched by relevance — you do not need a code change for each FAQ. Live numbers
+                  (sales, stock, attendance) still come from tools.
+                </p>
+                <p className="theme-text-muted mt-2 text-xs">
+                  {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Test answers in the Test console tab
+                </p>
+              </div>
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={installingFoundation}
+                onClick={() => void installFoundation()}
+              >
+                {installingFoundation ? "Installing…" : "Install foundation notes"}
+              </PrimaryButton>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-8 xl:grid-cols-2 xl:items-start">
-            <div className="theme-inset-panel min-h-0 rounded-xl border p-5 shadow-sm">
-              <h3 className="theme-heading text-sm font-semibold">
-                {form.id ? "Edit training note" : "Add training note"}
-              </h3>
-              <p className="theme-subtext mt-1 text-sm">
-                Facts every tenant assistant should know. Optionally limit to a module workspace or related screen path.
-              </p>
+            <div className="space-y-6">
+              <div className="theme-inset-panel min-h-0 rounded-xl border p-5 shadow-sm">
+                <h3 className="theme-heading text-sm font-semibold">
+                  {form.id ? "Edit Q&A note" : "Add Q&A note"}
+                </h3>
+                <p className="theme-subtext mt-1 text-sm">
+                  Topic = the question users ask. Content = the answer Centrix should give (include the path).
+                </p>
 
-              <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(70vh,640px)] flex-col gap-3">
-                <label className="block text-sm">
-                  <span className="theme-heading mb-1 block font-medium">Topic</span>
-                  <input
-                    className={inputClassName()}
-                    value={form.topic}
-                    onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                    placeholder="e.g. How GRN works"
-                    required
-                  />
-                </label>
-                <label className="block min-h-0 flex-1 text-sm">
-                  <span className="theme-heading mb-1 block font-medium">Content</span>
-                  <textarea
-                    className={`${inputClassName()} min-h-[min(42vh,360px)] flex-1`}
-                    value={form.content}
-                    onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                    placeholder="What should every organization's assistant know?"
-                    required
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(52vh,480px)] flex-col gap-3">
                   <label className="block text-sm">
-                    <span className="theme-heading mb-1 block font-medium">Related path (optional)</span>
+                    <span className="theme-heading mb-1 block font-medium">Question / topic</span>
                     <input
                       className={inputClassName()}
-                      value={form.path}
-                      onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
-                      placeholder="/purchases"
+                      value={form.topic}
+                      onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                      placeholder="e.g. Is stock counted in kg or bags?"
+                      required
                     />
                   </label>
-                  <label className="block text-sm">
-                    <span className="theme-heading mb-1 block font-medium">Module scope</span>
-                    <SearchableSelect
-  className={inputClassName()}
-  value={form.workspace_id}
-  nativeEvent
-  onChange={((e) => setForm((f) => ({ ...f, workspace_id: e.target.value })))}
-  options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                  <label className="block min-h-0 flex-1 text-sm">
+                    <span className="theme-heading mb-1 block font-medium">Answer / training note</span>
+                    <textarea
+                      className={`${inputClassName()} min-h-[min(28vh,240px)] flex-1`}
+                      value={form.content}
+                      onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+                      placeholder="Explain how Centrix works and which screen to open, e.g. Use UoM base units… open /uoms"
+                      required
+                    />
                   </label>
-                </div>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
-                    {form.id ? "Update note" : "Save platform note"}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm">
+                      <span className="theme-heading mb-1 block font-medium">Related path (optional)</span>
+                      <input
+                        className={inputClassName()}
+                        value={form.path}
+                        onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
+                        placeholder="/uoms"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="theme-heading mb-1 block font-medium">Module scope</span>
+                      <SearchableSelect
+                        className={inputClassName()}
+                        value={form.workspace_id}
+                        nativeEvent
+                        onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
+                        options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: opt.label,
+                        }))}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
+                      {form.id ? "Update note" : "Save platform note"}
+                    </PrimaryButton>
+                    {form.id ? (
+                      <button
+                        type="button"
+                        onClick={resetKnowledgeForm}
+                        className="theme-secondary-btn rounded-lg px-4 py-2 text-sm"
+                      >
+                        Cancel edit
+                      </button>
+                    ) : null}
+                  </div>
+                </form>
+              </div>
+
+              <div className="theme-inset-panel rounded-xl border p-5 shadow-sm">
+                <h3 className="theme-heading text-sm font-semibold">Bulk paste Q&A</h3>
+                <p className="theme-subtext mt-1 text-sm">
+                  Paste many notes at once. Separate pairs with a blank line:
+                </p>
+                <pre className="theme-text-muted mt-2 overflow-x-auto rounded-md bg-[var(--theme-page-bg)] p-3 text-xs">
+{`Q: Where is GRN?
+A: Open /inventory/receipts to receive goods.
+Path: /inventory/receipts
+
+Q: How do I set retail packaging?
+A: Enable Sell on retail, then configure /retail-package-settings.`}
+                </pre>
+                <form onSubmit={importBulkQa} className="mt-3 flex flex-col gap-3">
+                  <textarea
+                    className={`${inputClassName()} min-h-40`}
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder="Paste Q:/A: blocks here…"
+                  />
+                  <PrimaryButton type="submit" showIcon={false} disabled={savingBulk || !bulkText.trim()}>
+                    {savingBulk ? "Importing…" : "Import Q&A notes"}
                   </PrimaryButton>
-                  {form.id ? (
-                    <button
-                      type="button"
-                      onClick={resetKnowledgeForm}
-                      className="theme-secondary-btn rounded-lg px-4 py-2 text-sm"
-                    >
-                      Cancel edit
-                    </button>
-                  ) : null}
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
 
             <div className="theme-inset-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border p-5 shadow-sm">
               <div className="flex shrink-0 items-center justify-between gap-2">
                 <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
                 <SearchableSelect
-  className={`${inputClassName()} px-2 py-1 text-xs`}
-  value={filterWorkspace}
-  nativeEvent
-  onChange={((e) => setFilterWorkspace(e.target.value))}
-  options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                  className={`${inputClassName()} px-2 py-1 text-xs`}
+                  value={filterWorkspace}
+                  nativeEvent
+                  onChange={(e) => setFilterWorkspace(e.target.value)}
+                  options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
               </div>
 
               {loadingKnowledge ? (
                 <p className="theme-subtext mt-4 text-sm">Loading…</p>
               ) : knowledge.length === 0 ? (
-                <p className="theme-subtext mt-4 text-sm">No platform training notes yet.</p>
+                <p className="theme-subtext mt-4 text-sm">
+                  No platform training notes yet. Click &quot;Install foundation notes&quot; or add a Q&A above.
+                </p>
               ) : (
                 <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {knowledge.map((entry) => (

@@ -39,7 +39,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/ai-training",
         label: "AI training",
         icon: "star",
-        description: "Platform-wide knowledge notes and test console for the ERP assistant.",
+        description: "Platform-wide Q&A training notes and test console for the ERP assistant.",
       },
       {
         href: "/platform/ai-usage",

@@ -14,7 +14,8 @@ import {
   supplierPaymentReferenceMeta,
   validateSupplierPaymentReference,
 } from "./suppliers-shared";
-import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { useAuth } from "@/contexts/auth-context";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
 function PaymentMethodReferenceFields({ form, setForm, paymentMethods }) {
   const selectedMethod = useMemo(
@@ -74,6 +75,7 @@ export function RecordSupplierPaymentForm({
   pageTitle = "Record supplier payment",
   pageSubtitle = "Post a payment to reduce accounts payable. Link to an LPO when paying for a specific purchase.",
 }) {
+  const { capabilities } = useAuth();
   const [form, setForm] = useState(() => ({
     ...EMPTY_SUPPLIER_PAYMENT_FORM,
     lpo_no: initialLpoNo ? String(initialLpoNo) : "",
@@ -102,7 +104,13 @@ export function RecordSupplierPaymentForm({
       .then(([supRes, methodsRes]) => {
         if (cancelled) return;
         setSuppliers(supRes.data ?? []);
-        setPaymentMethods(listActiveOrgPaymentMethods(methodsRes.data ?? methodsRes ?? []));
+        setPaymentMethods(
+          filterPaymentMethodsForOrg(
+            methodsRes.data ?? methodsRes ?? [],
+            capabilities?.module_settings,
+            { capabilities, checkoutContext: "order_payment" },
+          ),
+        );
       })
       .catch(() => {
         if (!cancelled) setFormError("Failed to load suppliers or payment methods.");
@@ -113,7 +121,7 @@ export function RecordSupplierPaymentForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [capabilities]);
 
   useEffect(() => {
     if (initialLpoNo) {

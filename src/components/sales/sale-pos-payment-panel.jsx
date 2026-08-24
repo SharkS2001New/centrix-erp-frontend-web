@@ -64,14 +64,19 @@ export function SalePosPaymentPanel({
     if (!open) return;
     setError(null);
     setMethodsError(null);
-    apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } })
+    apiRequest("/payment-methods", { searchParams: { per_page: 200, "filter[is_active]": 1 } })
       .then((res) => {
-        const methods = filterPaymentMethodsForOrg(res.data ?? [], capabilities?.module_settings, {
-          capabilities,
-        });
+        // Settings → Sales → Recording payments for this organization.
+        const methods = filterPaymentMethodsForOrg(
+          res.data ?? [],
+          capabilities?.module_settings,
+          { capabilities, checkoutContext: "order_payment" },
+        );
         setPaymentMethods(methods);
         if (!methods.length) {
-          setMethodsError("No active payment methods are available for this organization.");
+          setMethodsError(
+            "No payment methods enabled. Turn them on under Settings → Sales → Recording payments.",
+          );
         }
       })
       .catch((e) => {
@@ -88,7 +93,8 @@ export function SalePosPaymentPanel({
       try {
         if (!paymentMethods.length) {
           throw new ApiError(
-            methodsError || "No payment methods available. Ask an admin to enable Cash / M-Pesa / Bank.",
+            methodsError ||
+              "No payment methods available. Enable them under Settings → Sales → Recording payments.",
             422,
           );
         }
@@ -107,7 +113,7 @@ export function SalePosPaymentPanel({
           const method = resolvePaymentMethodByCode(paymentMethods, code);
           if (!method) {
             throw new ApiError(
-              `Payment method "${code}" is not set up. Add it under Admin → Payment methods, or use Cash / M-Pesa / Bank.`,
+              `Payment method "${code}" is not set up. Enable it under Settings → Sales → Recording payments, or use an enabled method.`,
               422,
             );
           }

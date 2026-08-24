@@ -333,12 +333,20 @@ export default function SalesOrdersListScreen({
   );
   const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
   const includeWhatsappOrders = isPlatformWhatsappEnabled(capabilities);
+  // Returns/payments/expenses APIs require sales.manage (orders.edit alias).
+  const canManageMobileQuickActions = hasPermission(P.sales.orders.edit);
   const showMobileReturnsCard =
-    queueSlug === "mobile" && isMobileOrdersReturnsCardEnabled(capabilities);
+    queueSlug === "mobile" &&
+    canManageMobileQuickActions &&
+    isMobileOrdersReturnsCardEnabled(capabilities);
   const showMobilePaymentsCard =
-    queueSlug === "mobile" && isMobileOrdersPaymentsCardEnabled(capabilities);
+    queueSlug === "mobile" &&
+    canManageMobileQuickActions &&
+    isMobileOrdersPaymentsCardEnabled(capabilities);
   const showMobileExpensesCard =
-    queueSlug === "mobile" && isMobileOrdersExpensesCardEnabled(capabilities);
+    queueSlug === "mobile" &&
+    canManageMobileQuickActions &&
+    isMobileOrdersExpensesCardEnabled(capabilities);
   const queueConfig = useMemo(
     () =>
       resolveSalesOrderQueue(listQueueSlug, orgWorkflow, {
@@ -639,6 +647,9 @@ export default function SalesOrdersListScreen({
     }
     apiRequest("/sale-payments", {
       searchParams: { sale_ids: saleIds.join(","), per_page: 200 },
+      loading: false,
+      // Optional enrichment — queue-view roles often lack payments.view.
+      reportIssues: false,
     })
       .then((res) => setPaymentRefsBySaleId(indexPaymentRefs(res.data)))
       .catch(() => setPaymentRefsBySaleId(new Map()));
@@ -1783,10 +1794,16 @@ export default function SalesOrdersListScreen({
       onPrintThermal: () => printOrder(sale, "receipt"),
       onPrintA4: () => printOrder(sale, "invoice"),
       onPrintProforma: () => printOrder(sale, "proforma"),
-      onAdvance: routeOrdersOnly ? null : (status) => handleAdvance(sale, status),
-      onCancel: routeOrdersOnly ? null : () => handleAdvance(sale, "cancelled"),
+      onAdvance:
+        routeOrdersOnly || !hasPermission(P.sales.orders.edit)
+          ? null
+          : (status) => handleAdvance(sale, status),
+      onCancel:
+        routeOrdersOnly || !hasPermission(P.sales.orders.edit)
+          ? null
+          : () => handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router, canCollectPayments]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router, canCollectPayments, hasPermission]);
 
   useEffect(() => {
     setPage(1);
@@ -1917,12 +1934,14 @@ export default function SalesOrdersListScreen({
                 Conversations & help
               </Link>
             ) : null}
-            <Link
-              href="/sales/pos"
-              className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-            >
-              + New sale
-            </Link>
+            {hasPermission(P.sales.orders.create) ? (
+              <Link
+                href="/sales/pos"
+                className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+              >
+                + New sale
+              </Link>
+            ) : null}
           </div>
         )
       }
@@ -2300,7 +2319,7 @@ export default function SalesOrdersListScreen({
                                 : null
                             }
                             onRestore={
-                              restoreTarget
+                              restoreTarget && hasPermission(P.sales.orders.edit)
                                 ? () => void handleAdvance(sale, restoreTarget)
                                 : null
                             }

@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { latexToPlain, parseMarkdownHeading } from "@/lib/ai-message-format";
+import {
+  latexToPlain,
+  parseMarkdownHeading,
+  splitMarkdownContentBlocks,
+} from "@/lib/ai-message-format";
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
 /** Match Centrix paths even when wrapped in markdown emphasis. */
@@ -151,15 +155,61 @@ const HEADING_CLASS = {
   3: "m-0 text-sm font-semibold text-slate-800",
 };
 
-/** Render assistant/user chat text with markdown emphasis and clickable Centrix paths. */
+/**
+ * @param {{ headers: string[], rows: string[][], startIndex: number }} table
+ * @param {((event: import("react").MouseEvent, href: string) => void) | undefined} onNavigate
+ */
+function renderMarkdownTable(table, onNavigate) {
+  return (
+    <div key={`table-${table.startIndex}`} className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full min-w-[16rem] border-collapse text-left text-sm">
+        <thead className="bg-slate-50">
+          <tr>
+            {table.headers.map((header, colIndex) => (
+              <th
+                key={`th-${table.startIndex}-${colIndex}`}
+                className="border-b border-slate-200 px-3 py-2 font-semibold text-slate-800"
+              >
+                {renderInline(header, `th-${table.startIndex}-${colIndex}`, onNavigate)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, rowIndex) => (
+            <tr key={`tr-${table.startIndex}-${rowIndex}`} className="odd:bg-white even:bg-slate-50/60">
+              {row.map((cell, colIndex) => (
+                <td
+                  key={`td-${table.startIndex}-${rowIndex}-${colIndex}`}
+                  className="border-t border-slate-100 px-3 py-2 align-top text-slate-800"
+                >
+                  {renderInline(cell, `td-${table.startIndex}-${rowIndex}-${colIndex}`, onNavigate)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Render assistant/user chat text with markdown emphasis, tables, and clickable Centrix paths. */
 export function AiMessageContent({ content, onNavigate, className = "" }) {
   if (!content) return null;
 
   const lines = latexToPlain(String(content)).replace(/\r\n/g, "\n").split("\n");
+  const blocks = splitMarkdownContentBlocks(lines);
 
   return (
     <div className={`space-y-2 text-sm leading-relaxed ${className}`}>
-      {lines.map((line, lineIndex) => {
+      {blocks.map((block) => {
+        if (block.type === "table") {
+          return renderMarkdownTable(block, onNavigate);
+        }
+
+        const line = block.line;
+        const lineIndex = block.index;
         const heading = parseMarkdownHeading(line);
         if (heading) {
           const Tag = heading.level === 1 ? "h3" : heading.level === 2 ? "h4" : "h5";

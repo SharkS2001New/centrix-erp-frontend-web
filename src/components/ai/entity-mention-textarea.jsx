@@ -16,7 +16,7 @@ const MENU_GAP = 4;
 const LIST_MAX_HEIGHT = 240;
 
 /**
- * Textarea with `@` entity autocomplete (products, suppliers, customers, employees, branches).
+ * Textarea with `@` entity autocomplete (products, suppliers, customers, employees, users, branches).
  *
  * @param {{
  *   value?: string,
@@ -42,7 +42,7 @@ export function EntityMentionTextarea({
   rows = 4,
   className = "",
   textareaClassName = "",
-  hint = "Type @ to pick a product, supplier, customer, employee, or branch",
+  hint = "Type @ to pick a product, supplier, customer, employee, user, or branch",
   maxLength,
 }) {
   const listId = useId();

@@ -49,3 +49,60 @@ export async function trainAiFromUsageQuestion(input) {
     },
   });
 }
+
+/**
+ * Parse pasted Q&A text into note rows.
+ * Accepts blocks separated by blank lines, each starting with Q: / A: (or Question: / Answer:).
+ * @param {string} text
+ * @returns {Array<{ question: string, answer: string, path?: string }>}
+ */
+export function parseTrainingQaPaste(text) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return [];
+
+  const blocks = raw.split(/\n\s*\n+/).map((b) => b.trim()).filter(Boolean);
+  /** @type {Array<{ question: string, answer: string, path?: string }>} */
+  const notes = [];
+
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    let question = "";
+    let answer = "";
+    let path = "";
+
+    for (const line of lines) {
+      const q = line.match(/^(?:Q|Question)\s*[:\-]\s*(.+)$/i);
+      const a = line.match(/^(?:A|Answer)\s*[:\-]\s*(.+)$/i);
+      const p = line.match(/^(?:Path|Screen)\s*[:\-]\s*(.+)$/i);
+      if (q) question = q[1].trim();
+      else if (a) answer = a[1].trim();
+      else if (p) path = p[1].trim();
+      else if (!question) question = line;
+      else answer = answer ? `${answer} ${line}` : line;
+    }
+
+    if (question && answer) {
+      notes.push({
+        question,
+        answer,
+        ...(path ? { path } : {}),
+      });
+    }
+  }
+
+  return notes;
+}
+
+export async function bulkImportTrainingNotes(notes) {
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/bulk`, {
+    method: "POST",
+    body: { notes },
+  });
+}
+
+export async function installFoundationTrainingNotes() {
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/install-foundation`, {
+    method: "POST",
+    body: {},
+  });
+}

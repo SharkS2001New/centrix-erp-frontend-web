@@ -25,6 +25,7 @@ import {
   SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { useAuth } from "@/contexts/auth-context";
 import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
 /** Normalize list payloads from /pos/expense-groups or /payment-methods. */
@@ -651,6 +652,7 @@ export function SessionExpensesModal({
                 <tr>
                   <th className="px-3 py-2">Description</th>
                   <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2">Paid by</th>
                   <th className="px-3 py-2 text-right">Amount</th>
                 </tr>
               </thead>
@@ -661,6 +663,9 @@ export function SessionExpensesModal({
                       {String(row.description ?? "").trim() || row.expense_group?.group_name || "Expense"}
                     </td>
                     <td className="px-3 py-2 text-slate-600">{row.expense_group?.group_name ?? "—"}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {row.payment_method?.method_name ?? row.payment_method?.method_code ?? "—"}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-900">
                       {formatTillKes(row.expense_amount)}
                     </td>
@@ -700,6 +705,7 @@ export function RecordSessionExpenseModal({
   error = null,
   embedded = false,
 }) {
+  const { capabilities } = useAuth();
   const [expenseGroups, setExpenseGroups] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [expenseGroupId, setExpenseGroupId] = useState("");
@@ -739,6 +745,8 @@ export function RecordSessionExpenseModal({
             : [];
         let methods = listExpensePaymentMethods(
           coercePaymentMethodRows(groupsRes?.payment_methods),
+          capabilities?.module_settings,
+          { capabilities },
         );
         if (methods.length === 0) {
           try {
@@ -749,6 +757,8 @@ export function RecordSessionExpenseModal({
             if (cancelled) return;
             methods = listExpensePaymentMethods(
               coercePaymentMethodRows(pmRes?.data ?? pmRes),
+              capabilities?.module_settings,
+              { capabilities },
             );
           } catch {
             /* keep empty — surface below */
@@ -758,11 +768,15 @@ export function RecordSessionExpenseModal({
         setPaymentMethods(methods);
         setLoadError(
           methods.length === 0
-            ? "No payment methods available. Ask an admin to enable methods under Administration → Payment methods."
+            ? "No payment methods available. Enable them under Settings → Sales → Recording payments."
             : null,
         );
         if (groups[0]) setExpenseGroupId(String(groups[0].id));
-        const defaultMethodId = pickPreferredPaymentMethodId(methods);
+        const defaultMethodId = pickPreferredPaymentMethodId(
+          methods,
+          capabilities?.module_settings,
+          { capabilities },
+        );
         if (defaultMethodId) setExpensePaymentMethodId(String(defaultMethodId));
       } catch (e) {
         if (!cancelled) {
@@ -778,7 +792,7 @@ export function RecordSessionExpenseModal({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, capabilities]);
 
   if (!open) return null;
 

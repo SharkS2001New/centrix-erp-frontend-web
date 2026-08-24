@@ -194,7 +194,10 @@ export function AdminPaymentMethodsScreen() {
   );
 
   return (
-    <CatalogPageShell title="Payment methods" subtitle="Tender types used at checkout, expenses, and supplier payments">
+    <CatalogPageShell
+      title="Payment methods"
+      subtitle="Catalog of tender types for this organization. Enable which ones staff can use under Settings → Sales → Recording payments."
+    >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Payment methods" }]} />
 
       <div className="mb-4 flex flex-wrap items-center justify-end gap-2">

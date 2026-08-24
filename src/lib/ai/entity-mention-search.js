@@ -3,13 +3,14 @@ import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { searchReportFilterOptions } from "@/lib/reports/report-filter-search";
 import { getStoredOrganization } from "@/lib/auth-storage";
 
-/** @typedef {'product' | 'supplier' | 'customer' | 'employee' | 'branch'} EntityMentionType */
+/** @typedef {'product' | 'supplier' | 'customer' | 'employee' | 'user' | 'branch'} EntityMentionType */
 
 export const ENTITY_MENTION_TYPES = [
   { type: "product", label: "Product" },
   { type: "supplier", label: "Supplier" },
   { type: "customer", label: "Customer" },
   { type: "employee", label: "Employee" },
+  { type: "user", label: "User" },
   { type: "branch", label: "Branch" },
 ];
 
@@ -150,9 +151,41 @@ export async function searchEntityMentions(type, query, options = {}) {
       }));
     }
     case "employee": {
+      const searchParams = {
+        per_page: 12,
+        page: 1,
+        fields: "lean",
+        is_active: 1,
+        ...(q ? { q } : {}),
+      };
+      const res = await apiRequest("/employees", {
+        searchParams,
+        loading: false,
+        reportIssues: false,
+        signal,
+      });
+      return (Array.isArray(res?.data) ? res.data : [])
+        .filter((row) => row && (row.id || row.full_name || row.employee_code))
+        .slice(0, 12)
+        .map((row) => {
+          const code = String(row.employee_code ?? row.payroll_number ?? "").trim();
+          const name = String(row.full_name ?? "").trim()
+            || [row.first_name, row.last_name].filter(Boolean).join(" ").trim()
+            || code
+            || `Employee #${row.id}`;
+          return {
+            type: "employee",
+            id: String(row.id),
+            code: code || null,
+            label: name,
+            meta: code || `ID ${row.id}`,
+          };
+        });
+    }
+    case "user": {
       const optionsList = await searchReportFilterOptions("cashiers", q, { signal });
       return optionsList.slice(0, 12).map((opt) => ({
-        type: "employee",
+        type: "user",
         id: String(opt.value),
         code: null,
         label: String(opt.label),

@@ -366,8 +366,9 @@ function PaymentFieldsTab({
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Used when recording payment on a saved order (Sales → Orders → Collect payment).
-        {hasPosSales ? " External POS checkout also uses these payment method fields." : ""}
+        Controls which payment methods are available across the organization: Collect payment,
+        expenses, supplier payments, External POS checkout, and related forms.
+        {hasPosSales ? " External POS also uses these fields for amount entry." : ""}
       </p>
       <Toggle
         label="Allow collecting small payments"

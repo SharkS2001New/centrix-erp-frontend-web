@@ -8,6 +8,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
 import { postFolioPaymentsFromPanel } from "@/lib/hospitality-folio-payments";
+import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
 import {
   CatalogPageShell,
   Field,
@@ -83,7 +84,7 @@ function FrontDeskManager() {
       reportIssues: false,
     })
       .then((res) => {
-        if (!cancelled) setActivePaymentMethods(res?.data ?? []);
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res?.data ?? []));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);

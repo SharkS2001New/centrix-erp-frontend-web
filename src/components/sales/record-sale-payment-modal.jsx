@@ -26,11 +26,13 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
     if (!open) return;
     setError(null);
     setAmount(balanceDue != null ? String(balanceDue) : "");
-    apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } })
+    apiRequest("/payment-methods", { searchParams: { per_page: 200, "filter[is_active]": 1 } })
       .then((res) => {
-        const methods = filterPaymentMethodsForOrg(res.data ?? [], capabilities?.module_settings, {
-          capabilities,
-        }).filter((m) => getPaymentMethodKind(m) !== "credit");
+        const methods = filterPaymentMethodsForOrg(
+          res.data ?? [],
+          capabilities?.module_settings,
+          { capabilities, checkoutContext: "order_payment" },
+        ).filter((m) => getPaymentMethodKind(m) !== "credit");
         setPaymentMethods(methods);
         if (methods[0]) setPaymentMethodId(String(methods[0].id));
       })

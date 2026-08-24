@@ -75,7 +75,7 @@ export function AccountingCustomerInvoicesIdScreen() {
           reportIssues: false,
         }),
         apiRequest("/payment-methods", {
-          searchParams: { per_page: 50, "filter[is_active]": 1 },
+          searchParams: { per_page: 200, "filter[is_active]": 1 },
           reportIssues: false,
         }),
       ]);
@@ -84,6 +84,7 @@ export function AccountingCustomerInvoicesIdScreen() {
       setMethods(
         filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
           capabilities,
+          checkoutContext: "order_payment",
         }),
       );
       const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);

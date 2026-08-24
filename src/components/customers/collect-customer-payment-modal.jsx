@@ -39,7 +39,7 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
     setLoading(true);
     Promise.all([
       apiRequest("/payment-methods", {
-        searchParams: { per_page: 50, "filter[is_active]": 1 },
+        searchParams: { per_page: 200, "filter[is_active]": 1 },
       }).catch(() => ({ data: [] })),
       apiRequest("/customer-invoices", {
         searchParams: {
@@ -51,9 +51,11 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
       .then(([methodsRes, invoicesRes]) => {
         if (cancelled) return;
         setMethods(
-          filterPaymentMethodsForOrg(methodsRes.data ?? methodsRes ?? [], capabilities?.module_settings, {
-            capabilities,
-          }),
+          filterPaymentMethodsForOrg(
+            methodsRes.data ?? methodsRes ?? [],
+            capabilities?.module_settings,
+            { capabilities, checkoutContext: "order_payment" },
+          ),
         );
         const open = (invoicesRes.data ?? []).filter((inv) => {
           const status = Number(inv.payment_status);

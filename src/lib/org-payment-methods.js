@@ -1,9 +1,14 @@
 /**
- * Org payment-method dropdowns for External POS / Collect payment should match
- * Sales → Settings → Payment fields (not the full Admin catalog).
+ * Organization payment methods for pickers and payment posting.
  *
- * Expenses, supplier payments, and similar bookkeeping forms should use
- * {@link listActiveOrgPaymentMethods} instead — the full Admin catalog.
+ * Source of truth for which tenders appear: Settings → Sales → Recording payments
+ * (M-Pesa / Equity / KCB / Other bank / Cheque field toggles).
+ *
+ * Catalog rows still come from Administration → Payment methods (`is_active`).
+ * Use {@link filterPaymentMethodsForOrg} (or {@link listExpensePaymentMethods} for expenses).
+ *
+ * {@link listActiveOrgPaymentMethods} returns the full active catalog without Recording
+ * payments filtering — prefer only when you need labels for already-posted payments.
  */
 
 import { getPaymentMethodKind } from "@/lib/sales";
@@ -51,8 +56,7 @@ function sortOrgPaymentMethods(list) {
 }
 
 /**
- * All active Admin → Payment methods rows (Cash, M-Pesa, Equity, Card, …).
- * Use for expenses, supplier payments, and other non-POS bookkeeping forms.
+ * All active Administration → Payment methods rows (no Recording payments filter).
  *
  * @param {Array<object>|null|undefined} methods
  * @returns {Array<object>}
@@ -68,30 +72,7 @@ export function listActiveOrgPaymentMethods(methods) {
 }
 
 /**
- * Default payment method for Record expense: Cash → M-Pesa → Equity → KCB → first active.
- *
- * @param {Array<object>|null|undefined} methods
- * @returns {string} method id as string, or ""
- */
-export function pickPreferredPaymentMethodId(methods) {
-  const list = listExpensePaymentMethods(methods);
-  if (list.length === 0) return "";
-  return String(list[0].id ?? "");
-}
-
-/**
- * Payment methods for Record expense pickers.
- * Prefers Cash → M-Pesa → Equity → KCB, then other active methods.
- *
- * @param {Array<object>|null|undefined} methods
- * @returns {Array<object>}
- */
-export function listExpensePaymentMethods(methods) {
-  return listActiveOrgPaymentMethods(methods);
-}
-
-/**
- * Which tender slots External POS / Collect payment are configured to collect.
+ * Which tender slots Recording payments / External POS are configured to collect.
  *
  * @param {object|null} moduleSettings
  * @param {object} [options]
@@ -137,7 +118,8 @@ export function resolveOrgPaymentMethodFlags(moduleSettings, options = {}) {
 }
 
 /**
- * Filter Admin payment_methods rows down to External POS–configured tenders.
+ * Filter active catalog rows to Settings → Sales → Recording payments toggles.
+ * Cash is always included; M-Pesa / Equity / KCB / Other bank / Cheque follow the settings.
  *
  * @param {Array<object>|null|undefined} methods
  * @param {object|null} moduleSettings
@@ -163,9 +145,45 @@ export function filterPaymentMethodsForOrg(methods, moduleSettings, options = {}
     if (code === "KCB") return flags.kcb;
     if (OTHER_BANK_CODES.has(code)) return flags.otherBank;
 
-    // Custom / Card / Voucher / Points — not part of External POS payment fields.
+    // Custom / Card / Voucher / Points — not part of Recording payments fields.
     return false;
   });
 
   return sortOrgPaymentMethods(filtered);
+}
+
+/**
+ * Payment methods for Record expense pickers.
+ * Same Recording payments filter as elsewhere; Credit and Cheque are not expense tenders.
+ *
+ * @param {Array<object>|null|undefined} methods
+ * @param {object|null} [moduleSettings]
+ * @param {object} [options]
+ * @returns {Array<object>}
+ */
+export function listExpensePaymentMethods(methods, moduleSettings = null, options = {}) {
+  const excluded = new Set(["CREDIT", "CHEQUE", "CHECK"]);
+  return filterPaymentMethodsForOrg(methods, moduleSettings, {
+    ...options,
+    includeCredit: false,
+  }).filter((row) => {
+    const code = normalizeCode(row.method_code);
+    if (excluded.has(code)) return false;
+    if (code.includes("CREDIT")) return false;
+    return true;
+  });
+}
+
+/**
+ * Default payment method for Record expense: Cash → M-Pesa → Equity → KCB → first allowed.
+ *
+ * @param {Array<object>|null|undefined} methods
+ * @param {object|null} [moduleSettings]
+ * @param {object} [options]
+ * @returns {string} method id as string, or ""
+ */
+export function pickPreferredPaymentMethodId(methods, moduleSettings = null, options = {}) {
+  const list = listExpensePaymentMethods(methods, moduleSettings, options);
+  if (list.length === 0) return "";
+  return String(list[0].id ?? "");
 }

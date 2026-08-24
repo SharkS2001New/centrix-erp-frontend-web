@@ -58,6 +58,7 @@ import {
 } from "@/lib/hotel-pos-theme-templates";
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
@@ -396,7 +397,7 @@ export function HotelBarPosScreen() {
       searchParams: { per_page: 50, "filter[is_active]": 1 },
     })
       .then((res) => {
-        if (!cancelled) setActivePaymentMethods(res.data ?? []);
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res.data ?? []));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);

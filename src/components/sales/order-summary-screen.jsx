@@ -92,6 +92,7 @@ import {
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { PodRecordSummary } from "@/components/fulfillment/pod-record-summary";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { InlineActionError } from "@/components/shared/inline-action-error";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
@@ -609,7 +610,12 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
       setSale(saleData);
       setPayments(payRes.data ?? []);
-      setPaymentMethods(methodsRes.data ?? []);
+      setPaymentMethods(
+        filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
+          capabilities,
+          checkoutContext: "order_payment",
+        }),
+      );
       setOrderReturns(returnsRes.data ?? []);
 
       const { branchName, cashierName, customer } = await loadOrderRelatedDetails(saleData);
@@ -621,7 +627,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     } finally {
       setLoading(false);
     }
-  }, [saleId]);
+  }, [saleId, capabilities]);
 
   useEffect(() => {
     loadSale();

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterPaymentMethodsForOrg,
   listActiveOrgPaymentMethods,
+  listExpensePaymentMethods,
   pickPreferredPaymentMethodId,
   resolveOrgPaymentMethodFlags,
 } from "@/lib/org-payment-methods";
@@ -17,6 +18,16 @@ const CATALOG = [
   { id: 8, method_code: "CREDIT", method_name: "Credit", is_active: true },
   { id: 9, method_code: "VOUCHER", method_name: "Voucher", is_active: true },
 ];
+
+const ALL_ON = {
+  sales: {
+    enable_mpesa_amount: true,
+    enable_equity_bank: true,
+    enable_kcb_bank: true,
+    enable_other_bank: true,
+    enable_cheque: true,
+  },
+};
 
 describe("listActiveOrgPaymentMethods", () => {
   it("returns all active Admin catalog rows including Card and Equity", () => {
@@ -43,27 +54,55 @@ describe("listActiveOrgPaymentMethods", () => {
   });
 });
 
+describe("listExpensePaymentMethods", () => {
+  it("follows Recording payments and excludes Credit and Cheque", () => {
+    const listed = listExpensePaymentMethods(CATALOG, ALL_ON).map((m) => m.method_code);
+    expect(listed).not.toContain("CHEQUE");
+    expect(listed).not.toContain("CREDIT");
+    expect(listed[0]).toBe("CASH");
+    expect(listed).toEqual(["CASH", "MPESA", "EQUITY", "KCB", "BANK"]);
+  });
+
+  it("hides M-Pesa when Recording payments disables the field", () => {
+    const listed = listExpensePaymentMethods(CATALOG, {
+      sales: {
+        enable_mpesa_amount: false,
+        enable_equity_bank: true,
+        enable_kcb_bank: true,
+        enable_other_bank: false,
+        enable_cheque: false,
+      },
+    }).map((m) => m.method_code);
+    expect(listed).toEqual(["CASH", "EQUITY", "KCB"]);
+  });
+});
+
 describe("pickPreferredPaymentMethodId", () => {
   it("defaults Cash then M-Pesa then Equity then KCB", () => {
-    expect(pickPreferredPaymentMethodId(CATALOG)).toBe("1");
+    expect(pickPreferredPaymentMethodId(CATALOG, ALL_ON)).toBe("1");
     expect(
-      pickPreferredPaymentMethodId(CATALOG.filter((m) => m.method_code !== "CASH")),
+      pickPreferredPaymentMethodId(
+        CATALOG.filter((m) => m.method_code !== "CASH"),
+        ALL_ON,
+      ),
     ).toBe("2");
     expect(
       pickPreferredPaymentMethodId(
         CATALOG.filter((m) => !["CASH", "MPESA"].includes(m.method_code)),
+        ALL_ON,
       ),
     ).toBe("3");
     expect(
       pickPreferredPaymentMethodId(
         CATALOG.filter((m) => !["CASH", "MPESA", "EQUITY"].includes(m.method_code)),
+        ALL_ON,
       ),
     ).toBe("4");
   });
 });
 
 describe("filterPaymentMethodsForOrg", () => {
-  it("keeps Cash plus enabled External POS payment fields only", () => {
+  it("keeps Cash plus enabled Recording payments fields only", () => {
     const filtered = filterPaymentMethodsForOrg(CATALOG, {
       sales: {
         enable_mpesa_amount: true,

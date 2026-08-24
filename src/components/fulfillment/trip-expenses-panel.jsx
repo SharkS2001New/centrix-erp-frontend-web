@@ -13,7 +13,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatSaleKes } from "@/lib/sales";
 import { formatTripProfitMargin } from "@/lib/trip-status";
 import { useConfirm } from "@/lib/use-confirm";
-import { listActiveOrgPaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
+import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
 const EMPTY_FORM = {
   expense_group_id: "",
@@ -35,7 +35,7 @@ export function TripExpensesPanel({
   onChanged = null,
   readOnly = false,
 }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
   const confirm = useConfirm();
   const [expenses, setExpenses] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -70,17 +70,23 @@ export function TripExpensesPanel({
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 100 } }),
       ]);
-      const methods = listActiveOrgPaymentMethods(methodsRes.data ?? []);
+      const methods = listExpensePaymentMethods(
+        methodsRes.data ?? [],
+        capabilities?.module_settings,
+        { capabilities },
+      );
       setGroups(groupsRes.data ?? []);
       setPaymentMethods(methods);
       setForm((current) => ({
         ...current,
-        payment_method_id: current.payment_method_id || pickPreferredPaymentMethodId(methods),
+        payment_method_id:
+          current.payment_method_id ||
+          pickPreferredPaymentMethodId(methods, capabilities?.module_settings, { capabilities }),
       }));
     } catch {
       // Non-blocking — form will show validation if lists are empty.
     }
-  }, []);
+  }, [capabilities]);
 
   useEffect(() => {
     loadExpenses();

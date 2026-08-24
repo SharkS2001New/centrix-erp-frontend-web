@@ -133,13 +133,24 @@ export function fetchRoutesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "routes");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/routes", {
-      searchParams: { per_page: 200 },
-      loading: false,
-    });
-    return (res.data ?? []).filter(
-      (route) => !orgId || route.organization_id === orgId,
-    );
+    // Use the permission-free reference picker (same as users/uoms). The CRUD
+    // /routes resource requires sales.view|fulfillment.view and 403'd Mobile
+    // Orders filters for queue-view-only roles.
+    try {
+      const res = await apiRequest("/reference/routes", {
+        searchParams: { per_page: 200 },
+        loading: false,
+        reportIssues: false,
+      });
+      return (res.data ?? []).filter(
+        (route) => !orgId || route.organization_id === orgId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return [];
+      }
+      throw error;
+    }
   });
 }
 
