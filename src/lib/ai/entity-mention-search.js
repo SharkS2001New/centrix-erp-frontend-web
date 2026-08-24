@@ -78,6 +78,7 @@ export function pruneEntityRefs(text, refs) {
  * @param {Array<object>} refs
  */
 export function serializeEntityRefs(refs) {
+  const allowed = new Set(ENTITY_MENTION_TYPES.map((t) => t.type));
   return (Array.isArray(refs) ? refs : [])
     .map((ref) => ({
       type: String(ref.type ?? "").trim(),
@@ -85,7 +86,7 @@ export function serializeEntityRefs(refs) {
       code: ref.code != null && ref.code !== "" ? String(ref.code) : null,
       label: String(ref.label ?? "").trim(),
     }))
-    .filter((ref) => ref.type && ref.label);
+    .filter((ref) => allowed.has(ref.type) && ref.label);
 }
 
 /**

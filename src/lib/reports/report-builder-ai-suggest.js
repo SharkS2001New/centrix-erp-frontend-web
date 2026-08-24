@@ -1,14 +1,25 @@
 import { apiRequest } from "@/lib/api";
+import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 
 /**
  * Ask org AI to draft a report builder name + spec from a natural-language instruction.
- * @param {{ instruction: string, workspaceId?: string | null, selectedProductCodes?: string[] }} params
+ * @param {{
+ *   instruction: string,
+ *   workspaceId?: string | null,
+ *   selectedProductCodes?: string[],
+ *   selectedCustomerNums?: string[],
+ *   selectedSupplierIds?: number[],
+ *   entityRefs?: Array<object>,
+ * }} params
  * @returns {Promise<object>}
  */
 export async function suggestReportBuilderWithAi({
   instruction,
   workspaceId = null,
   selectedProductCodes = null,
+  selectedCustomerNums = null,
+  selectedSupplierIds = null,
+  entityRefs = null,
 } = {}) {
   const body = {
     instruction: String(instruction ?? "").trim(),
@@ -18,6 +29,16 @@ export async function suggestReportBuilderWithAi({
   }
   if (Array.isArray(selectedProductCodes) && selectedProductCodes.length > 0) {
     body.selected_product_codes = selectedProductCodes;
+  }
+  if (Array.isArray(selectedCustomerNums) && selectedCustomerNums.length > 0) {
+    body.selected_customer_nums = selectedCustomerNums;
+  }
+  if (Array.isArray(selectedSupplierIds) && selectedSupplierIds.length > 0) {
+    body.selected_supplier_ids = selectedSupplierIds;
+  }
+  const refs = serializeEntityRefs(entityRefs);
+  if (refs.length > 0) {
+    body.entity_refs = refs;
   }
 
   return apiRequest("/reports/builder/suggest", {

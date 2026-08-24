@@ -452,6 +452,15 @@ export function ReportBuilderScreen() {
     if (Array.isArray(suggestion?.filters?.product_codes) && suggestion.filters.product_codes.length) {
       nextFilters.product_codes = suggestion.filters.product_codes;
     }
+    if (Array.isArray(suggestion?.filters?.customer_nums) && suggestion.filters.customer_nums.length) {
+      nextFilters.customer_nums = suggestion.filters.customer_nums;
+    }
+    if (Array.isArray(suggestion?.filters?.supplier_ids) && suggestion.filters.supplier_ids.length) {
+      nextFilters.supplier_ids = suggestion.filters.supplier_ids;
+    }
+    if (suggestion?.filters?.branch_id) {
+      nextFilters.branch_id = suggestion.filters.branch_id;
+    }
     setPreviewFilters(nextFilters);
     setPreviewRows([]);
     setPreviewFeedback(null);
@@ -821,6 +830,12 @@ export function ReportBuilderScreen() {
                     : ""}
                   {previewFilters.product_codes?.length
                     ? ` · ${previewFilters.product_codes.length} product filter(s)`
+                    : ""}
+                  {previewFilters.customer_nums?.length
+                    ? ` · ${previewFilters.customer_nums.length} customer filter(s)`
+                    : ""}
+                  {previewFilters.supplier_ids?.length
+                    ? ` · ${previewFilters.supplier_ids.length} supplier filter(s)`
                     : ""}
                 </p>
               </div>
