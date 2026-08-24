@@ -517,7 +517,9 @@ export function HikvisionDeviceScreen() {
             value={
               overview?.agent?.online
                 ? `CentrixAttendanceAgent online${overview.agent.version ? ` v${overview.agent.version}` : ""}`
-                : "CentrixAttendanceAgent offline"
+                : device?.agent_last_seen_at
+                  ? "CentrixAttendanceAgent reconnecting"
+                  : "CentrixAttendanceAgent offline"
             }
           />
           <InfoCard label="Model" value={deviceInfo.model ?? deviceInfo.deviceType ?? "—"} />
@@ -676,7 +678,7 @@ function AgentStatusBanner({ device, overview }) {
   const agent = overview?.agent;
   const lastSeenAt = device?.agent_last_seen_at;
   const [seenRecently, setSeenRecently] = useState(false);
-  const ttlMs = Math.max(1, Number(agent?.online_ttl_seconds ?? 120)) * 1000;
+  const ttlMs = Math.max(1, Number(agent?.online_ttl_seconds ?? 1800)) * 1000;
 
   useEffect(() => {
     if (!lastSeenAt) {
@@ -708,11 +710,18 @@ function AgentStatusBanner({ device, overview }) {
           {" — Centrix can send commands to the office agent."}
           {version ? ` (v${version})` : ""}
         </>
+      ) : lastSeenAt ? (
+        <>
+          <strong>CentrixAttendanceAgent is reconnecting.</strong> After the office PC is turned on,
+          the Windows service starts by itself, checks in with Centrix, and continues punch sync.
+          Wait 1–2 minutes and refresh. Do not re-download after a reboot.
+          {lastSeenAt ? ` Last check-in: ${new Date(lastSeenAt).toLocaleString()}.` : ""}
+        </>
       ) : (
         <>
-          <strong>CentrixAttendanceAgent offline.</strong> Download it for this device and run it on a
-          Windows PC on the same LAN as the terminal. Centrix checks the agent automatically when you
-          open this page. Manage Hikvision (users, cards, fingerprints) also goes through the agent.
+          <strong>CentrixAttendanceAgent has never checked in.</strong> Download it once for this
+          device and install it on a LAN PC. After that, leave the Windows service on Automatic —
+          reboots reconnect on their own.
         </>
       )}
     </div>

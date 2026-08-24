@@ -150,7 +150,8 @@ New-Service `
   -Description "Bridges Centrix cloud to a LAN Hikvision terminal (ISAPI proxy and attendance sync)." `
   -StartupType Automatic | Out-Null
 
-sc.exe config $ServiceName start= delayed-auto | Out-Null
+sc.exe config $ServiceName start= auto | Out-Null
+sc.exe config $ServiceName depend= Tcpip/Dnscache | Out-Null
 sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
 
 Start-Service -Name $ServiceName

@@ -32,12 +32,31 @@ function saveState(state) {
   writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
+const CENTRIX_KEEPALIVE_TIMEOUT_MS = 15_000;
+
+async function centrixFetch(url, options = {}, timeoutMs = CENTRIX_KEEPALIVE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(
+        `Centrix request timed out after ${Math.round(timeoutMs / 1000)}s (PC may still be getting internet after boot).`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function postIngestEvents(config, events) {
   if (!config.deviceId) {
     throw new Error("deviceId missing from config — re-download agent package from Centrix.");
   }
   const url = `${centrixDeviceBase(config)}/agent/ingest-events`;
-  const res = await fetch(url, {
+  const res = await centrixFetch(url, {
     method: "POST",
     headers: centrixAuthHeaders(config),
     body: JSON.stringify({
@@ -55,7 +74,7 @@ async function postIngestEvents(config, events) {
         raw: e.raw,
       })),
     }),
-  });
+  }, 90_000);
   const text = await res.text();
   let json = null;
   try {
@@ -74,7 +93,7 @@ async function postIngestEvents(config, events) {
 
 async function postPunchLegacy(config, event) {
   const url = `${String(config.centrixApiUrl).replace(/\/$/, "")}/attendance/clock-punch`;
-  const res = await fetch(url, {
+  const res = await centrixFetch(url, {
     method: "POST",
     headers: centrixAuthHeaders(config),
     body: JSON.stringify({
@@ -83,7 +102,7 @@ async function postPunchLegacy(config, event) {
       punched_at: event.punched_at,
       direction: event.direction || "auto",
     }),
-  });
+  }, 90_000);
   const text = await res.text();
   let json = null;
   try {
@@ -138,7 +157,7 @@ async function executeIsapiCommand(config, command) {
 
 async function submitCommandResult(config, commandId, result) {
   const url = `${centrixDeviceBase(config)}/agent/commands/${commandId}/result`;
-  const res = await fetch(url, {
+  const res = await centrixFetch(url, {
     method: "POST",
     headers: centrixAuthHeaders(config),
     body: JSON.stringify({
@@ -156,10 +175,11 @@ async function submitCommandResult(config, commandId, result) {
   }
 }
 
-function clampPollSeconds(value, fallback = 600) {
+function clampPollSeconds(value, fallback = 60) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 60) return fallback;
-  return Math.min(3600, Math.floor(n));
+  // Keepalive must stay frequent so Centrix stays live after overnight PC sleep/reboot.
+  return Math.min(120, Math.floor(n));
 }
 
 const DEFAULT_PUNCH_WINDOWS = [
@@ -169,7 +189,7 @@ const DEFAULT_PUNCH_WINDOWS = [
   { name: "evening_clock_out", from: "16:00", to: "22:00" },
 ];
 
-let heartbeatIntervalSec = 600;
+let heartbeatIntervalSec = 60;
 let punchPollSec = 60;
 let punchLeadMin = 10;
 let punchLagMin = 20;
@@ -223,7 +243,7 @@ function applyAgentSchedule(payload) {
   if (!payload || typeof payload !== "object") return;
   const heartbeat = Number(payload.heartbeat_interval_seconds ?? payload.poll_interval_seconds);
   if (Number.isFinite(heartbeat) && heartbeat >= 60 && heartbeat !== heartbeatIntervalSec) {
-    heartbeatIntervalSec = Math.min(3600, Math.floor(heartbeat));
+    heartbeatIntervalSec = Math.min(120, Math.floor(heartbeat));
     if (heartbeatTimer) scheduleHeartbeat();
     console.log(`[attendance-agent] Health check every ${heartbeatIntervalSec}s`);
   }
@@ -245,12 +265,18 @@ function applyAgentSchedule(payload) {
 }
 
 function scheduleHeartbeat() {
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  heartbeatTimer = setInterval(() => {
-    void postHeartbeat(activeConfig).catch((err) => {
-      console.warn(`[attendance-agent] heartbeat failed: ${err.message}`);
-    });
-  }, heartbeatIntervalSec * 1000);
+  if (heartbeatTimer) clearTimeout(heartbeatTimer);
+  const tick = () => {
+    void postHeartbeat(activeConfig)
+      .then(() => {
+        heartbeatTimer = setTimeout(tick, heartbeatIntervalSec * 1000);
+      })
+      .catch((err) => {
+        console.warn(`[attendance-agent] heartbeat failed: ${err.message} — retrying in 5s`);
+        heartbeatTimer = setTimeout(tick, 5_000);
+      });
+  };
+  tick();
 }
 
 function schedulePunchPolling() {
@@ -266,14 +292,18 @@ async function pollCentrixCommands(config) {
   const url =
     `${centrixDeviceBase(config)}/agent/commands/pending` +
     `?limit=5&agent_version=${encodeURIComponent(AGENT_VERSION)}`;
-  const res = await fetch(url, { headers: centrixAuthHeaders(config) });
+  const res = await centrixFetch(url, { headers: centrixAuthHeaders(config) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Command poll HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
   const payload = await res.json();
   applyAgentSchedule(payload);
-  const commands = payload?.commands ?? [];
+  const commands = [...(payload?.commands ?? [])].sort((a, b) => {
+    const aPing = String(a.method || "").toUpperCase() === "PING" || a.path === "/agent/ping";
+    const bPing = String(b.method || "").toUpperCase() === "PING" || b.path === "/agent/ping";
+    return Number(bPing) - Number(aPing);
+  });
   let handled = 0;
 
   for (const command of commands) {
@@ -322,7 +352,7 @@ function startCommandPolling(config) {
 async function postHeartbeat(config) {
   if (!config?.deviceId) return;
   const url = `${centrixDeviceBase(config)}/agent/heartbeat`;
-  const res = await fetch(url, {
+  const res = await centrixFetch(url, {
     method: "POST",
     headers: centrixAuthHeaders(config),
     body: JSON.stringify({ agent_version: AGENT_VERSION }),
@@ -594,10 +624,17 @@ async function main() {
     if (attendanceSyncInFlight) return;
     attendanceSyncInFlight = true;
     try {
-      try {
-        await postHeartbeat(config);
-      } catch (err) {
-        console.warn(`[attendance-agent] heartbeat failed: ${err.message}`);
+      for (let i = 0; i < 24; i += 1) {
+        try {
+          await postHeartbeat(config);
+          console.log("[attendance-agent] Checked in with Centrix after Windows start");
+          break;
+        } catch (err) {
+          console.warn(
+            `[attendance-agent] Waiting for network/Centrix (${i + 1}/24): ${err.message}`,
+          );
+          await sleep(5_000);
+        }
       }
       await runCatchupWithRetry(config);
     } catch (err) {

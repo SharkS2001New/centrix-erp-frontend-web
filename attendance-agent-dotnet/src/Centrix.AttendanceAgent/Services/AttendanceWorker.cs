@@ -109,8 +109,10 @@ public sealed class AttendanceWorker : BackgroundService
 
     private async Task RunHeartbeatLoopAsync(CancellationToken ct)
     {
+        var consecutiveFailures = 0;
         while (!ct.IsCancellationRequested)
         {
+            var ok = false;
             try
             {
                 _config.Reload();
@@ -120,25 +122,36 @@ public sealed class AttendanceWorker : BackgroundService
                     ApplyScheduleFromConfig(config);
                     var payload = await _centrix.PostHeartbeatAsync(config, ct);
                     ApplyAgentSchedule(payload);
+                    ok = true;
+                    if (consecutiveFailures > 0)
+                    {
+                        _log.LogInformation("Checked in with Centrix after {Attempts} retries (PC network is up)", consecutiveFailures);
+                    }
+                    consecutiveFailures = 0;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                consecutiveFailures++;
                 if (LooksLikeAuthFailure(ex))
                 {
                     _log.LogError(
                         ex,
-                        "Heartbeat rejected by Centrix (auth). Keep the Windows service running — re-download the agent only if this persists after checking internet/API URL.");
+                        "Heartbeat rejected by Centrix (auth). Keep the Windows service running — do not re-download after a reboot; only re-download if this continues after internet works.");
                 }
                 else
                 {
-                    _log.LogWarning(ex, "Heartbeat failed");
+                    _log.LogWarning(
+                        ex,
+                        "Heartbeat failed (attempt {Attempt}). Retrying in 5s — normal right after Windows start.",
+                        consecutiveFailures);
                 }
             }
 
+            var waitSeconds = ok ? _heartbeatSeconds : 5;
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(_heartbeatSeconds), ct);
+                await Task.Delay(TimeSpan.FromSeconds(waitSeconds), ct);
             }
             catch (OperationCanceledException)
             {
@@ -350,8 +363,13 @@ public sealed class AttendanceWorker : BackgroundService
 
             var (commands, root) = await _centrix.PullCommandsAsync(config, ct);
             ApplyAgentSchedule(root);
+            var ordered = commands
+                .OrderByDescending(c =>
+                    string.Equals(c.Method, "PING", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Path, "/agent/ping", StringComparison.OrdinalIgnoreCase))
+                .ToList();
             var handled = 0;
-            foreach (var command in commands)
+            foreach (var command in ordered)
             {
                 if (string.IsNullOrWhiteSpace(command.Id))
                 {

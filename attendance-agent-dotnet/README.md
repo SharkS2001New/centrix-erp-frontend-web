@@ -8,7 +8,7 @@ Same job as the old Node agent, built like the **Centrix Print Agent**:
 - Real Windows service (`CentrixAttendanceAgent`)
 - Local status page at `http://127.0.0.1:9251`
 - **Command polling runs independently** of punch catch-up so Centrix “Test connection” is not blocked for minutes
-- Version **3.3.1** — punch upload **06:00–02:00 next day** (Nairobi), hourly + keep retrying; **heartbeat every 60s** so Centrix stays live overnight
+- Version **3.3.2** — punch upload **06:00–02:00 next day** (Nairobi), hourly + keep retrying; **heartbeat every 60s** (retries every 5s after boot until Centrix is reachable)
 
 ## Requirements
 
@@ -26,7 +26,7 @@ Same job as the old Node agent, built like the **Centrix Print Agent**:
 
 The zip already contains `config.json` (API URL, token, device, Hikvision IP). Keep it private.
 
-**You should not need to re-download every morning.** Keep the Windows service running; Centrix keeps the agent token across admin logins. Re-download only if last check-in never updates for hours.
+**You should not re-download after turning the PC off and on.** The Windows service starts with Windows (Automatic + TCP/IP), checks in with Centrix, and continues punch sync. Re-download only if last check-in stays blank all day.
 
 ## Uninstall
 

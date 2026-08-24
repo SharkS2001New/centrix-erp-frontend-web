@@ -25,9 +25,30 @@ public sealed class CentrixClient
         };
         _http = new HttpClient(handler)
         {
+            // Per-request timeouts below; this is only a hard ceiling.
             Timeout = TimeSpan.FromSeconds(90),
         };
         _http.DefaultRequestHeaders.ConnectionClose = false;
+    }
+
+    private const int KeepaliveTimeoutSeconds = 15;
+    private const int UploadTimeoutSeconds = 90;
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        try
+        {
+            return await _http.SendAsync(request, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Centrix request timed out after {timeoutSeconds}s (PC may still be getting internet after boot).");
+        }
     }
 
     private static string DeviceBase(AgentConfig config) =>
@@ -50,7 +71,7 @@ public sealed class CentrixClient
     {
         var url = $"{DeviceBase(config)}/agent/heartbeat";
         using var req = Request(config, HttpMethod.Post, url, new { agent_version = AgentConstants.Version });
-        using var res = await _http.SendAsync(req, ct);
+        using var res = await SendAsync(req, KeepaliveTimeoutSeconds, ct);
         var text = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -67,7 +88,7 @@ public sealed class CentrixClient
             $"{DeviceBase(config)}/agent/commands/pending" +
             $"?limit=5&agent_version={Uri.EscapeDataString(AgentConstants.Version)}";
         using var req = Request(config, HttpMethod.Get, url);
-        using var res = await _http.SendAsync(req, ct);
+        using var res = await SendAsync(req, KeepaliveTimeoutSeconds, ct);
         var text = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -112,7 +133,7 @@ public sealed class CentrixClient
             body = result.Body,
             error = result.Error,
         });
-        using var res = await _http.SendAsync(req, ct);
+        using var res = await SendAsync(req, KeepaliveTimeoutSeconds, ct);
         if (!res.IsSuccessStatusCode)
         {
             var text = await res.Content.ReadAsStringAsync(ct);
@@ -144,7 +165,7 @@ public sealed class CentrixClient
             }),
         };
         using var req = Request(config, HttpMethod.Post, url, payload);
-        using var res = await _http.SendAsync(req, ct);
+        using var res = await SendAsync(req, UploadTimeoutSeconds, ct);
         var text = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -170,7 +191,7 @@ public sealed class CentrixClient
             punched_at = punch.PunchedAt,
             direction = punch.Direction,
         });
-        using var res = await _http.SendAsync(req, ct);
+        using var res = await SendAsync(req, UploadTimeoutSeconds, ct);
         if (!res.IsSuccessStatusCode)
         {
             var text = await res.Content.ReadAsStringAsync(ct);

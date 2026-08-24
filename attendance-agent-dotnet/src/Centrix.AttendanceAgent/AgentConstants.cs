@@ -3,7 +3,7 @@ namespace Centrix.AttendanceAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixAttendanceAgent";
-    public const string Version = "3.3.1";
+    public const string Version = "3.3.2";
     public const string ServiceName = "CentrixAttendanceAgent";
     public const int StatusPort = 9251;
     public const int AcsEventPageSize = 30;

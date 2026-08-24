@@ -75,7 +75,9 @@ New-Service `
     -StartupType Automatic | Out-Null
 
 sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-sc.exe config $ServiceName start= delayed-auto | Out-Null
+# Automatic (not delayed): check in as soon as Windows has TCP/IP, not ~2 minutes later.
+sc.exe config $ServiceName start= auto | Out-Null
+sc.exe config $ServiceName depend= Tcpip/Dnscache | Out-Null
 
 Start-Service -Name $ServiceName
 Start-Sleep -Seconds 2

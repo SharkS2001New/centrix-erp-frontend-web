@@ -618,8 +618,8 @@ export function AttendanceClockDevicesSettings() {
 }
 
 function agentOnlineTtlMs(device, probe = null) {
-  const seconds = Number(probe?.agent?.online_ttl_seconds ?? device?.agent_online_ttl_seconds ?? 120);
-  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 120) * 1000;
+  const seconds = Number(probe?.agent?.online_ttl_seconds ?? device?.agent_online_ttl_seconds ?? 1800);
+  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 1800) * 1000;
 }
 
 function isAgentOnline(device, probe = null) {
@@ -635,10 +635,13 @@ function AgentStatusLine({ device, probe }) {
   const detail = probed
     ? probe.online
       ? probe.message || "Centrix can reach the office agent."
-      : probe.error || "CentrixAttendanceAgent is not reachable."
+      : probe.error
+        || (device.agent_last_seen_at
+          ? "Waiting for the office PC to check in after startup. Do not re-download after a reboot."
+          : "CentrixAttendanceAgent has not checked in yet.")
     : device.agent_last_seen_at
-      ? `last seen ${new Date(device.agent_last_seen_at).toLocaleString()}`
-      : "download and install on a LAN PC";
+      ? `last seen ${new Date(device.agent_last_seen_at).toLocaleString()} — after a reboot wait 1–2 minutes`
+      : "download and install once on a LAN PC";
 
   return (
     <div
@@ -655,7 +658,9 @@ function AgentStatusLine({ device, probe }) {
           ? "Checking CentrixAttendanceAgent…"
           : online
             ? "CentrixAttendanceAgent online"
-            : "CentrixAttendanceAgent offline"}
+            : device.agent_last_seen_at
+              ? "CentrixAttendanceAgent reconnecting"
+              : "CentrixAttendanceAgent offline"}
       </p>
       <p className="mt-0.5">{detail}</p>
     </div>
@@ -686,11 +691,10 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
           (Administration → Attendance clock-in).
         </li>
         <li>
-          Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured
-          with Centrix URL, token, and device settings. On a LAN PC: unzip →{" "}
-          <code>BUILD-AND-INSTALL.bat</code> as Administrator (.NET 8 SDK once; no Node.js). That
-          installs the Windows service. Local status: <code>http://127.0.0.1:9251</code>. Agent status
-          is also checked automatically in Centrix when you open Attendance clock-in.
+          Click <strong>Download CentrixAttendanceAgent</strong> on the device — once. Unzip on a LAN
+          PC and run <code>BUILD-AND-INSTALL.bat</code> as Administrator. The Windows service starts
+          with Windows after every reboot and checks in with Centrix by itself — do not re-download
+          every morning. Local status: <code>http://127.0.0.1:9251</code>.
         </li>
         <li>
           The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and
