@@ -60,16 +60,18 @@ function sortOptionsByLabel(options) {
  * @param {string} query
  * @returns {Promise<Array<{ value: string, label: string, searchText?: string }>>}
  */
-export async function searchReportFilterOptions(optionsKey, query) {
+export async function searchReportFilterOptions(optionsKey, query, requestOptions = {}) {
   const q = String(query ?? "").trim();
   // Empty query loads a default first page so opening the select shows options
   // (users, routes, etc.) without requiring a keystroke.
   const searchParams = { per_page: 50, ...(q ? { q } : {}) };
+  const req = { loading: false, reportIssues: false, signal: requestOptions.signal };
 
   switch (optionsKey) {
     case "routes": {
       const res = await apiRequest("/reference/routes", {
         searchParams: { ...searchParams, is_active: 1 },
+        ...req,
       });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({
@@ -79,7 +81,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
       );
     }
     case "subcategories": {
-      const res = await apiRequest("/reference/sub-categories", { searchParams });
+      const res = await apiRequest("/reference/sub-categories", { searchParams, ...req });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({
           value: String(row.id),
@@ -90,6 +92,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
     case "suppliers": {
       const res = await apiRequest("/reference/suppliers", {
         searchParams: { ...searchParams, is_active: 1 },
+        ...req,
       });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({
@@ -99,7 +102,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
       );
     }
     case "cashiers": {
-      const res = await apiRequest("/reports/filter-cashiers", { searchParams });
+      const res = await apiRequest("/reports/filter-cashiers", { searchParams, ...req });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({
           value: String(row.id),
@@ -111,6 +114,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
     case "paymentMethods": {
       const res = await apiRequest("/reference/payment-methods", {
         searchParams: { ...searchParams, is_active: 1 },
+        ...req,
       });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({
@@ -122,6 +126,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
     case "customers": {
       const res = await apiRequest("/customers", {
         searchParams: { ...searchParams, status: "active" },
+        ...req,
       });
       return sortOptionsByLabel(
         (res.data ?? []).map((row) => ({

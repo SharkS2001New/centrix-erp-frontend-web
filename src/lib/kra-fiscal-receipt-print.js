@@ -122,6 +122,7 @@ function kraFailureMatchHaystack(errorMessage, requestPayload, responsePayload) 
           response.Error,
           response.resultMsg,
           response.technical_message,
+          response.technicalMessage,
           JSON.stringify(response),
         ].join(" ")
       : response,
@@ -139,13 +140,23 @@ function extractKraFailureItemTokens(haystack) {
   const patterns = [
     /NO\s+FIND\s+PLU\s+DATA\s+for\s+item\s+(.+?)(?:\s+error|\s*$|[.;,]|\s+Upload)/gis,
     /NO\s+FIND\s+PLU\s+DATA\s+for\s+item\s+([A-Za-z0-9#._/-]+)/gi,
-    /Product not found on the KRA device:\s*([^.(]+?)(?:\s*\(([^)]+)\))?\./gi,
+    // Enriched copy with name + code: "Product not found …: Sugar 1kg (1192003)."
+    /Product not found on the KRA device:\s*(.+?)\s*\(([^)]+)\)/gi,
+    // Enriched copy with code/token only: "Product not found …: 0000001192003."
+    /Product not found on the KRA device:\s*([A-Za-z0-9#._/-]+)(?:\.|\s|$)/gi,
   ];
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
       for (let i = 1; i < match.length; i += 1) {
-        const token = String(match[i] ?? "").trim().replace(/[.;,]+$/g, "");
-        if (token && !/^(code|error|data|name|qty|price|one|more|these|products|were|not|found)$/i.test(token)) {
+        const token = String(match[i] ?? "")
+          .trim()
+          .replace(/[.;,]+$/g, "");
+        if (
+          token &&
+          !/^(code|error|data|name|qty|price|one|more|these|products|were|not|found|upload|device|first|then|retry)$/i.test(
+            token,
+          )
+        ) {
           tokens.add(token.toLowerCase());
         }
       }

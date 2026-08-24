@@ -1,4 +1,4 @@
-import { searchProductCatalogCached } from "@/lib/catalog-cache";
+import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { searchReportFilterOptions } from "@/lib/reports/report-filter-search";
 import { getStoredOrganization } from "@/lib/auth-storage";
@@ -89,6 +89,18 @@ export function serializeEntityRefs(refs) {
     .filter((ref) => allowed.has(ref.type) && ref.label);
 }
 
+function mentionRowsFromProducts(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && (row.product_code || row.product_name))
+    .map((row) => ({
+      type: "product",
+      id: null,
+      code: String(row.product_code ?? ""),
+      label: String(row.product_name ?? row.product_code ?? ""),
+      meta: String(row.product_code ?? ""),
+    }));
+}
+
 /**
  * @param {EntityMentionType} type
  * @param {string} query
@@ -98,24 +110,27 @@ export function serializeEntityRefs(refs) {
 export async function searchEntityMentions(type, query, options = {}) {
   const q = String(query ?? "").trim();
   const orgId = options.organizationId ?? getStoredOrganization()?.id ?? null;
+  const signal = options.signal;
 
   switch (type) {
     case "product": {
-      if (!q) return [];
-      const rows = await searchProductCatalogCached(orgId, q, {
-        limit: 12,
-        signal: options.signal,
+      const searchParams = {
+        per_page: 12,
+        page: 1,
+        fields: "lean",
+        status: "active",
+        ...(q ? { q } : {}),
+      };
+      const res = await apiRequest("/products", {
+        searchParams,
+        loading: false,
+        reportIssues: false,
+        signal,
       });
-      return rows.map((row) => ({
-        type: "product",
-        id: null,
-        code: String(row.product_code ?? ""),
-        label: String(row.product_name ?? row.product_code ?? ""),
-        meta: String(row.product_code ?? ""),
-      }));
+      return mentionRowsFromProducts(res?.data).slice(0, 12);
     }
     case "supplier": {
-      const optionsList = await searchReportFilterOptions("suppliers", q);
+      const optionsList = await searchReportFilterOptions("suppliers", q, { signal });
       return optionsList.slice(0, 12).map((opt) => ({
         type: "supplier",
         id: String(opt.value),
@@ -125,7 +140,7 @@ export async function searchEntityMentions(type, query, options = {}) {
       }));
     }
     case "customer": {
-      const optionsList = await searchReportFilterOptions("customers", q);
+      const optionsList = await searchReportFilterOptions("customers", q, { signal });
       return optionsList.slice(0, 12).map((opt) => ({
         type: "customer",
         id: null,
@@ -135,7 +150,7 @@ export async function searchEntityMentions(type, query, options = {}) {
       }));
     }
     case "employee": {
-      const optionsList = await searchReportFilterOptions("cashiers", q);
+      const optionsList = await searchReportFilterOptions("cashiers", q, { signal });
       return optionsList.slice(0, 12).map((opt) => ({
         type: "employee",
         id: String(opt.value),
@@ -167,9 +182,8 @@ export async function searchEntityMentions(type, query, options = {}) {
   }
 }
 
-/** Prefetch empty-query lists for tabs that support it. */
+/** Prefetch empty-query lists so opening @ immediately shows something to pick. */
 export async function searchEntityMentionsPrefetch(type, options = {}) {
-  if (type === "product") return [];
   return searchEntityMentions(type, "", options);
 }
 

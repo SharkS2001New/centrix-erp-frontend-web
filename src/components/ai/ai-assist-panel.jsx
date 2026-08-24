@@ -406,8 +406,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           <div
             className={`flex flex-col bg-white shadow-2xl ${
               expanded
-                ? "h-[min(90vh,820px)] w-full max-w-3xl rounded-xl"
-                : "h-full w-full max-w-md"
+                ? "h-[min(92vh,920px)] w-full max-w-4xl rounded-xl"
+                : "h-full w-full max-w-xl"
             }`}
             onClick={(e) => e.stopPropagation()}
             role="dialog"

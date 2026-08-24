@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ENTITY_MENTION_TYPES,
   detectMentionTrigger,
   insertMentionAtTrigger,
   pruneEntityRefs,
   searchEntityMentions,
-  searchEntityMentionsPrefetch,
   serializeEntityRefs,
 } from "@/lib/ai/entity-mention-search";
+
+const MENU_Z_INDEX = 11000;
+const MENU_GAP = 4;
+const LIST_MAX_HEIGHT = 240;
 
 /**
  * Textarea with `@` entity autocomplete (products, suppliers, customers, employees, branches).
@@ -43,6 +47,7 @@ export function EntityMentionTextarea({
 }) {
   const listId = useId();
   const textareaRef = useRef(null);
+  const menuRef = useRef(null);
   const abortRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState(null);
@@ -51,6 +56,12 @@ export function EntityMentionTextarea({
   const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const [searchError, setSearchError] = useState(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const refs = useMemo(() => serializeEntityRefs(entityRefs), [entityRefs]);
 
@@ -76,6 +87,7 @@ export function EntityMentionTextarea({
     setOptions([]);
     setHighlight(0);
     setSearchError(null);
+    setMenuStyle(null);
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
@@ -96,6 +108,44 @@ export function EntityMentionTextarea({
   );
 
   useEffect(() => {
+    if (!open) return undefined;
+    const el = textareaRef.current;
+    if (!el) return undefined;
+
+    function updateMenuPosition() {
+      const rect = el.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
+      const spaceAbove = rect.top - MENU_GAP;
+      const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+      const available = openUp ? spaceAbove : spaceBelow;
+      const height = Math.max(160, Math.min(LIST_MAX_HEIGHT + 48, available - 8));
+      const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 16);
+      let left = rect.left;
+      if (left + width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - width - 8);
+      }
+      setMenuStyle({
+        position: "fixed",
+        left,
+        width,
+        zIndex: MENU_Z_INDEX,
+        height,
+        ...(openUp
+          ? { bottom: window.innerHeight - rect.top + MENU_GAP }
+          : { top: rect.bottom + MENU_GAP }),
+      });
+    }
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, value, entityType, options.length, loading]);
+
+  useEffect(() => {
     if (!open || !trigger) return undefined;
 
     const controller = new AbortController();
@@ -105,10 +155,9 @@ export function EntityMentionTextarea({
 
     const run = async () => {
       try {
-        const rows =
-          trigger.query.trim() === "" && entityType !== "product"
-            ? await searchEntityMentionsPrefetch(entityType, { signal: controller.signal })
-            : await searchEntityMentions(entityType, trigger.query, { signal: controller.signal });
+        const rows = await searchEntityMentions(entityType, trigger.query, {
+          signal: controller.signal,
+        });
         if (controller.signal.aborted) return;
         setOptions(rows);
         setHighlight(0);
@@ -121,7 +170,7 @@ export function EntityMentionTextarea({
       }
     };
 
-    const t = setTimeout(() => void run(), 160);
+    const t = setTimeout(() => void run(), 120);
     return () => {
       clearTimeout(t);
       controller.abort();
@@ -198,6 +247,72 @@ export function EntityMentionTextarea({
     }
   }
 
+  const menu =
+    mounted && open && menuStyle
+      ? createPortal(
+          <div
+            ref={menuRef}
+            id={listId}
+            role="listbox"
+            style={menuStyle}
+            className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900"
+          >
+            <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
+              {ENTITY_MENTION_TYPES.map((tab) => (
+                <button
+                  key={tab.type}
+                  type="button"
+                  className={`rounded-md px-2 py-1 text-xs font-medium ${
+                    entityType === tab.type
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+                  }`}
+                  onMouseDown={(ev) => {
+                    ev.preventDefault();
+                    setEntityType(tab.type);
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+              {loading ? (
+                <li className="px-3 py-2 text-sm text-slate-500">Searching…</li>
+              ) : searchError ? (
+                <li className="px-3 py-2 text-sm text-red-600">{searchError}</li>
+              ) : options.length === 0 ? (
+                <li className="px-3 py-2 text-sm text-slate-500">No matches — try another name</li>
+              ) : (
+                options.map((opt, index) => (
+                  <li key={`${opt.type}-${opt.code ?? opt.id}-${opt.label}`}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={index === highlight}
+                      className={`flex w-full flex-col items-start px-3 py-2 text-left text-sm ${
+                        index === highlight
+                          ? "bg-indigo-50 text-indigo-950 dark:bg-indigo-950/40 dark:text-indigo-100"
+                          : "text-slate-800 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                      }`}
+                      onMouseDown={(ev) => {
+                        ev.preventDefault();
+                        pickOption(opt);
+                      }}
+                      onMouseEnter={() => setHighlight(index)}
+                    >
+                      <span className="font-medium">{opt.label}</span>
+                      {opt.meta ? <span className="text-xs text-slate-500">{opt.meta}</span> : null}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className={`relative ${className}`}>
       <textarea
@@ -215,76 +330,14 @@ export function EntityMentionTextarea({
         onClick={handleSelect}
         onKeyUp={handleSelect}
         onKeyDown={handleKeyDown}
-        onBlur={() => {
-          // Allow click on option before closing.
-          setTimeout(() => closeMenu(), 150);
+        onBlur={(e) => {
+          const next = e.relatedTarget;
+          if (next && menuRef.current?.contains(next)) return;
+          window.setTimeout(() => closeMenu(), 180);
         }}
       />
       {hint ? <p className="mt-1.5 text-xs text-slate-500">{hint}</p> : null}
-
-      {open ? (
-        <div
-          id={listId}
-          role="listbox"
-          className="absolute left-0 right-0 z-40 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900"
-        >
-          <div className="flex flex-wrap gap-1 border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
-            {ENTITY_MENTION_TYPES.map((tab) => (
-              <button
-                key={tab.type}
-                type="button"
-                className={`rounded-md px-2 py-1 text-xs font-medium ${
-                  entityType === tab.type
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
-                }`}
-                onMouseDown={(ev) => {
-                  ev.preventDefault();
-                  setEntityType(tab.type);
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <ul className="max-h-56 overflow-y-auto py-1">
-            {loading ? (
-              <li className="px-3 py-2 text-xs text-slate-500">Searching…</li>
-            ) : searchError ? (
-              <li className="px-3 py-2 text-xs text-red-600">{searchError}</li>
-            ) : options.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-slate-500">
-                {entityType === "product" && !trigger?.query?.trim()
-                  ? "Keep typing a product name…"
-                  : "No matches"}
-              </li>
-            ) : (
-              options.map((opt, index) => (
-                <li key={`${opt.type}-${opt.code ?? opt.id}-${opt.label}`}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={index === highlight}
-                    className={`flex w-full flex-col items-start px-3 py-2 text-left text-sm ${
-                      index === highlight
-                        ? "bg-indigo-50 text-indigo-950 dark:bg-indigo-950/40 dark:text-indigo-100"
-                        : "text-slate-800 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-800"
-                    }`}
-                    onMouseDown={(ev) => {
-                      ev.preventDefault();
-                      pickOption(opt);
-                    }}
-                    onMouseEnter={() => setHighlight(index)}
-                  >
-                    <span className="font-medium">{opt.label}</span>
-                    {opt.meta ? <span className="text-xs text-slate-500">{opt.meta}</span> : null}
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      ) : null}
+      {menu}
     </div>
   );
 }

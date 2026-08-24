@@ -75,6 +75,36 @@ describe("kra fiscal receipt print", () => {
     expect(culpritIndexes).toEqual([1]);
   });
 
+  it("highlights the PLU from technical_message when the user message is generic", () => {
+    const payload = {
+      plu_data: [
+        { item_Name: "1192003", Barcode: "", product_code: "1192003", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+        { item_Name: "BANJAB RICE 25KG", Barcode: "", product_code: "1324005", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+      ],
+    };
+    const { culpritIndexes } = matchKraFailureLineIndexes(
+      "One or more products were not found on the KRA device. Upload products to the device first, then retry.",
+      payload,
+      { technical_message: "E337: NO FIND PLU DATA for item 0000001192003" },
+    );
+    expect(culpritIndexes).toEqual([0]);
+  });
+
+  it("highlights from enriched Product not found … (CODE) user message", () => {
+    const payload = {
+      plu_data: [
+        { item_Name: "Sugar 1kg", Barcode: "", product_code: "1192003", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+        { item_Name: "BANJAB RICE 25KG", Barcode: "", product_code: "1324005", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+      ],
+    };
+    const { culpritIndexes } = matchKraFailureLineIndexes(
+      "Product not found on the KRA device: Sugar 1kg (1192003). Upload it to the device first, then retry.",
+      payload,
+      null,
+    );
+    expect(culpritIndexes).toEqual([0]);
+  });
+
   it("does not mark every line when E337 has no named SKU", () => {
     const payload = {
       plu_data: [
