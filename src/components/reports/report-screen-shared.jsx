@@ -187,7 +187,7 @@ function renderReportDataCells(columns, row) {
     return (
       <td
         key={col.key}
-        className={`${col.wrap ? "max-w-[16rem] whitespace-normal" : "whitespace-nowrap"} px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
+        className={`${col.wrap ? "max-w-[18rem] whitespace-normal break-words" : "whitespace-nowrap"} px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
       >
         {content}
       </td>

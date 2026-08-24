@@ -49,6 +49,24 @@ describe("healOfflineCheckoutPayNow", () => {
     ]);
   });
 
+  it("does not heal a half-paid till up to the bill", () => {
+    const body = {
+      pay_now: 3140,
+      payment_splits: [{ method_code: "CASH", amount: 3140 }],
+      is_credit_sale: false,
+    };
+    healOfflineCheckoutPayNow(body, {
+      sync_kind: "sale",
+      sale_payload: {
+        order_total: 6280,
+        amount_paid: 3140,
+        payment_status: "partial",
+      },
+    });
+    expect(body.pay_now).toBe(3140);
+    expect(body.payment_splits).toEqual([{ method_code: "CASH", amount: 3140 }]);
+  });
+
   it("leaves credit sales alone", () => {
     const body = { pay_now: 0, is_credit_sale: true };
     healOfflineCheckoutPayNow(body, {

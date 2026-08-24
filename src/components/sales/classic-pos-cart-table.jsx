@@ -703,6 +703,13 @@ export function ClassicPosCartTable({
                       onEntryQtyCommit?.();
                     }}
                     onKeyDown={(e) => {
+                      // F10/F-keys open payment (or other overlays) and blur this field —
+                      // never treat that blur as "add/merge another bag".
+                      if (isPosFunctionKeyEvent(e)) {
+                        skipEntryQtyBlurCommitRef.current = true;
+                        onEntryQtyKeyDown?.(e);
+                        return;
+                      }
                       if (e.key === "Escape") {
                         // Escape cancels and moves focus — skip the blur commit.
                         skipEntryQtyBlurCommitRef.current = true;

@@ -31,6 +31,7 @@ export function buildReportMeta({
   branchName = "",
   extraLines = [],
   printedAt = reportPrintedAt(),
+  orientation = undefined,
 } = {}) {
   return {
     organizationName,
@@ -41,15 +42,47 @@ export function buildReportMeta({
     branchName,
     extraLines,
     printedAt,
+    ...(orientation ? { orientation } : {}),
   };
 }
 
-/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string, printAsRow?: boolean, print_as_row?: boolean, csvAsText?: boolean, cellClass?: string }>} columns */
+/**
+ * Landscape for wide tables (6+ cols), explicit meta, or long unbroken cell text.
+ * @param {{ tableColumns: Array<{ align?: string, getValue?: Function }>, rows?: object[], orientation?: string }} options
+ */
+export function resolveReportPrintLandscape({ tableColumns = [], rows = [], orientation } = {}) {
+  const explicit = String(orientation ?? "").toLowerCase();
+  if (explicit === "landscape") return true;
+  if (explicit === "portrait") return false;
+  if (tableColumns.length >= 6) return true;
+
+  for (const row of rows) {
+    for (const col of tableColumns) {
+      if (col.align === "right") continue;
+      const value = String(typeof col.getValue === "function" ? col.getValue(row) : "");
+      if (value.length >= 28 || /[^\s,]{24,}/.test(value)) return true;
+    }
+  }
+  return false;
+}
+
+function printCellClassNames(col) {
+  return [
+    col.align === "right" ? "num" : "",
+    col.wrap ? "wrap" : "",
+    col.cellClass || (col.csvAsText ? "text" : ""),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string, printAsRow?: boolean, print_as_row?: boolean, csvAsText?: boolean, cellClass?: string, wrap?: boolean }>} columns */
 export function normalizeExportColumns(columns) {
   return (columns ?? []).map((col) => ({
     key: col.key ?? col.label,
     label: col.label,
     align: col.align,
+    wrap: Boolean(col.wrap),
     printAsRow: Boolean(col.printAsRow || col.print_as_row),
     csvAsText: Boolean(col.csvAsText),
     cellClass: col.cellClass ?? "",
@@ -74,7 +107,11 @@ export function buildReportPrintHtml({
   const noteColumns = (columns ?? []).filter((col) => col.printAsRow || col.print_as_row);
   const headers = tableColumns.map((col) => col.label);
   const colSpan = Math.max(1, tableColumns.length);
-  const landscape = tableColumns.length >= 7;
+  const landscape = resolveReportPrintLandscape({
+    tableColumns,
+    rows,
+    orientation: meta?.orientation,
+  });
   const veryWide = tableColumns.length >= 10;
   const period =
     meta.fromDate || meta.toDate
@@ -93,8 +130,8 @@ export function buildReportPrintHtml({
   const footerText = branding?.documentFooterText?.trim?.() || "";
   const compactTableCss = landscape
     ? veryWide
-      ? "table { font-size: 8px; } th, td { padding: 2px 3px; } th { white-space: nowrap; }"
-      : "table { font-size: 9px; } th, td { padding: 3px 4px; } th { white-space: nowrap; }"
+      ? "table { font-size: 8px; } th, td { padding: 2px 3px; }"
+      : "table { font-size: 9px; } th, td { padding: 3px 4px; }"
     : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
@@ -102,7 +139,11 @@ export function buildReportPrintHtml({
 @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }
 ${reportDocumentStyles(generalSettings)}
 tr.note-row td { background: #f8fafc; color: #334155; font-size: 0.92em; padding-top: 4px; padding-bottom: 6px; }
-td.text, th.text { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: keep-all; }
+table { table-layout: fixed; }
+th, td { vertical-align: top; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+th.num, td.num { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+td.text, th.text { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: keep-all; overflow-wrap: normal; }
+td.wrap, th.wrap { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 ${compactTableCss}
 </style></head><body>
 ${watermarkHtml}
@@ -112,20 +153,16 @@ ${orgHeaderHtml}
 </div>
 <table><thead><tr>${headers
     .map((header, index) => {
-      const align = tableColumns[index]?.align === "right" ? ' class="num"' : "";
-      return `<th${align}>${escapeHtml(header)}</th>`;
+      const classes = printCellClassNames(tableColumns[index] ?? {});
+      const classAttr = classes ? ` class="${classes}"` : "";
+      return `<th${classAttr}>${escapeHtml(header)}</th>`;
     })
     .join("")}</tr></thead>
 <tbody>${rows
     .map((row) => {
       const main = `<tr>${tableColumns
         .map((col) => {
-          const classes = [
-            col.align === "right" ? "num" : "",
-            col.cellClass || (col.csvAsText ? "text" : ""),
-          ]
-            .filter(Boolean)
-            .join(" ");
+          const classes = printCellClassNames(col);
           const classAttr = classes ? ` class="${classes}"` : "";
           return `<td${classAttr}>${escapeHtml(col.getValue(row))}</td>`;
         })
@@ -145,12 +182,7 @@ ${
   footerRow
     ? `<tfoot><tr>${tableColumns
         .map((col, index) => {
-          const classes = [
-            col.align === "right" ? "num" : "",
-            col.cellClass || (col.csvAsText ? "text" : ""),
-          ]
-            .filter(Boolean)
-            .join(" ");
+          const classes = printCellClassNames(col);
           const classAttr = classes ? ` class="${classes}"` : "";
           const value = footerRow[col.key] ?? (index === 0 ? "Totals" : "");
           return `<td${classAttr}>${escapeHtml(value)}</td>`;

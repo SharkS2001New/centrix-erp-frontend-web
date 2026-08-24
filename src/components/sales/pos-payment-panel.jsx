@@ -711,8 +711,19 @@ export function PosPaymentPanel({
     } = resolveTenderAmountsSnapshot();
     // I + credit customer + unpaid → fully unpaid A/R.
     // I then C/M/E/K with full tender → never credit (cashier changed mind).
-    const confirmedTotal =
-      Number(confirmSummary?.billTotal) > 0 ? Number(confirmSummary.billTotal) : checkoutTotal;
+    const liveBill = adjustmentMode ? checkoutTotal : Number(billTotal) || 0;
+    const lockedBill =
+      Number(confirmSummary?.billTotal) > 0 ? Number(confirmSummary.billTotal) : liveBill;
+    // If the cart grew while confirm was open (e.g. blur-merge after F10), abort.
+    if (
+      !adjustmentMode &&
+      liveBill > 0.01 &&
+      lockedBill > 0.01 &&
+      liveBill - lockedBill > 0.01
+    ) {
+      throw new Error("Cart total changed while payment was open. Cancel and press F10 again.");
+    }
+    const confirmedTotal = Math.max(lockedBill, liveBill);
     const creditSale = isCheckoutCreditSale({
       hasCreditCustomer,
       amountPaid: paid,

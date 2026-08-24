@@ -165,8 +165,8 @@ export function CustomerStatementScreen() {
   const columns = useMemo(
     () => [
       { key: "date", label: "Date", accessor: (r) => formatReportCell("date", r.date) },
-      { key: "document", label: "Document No", accessor: (r) => r.document },
-      { key: "description", label: "Description", accessor: (r) => r.description },
+      { key: "document", label: "Document No", accessor: (r) => r.document, wrap: true },
+      { key: "description", label: "Description", accessor: (r) => r.description, wrap: true },
       { key: "debit", label: "Debit", accessor: (r) => formatReportKes(r.debit), align: "right" },
       { key: "credit", label: "Credit", accessor: (r) => formatReportKes(r.credit), align: "right" },
       { key: "balance", label: "Balance", accessor: (r) => formatReportKes(r.balance), align: "right" },
@@ -212,6 +212,7 @@ export function CustomerStatementScreen() {
               columns,
               getRows: async () => lines,
               meta: {
+                orientation: "landscape",
                 extraLines: customer
                   ? [`Customer: ${customer.customer_name} (#${customer.customer_num})`]
                   : [],

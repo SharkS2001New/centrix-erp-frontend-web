@@ -127,10 +127,19 @@ export function buildCustomerStatementPrintHtml({
   return html.replace(
     "</style>",
     `
+    @page { size: A4 landscape; margin: 0; }
+    .page { max-width: none; }
     .statement-head { display:flex; justify-content:space-between; gap:24px; margin-bottom:12px; align-items:flex-start; }
     .statement-meta { text-align:right; }
     .statement-meta p, .statement-head p { margin:2px 0; }
-    table.aging-table { margin-top:16px; }
+    table.doc-items { table-layout: fixed; }
+    table.doc-items th:nth-child(1), table.doc-items td:nth-child(1) { width: 12%; white-space: nowrap; }
+    table.doc-items th:nth-child(2), table.doc-items td:nth-child(2) { width: 48%; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+    table.doc-items th:nth-child(3), table.doc-items td:nth-child(3),
+    table.doc-items th:nth-child(4), table.doc-items td:nth-child(4) { width: 20%; }
+    table.aging-table { margin-top:16px; table-layout: fixed; }
+    table.aging-table th, table.aging-table td { overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+    table.aging-table th.num, table.aging-table td.num { white-space: nowrap; }
     .doc-title { text-align:left; font-size:22px; letter-spacing:0.04em; }
     </style>`,
   );

@@ -153,11 +153,13 @@ export function UsageDonutChart({ segments, title = "By provider" }) {
   const stroke = 22;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  let runningOffset = 0;
   const circles = list.map((seg, i) => {
     const value = Number(seg.value) || 0;
     const dash = total > 0 ? (value / total) * circumference : 0;
-    const el = (
+    const dashOffset = -runningOffset;
+    runningOffset += dash;
+    return (
       <circle
         key={seg.label ?? i}
         cx={size / 2}
@@ -167,11 +169,9 @@ export function UsageDonutChart({ segments, title = "By provider" }) {
         stroke={seg.color ?? CHART_COLORS[i % CHART_COLORS.length]}
         strokeWidth={stroke}
         strokeDasharray={`${dash} ${circumference - dash}`}
-        strokeDashoffset={-offset}
+        strokeDashoffset={dashOffset}
       />
     );
-    offset += dash;
-    return el;
   });
 
   return (

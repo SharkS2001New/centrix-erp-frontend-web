@@ -95,12 +95,16 @@ export function ReportExportToolbar({
         format: exportFormat,
         filename: slugifyReportFilename(filename || title),
         title,
-        columns: normalizeExportColumns(columns).map((col) => ({
-          key: col.key,
-          label: col.label,
-          align: columns.find((c) => (c.key ?? c.label) === col.key)?.align,
-          ...(col.printAsRow ? { print_as_row: true } : {}),
-        })),
+        columns: normalizeExportColumns(columns).map((col) => {
+          const source = columns.find((c) => (c.key ?? c.label) === col.key);
+          return {
+            key: col.key,
+            label: col.label,
+            align: source?.align,
+            ...(col.printAsRow ? { print_as_row: true } : {}),
+            ...(source?.wrap || col.wrap ? { wrap: true } : {}),
+          };
+        }),
         meta: fullMeta,
         footerRow,
         organizationName: branding.organizationName || organizationName,

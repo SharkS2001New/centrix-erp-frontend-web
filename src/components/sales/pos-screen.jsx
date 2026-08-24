@@ -5016,6 +5016,14 @@ export function PosScreen({ standalone = false }) {
     // this newly opened checkout as ORDER COMPLETE and immediately close it.
     receiptPrintStatusRef.current = null;
     parkScanForOverlay();
+    // Discard uncommitted entry row. F10 while focus is on qty would otherwise blur-commit
+    // and merge a second bag after payment already opened on the 1-bag total.
+    setLineForm(EMPTY_LINE);
+    setSelectedProduct(null);
+    selectedProductRef.current = null;
+    setSelectedProductCode(null);
+    setSearchQuery("");
+    setUnitPriceTouched(false);
     setReceiptPrintStatus(null);
     setPaymentError(null);
     setPaymentDialogSession((n) => n + 1);
@@ -6562,6 +6570,10 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
+    if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
+      setStatusMessage("Cancel payment first, then add items.");
+      return;
+    }
     // Never append a row while a line swap is in progress.
     if (
       replacingLineIdRef.current ||
@@ -7877,6 +7889,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleAddLine() {
+    if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
+      setStatusMessage("Cancel payment first, then add items.");
+      return;
+    }
     // Mid-swap: never append — finish the in-place replace instead.
     if (swapDraftRef.current?.product) {
       void completeSwapFromDraft(
@@ -8105,6 +8121,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   function handleQuantityEnter() {
+    if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
+      return;
+    }
     const parkedProduct = selectedProductRef.current ?? selectedProduct;
     if (!parkedProduct) {
       setStatusMessage("Select a product first, then press Enter on qty.");
@@ -10519,17 +10538,20 @@ export function PosScreen({ standalone = false }) {
     // External POS / Backoffice Create order: full tender or credit (I) only.
     // Partial installments are backoffice Collect payment on existing orders.
     if (!isPreviousOrderCashEdit && !body?.__previous_order_edit_adjustment) {
+      const liveDue = Number(summary?.amountDue ?? summary?.total ?? 0);
+      const bodyDue = Number(body?.till_amount_due ?? body?.__checkout_total ?? 0);
+      // Never trust a stale confirm total below the live cart (F10 blur-merge race).
+      if (liveDue > 0.01 && bodyDue > 0.01 && liveDue - bodyDue > 0.01) {
+        setPaymentError(
+          "Cart total changed while payment was open. Cancel and press F10 again.",
+        );
+        return null;
+      }
       const paymentErr = validatePosDirectCheckoutPayment({
         isCreditSale: Boolean(body?.is_credit_sale),
         payNow: Number(body?.pay_now ?? 0),
         amountTendered: Number(body?.amount_tendered ?? body?.__cash_tendered ?? 0),
-        amountDue: Number(
-          body?.till_amount_due ??
-            body?.__checkout_total ??
-            summary?.amountDue ??
-            summary?.total ??
-            0,
-        ),
+        amountDue: Math.max(liveDue, bodyDue),
         customerNum: body?.customer_num,
       });
       if (paymentErr) {

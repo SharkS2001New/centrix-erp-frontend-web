@@ -3484,9 +3484,9 @@ export function healOfflineCheckoutPayNow(body, row) {
     .toLowerCase();
   const shouldBeFullyPaid =
     paymentStatus === "paid" ||
-    paymentStatus === "" ||
     amountPaid + 0.01 >= billTotal ||
-    payNow + 0.01 >= billTotal * 0.5;
+    // Small KRA/reprice drift only — never heal a half-paid till due up to the bill.
+    (payNow > 0.01 && billTotal - payNow <= 10.01);
   if (billTotal > 0.01 && shouldBeFullyPaid && payNow + 0.01 < billTotal) {
     body.pay_now = billTotal;
   }
