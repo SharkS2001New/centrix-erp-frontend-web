@@ -405,6 +405,52 @@ function editedOrderHasLocalDraftChanges(cart) {
   return Boolean(cart._editDraftDirty);
 }
 
+function previousOrderEditLineSignatureFromCart(cart) {
+  const lines = Array.isArray(cart?.lines) ? cart.lines : [];
+  return lines
+    .map((line) => ({
+      product_code: String(line?.product_code ?? ""),
+      quantity: Number(line?.quantity ?? 0),
+      unit_price: Math.round(Number(line?.unit_price ?? 0) * 100) / 100,
+      discount_given: Math.round(Number(line?.discount_given ?? 0) * 100) / 100,
+      on_wholesale_retail: Number(line?.on_wholesale_retail ?? 0),
+    }))
+    .filter((line) => line.product_code !== "" && line.quantity > 0)
+    .sort((a, b) => {
+      if (a.product_code !== b.product_code) return a.product_code.localeCompare(b.product_code);
+      if (a.unit_price !== b.unit_price) return a.unit_price - b.unit_price;
+      return a.quantity - b.quantity;
+    });
+}
+
+function previousOrderEditLineSignatureFromSale(sourceSale) {
+  const items = Array.isArray(sourceSale?.items) ? sourceSale.items : [];
+  return items
+    .map((item) => ({
+      product_code: String(item?.product_code ?? ""),
+      quantity: Number(item?.quantity ?? 0),
+      unit_price: Math.round(Number(item?.selling_price ?? item?.unit_price ?? 0) * 100) / 100,
+      discount_given: Math.round(Number(item?.discount_given ?? 0) * 100) / 100,
+      on_wholesale_retail: Number(item?.on_wholesale_retail ?? 0),
+    }))
+    .filter((item) => item.product_code !== "" && item.quantity > 0)
+    .sort((a, b) => {
+      if (a.product_code !== b.product_code) return a.product_code.localeCompare(b.product_code);
+      if (a.unit_price !== b.unit_price) return a.unit_price - b.unit_price;
+      return a.quantity - b.quantity;
+    });
+}
+
+function cartHasStalePreviousOrderMarkers(cart, sourceSale) {
+  if (!cart?.held_order_num || !cart?.superseded_sale_id) return false;
+  if (editedOrderHasLocalDraftChanges(cart)) return false;
+  if (!sourceSale?.id) return false;
+  const cartLines = previousOrderEditLineSignatureFromCart(cart);
+  const saleLines = previousOrderEditLineSignatureFromSale(sourceSale);
+  if (!cartLines.length || !saleLines.length) return false;
+  return JSON.stringify(cartLines) !== JSON.stringify(saleLines);
+}
+
 /**
  * True when Alt+P / F8 / F10 must collect top-up or return method.
  * Recovers after offline outage migration drops `_editDraftDirty` while the bill still changed.
@@ -10381,6 +10427,18 @@ export function PosScreen({ standalone = false }) {
       };
       cartRef.current = activeCart;
       setCart(activeCart);
+    }
+
+    if (cartHasStalePreviousOrderMarkers(activeCart, editSourceSale)) {
+      const cleaned = {
+        ...stripPreviousOrderEditSession(activeCart),
+        payment_adjustments: undefined,
+        original_order_total: undefined,
+      };
+      activeCart = cleaned;
+      cartRef.current = cleaned;
+      setCart(cleaned);
+      setEditSourceSale(null);
     }
 
     const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);

@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { getStoredOrganization, getStoredUser } from "@/lib/auth-storage";
 import {
   fetchOrgCached,
@@ -112,13 +112,20 @@ export function fetchBranchesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "branches");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/branches", {
-      searchParams: { per_page: 200 },
-      loading: false,
-    });
-    return (res.data ?? []).filter(
-      (branch) => !orgId || branch.organization_id === orgId,
-    );
+    try {
+      const res = await apiRequest("/branches", {
+        searchParams: { per_page: 200 },
+        loading: false,
+      });
+      return (res.data ?? []).filter(
+        (branch) => !orgId || branch.organization_id === orgId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return [];
+      }
+      throw error;
+    }
   });
 }
 

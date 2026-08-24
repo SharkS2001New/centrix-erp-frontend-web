@@ -25,6 +25,23 @@ import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_active: true };
 
+const SYSTEM_PAYMENT_METHOD_CODES = new Set([
+  "CASH",
+  "MPESA",
+  "EQUITY",
+  "KCB",
+  "BANK",
+  "CHEQUE",
+  "CARD",
+  "CREDIT",
+  "VOUCHER",
+  "POINTS",
+]);
+
+function isSystemPaymentMethod(code) {
+  return SYSTEM_PAYMENT_METHOD_CODES.has(String(code ?? "").trim().toUpperCase());
+}
+
 function ActiveToggle({ checked, disabled, onChange, label }) {
   return (
     <button
@@ -151,6 +168,10 @@ export function AdminPaymentMethodsScreen() {
   }
 
   async function remove(row) {
+    if (isSystemPaymentMethod(row.method_code)) {
+      notifyError("System payment methods cannot be deleted. Disable the method instead.");
+      return;
+    }
     const ok = await confirm({
       title: "Delete payment method",
       message: `Delete payment method "${row.method_name}"?`,
@@ -241,7 +262,7 @@ export function AdminPaymentMethodsScreen() {
                         <PencilIcon />
                       </IconButton>
                     ) : null}
-                    {canDelete ? (
+                    {canDelete && !isSystemPaymentMethod(row.method_code) ? (
                       <IconButton label="Delete" onClick={() => remove(row)}>
                         <TrashIcon />
                       </IconButton>
@@ -260,7 +281,13 @@ export function AdminPaymentMethodsScreen() {
             <input className={inputClassName()} value={form.method_name} onChange={(e) => setForm((f) => ({ ...f, method_name: e.target.value }))} required />
           </Field>
           <Field label="Code">
-            <input className={inputClassName()} value={form.method_code} onChange={(e) => setForm((f) => ({ ...f, method_code: e.target.value.toUpperCase() }))} required />
+            <input
+              className={inputClassName()}
+              value={form.method_code}
+              onChange={(e) => setForm((f) => ({ ...f, method_code: e.target.value.toUpperCase() }))}
+              required
+              disabled={Boolean(editing && isSystemPaymentMethod(editing.method_code))}
+            />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.requires_reference} onChange={(e) => setForm((f) => ({ ...f, requires_reference: e.target.checked }))} />

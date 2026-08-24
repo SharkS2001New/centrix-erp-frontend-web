@@ -487,7 +487,10 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         critical: [
           () => fetchCategoriesCached(user?.organization_id).then((data) => ({ data })),
           () => fetchSubCategoriesCached(user?.organization_id).then((data) => ({ data })),
-          () => fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
+          () =>
+            fetchBranchesCached(user?.organization_id)
+              .then((data) => ({ data }))
+              .catch(() => ({ data: [] })),
         ],
         deferred: [
           () =>
@@ -495,7 +498,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
               .then((data) => ({ data }))
               .catch(() => ({ data: [] })),
           () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
-          () => fetchUomsCached(user?.organization_id).then((data) => ({ data })),
+          () => fetchUomsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
           () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
         ],
         concurrency: 3,
