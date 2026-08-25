@@ -126,6 +126,10 @@ export const NAV_HREF_ICONS = {
   "/accounting/bank-register": "wallet",
   "/accounting/bank-reconciliation": "link",
   "/expenses": "tag",
+
+  // Investors
+  "/investors": "users",
+  "/investors/reports": "chart",
   "/accounting/trial-balance": "measure",
   "/accounting/balance-sheet": "box",
   "/accounting/profit-loss": "chart",

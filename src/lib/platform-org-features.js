@@ -75,6 +75,14 @@ export function isPlatformWhatsappEnabled(capabilities) {
   );
 }
 
+export function isPlatformInvestorsEnabled(capabilities) {
+  return (
+    capabilities?.platform_investors_enabled === true ||
+    capabilities?.modules?.investors === true ||
+    capabilities?.module_settings?.investors?.enable_investors === true
+  );
+}
+
 export function isPlatformAdvancedDataImportEnabled(capabilities) {
   return capabilities?.platform_advanced_data_import_enabled === true;
 }

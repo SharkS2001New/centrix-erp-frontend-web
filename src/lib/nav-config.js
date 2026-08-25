@@ -13,7 +13,12 @@ import {
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
-import { isPlatformWhatsappEnabled, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
+import {
+  isPlatformWhatsappEnabled,
+  isPlatformKraIntegrationEnabled,
+  isPlatformMpesaStkEnabled,
+  isPlatformInvestorsEnabled,
+} from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
@@ -43,7 +48,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -433,6 +438,28 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Expenses",
         module: "accounting",
         permission: P.accounting.expenses.view,
+      },
+    ],
+  },
+  {
+    id: "investors",
+    label: "Investors",
+    icon: "💼",
+    collapsible: true,
+    items: [
+      {
+        href: "/investors",
+        label: "Investors",
+        module: "investors",
+        permission: P.investors.investors.view,
+        requirePlatformInvestors: true,
+      },
+      {
+        href: "/investors/reports",
+        label: "Investor reports",
+        module: "investors",
+        permissionAny: [P.investors.reports.view, P.investors.investors.view],
+        requirePlatformInvestors: true,
       },
     ],
   },
@@ -1420,6 +1447,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
     return false;
   }
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
+  if (item.requirePlatformInvestors && !isPlatformInvestorsEnabled(capabilities)) return false;
   if (item.requireShopDebtors && !shouldShowShopDebtors(capabilities)) return false;
   if (item.hideWhenRouteOnlyCustomers && isRouteOnlyCustomers(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;

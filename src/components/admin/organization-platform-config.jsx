@@ -382,6 +382,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_ai: true,
     use_platform_gemini: false,
     enable_whatsapp_orders: false,
+    enable_investors: false,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
     stock_deduct_on: {
@@ -458,6 +459,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_ai: apiPayload.enable_ai !== false,
     use_platform_gemini: Boolean(apiPayload.use_platform_gemini),
     enable_whatsapp_orders: Boolean(apiPayload.enable_whatsapp_orders ?? false),
+    enable_investors: Boolean(apiPayload.enable_investors ?? false),
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
@@ -806,6 +808,12 @@ export function OrganizationPlatformSalesSettings({
             description="When off, this organization cannot configure WhatsApp credentials or receive orders through the shared platform webhook."
             checked={Boolean(salesPlatform?.enable_whatsapp_orders)}
             onChange={(v) => patch({ enable_whatsapp_orders: v })}
+          />
+          <Toggle
+            label="Enable Investors module"
+            description="When on, this organization gets an Investors sidebar to track cash and stock capital, link LPO payments, and run investor sales/stock/money-flow reports."
+            checked={Boolean(salesPlatform?.enable_investors)}
+            onChange={(v) => patch({ enable_investors: v })}
           />
           <AdvancedDataImportPlatformFields salesPlatform={salesPlatform} onPatch={patch} />
         </div>

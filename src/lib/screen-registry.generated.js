@@ -354,6 +354,10 @@ function match_accounting_customer_invoices(pathname) {
   return pathname === "/accounting/customer-invoices";
 }
 
+function match_accounting_equity_reconciliation(pathname) {
+  return pathname === "/accounting/equity-reconciliation";
+}
+
 function match_accounting_export_queue(pathname) {
   return pathname === "/accounting/export-queue";
 }
@@ -372,10 +376,6 @@ function match_accounting_journal_entries(pathname) {
 
 function match_accounting_mpesa_reconciliation(pathname) {
   return pathname === "/accounting/mpesa-reconciliation";
-}
-
-function match_accounting_equity_reconciliation(pathname) {
-  return pathname === "/accounting/equity-reconciliation";
 }
 
 function match_accounting_profit_loss(pathname) {
@@ -406,6 +406,10 @@ function match_admin_company(pathname) {
   return pathname === "/admin/company";
 }
 
+function match_admin_equity_accounts(pathname) {
+  return pathname === "/admin/equity-accounts";
+}
+
 function match_admin_hotel_settings(pathname) {
   return pathname === "/admin/hotel-settings";
 }
@@ -424,10 +428,6 @@ function match_admin_license(pathname) {
 
 function match_admin_mpesa_paybills(pathname) {
   return pathname === "/admin/mpesa-paybills";
-}
-
-function match_admin_equity_accounts(pathname) {
-  return pathname === "/admin/equity-accounts";
 }
 
 function match_admin_mpesa_settings(pathname) {
@@ -654,6 +654,10 @@ function match_inventory_transfers(pathname) {
   return pathname === "/inventory/transfers";
 }
 
+function match_investors_reports(pathname) {
+  return pathname === "/investors/reports";
+}
+
 function match_lpo_new(pathname) {
   return pathname === "/lpo/new";
 }
@@ -813,6 +817,13 @@ function match_customers_id(pathname) {
   return true;
 }
 
+function match_investors_id(pathname) {
+  const m = pathname.match("^/investors/([^/]+)$");
+  if (!m) return false;
+  if (["reports"].includes(m[1])) return false;
+  return true;
+}
+
 function match_lpo_lpoNo(pathname) {
   const m = pathname.match("^/lpo/([^/]+)$");
   if (!m) return false;
@@ -890,6 +901,10 @@ function match_hr(pathname) {
 
 function match_inventory(pathname) {
   return pathname === "/inventory";
+}
+
+function match_investors(pathname) {
+  return pathname === "/investors";
 }
 
 function match_lpo(pathname) {
@@ -1341,6 +1356,12 @@ export const SCREEN_REGISTRY = [
     match: match_accounting_customer_invoices,
   },
   {
+    id: "accounting-equity-reconciliation",
+    title: "Equity Reconciliation",
+    route: "/accounting/equity-reconciliation",
+    match: match_accounting_equity_reconciliation,
+  },
+  {
     id: "accounting-export-queue",
     title: "Export Queue",
     route: "/accounting/export-queue",
@@ -1369,12 +1390,6 @@ export const SCREEN_REGISTRY = [
     title: "Mpesa Reconciliation",
     route: "/accounting/mpesa-reconciliation",
     match: match_accounting_mpesa_reconciliation,
-  },
-  {
-    id: "accounting-equity-reconciliation",
-    title: "Equity Reconciliation",
-    route: "/accounting/equity-reconciliation",
-    match: match_accounting_equity_reconciliation,
   },
   {
     id: "accounting-profit-loss",
@@ -1419,6 +1434,12 @@ export const SCREEN_REGISTRY = [
     match: match_admin_company,
   },
   {
+    id: "admin-equity-accounts",
+    title: "Equity Bank accounts",
+    route: "/admin/equity-accounts",
+    match: match_admin_equity_accounts,
+  },
+  {
     id: "admin-hotel-settings",
     title: "Hotel Settings",
     route: "/admin/hotel-settings",
@@ -1447,12 +1468,6 @@ export const SCREEN_REGISTRY = [
     title: "M-Pesa Paybills",
     route: "/admin/mpesa-paybills",
     match: match_admin_mpesa_paybills,
-  },
-  {
-    id: "admin-equity-accounts",
-    title: "Equity Bank accounts",
-    route: "/admin/equity-accounts",
-    match: match_admin_equity_accounts,
   },
   {
     id: "admin-mpesa-settings",
@@ -1791,6 +1806,12 @@ export const SCREEN_REGISTRY = [
     match: match_inventory_transfers,
   },
   {
+    id: "investors-reports",
+    title: "Reports",
+    route: "/investors/reports",
+    match: match_investors_reports,
+  },
+  {
     id: "lpo-new",
     title: "New",
     route: "/lpo/new",
@@ -2025,6 +2046,12 @@ export const SCREEN_REGISTRY = [
     match: match_customers_id,
   },
   {
+    id: "investors-id",
+    title: "Investors",
+    route: "/investors/[id]",
+    match: match_investors_id,
+  },
+  {
     id: "lpo-lpoNo",
     title: "LPO",
     route: "/lpo/[lpoNo]",
@@ -2119,6 +2146,12 @@ export const SCREEN_REGISTRY = [
     title: "Inventory",
     route: "/inventory",
     match: match_inventory,
+  },
+  {
+    id: "investors",
+    title: "Investors",
+    route: "/investors",
+    match: match_investors,
   },
   {
     id: "lpo",

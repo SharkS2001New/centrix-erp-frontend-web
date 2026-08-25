@@ -198,6 +198,9 @@ export const SCREEN_COMPONENTS = {
   "accounting-customer-invoices": lazy(() =>
     import("@/components/tab-screens/accounting-customer-invoices").then((m) => ({ default: m.AccountingCustomerInvoicesScreen })),
   ),
+  "accounting-equity-reconciliation": lazy(() =>
+    import("@/components/tab-screens/accounting-equity-reconciliation").then((m) => ({ default: m.AccountingEquityReconciliationScreen })),
+  ),
   "accounting-export-queue": lazy(() =>
     import("@/components/tab-screens/accounting-export-queue").then((m) => ({ default: m.AccountingExportQueueScreen })),
   ),
@@ -212,9 +215,6 @@ export const SCREEN_COMPONENTS = {
   ),
   "accounting-mpesa-reconciliation": lazy(() =>
     import("@/components/tab-screens/accounting-mpesa-reconciliation").then((m) => ({ default: m.AccountingMpesaReconciliationScreen })),
-  ),
-  "accounting-equity-reconciliation": lazy(() =>
-    import("@/components/tab-screens/accounting-equity-reconciliation").then((m) => ({ default: m.AccountingEquityReconciliationScreen })),
   ),
   "accounting-profit-loss": lazy(() =>
     import("@/components/tab-screens/accounting-profit-loss").then((m) => ({ default: m.AccountingProfitLossScreen })),
@@ -237,6 +237,9 @@ export const SCREEN_COMPONENTS = {
   "admin-company": lazy(() =>
     import("@/components/tab-screens/admin-company").then((m) => ({ default: m.AdminCompanyScreen })),
   ),
+  "admin-equity-accounts": lazy(() =>
+    import("@/components/tab-screens/admin-equity-accounts").then((m) => ({ default: m.AdminEquityAccountsScreen })),
+  ),
   "admin-hotel-settings": lazy(() =>
     import("@/components/tab-screens/hospitality-settings").then((m) => ({ default: m.HospitalitySettingsScreen })),
   ),
@@ -251,9 +254,6 @@ export const SCREEN_COMPONENTS = {
   ),
   "admin-mpesa-paybills": lazy(() =>
     import("@/components/tab-screens/admin-mpesa-paybills").then((m) => ({ default: m.AdminMpesaPaybillsScreen })),
-  ),
-  "admin-equity-accounts": lazy(() =>
-    import("@/components/tab-screens/admin-equity-accounts").then((m) => ({ default: m.AdminEquityAccountsScreen })),
   ),
   "admin-mpesa-settings": lazy(() =>
     import("@/components/tab-screens/admin-mpesa-settings").then((m) => ({ default: m.AdminMpesaSettingsScreen })),
@@ -423,6 +423,9 @@ export const SCREEN_COMPONENTS = {
   "inventory-transfers": lazy(() =>
     import("@/components/tab-screens/inventory-transfers").then((m) => ({ default: m.InventoryTransfersScreen })),
   ),
+  "investors-reports": lazy(() =>
+    import("@/components/tab-screens/investors-reports").then((m) => ({ default: m.InvestorsReportsScreen })),
+  ),
   "lpo-new": lazy(() =>
     import("@/components/tab-screens/lpo-new").then((m) => ({ default: m.LpoNewScreen })),
   ),
@@ -538,6 +541,9 @@ export const SCREEN_COMPONENTS = {
   "customers-id": lazy(() =>
     import("@/components/tab-screens/customers-id").then((m) => ({ default: m.CustomersIdScreen })),
   ),
+  "investors-id": lazy(() =>
+    import("@/components/tab-screens/investors-id").then((m) => ({ default: m.InvestorsIdScreen })),
+  ),
   "lpo-lpoNo": lazy(() =>
     import("@/components/tab-screens/lpo-lpoNo").then((m) => ({ default: m.LpoLpoNoScreen })),
   ),
@@ -585,6 +591,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "inventory": lazy(() =>
     import("@/components/tab-screens/inventory").then((m) => ({ default: m.InventoryScreen })),
+  ),
+  "investors": lazy(() =>
+    import("@/components/tab-screens/investors").then((m) => ({ default: m.InvestorsScreen })),
   ),
   "lpo": lazy(() =>
     import("@/components/tab-screens/lpo").then((m) => ({ default: m.LpoScreen })),

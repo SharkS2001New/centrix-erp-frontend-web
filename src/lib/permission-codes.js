@@ -225,6 +225,15 @@ export const P = {
       manage: "accounting.bank_reconciliation.manage",
     },
   },
+  investors: {
+    investors: {
+      view: "investors.investors.view",
+      create: "investors.investors.create",
+      edit: "investors.investors.edit",
+      delete: "investors.investors.delete",
+    },
+    reports: { view: "investors.reports.view" },
+  },
   reports: {
     hub: { view: "reports.hub.view" },
     daily_sales: { view: "reports.daily_sales.view" },
