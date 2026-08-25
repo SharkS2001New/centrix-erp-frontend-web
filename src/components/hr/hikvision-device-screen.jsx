@@ -518,7 +518,9 @@ export function HikvisionDeviceScreen() {
               overview?.agent?.online
                 ? `CentrixAttendanceAgent online${overview.agent.version ? ` v${overview.agent.version}` : ""}`
                 : device?.agent_last_seen_at
-                  ? "CentrixAttendanceAgent reconnecting"
+                  ? minutesSinceIso(device.agent_last_seen_at) > 15
+                    ? "CentrixAttendanceAgent not checking in"
+                    : "CentrixAttendanceAgent reconnecting"
                   : "CentrixAttendanceAgent offline"
             }
           />
@@ -674,6 +676,13 @@ export function HikvisionDeviceScreen() {
   );
 }
 
+function minutesSinceIso(iso) {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return Number.POSITIVE_INFINITY;
+  return (Date.now() - t) / 60000;
+}
+
 function AgentStatusBanner({ device, overview }) {
   const agent = overview?.agent;
   const lastSeenAt = device?.agent_last_seen_at;
@@ -710,12 +719,19 @@ function AgentStatusBanner({ device, overview }) {
           {" — Centrix can send commands to the office agent."}
           {version ? ` (v${version})` : ""}
         </>
-      ) : lastSeenAt ? (
+      ) : lastSeenAt && minutesSinceIso(lastSeenAt) <= 15 ? (
         <>
           <strong>CentrixAttendanceAgent is reconnecting.</strong> After the office PC is turned on,
           the Windows service starts by itself, checks in with Centrix, and continues punch sync.
           Wait 1–2 minutes and refresh. Do not re-download after a reboot.
-          {lastSeenAt ? ` Last check-in: ${new Date(lastSeenAt).toLocaleString()}.` : ""}
+          {` Last check-in: ${new Date(lastSeenAt).toLocaleString()}.`}
+        </>
+      ) : lastSeenAt ? (
+        <>
+          <strong>CentrixAttendanceAgent is not reaching Centrix.</strong> Last check-in:{" "}
+          {new Date(lastSeenAt).toLocaleString()}. The Windows service can be Running while
+          heartbeats fail. On the office PC open{" "}
+          <code className="text-xs">http://127.0.0.1:9251</code> and click Test connection.
         </>
       ) : (
         <>

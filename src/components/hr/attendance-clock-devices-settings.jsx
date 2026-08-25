@@ -622,6 +622,13 @@ function agentOnlineTtlMs(device, probe = null) {
   return (Number.isFinite(seconds) && seconds > 0 ? seconds : 1800) * 1000;
 }
 
+function minutesSinceIso(iso) {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return Number.POSITIVE_INFINITY;
+  return (Date.now() - t) / 60000;
+}
+
 function isAgentOnline(device, probe = null) {
   if (!device?.agent_last_seen_at) return false;
   const seen = new Date(device.agent_last_seen_at).getTime();
@@ -632,15 +639,20 @@ function AgentStatusLine({ device, probe }) {
   const testing = Boolean(probe?.testing);
   const probed = probe && !probe.testing && probe.checkedAt;
   const online = probed ? Boolean(probe.online) : isAgentOnline(device, probe);
+  const stale = minutesSinceIso(device?.agent_last_seen_at) > 15;
   const detail = probed
     ? probe.online
       ? probe.message || "Centrix can reach the office agent."
       : probe.error
         || (device.agent_last_seen_at
-          ? "Waiting for the office PC to check in after startup. Do not re-download after a reboot."
+          ? stale
+            ? "Service can be Running while heartbeats fail. On that PC open http://127.0.0.1:9251 → Test connection."
+            : "Waiting for the office PC to check in after startup. Do not re-download after a reboot."
           : "CentrixAttendanceAgent has not checked in yet.")
     : device.agent_last_seen_at
-      ? `last seen ${new Date(device.agent_last_seen_at).toLocaleString()} — after a reboot wait 1–2 minutes`
+      ? stale
+        ? `last seen ${new Date(device.agent_last_seen_at).toLocaleString()} — not reaching Centrix; open http://127.0.0.1:9251 on that PC`
+        : `last seen ${new Date(device.agent_last_seen_at).toLocaleString()} — after a reboot wait 1–2 minutes`
       : "download and install once on a LAN PC";
 
   return (
@@ -659,7 +671,9 @@ function AgentStatusLine({ device, probe }) {
           : online
             ? "CentrixAttendanceAgent online"
             : device.agent_last_seen_at
-              ? "CentrixAttendanceAgent reconnecting"
+              ? stale
+                ? "CentrixAttendanceAgent not checking in"
+                : "CentrixAttendanceAgent reconnecting"
               : "CentrixAttendanceAgent offline"}
       </p>
       <p className="mt-0.5">{detail}</p>
