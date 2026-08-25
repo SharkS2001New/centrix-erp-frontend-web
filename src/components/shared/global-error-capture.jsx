@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { canSeeServerErrorDetail } from "@/lib/auth-storage";
-import { isAbortError } from "@/lib/api";
+import { isAbortError, isPermissionDeniedError } from "@/lib/api";
 import { emitSystemIssue } from "@/lib/system-issue-dispatcher";
 import { logApiErrorIssue } from "@/lib/system-issue-reports";
 
@@ -60,6 +60,9 @@ export function GlobalErrorCapture() {
       if (isBenignNetworkFailure(message)) {
         return;
       }
+      if (isPermissionDeniedError(event.error ?? message)) {
+        return;
+      }
       void reportUnhandledError(message, {
         pageUrl: window.location.pathname,
         source: event.filename,
@@ -77,6 +80,10 @@ export function GlobalErrorCapture() {
       // Transient connectivity blips are already surfaced by apiRequest when caught;
       // don't open a system-issue prompt for every Failed to fetch.
       if (isBenignNetworkFailure(reason)) {
+        event.preventDefault?.();
+        return;
+      }
+      if (isPermissionDeniedError(reason)) {
         event.preventDefault?.();
         return;
       }

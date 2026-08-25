@@ -106,3 +106,37 @@ export async function installFoundationTrainingNotes() {
     body: {},
   });
 }
+
+/**
+ * Scan platform training notes for similar topics (duplicate clusters).
+ * @param {{ workspace_id?: string | null, threshold?: number }} [opts]
+ */
+export async function scanTrainingNoteDuplicates(opts = {}) {
+  const params = new URLSearchParams();
+  if (opts.workspace_id) params.set("workspace_id", opts.workspace_id);
+  if (opts.threshold != null) params.set("threshold", String(opts.threshold));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/duplicates${query}`);
+}
+
+/**
+ * Merge duplicate notes into one kept entry.
+ * @param {{ keep_id: number, merge_ids: number[], topic?: string, content?: string }} input
+ */
+export async function mergeTrainingNotes(input) {
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/merge`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+/**
+ * Delete multiple platform training notes by id.
+ * @param {number[]} entryIds
+ */
+export async function bulkDeleteTrainingNotes(entryIds) {
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/bulk-delete`, {
+    method: "POST",
+    body: { entry_ids: entryIds },
+  });
+}

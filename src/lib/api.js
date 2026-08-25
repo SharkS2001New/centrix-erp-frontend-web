@@ -124,6 +124,15 @@ export function isSessionConflictError(error) {
   );
 }
 
+/** Expected 403 from optional/enrichment calls — not a page-breaking client fault. */
+export function isPermissionDeniedError(error) {
+  if (error instanceof ApiError && error.status === 403) {
+    return !isSessionConflictError(error);
+  }
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /do not have permission|not authorized|forbidden/i.test(message);
+}
+
 export { isLicenseExpiredApiError, isLicenseExpiredApiCode } from "./organization-license";
 
 /** @param {unknown} error */
@@ -685,6 +694,81 @@ async function performApiRequest(path, url, options = {}) {
   } finally {
     if (trackNavigation) endAppLoading();
   }
+}
+
+/**
+ * Stream Centrix AI chat (SSE). Calls onEvent for status, delta, done, and error events.
+ */
+export async function aiChatStream(body, { onEvent, signal } = {}) {
+  const url = buildApiUrl("/ai/chat/stream");
+  const token = getToken();
+  const headers = {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
+  }
+
+  if (!res.body) {
+    throw new ApiError("AI stream ended without a response body.", res.status);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      for (const line of block.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        let event;
+        try {
+          event = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        onEvent?.(event);
+        if (event.event === "done") {
+          donePayload = event;
+        }
+        if (event.event === "error") {
+          throw new ApiError(event.message || "AI request failed", 502, event);
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  return donePayload;
 }
 
 /** Multipart upload (e.g. customer shop image, org logo). */

@@ -9,6 +9,7 @@ import {
   normalizeOrdersListVisibleColumns,
   normalizeOrdersListVisibleColumnsByQueue,
   normalizeReportsDefaultDateRangeDays,
+  normalizeShopDebtorsDefaultDays,
 } from "@/lib/sales-settings";
 import { orderListColumnQueueOptionsForWorkflow } from "@/lib/order-workflow";
 
@@ -53,6 +54,9 @@ export function OrdersListDefaultsFields({
   useSettingsSubTab(activeTab, setActiveTab, ORDERS_LIST_SUB_TABS);
 
   const days = value?.orders_list_default_days ?? "14";
+  const shopDebtorsDays = String(
+    normalizeShopDebtorsDefaultDays(value?.shop_debtors_default_days ?? 30),
+  );
   const reportsDays = String(
     normalizeReportsDefaultDateRangeDays(value?.reports_default_date_range_days ?? 30),
   );
@@ -132,6 +136,22 @@ export function OrdersListDefaultsFields({
               How many calendar days of orders to show when staff open Sales → Orders (including today).
               Default for wholesale/retail is 14 (2 weeks). Distribution orgs often use 30+. Staff can
               still narrow or widen the range with the date filters.
+            </p>
+          </Field>
+          <Field label="Shop Debtors default date filter (days)">
+            <input
+              id={`${idPrefix}-shop-debtors-days`}
+              type="number"
+              min={1}
+              max={90}
+              className={`${inputClassName()} w-32`}
+              value={shopDebtorsDays}
+              onChange={(e) => patch({ shop_debtors_default_days: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Default From/To for Sales → Shop Debtors (Unpaid, Partially paid, and Paid), including
+              today. Separate from Orders above — some orgs want 30 days (1 month), others 60 (2
+              months). Staff can still change the range on each page.
             </p>
           </Field>
           <Field label="Reports default date filter (days)">

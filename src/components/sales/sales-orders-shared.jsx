@@ -724,6 +724,8 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
       // Let the spinner paint before sync work / confirm dialogs open.
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       await Promise.resolve(item.onClick?.());
+    } catch {
+      // Action handlers surface errors inline; never bubble as unhandledrejection.
     } finally {
       processingRef.current = false;
       setProcessingKey(null);
@@ -906,6 +908,8 @@ export function OrderRowActions({
     try {
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       await Promise.resolve(action());
+    } catch {
+      // Action handlers surface errors inline; never bubble as unhandledrejection.
     } finally {
       quickBusyRef.current = false;
       setQuickBusyKey(null);

@@ -195,11 +195,19 @@ export function fetchUsersCached(organizationId, { path = "/reference/users", se
       : path;
   const key = orgCacheKey(orgId, "users", paramsKey);
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest(path, {
-      searchParams: { per_page: 200, ...searchParams },
-      loading: false,
-    });
-    return res.data ?? [];
+    try {
+      const res = await apiRequest(path, {
+        searchParams: { per_page: 200, ...searchParams },
+        loading: false,
+        reportIssues: false,
+      });
+      return res.data ?? [];
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return [];
+      }
+      throw error;
+    }
   });
 }
 

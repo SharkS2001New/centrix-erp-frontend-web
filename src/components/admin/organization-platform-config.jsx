@@ -29,6 +29,7 @@ import {
   normalizeOrdersListSort,
   normalizeOrderActionStatuses,
   normalizeReportsDefaultDateRangeDays,
+  normalizeShopDebtorsDefaultDays,
   defaultBackofficeCheckoutOnCreate,
 } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
@@ -416,6 +417,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
     orders_list_default_days: "14",
+    shop_debtors_default_days: "30",
     reports_default_date_range_days: "30",
     orders_list_search_days: "30",
     orders_list_sort: "-created_at",
@@ -518,6 +520,9 @@ export function salesPlatformFromApi(apiPayload) {
         ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
         : "15",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days)),
+    shop_debtors_default_days: String(
+      normalizeShopDebtorsDefaultDays(apiPayload.shop_debtors_default_days),
+    ),
     reports_default_date_range_days: String(
       normalizeReportsDefaultDateRangeDays(apiPayload.reports_default_date_range_days),
     ),
@@ -832,7 +837,7 @@ export function OrganizationOrdersListSettings({
   return (
     <PlatformFormSection
       title="Orders list & reports"
-      description="Platform defaults for Sales → Orders date filter, search scope, visible columns, and the default From/To window for all reports."
+      description="Platform defaults for Sales → Orders date filter, Shop Debtors date filter, search scope, visible columns, and the default From/To window for all reports."
     >
       {!salesEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

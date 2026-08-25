@@ -1268,9 +1268,10 @@ export function canConvertToPaid(sale, capabilities = null) {
   return saleMatchesConvertStages(sale, allowed);
 }
 
-/** Convert paid/partial → unpaid when org stages allow it. */
+/** Convert paid/partial → unpaid when org stages allow it. Requires a saved customer. */
 export function canConvertToUnpaid(sale, capabilities = null) {
   if (!sale) return false;
+  if (!(Number(sale.customer_num) > 0)) return false;
   const status = String(sale.status ?? "").toLowerCase();
   if (["cancelled", "expired", "held", "draft"].includes(status)) return false;
 

@@ -133,6 +133,8 @@ const SALES_DEFAULTS = {
     backend: "order_completed",
   },
   orders_list_default_days: 14,
+  /** Shop Debtors Unpaid / Partial / Paid — often wider than orders (1–2 months). */
+  shop_debtors_default_days: 30,
   reports_default_date_range_days: 30,
   orders_list_search_days: 30,
   orders_list_sort: "-created_at",
@@ -232,6 +234,24 @@ export function normalizeOrdersListDefaultDays(value) {
   const days = Number(value);
   if (!Number.isFinite(days)) return SALES_DEFAULTS.orders_list_default_days;
   return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+/** Inclusive calendar days for Shop Debtors Unpaid / Partial / Paid defaults. */
+export function normalizeShopDebtorsDefaultDays(value) {
+  const days = Number(value);
+  if (!Number.isFinite(days)) return SALES_DEFAULTS.shop_debtors_default_days;
+  return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+/** Default From/To for Sales → Shop Debtors (Unpaid, Partially paid, Paid). */
+export function getShopDebtorsDefaultDateRange(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return defaultDateRange(normalizeShopDebtorsDefaultDays(sales.shop_debtors_default_days));
+}
+
+export function getShopDebtorsDefaultDays(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return normalizeShopDebtorsDefaultDays(sales.shop_debtors_default_days);
 }
 
 /** Inclusive calendar days for report From/To defaults (1 = today only). */
@@ -656,6 +676,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_created",
   orders_list_default_days: "14",
+  shop_debtors_default_days: "30",
   reports_default_date_range_days: "30",
   orders_list_search_days: "30",
   orders_list_sort: "-created_at",
@@ -737,6 +758,9 @@ export function salesOrganizationFormFromApi(res) {
     ...creditNotePrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
+    shop_debtors_default_days: String(
+      normalizeShopDebtorsDefaultDays(sales.shop_debtors_default_days),
+    ),
     reports_default_date_range_days: String(
       normalizeReportsDefaultDateRangeDays(sales.reports_default_date_range_days),
     ),
@@ -862,6 +886,9 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     points_earn_per_kes: Number(withDiscountApproval.points_earn_per_kes) || 0,
     orders_list_default_days: normalizeOrdersListDefaultDays(
       withDiscountApproval.orders_list_default_days,
+    ),
+    shop_debtors_default_days: normalizeShopDebtorsDefaultDays(
+      withDiscountApproval.shop_debtors_default_days,
     ),
     reports_default_date_range_days: normalizeReportsDefaultDateRangeDays(
       withDiscountApproval.reports_default_date_range_days,

@@ -13,8 +13,11 @@ import {
   aiTrainingApiBase,
   aiTrainingWorkspacePath,
   bulkImportTrainingNotes,
+  bulkDeleteTrainingNotes,
   installFoundationTrainingNotes,
+  mergeTrainingNotes,
   parseTrainingQaPaste,
+  scanTrainingNoteDuplicates,
 } from "@/lib/platform-ai-training";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -64,6 +67,11 @@ export function PlatformAiTrainingScreen() {
   const [bulkText, setBulkText] = useState("");
   const [savingBulk, setSavingBulk] = useState(false);
   const [installingFoundation, setInstallingFoundation] = useState(false);
+  const [duplicateThreshold, setDuplicateThreshold] = useState(85);
+  const [duplicateScan, setDuplicateScan] = useState(null);
+  const [scanningDuplicates, setScanningDuplicates] = useState(false);
+  const [mergingClusterKey, setMergingClusterKey] = useState(null);
+  const [keepByCluster, setKeepByCluster] = useState({});
   const [form, setForm] = useState({
     id: null,
     topic: "",
@@ -275,6 +283,87 @@ export function PlatformAiTrainingScreen() {
     }
   }
 
+  async function scanDuplicates() {
+    setScanningDuplicates(true);
+    try {
+      const res = await scanTrainingNoteDuplicates({
+        workspace_id: filterWorkspace || null,
+        threshold: duplicateThreshold,
+      });
+      setDuplicateScan(res);
+      const defaults = {};
+      for (const [idx, cluster] of (res.clusters ?? []).entries()) {
+        const first = cluster.entries?.[0];
+        if (first?.id) defaults[idx] = first.id;
+      }
+      setKeepByCluster(defaults);
+    } catch (err) {
+      setDuplicateScan(null);
+      notifyError(err instanceof ApiError ? err.message : "Failed to scan for duplicates.");
+    } finally {
+      setScanningDuplicates(false);
+    }
+  }
+
+  async function mergeDuplicateCluster(clusterIndex) {
+    const cluster = duplicateScan?.clusters?.[clusterIndex];
+    if (!cluster?.entries?.length) return;
+
+    const keepId = keepByCluster[clusterIndex] ?? cluster.entries[0]?.id;
+    const mergeIds = cluster.entries.map((e) => e.id).filter((id) => id !== keepId);
+    if (!keepId || mergeIds.length === 0) return;
+
+    const ok = await confirm({
+      title: "Merge duplicate notes",
+      message: `Keep one note and delete ${mergeIds.length} duplicate(s)? Content from all notes will be combined.`,
+      confirmLabel: "Merge",
+    });
+    if (!ok) return;
+
+    setMergingClusterKey(String(clusterIndex));
+    try {
+      await mergeTrainingNotes({ keep_id: keepId, merge_ids: mergeIds });
+      await loadKnowledge();
+      await loadStatus();
+      await scanDuplicates();
+      notifySuccess("Duplicate notes merged.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to merge notes.");
+    } finally {
+      setMergingClusterKey(null);
+    }
+  }
+
+  async function removeDuplicateCluster(clusterIndex) {
+    const cluster = duplicateScan?.clusters?.[clusterIndex];
+    if (!cluster?.entries?.length) return;
+
+    const keepId = keepByCluster[clusterIndex] ?? cluster.entries[0]?.id;
+    const removeIds = cluster.entries.map((e) => e.id).filter((id) => id !== keepId);
+    if (removeIds.length === 0) return;
+
+    const ok = await confirm({
+      title: "Remove duplicate notes",
+      message: `Delete ${removeIds.length} duplicate note(s) and keep the selected one?`,
+      confirmLabel: "Remove duplicates",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setMergingClusterKey(String(clusterIndex));
+    try {
+      await bulkDeleteTrainingNotes(removeIds);
+      await loadKnowledge();
+      await loadStatus();
+      await scanDuplicates();
+      notifySuccess("Duplicate notes removed.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to remove duplicates.");
+    } finally {
+      setMergingClusterKey(null);
+    }
+  }
+
   const clearChatState = useCallback(() => {
     setPendingAction(null);
     setFormSpec(null);
@@ -363,7 +452,7 @@ export function PlatformAiTrainingScreen() {
                 <p className="theme-subtext mt-2 max-w-4xl text-sm">
                   Teach the assistant once for every tenant: questions users ask, the correct Centrix answer, and the
                   screen path. Notes are matched by relevance — you do not need a code change for each FAQ. Live numbers
-                  (sales, stock, attendance) still come from tools.
+                  (sales, stock, attendance) still come from tools. Centrix AI accepts questions in English only.
                 </p>
                 <p className="theme-text-muted mt-2 text-xs">
                   {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Test answers in the Test console tab
@@ -480,7 +569,7 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
             </div>
 
             <div className="theme-inset-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border p-5 shadow-sm">
-              <div className="flex shrink-0 items-center justify-between gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
                 <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
                 <SearchableSelect
                   className={`${inputClassName()} px-2 py-1 text-xs`}
@@ -492,6 +581,105 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                     label: opt.label,
                   }))}
                 />
+              </div>
+
+              <div className="mt-4 shrink-0 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="theme-heading text-xs font-semibold">Duplicate questions</p>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Scan saved notes for similar topics — merge answers or remove extras after bulk import.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="theme-subtext flex items-center gap-1 text-xs">
+                      Match
+                      <input
+                        type="number"
+                        min={50}
+                        max={100}
+                        className={`${inputClassName()} w-16 px-2 py-1 text-xs`}
+                        value={duplicateThreshold}
+                        onChange={(e) => setDuplicateThreshold(Number(e.target.value) || 85)}
+                      />
+                      %
+                    </label>
+                    <PrimaryButton
+                      type="button"
+                      showIcon={false}
+                      disabled={scanningDuplicates}
+                      onClick={() => void scanDuplicates()}
+                    >
+                      {scanningDuplicates ? "Scanning…" : "Scan duplicates"}
+                    </PrimaryButton>
+                  </div>
+                </div>
+
+                {duplicateScan ? (
+                  <div className="mt-3 space-y-3">
+                    <p className="theme-subtext text-xs">
+                      {duplicateScan.cluster_count > 0
+                        ? `${duplicateScan.cluster_count} cluster(s) · ${duplicateScan.duplicate_entry_count} extra note(s) can be merged or removed`
+                        : "No duplicate topics found at this threshold."}
+                    </p>
+                    {(duplicateScan.clusters ?? []).map((cluster, clusterIndex) => (
+                      <div
+                        key={`dup-${clusterIndex}-${cluster.entries?.[0]?.id ?? clusterIndex}`}
+                        className="rounded-md border border-[var(--theme-border)] p-3 text-sm"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="theme-heading text-xs font-medium">
+                            {cluster.similarity}% similar · {cluster.entries?.length ?? 0} notes
+                          </p>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              disabled={mergingClusterKey === String(clusterIndex)}
+                              onClick={() => void mergeDuplicateCluster(clusterIndex)}
+                              className="theme-link rounded px-2 py-1 text-xs hover:bg-[var(--theme-hover)]"
+                            >
+                              Merge
+                            </button>
+                            <button
+                              type="button"
+                              disabled={mergingClusterKey === String(clusterIndex)}
+                              onClick={() => void removeDuplicateCluster(clusterIndex)}
+                              className="rounded px-2 py-1 text-xs text-red-500 hover:bg-[color-mix(in_srgb,#ef4444_12%,var(--theme-page-bg))]"
+                            >
+                              Remove extras
+                            </button>
+                          </div>
+                        </div>
+                        <ul className="mt-2 space-y-2">
+                          {(cluster.entries ?? []).map((entry) => (
+                            <li
+                              key={entry.id}
+                              className="rounded border border-[var(--theme-border)] p-2 text-xs"
+                            >
+                              <label className="flex cursor-pointer items-start gap-2">
+                                <input
+                                  type="radio"
+                                  name={`keep-cluster-${clusterIndex}`}
+                                  checked={(keepByCluster[clusterIndex] ?? cluster.entries?.[0]?.id) === entry.id}
+                                  onChange={() =>
+                                    setKeepByCluster((prev) => ({ ...prev, [clusterIndex]: entry.id }))
+                                  }
+                                  className="mt-0.5"
+                                />
+                                <span className="min-w-0">
+                                  <span className="theme-heading font-medium">{entry.topic}</span>
+                                  <span className="theme-text-muted mt-1 block whitespace-pre-wrap line-clamp-3">
+                                    {entry.content}
+                                  </span>
+                                </span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               {loadingKnowledge ? (

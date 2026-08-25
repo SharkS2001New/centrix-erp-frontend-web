@@ -81,6 +81,7 @@ import {
   isOrgMobileSalesEnabled,
   normalizeOrdersListDefaultDays,
   normalizeOrdersListVisibleColumns,
+  normalizeShopDebtorsDefaultDays,
   orderListDateRangeUsesArchive,
   ORDERS_HOT_WINDOW_DAYS,
   orderListPrintAriaLabel,
@@ -367,6 +368,17 @@ export default function SalesOrdersListScreen({
     () => defaultDateRange(ordersListDefaultDays),
     [ordersListDefaultDays],
   );
+  const shopDebtorsDefaultDays = useMemo(
+    () =>
+      normalizeShopDebtorsDefaultDays(
+        capabilities?.module_settings?.sales?.shop_debtors_default_days,
+      ),
+    [capabilities?.module_settings],
+  );
+  const shopDebtorsDefaultRange = useMemo(
+    () => defaultDateRange(shopDebtorsDefaultDays),
+    [shopDebtorsDefaultDays],
+  );
   const ordersTabTitle = useMemo(() => {
     if (shopDebtorsBucket === "unpaid") return "Unpaid Debtors";
     if (shopDebtorsBucket === "partial") return "Partially Paid Debtors";
@@ -547,15 +559,17 @@ export default function SalesOrdersListScreen({
   }, [tableSortActive, tableSort, tableSortDir]);
 
   useEffect(() => {
-    // Every Sales → Orders queue (Unpaid, Paid, Mobile, Shop Debtors, …) uses the org
-    // platform setting sales.orders_list_default_days unless a queue explicitly sets
-    // dateRangeDays (none do today) or route orders pass routeOrdersDateRangeDays.
+    // Sales → Orders uses sales.orders_list_default_days.
+    // Shop Debtors (Unpaid / Partial / Paid) uses sales.shop_debtors_default_days
+    // so platform admins can set a wider window (e.g. 30 or 60 days) per org.
     const range =
       queueConfig?.dateRangeDays != null
         ? defaultDateRange(queueConfig.dateRangeDays)
-        : routeOrdersOnly && routeOrdersDateRangeDays != null
-          ? defaultDateRange(routeOrdersDateRangeDays)
-          : ordersListDefaultRange;
+        : shopDebtorsOnly
+          ? shopDebtorsDefaultRange
+          : routeOrdersOnly && routeOrdersDateRangeDays != null
+            ? defaultDateRange(routeOrdersDateRangeDays)
+            : ordersListDefaultRange;
     setFromDate(range.from);
     setToDate(range.to);
     setAppliedFromDate(range.from);
@@ -563,6 +577,7 @@ export default function SalesOrdersListScreen({
     setListFiltersInitialized(true);
   }, [
     ordersListDefaultRange,
+    shopDebtorsDefaultRange,
     queueConfig?.dateRangeDays,
     listQueueSlug,
     routeOrdersOnly,
@@ -732,11 +747,13 @@ export default function SalesOrdersListScreen({
     showSelectionColumn: true,
   });
 
+  const listDefaultDaysForArchive =
+    shopDebtorsOnly ? shopDebtorsDefaultDays : ordersListDefaultDays;
   const loadingFromArchive =
     Boolean(listScope?.from_archive) ||
     orderListDateRangeUsesArchive(
       appliedFromDate,
-      queueConfig?.dateRangeDays || ordersListDefaultDays || ORDERS_HOT_WINDOW_DAYS,
+      queueConfig?.dateRangeDays || listDefaultDaysForArchive || ORDERS_HOT_WINDOW_DAYS,
     );
   const showArchiveLoading =
     (loading || listLoading) && loadingFromArchive;
@@ -1423,9 +1440,8 @@ export default function SalesOrdersListScreen({
     } catch (e) {
       if (!quiet) {
         setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
-        return null;
       }
-      throw e;
+      return null;
     } finally {
       setTransitionBusyId(null);
     }
@@ -1450,19 +1466,24 @@ export default function SalesOrdersListScreen({
   });
 
   async function handleAdvance(sale, targetStatus) {
-    if (transitionBusyId === sale.id || fulfillment.busy) return;
-    if (targetStatus === "cancelled") {
-      return transitionOrder(sale, targetStatus);
+    if (transitionBusyId === sale.id || fulfillment.busy) return null;
+    try {
+      if (targetStatus === "cancelled") {
+        return await transitionOrder(sale, targetStatus);
+      }
+      const fromStatus = String(sale?.status ?? "").toLowerCase();
+      if (fromStatus === "expired" || fromStatus === "cancelled") {
+        return await transitionOrder(sale, targetStatus);
+      }
+      if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
+        setPaySale(sale);
+        return null;
+      }
+      return await fulfillment.requestTransition(sale, targetStatus);
+    } catch (e) {
+      setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
+      return null;
     }
-    const fromStatus = String(sale?.status ?? "").toLowerCase();
-    if (fromStatus === "expired" || fromStatus === "cancelled") {
-      return transitionOrder(sale, targetStatus);
-    }
-    if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
-      setPaySale(sale);
-      return;
-    }
-    return fulfillment.requestTransition(sale, targetStatus);
   }
 
   const canCollectPayments = canCollectSalePayments({ hasPermission });
@@ -1797,11 +1818,11 @@ export default function SalesOrdersListScreen({
       onAdvance:
         routeOrdersOnly || !hasPermission(P.sales.orders.edit)
           ? null
-          : (status) => handleAdvance(sale, status),
+          : (status) => void handleAdvance(sale, status),
       onCancel:
         routeOrdersOnly || !hasPermission(P.sales.orders.edit)
           ? null
-          : () => handleAdvance(sale, "cancelled"),
+          : () => void handleAdvance(sale, "cancelled"),
     });
   }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router, canCollectPayments, hasPermission]);
 
@@ -2045,7 +2066,7 @@ export default function SalesOrdersListScreen({
                 Your date range includes orders older than{" "}
                 {listScope?.hot_window_days ||
                   queueConfig?.dateRangeDays ||
-                  ordersListDefaultDays ||
+                  listDefaultDaysForArchive ||
                   ORDERS_HOT_WINDOW_DAYS}{" "}
                 days.
               </span>

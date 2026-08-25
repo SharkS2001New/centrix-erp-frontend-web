@@ -68,7 +68,10 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
       }
 
       try {
-        const status = await apiRequest(`/sales/orders/${sale.id}/load-weight-status`);
+        const status = await apiRequest(`/sales/orders/${sale.id}/load-weight-status`, {
+          loading: false,
+          reportIssues: false,
+        });
         if (status?.ready) {
           return true;
         }

@@ -1002,7 +1002,6 @@ export function MobileOrdersQuickActions({
       onDone?.();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to mark orders as paid.");
-      throw e;
     } finally {
       setMarkBusy(false);
     }

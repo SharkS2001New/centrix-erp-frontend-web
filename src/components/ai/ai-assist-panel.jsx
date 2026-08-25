@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, aiChatStream } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
@@ -91,6 +91,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [input, setInput] = useState("");
   const [entityRefs, setEntityRefs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [streamStatus, setStreamStatus] = useState(null);
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [lastFailedMessage, setLastFailedMessage] = useState(null);
@@ -184,7 +185,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, []);
 
   const applyChatResponse = useCallback(
-    (res) => {
+    (res, { skipAssistantAppend = false } = {}) => {
       if (res.conversation_id) {
         setConversationId(res.conversation_id);
       }
@@ -195,7 +196,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         return;
       }
 
-      if (content) {
+      if (content && !skipAssistantAppend) {
         setMessages((prev) => [...prev, { role: "assistant", content }]);
       }
 
@@ -259,34 +260,90 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         clearActionState();
       }
       setLoading(true);
+      setStreamStatus(null);
       if (!confirm) {
         setMessages((prev) => [...prev, { role: "user", content: message }]);
       }
       setInput("");
       setEntityRefs([]);
       try {
-        const history = messages.slice(-10);
+        const history = messages.slice(-6);
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
           buildPageContext({ pathname, screenKey: workspaceId });
+        const requestBody = {
+          context: "erp",
+          workspace_id: workspaceId,
+          pathname,
+          page_context: Object.keys(effectivePageContext).length ? effectivePageContext : undefined,
+          message,
+          conversation_id: conversationId || undefined,
+          history,
+          entity_refs: refsForSend.length ? refsForSend : undefined,
+          pending_action: confirm && pendingAction ? pendingAction : undefined,
+          form_values: confirm && Object.keys(formValuesOverride ?? formValues).length
+            ? formValuesOverride ?? formValues
+            : undefined,
+          confirm_action: confirm,
+        };
+
+        const useStream =
+          !confirm &&
+          !pendingAction &&
+          status?.supports_streaming !== false;
+
+        if (useStream) {
+          let accumulated = "";
+          setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true }]);
+
+          const done = await aiChatStream(requestBody, {
+            onEvent: (event) => {
+              if (event.event === "status" && event.message) {
+                setStreamStatus(event.message);
+              }
+              if (event.event === "delta" && event.content) {
+                accumulated += event.content;
+                setStreamStatus(null);
+                setMessages((prev) => {
+                  if (prev.length === 0) return prev;
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last?.role === "assistant") {
+                    next[next.length - 1] = {
+                      ...last,
+                      content: accumulated,
+                      streaming: true,
+                    };
+                  }
+                  return next;
+                });
+              }
+            },
+          });
+
+          setStreamStatus(null);
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = {
+                role: "assistant",
+                content: done?.reply || done?.message || accumulated || last.content,
+              };
+            }
+            return next;
+          });
+          if (done) {
+            applyChatResponse(done, { skipAssistantAppend: true });
+          }
+          return;
+        }
+
         const res = await apiRequest("/ai/chat", {
           method: "POST",
-          body: {
-            context: "erp",
-            workspace_id: workspaceId,
-            pathname,
-            page_context: Object.keys(effectivePageContext).length ? effectivePageContext : undefined,
-            message,
-            conversation_id: conversationId || undefined,
-            history,
-            entity_refs: refsForSend.length ? refsForSend : undefined,
-            pending_action: confirm && pendingAction ? pendingAction : undefined,
-            form_values: confirm && Object.keys(formValuesOverride ?? formValues).length
-              ? formValuesOverride ?? formValues
-              : undefined,
-            confirm_action: confirm,
-          },
+          body: requestBody,
         });
         applyChatResponse(res);
       } catch (e) {
@@ -309,6 +366,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       conversationId,
       pageContext,
       entityRefs,
+      status?.supports_streaming,
     ],
   );
 
@@ -557,7 +615,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </div>
               ) : null}
 
-              {loading ? <p className="text-center text-xs text-slate-500">Thinking…</p> : null}
+              {loading ? (
+                <p className="text-center text-xs text-slate-500">
+                  {streamStatus || "Thinking…"}
+                </p>
+              ) : null}
               {error ? (
                 <div className="space-y-1 text-center">
                   <p className="text-xs text-red-600">{error}</p>
@@ -588,7 +650,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 value={input}
                 entityRefs={entityRefs}
                 disabled={loading}
-                placeholder={`Ask about ${workspaceLabel}… Type @ for products, suppliers, customers`}
+                placeholder={`Ask in English about ${workspaceLabel}… Type @ for products, suppliers, customers`}
                 textareaClassName="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
                 onChange={({ text, entityRefs: nextRefs }) => {
                   setInput(text);

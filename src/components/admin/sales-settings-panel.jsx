@@ -644,7 +644,7 @@ export function SalesSettingsPanel({
                 <h3 className="text-sm font-semibold text-slate-900">Orders list defaults</h3>
                 <p className="mt-1 text-xs text-slate-500">
                   Platform-only: initial date range and sort when staff open Sales → Orders and workflow
-                  queues.
+                  queues, plus the separate default window for Shop Debtors (Unpaid / Partial / Paid).
                 </p>
                 <div className="mt-4">
                   <OrdersListDefaultsFields
