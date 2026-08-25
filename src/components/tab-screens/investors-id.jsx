@@ -72,6 +72,25 @@ const EMPTY_SPEND = {
   notes: "",
 };
 
+function ContributionTypeBadge({ type }) {
+  const t = String(type || "").toLowerCase();
+  if (t === "stock") {
+    return (
+      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+        Stock
+      </span>
+    );
+  }
+  if (t === "cash") {
+    return (
+      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900">
+        Cash
+      </span>
+    );
+  }
+  return <span className="capitalize text-slate-600">{type || "—"}</span>;
+}
+
 function StatusBadge({ active }) {
   return (
     <span
@@ -402,10 +421,10 @@ export function InvestorsIdScreen() {
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total contributed" value={formatKesCompact(summary.total_contributed ?? 0)} />
-        <StatCard label="Stock value" value={formatKesCompact(summary.stock_value ?? 0)} />
+        <StatCard label="Cash contributed" value={formatKesCompact(summary.cash_contributed ?? 0)} />
+        <StatCard label="Stock contributed" value={formatKesCompact(summary.stock_contributed ?? 0)} />
+        <StatCard label="Stock value (on hand)" value={formatKesCompact(summary.stock_value ?? 0)} />
         <StatCard label="Cash pool" value={formatKesCompact(summary.cash_pool_balance ?? 0)} />
-        <StatCard label="Open batches" value={summary.open_batches ?? 0} />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
@@ -427,17 +446,38 @@ export function InvestorsIdScreen() {
 
       {tab === "overview" && (
         <div className="theme-panel space-y-3 rounded-xl p-4 text-sm text-slate-700 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Capital form
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {Number(summary.cash_contributed ?? 0) > 0 ? (
+              <ContributionTypeBadge type="cash" />
+            ) : null}
+            {Number(summary.stock_contributed ?? 0) > 0 ? (
+              <ContributionTypeBadge type="stock" />
+            ) : null}
+            {Number(summary.cash_contributed ?? 0) <= 0 &&
+            Number(summary.stock_contributed ?? 0) <= 0 ? (
+              <span className="text-slate-500">No contributions yet — use Add contribution.</span>
+            ) : null}
+          </div>
           <p>
             <span className="font-medium text-slate-900">Cash in:</span>{" "}
             {formatKesCompact(summary.cash_contributed ?? 0)}
+            <span className="text-slate-500"> (money deposited)</span>
           </p>
           <p>
             <span className="font-medium text-slate-900">Stock in:</span>{" "}
             {formatKesCompact(summary.stock_contributed ?? 0)}
+            <span className="text-slate-500"> (investor paid for goods)</span>
           </p>
           <p>
             <span className="font-medium text-slate-900">Cash spent:</span>{" "}
             {formatKesCompact(summary.cash_spent ?? 0)}
+          </p>
+          <p>
+            <span className="font-medium text-slate-900">Total contributed:</span>{" "}
+            {formatKesCompact(summary.total_contributed ?? 0)}
           </p>
           {investor.notes ? (
             <p className="border-t border-slate-100 pt-3 text-slate-600">{investor.notes}</p>
@@ -471,7 +511,9 @@ export function InvestorsIdScreen() {
                   contributions.map((c) => (
                     <tr key={c.id} className="theme-table-row border-t border-slate-100">
                       <td className="px-4 py-2.5">{formatShortDate(c.contribution_date)}</td>
-                      <td className="px-4 py-2.5 capitalize">{c.contribution_type}</td>
+                      <td className="px-4 py-2.5">
+                        <ContributionTypeBadge type={c.contribution_type} />
+                      </td>
                       <td className="px-4 py-2.5 text-right tabular-nums">
                         {formatKesCompact(c.amount ?? 0)}
                       </td>
@@ -884,13 +926,11 @@ export function InvestorsIdScreen() {
         open={contribDrawer}
         onClose={() => setContribDrawer(false)}
         title="Add contribution"
+        onSubmit={(e) => void saveContribution(e)}
+        saving={saving}
+        error={formError}
+        submitLabel="Save contribution"
       >
-        <form onSubmit={(e) => void saveContribution(e)} className="space-y-4">
-          {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </p>
-          ) : null}
           <Field label="Type" required>
             <select
               className={inputClassName()}
@@ -914,7 +954,7 @@ export function InvestorsIdScreen() {
               required
             />
           </Field>
-          <Field label="Amount">
+          <Field label="Amount" required>
             <input
               type="number"
               step="0.01"
@@ -922,6 +962,7 @@ export function InvestorsIdScreen() {
               className={inputClassName()}
               value={contribForm.amount}
               onChange={(e) => setContribForm((p) => ({ ...p, amount: e.target.value }))}
+              required
             />
           </Field>
           <Field label="Payment code">
@@ -960,28 +1001,17 @@ export function InvestorsIdScreen() {
               onChange={(e) => setContribForm((p) => ({ ...p, notes: e.target.value }))}
             />
           </Field>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setContribDrawer(false)}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </PrimaryButton>
-          </div>
-        </form>
       </FormDrawer>
 
       <FormDrawer
         open={Boolean(linkDrawer)}
         onClose={() => setLinkDrawer(null)}
         title="Link payment / LPO"
+        onSubmit={(e) => void saveLink(e)}
+        saving={saving}
+        error={formError}
+        submitLabel="Link"
       >
-        <form onSubmit={(e) => void saveLink(e)} className="space-y-4">
-          {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </p>
-          ) : null}
           <Field label="Payment code">
             <input
               className={inputClassName()}
@@ -1005,28 +1035,17 @@ export function InvestorsIdScreen() {
               onChange={(e) => setLinkForm((p) => ({ ...p, lpo_no: e.target.value }))}
             />
           </Field>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setLinkDrawer(null)}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Linking…" : "Link"}
-            </PrimaryButton>
-          </div>
-        </form>
       </FormDrawer>
 
       <FormDrawer
         open={Boolean(allocDrawer)}
         onClose={() => setAllocDrawer(null)}
         title="Allocate products"
+        onSubmit={(e) => void saveAllocate(e)}
+        saving={saving}
+        error={formError}
+        submitLabel="Allocate"
       >
-        <form onSubmit={(e) => void saveAllocate(e)} className="space-y-4">
-          {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </p>
-          ) : null}
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -1094,24 +1113,17 @@ export function InvestorsIdScreen() {
               </div>
             </>
           )}
-          <div className="flex justify-end gap-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setAllocDrawer(null)}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Allocate"}
-            </PrimaryButton>
-          </div>
-        </form>
       </FormDrawer>
 
-      <FormDrawer open={spendDrawer} onClose={() => setSpendDrawer(false)} title="Link spend">
-        <form onSubmit={(e) => void saveSpend(e)} className="space-y-4">
-          {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </p>
-          ) : null}
+      <FormDrawer
+        open={spendDrawer}
+        onClose={() => setSpendDrawer(false)}
+        title="Link spend"
+        onSubmit={(e) => void saveSpend(e)}
+        saving={saving}
+        error={formError}
+        submitLabel="Save"
+      >
           <Field label="Spend type" required>
             <select
               className={inputClassName()}
@@ -1159,15 +1171,6 @@ export function InvestorsIdScreen() {
               onChange={(e) => setSpendForm((p) => ({ ...p, notes: e.target.value }))}
             />
           </Field>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setSpendDrawer(false)}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </PrimaryButton>
-          </div>
-        </form>
       </FormDrawer>
     </div>
   );

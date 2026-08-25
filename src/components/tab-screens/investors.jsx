@@ -53,6 +53,29 @@ function StatusBadge({ active }) {
   );
 }
 
+/** Capital form from contribution totals (cash deposit vs goods paid for). */
+function CapitalFormBadges({ summary }) {
+  const cash = Number(summary?.cash_contributed ?? 0);
+  const stock = Number(summary?.stock_contributed ?? 0);
+  if (cash <= 0 && stock <= 0) {
+    return <span className="text-xs text-slate-400">No capital yet</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {cash > 0 ? (
+        <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900">
+          Cash
+        </span>
+      ) : null}
+      {stock > 0 ? (
+        <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+          Stock
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function InvestorsScreen() {
   const router = useRouter();
   const confirm = useConfirm();
@@ -257,13 +280,15 @@ export function InvestorsScreen() {
         ) : (
           <div className={listRefresh.contentClassName}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] border-collapse text-sm">
+              <table className="w-full min-w-[1100px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">Code</th>
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Contact</th>
-                    <th className="px-4 py-2.5 text-right">Contributed</th>
+                    <th className="px-4 py-2.5">Form</th>
+                    <th className="px-4 py-2.5 text-right">Cash in</th>
+                    <th className="px-4 py-2.5 text-right">Stock in</th>
                     <th className="px-4 py-2.5 text-right">Stock value</th>
                     <th className="px-4 py-2.5 text-right">Cash pool</th>
                     <th className="px-4 py-2.5">Status</th>
@@ -273,9 +298,9 @@ export function InvestorsScreen() {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                         {enabled
-                          ? "No investors yet. Add one to record cash or stock capital."
+                          ? "No investors yet. Add one, then record cash or stock contributions on their page."
                           : "Enable Investors to manage capital accounts."}
                       </td>
                     </tr>
@@ -303,8 +328,14 @@ export function InvestorsScreen() {
                           <td className="px-4 py-2.5 text-slate-600">
                             {row.contact_person || row.phone || "—"}
                           </td>
+                          <td className="px-4 py-2.5">
+                            <CapitalFormBadges summary={summary} />
+                          </td>
                           <td className="px-4 py-2.5 text-right tabular-nums">
-                            {formatKesCompact(summary.total_contributed ?? 0)}
+                            {formatKesCompact(summary.cash_contributed ?? 0)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">
+                            {formatKesCompact(summary.stock_contributed ?? 0)}
                           </td>
                           <td className="px-4 py-2.5 text-right tabular-nums">
                             {formatKesCompact(summary.stock_value ?? 0)}
@@ -361,78 +392,72 @@ export function InvestorsScreen() {
         open={drawerOpen}
         onClose={closeDrawer}
         title={drawerMode === "create" ? "Add investor" : "Edit investor"}
+        onSubmit={(e) => void saveForm(e)}
+        saving={saving}
+        error={formError}
+        submitLabel="Save"
       >
-        <form onSubmit={(e) => void saveForm(e)} className="space-y-4">
-          {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </p>
-          ) : null}
-          <Field label="Investor code">
+        <p className="mb-1 text-xs text-slate-500">
+          Create the investor account first. Choose <strong>Cash</strong> or{" "}
+          <strong>Stock</strong> when you add a contribution on their page — that is how capital
+          form is tracked.
+        </p>
+        <Field label="Investor code">
+          <input
+            className={inputClassName()}
+            value={form.investor_code}
+            onChange={(e) => updateField("investor_code", e.target.value)}
+            placeholder="Auto if blank (INV-001…)"
+          />
+        </Field>
+        <Field label="Name" required>
+          <input
+            className={inputClassName()}
+            value={form.investor_name}
+            onChange={(e) => updateField("investor_name", e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Contact person">
+          <input
+            className={inputClassName()}
+            value={form.contact_person}
+            onChange={(e) => updateField("contact_person", e.target.value)}
+          />
+        </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Phone">
             <input
               className={inputClassName()}
-              value={form.investor_code}
-              onChange={(e) => updateField("investor_code", e.target.value)}
-              placeholder="Auto if blank (INV-001…)"
+              value={form.phone}
+              onChange={(e) => updateField("phone", e.target.value)}
             />
           </Field>
-          <Field label="Name" required>
+          <Field label="Email">
             <input
+              type="email"
               className={inputClassName()}
-              value={form.investor_name}
-              onChange={(e) => updateField("investor_name", e.target.value)}
-              required
+              value={form.email}
+              onChange={(e) => updateField("email", e.target.value)}
             />
           </Field>
-          <Field label="Contact person">
-            <input
-              className={inputClassName()}
-              value={form.contact_person}
-              onChange={(e) => updateField("contact_person", e.target.value)}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Phone">
-              <input
-                className={inputClassName()}
-                value={form.phone}
-                onChange={(e) => updateField("phone", e.target.value)}
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                type="email"
-                className={inputClassName()}
-                value={form.email}
-                onChange={(e) => updateField("email", e.target.value)}
-              />
-            </Field>
-          </div>
-          <Field label="Notes">
-            <textarea
-              className={inputClassName()}
-              rows={3}
-              value={form.notes}
-              onChange={(e) => updateField("notes", e.target.value)}
-            />
-          </Field>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => updateField("is_active", e.target.checked)}
-            />
-            Active
-          </label>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={closeDrawer}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </PrimaryButton>
-          </div>
-        </form>
+        </div>
+        <Field label="Notes">
+          <textarea
+            className={inputClassName()}
+            rows={3}
+            value={form.notes}
+            onChange={(e) => updateField("notes", e.target.value)}
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => updateField("is_active", e.target.checked)}
+          />
+          Active
+        </label>
       </FormDrawer>
 
       {enabled && rows.length > 0 ? (
