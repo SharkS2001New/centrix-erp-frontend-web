@@ -6,6 +6,7 @@ import {
   parseMarkdownTableAt,
   splitMarkdownContentBlocks,
   splitMarkdownTableRow,
+  userAskedForChart,
 } from "@/lib/ai-message-format";
 
 describe("ai message format", () => {
@@ -66,6 +67,12 @@ describe("ai message format", () => {
         ],
       },
     });
+  });
+
+  it("detects when the user asked for a chart", () => {
+    expect(userAskedForChart("Show expenses as a pie chart")).toBe(true);
+    expect(userAskedForChart("Can you graph sales by cashier?")).toBe(true);
+    expect(userAskedForChart("Expenses by category this month")).toBe(false);
   });
 
   it("parses a markdown table block with qty labels", () => {

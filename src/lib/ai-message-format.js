@@ -175,6 +175,7 @@ export function parseChartFenceAt(lines, startIndex) {
 
 /**
  * Detect a Category/Label + Amount table suitable for a small bar chart.
+ * Callers should only use this when the user explicitly asked for a chart.
  *
  * @param {{ headers: string[], rows: string[][] }} table
  * @returns {{ type: 'bar', title?: string, items: Array<{ label: string, value: number }> } | null}
@@ -208,6 +209,19 @@ export function chartFromMarkdownTable(table) {
   // Cap chart noise for long product lists
   const top = [...items].sort((a, b) => b.value - a.value).slice(0, 8);
   return { type: "bar", items: top };
+}
+
+/**
+ * True when the user asked for a chart / graph / pie / visualization.
+ *
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function userAskedForChart(text) {
+  const s = String(text ?? "").toLowerCase();
+  if (!s.trim()) return false;
+  return /\b(chart|charts|graph|graphs|pie|donut|doughnut|histogram|visualization|visuali[sz]e)\b/.test(s)
+    || /\b(show|plot|draw)\b.{0,40}\b(as |a |the )?(chart|graph|pie|donut)\b/.test(s);
 }
 
 /**

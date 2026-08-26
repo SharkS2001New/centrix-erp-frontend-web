@@ -377,6 +377,10 @@ Answers cite real Centrix paths where possible. Prefer live tools for numbers (s
 **A:** No — only approved overtime is included in payroll runs and get_employee_payroll_preview. Pending OT must be approved first; denied OT never pays.  
 **Path:** /hr/payroll
 
+**Q:** Show expenses as a pie chart
+**A:** Only when the user asks for a chart/graph/pie — use a markdown table plus optional ```chart fence. Otherwise table only (no auto charts).  
+**Path:** /expenses
+
 **Q:** NSSF / PAYE deductions explained  
 **A:** Statutory from payroll engine; reports under statutory deductions / NSSF remittance.  
 **Path:** /reports/statutory-deductions

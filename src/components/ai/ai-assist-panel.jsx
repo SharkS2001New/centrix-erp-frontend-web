@@ -27,6 +27,7 @@ import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
+import { userAskedForChart } from "@/lib/ai-message-format";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -37,6 +38,17 @@ function closePanel(setOpen, setExpanded) {
 function isWritePendingAction(action) {
   const type = String(action?.type ?? "");
   return type.startsWith("create_") || type === "record_customer_payment";
+}
+
+/** Charts only when the preceding user turn asked for one. */
+function showChartsForMessage(messages, index) {
+  if (messages[index]?.role !== "assistant") return false;
+  for (let j = index - 1; j >= 0; j -= 1) {
+    if (messages[j]?.role === "user") {
+      return userAskedForChart(messages[j].content);
+    }
+  }
+  return false;
 }
 
 function ExpandIcon({ className }) {
@@ -558,6 +570,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 >
                   <AiMessageContent
                     content={m.content}
+                    showCharts={showChartsForMessage(messages, i)}
                     onNavigate={(_event, href) => void navigateFromAi(href)}
                   />
                 </div>
