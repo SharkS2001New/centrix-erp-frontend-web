@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { apiRequest, aiChatStream } from "@/lib/api";
+import { apiRequest, apiFetchBlob, aiChatStream } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
@@ -37,7 +37,30 @@ function closePanel(setOpen, setExpanded) {
 /** Confirm / form UI is only for write creates — never for open/navigate deep links. */
 function isWritePendingAction(action) {
   const type = String(action?.type ?? "");
-  return type.startsWith("create_") || type === "record_customer_payment";
+  return (
+    type.startsWith("create_") ||
+    type === "record_customer_payment" ||
+    [
+      "submit_lpo_for_approval",
+      "approve_lpo",
+      "mark_lpo_sent",
+      "receive_lpo_goods",
+    ].includes(type)
+  );
+}
+
+async function downloadDocumentLink(link) {
+  const apiPath = link?.api_path;
+  if (!apiPath) return;
+  const blob = await apiFetchBlob(apiPath);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = link.filename || "document.pdf";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** Charts only when the preceding user turn asked for one. */
@@ -249,8 +272,18 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       if (res.action_result?.result) {
-        setActionResult(res.action_result.result);
+        setActionResult({
+          ...res.action_result.result,
+          document_links:
+            res.action_result.result.document_links ?? res.document_links ?? [],
+        });
         clearActionState();
+      } else if (Array.isArray(res.document_links) && res.document_links.length > 0) {
+        setActionResult((prev) => ({
+          ...(prev && typeof prev === "object" ? prev : {}),
+          document_links: res.document_links,
+          path: prev?.path ?? res.document_links.find((l) => l.path)?.path,
+        }));
       }
       if (res.declined_off_topic) {
         clearActionState();
@@ -603,24 +636,106 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </div>
               ) : null}
 
-              {actionResult?.path || actionResult?.href ? (
+              {isWritePendingAction(pendingAction) && !formSpec?.fields?.length ? (
+                <div
+                  className={`rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm ${
+                    expanded ? "mx-8" : "mr-4"
+                  }`}
+                >
+                  <p className="font-medium text-indigo-900">
+                    {pendingAction?.summary || "Ready to confirm"}
+                  </p>
+                  <p className="mt-1 text-xs text-indigo-800">
+                    Reply <span className="font-semibold">confirm</span> in chat, or use the buttons
+                    below.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={submitForm}
+                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={clearActionState}
+                      className="rounded-md border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {actionResult?.path ||
+              actionResult?.href ||
+              (Array.isArray(actionResult?.document_links) &&
+                actionResult.document_links.length > 0) ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
                   <p className="font-medium text-emerald-900">
-                    {actionResult.navigate ? "Ready to open" : "Created successfully"}
+                    {actionResult.navigate
+                      ? "Ready to open"
+                      : actionResult?.document_links?.length && !actionResult?.lpo_no
+                        ? "Documents"
+                        : "Done"}
                   </p>
                   {actionResult?.note ? (
                     <p className="mt-1 text-xs text-emerald-800">{actionResult.note}</p>
                   ) : null}
-                  <Link
-                    href={actionResult.path || actionResult.href}
-                    className="mt-1 inline-block text-emerald-700 underline"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void navigateFromAi(actionResult.path || actionResult.href);
-                    }}
-                  >
-                    {actionResult.path || actionResult.href}
-                  </Link>
+                  {actionResult.path || actionResult.href ? (
+                    <Link
+                      href={actionResult.path || actionResult.href}
+                      className="mt-1 inline-block text-emerald-700 underline"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void navigateFromAi(actionResult.path || actionResult.href);
+                      }}
+                    >
+                      {actionResult.path || actionResult.href}
+                    </Link>
+                  ) : null}
+                  {Array.isArray(actionResult.document_links) &&
+                  actionResult.document_links.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {actionResult.document_links.map((link) => {
+                        const key = `${link.kind || "link"}-${link.path || link.api_path || link.label}`;
+                        if (link.download && link.api_path) {
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className="rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                              onClick={() => {
+                                void downloadDocumentLink(link).catch((err) => {
+                                  notifyError(
+                                    err instanceof Error ? err.message : "Could not download PDF",
+                                  );
+                                });
+                              }}
+                            >
+                              {link.label || "Download PDF"}
+                            </button>
+                          );
+                        }
+                        if (link.path) {
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className="rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                              onClick={() => void navigateFromAi(link.path)}
+                            >
+                              {link.label || link.path}
+                            </button>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

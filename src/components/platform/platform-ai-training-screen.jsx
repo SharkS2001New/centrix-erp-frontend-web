@@ -315,7 +315,7 @@ export function PlatformAiTrainingScreen() {
 
   async function exportNotesExcel() {
     if (knowledge.length === 0) {
-      notifyError("No training notes to export.");
+      notifyError("No training notes to export. Use Download template for a blank Excel file.");
       return;
     }
     setExportingExcel(true);
@@ -329,6 +329,31 @@ export function PlatformAiTrainingScreen() {
       notifySuccess("Excel export downloaded.");
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Excel export failed.");
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
+  async function downloadImportTemplate() {
+    setExportingExcel(true);
+    try {
+      await downloadExcelFromObjects("centrix-ai-training-qa-template.xlsx", "Q&A", [
+        {
+          question: "Where is GRN?",
+          answer: "Open /inventory/receipts to receive goods against an LPO.",
+          path: "/inventory/receipts",
+          workspace_id: "backoffice",
+        },
+        {
+          question: "How do I set retail packaging?",
+          answer: "Enable Sell on retail on the product, then configure tiers at /retail-package-settings.",
+          path: "/retail-package-settings",
+          workspace_id: "backoffice",
+        },
+      ]);
+      notifySuccess("Template downloaded — fill question/answer columns, then use Import Excel.");
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Template download failed.");
     } finally {
       setExportingExcel(false);
     }
@@ -787,10 +812,37 @@ export function PlatformAiTrainingScreen() {
                   Live numbers (sales, stock, attendance) still come from tools. Centrix AI accepts questions in English only.
                 </p>
                 <p className="theme-text-muted mt-2 text-xs">
-                  {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Test answers in the Test console tab
+                  {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Import Excel below or use{" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 hover:text-[var(--theme-heading)]"
+                    onClick={() => {
+                      document.getElementById("qa-file-import")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                  >
+                    Upload / replace Q&A file
+                  </button>
+                  {" · "}
+                  Test answers in the Test console tab
                 </p>
               </div>
             <div className="flex flex-wrap items-start gap-2">
+              <button
+                type="button"
+                disabled={uploadingFile}
+                onClick={() => fileInputRef.current?.click()}
+                className="theme-secondary-btn rounded-lg px-3 py-2 text-xs disabled:opacity-50"
+              >
+                {uploadingFile ? "Importing…" : "Import Excel"}
+              </button>
+              <button
+                type="button"
+                disabled={exportingExcel}
+                onClick={() => void downloadImportTemplate()}
+                className="theme-secondary-btn rounded-lg px-3 py-2 text-xs disabled:opacity-50"
+              >
+                {exportingExcel ? "Preparing…" : "Download template"}
+              </button>
               <button
                 type="button"
                 disabled={exportingExcel || knowledge.length === 0}
@@ -900,6 +952,56 @@ export function PlatformAiTrainingScreen() {
                 </form>
               </div>
 
+              <div id="qa-file-import" className="theme-inset-panel scroll-mt-24 rounded-xl border p-5 shadow-sm">
+                <h3 className="theme-heading text-sm font-semibold">Import Excel / CSV</h3>
+                <p className="theme-subtext mt-1 text-sm">
+                  Upload Excel (.xlsx), CSV, or a text/markdown file with Q&A. Spreadsheet columns:{" "}
+                  <span className="font-medium">question</span> (or topic),{" "}
+                  <span className="font-medium">answer</span> (or content), optional path / workspace_id.
+                  Use <span className="font-medium">Download template</span> in the header for a ready file.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void importQaFromFile(file, { replaceAll: false });
+                  }}
+                />
+                <input
+                  ref={replaceFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void importQaFromFile(file, { replaceAll: true });
+                  }}
+                />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <PrimaryButton
+                    type="button"
+                    showIcon={false}
+                    disabled={uploadingFile}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadingFile ? "Importing…" : "Upload & add notes"}
+                  </PrimaryButton>
+                  <button
+                    type="button"
+                    disabled={uploadingFile}
+                    onClick={() => replaceFileInputRef.current?.click()}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Delete all & re-upload
+                  </button>
+                </div>
+              </div>
+
               <div className="theme-inset-panel rounded-xl border p-5 shadow-sm">
                 <h3 className="theme-heading text-sm font-semibold">Bulk paste Q&A</h3>
                 <p className="theme-subtext mt-1 text-sm">
@@ -924,54 +1026,6 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                     {savingBulk ? "Importing…" : "Import Q&A notes"}
                   </PrimaryButton>
                 </form>
-              </div>
-
-              <div className="theme-inset-panel rounded-xl border p-5 shadow-sm">
-                <h3 className="theme-heading text-sm font-semibold">Upload / replace Q&A file</h3>
-                <p className="theme-subtext mt-1 text-sm">
-                  Upload Excel (.xlsx), CSV, or a text/markdown file with Q&A. Spreadsheet columns:{" "}
-                  <span className="font-medium">question</span> (or topic),{" "}
-                  <span className="font-medium">answer</span> (or content), optional path / workspace_id.
-                  Export Excel first for a ready template.
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void importQaFromFile(file, { replaceAll: false });
-                  }}
-                />
-                <input
-                  ref={replaceFileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void importQaFromFile(file, { replaceAll: true });
-                  }}
-                />
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <PrimaryButton
-                    type="button"
-                    showIcon={false}
-                    disabled={uploadingFile}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploadingFile ? "Importing…" : "Upload & add notes"}
-                  </PrimaryButton>
-                  <button
-                    type="button"
-                    disabled={uploadingFile}
-                    onClick={() => replaceFileInputRef.current?.click()}
-                    className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    Delete all & re-upload
-                  </button>
-                </div>
               </div>
             </div>
 
