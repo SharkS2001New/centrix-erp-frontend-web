@@ -10,15 +10,23 @@ import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
   AI_TRAINING_WORKSPACE_OPTIONS,
   AI_TRAINING_WORKSPACES,
+  TRAINING_NOTES_EXPORT_COLUMNS,
   aiTrainingApiBase,
   aiTrainingWorkspacePath,
   bulkImportTrainingNotes,
   bulkDeleteTrainingNotes,
+  deleteAllTrainingNotes,
   installFoundationTrainingNotes,
   mergeTrainingNotes,
+  parseTrainingQaFile,
   parseTrainingQaPaste,
   scanTrainingNoteDuplicates,
+  trainingNotesExportRows,
 } from "@/lib/platform-ai-training";
+import { downloadExcelFromObjects } from "@/lib/spreadsheet";
+import { useBackgroundTasks } from "@/contexts/background-task-context";
+import { queueReportExport, buildReportExportRequest } from "@/lib/report-export-api";
+import { reportPrintedAt } from "@/lib/reports/export";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -56,6 +64,7 @@ function PlatformAiTrainingTabs({ activeTab, onChange }) {
 
 export function PlatformAiTrainingScreen() {
   const confirm = useConfirm();
+  const { runBackgroundTask } = useBackgroundTasks();
   const apiBase = aiTrainingApiBase();
   const [activeTab, setActiveTab] = useState("knowledge");
 
@@ -66,12 +75,20 @@ export function PlatformAiTrainingScreen() {
   const [savingKnowledge, setSavingKnowledge] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [savingBulk, setSavingBulk] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [deletingAllNotes, setDeletingAllNotes] = useState(false);
+  const fileInputRef = useRef(null);
+  const replaceFileInputRef = useRef(null);
   const [installingFoundation, setInstallingFoundation] = useState(false);
   const [duplicateThreshold, setDuplicateThreshold] = useState(85);
   const [duplicateScan, setDuplicateScan] = useState(null);
   const [scanningDuplicates, setScanningDuplicates] = useState(false);
   const [mergingClusterKey, setMergingClusterKey] = useState(null);
-  const [keepByCluster, setKeepByCluster] = useState({});
+  /** @type {[Record<number, number[]>, Function]} selected note ids per duplicate cluster */
+  const [selectedByCluster, setSelectedByCluster] = useState({});
+  const [selectedNoteIds, setSelectedNoteIds] = useState(() => new Set());
+  const [bulkDeletingNotes, setBulkDeletingNotes] = useState(false);
   const [form, setForm] = useState({
     id: null,
     topic: "",
@@ -125,7 +142,9 @@ export function PlatformAiTrainingScreen() {
   const loadKnowledge = useCallback(async () => {
     setLoadingKnowledge(true);
     try {
-      const query = filterWorkspace ? `?workspace_id=${encodeURIComponent(filterWorkspace)}` : "";
+      const query = filterWorkspace
+        ? `?workspace_id=${encodeURIComponent(filterWorkspace)}&limit=5000`
+        : "?limit=5000";
       const res = await apiRequest(`${apiBase}/knowledge${query}`);
       setKnowledge(res.data ?? []);
     } catch (e) {
@@ -163,6 +182,10 @@ export function PlatformAiTrainingScreen() {
   useEffect(() => {
     loadKnowledge();
   }, [filterWorkspace, loadKnowledge]);
+
+  useEffect(() => {
+    setSelectedNoteIds(new Set());
+  }, [filterWorkspace]);
 
   useEffect(() => {
     loadStatus();
@@ -238,6 +261,12 @@ export function PlatformAiTrainingScreen() {
     try {
       await apiRequest(`${apiBase}/knowledge/${id}`, { method: "DELETE" });
       if (form.id === id) resetKnowledgeForm();
+      setSelectedNoteIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await loadKnowledge();
       await loadStatus();
       notifySuccess("Training note deleted.");
@@ -283,6 +312,134 @@ export function PlatformAiTrainingScreen() {
     }
   }
 
+  async function exportNotesExcel() {
+    if (knowledge.length === 0) {
+      notifyError("No training notes to export.");
+      return;
+    }
+    setExportingExcel(true);
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      await downloadExcelFromObjects(
+        `centrix-ai-training-qa-${stamp}.xlsx`,
+        "Q&A",
+        trainingNotesExportRows(knowledge),
+      );
+      notifySuccess("Excel export downloaded.");
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Excel export failed.");
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
+  function exportNotesPdf() {
+    if (knowledge.length === 0) {
+      notifyError("No training notes to export.");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    const rows = trainingNotesExportRows(knowledge);
+    void runBackgroundTask(
+      () =>
+        queueReportExport(
+          buildReportExportRequest({
+            format: "pdf",
+            filename: `centrix-ai-training-qa-${stamp}`,
+            title: "Centrix AI training Q&A",
+            columns: TRAINING_NOTES_EXPORT_COLUMNS,
+            meta: {
+              title: "Centrix AI training Q&A",
+              subtitle: filterWorkspace
+                ? `Workspace: ${workspaceLabel(filterWorkspace)}`
+                : "All platform training notes",
+              printedAt: reportPrintedAt(),
+            },
+            getRows: async () => rows,
+          }),
+          async () => rows,
+        ),
+      {
+        label: "Exporting AI training PDF",
+        message: "Building PDF…",
+        downloadOnComplete: true,
+        downloadFilename: `centrix-ai-training-qa-${stamp}.pdf`,
+      },
+    );
+  }
+
+  async function deleteAllNotes() {
+    const scopeLabel = filterWorkspace
+      ? `for ${workspaceLabel(filterWorkspace)}`
+      : "for every module";
+    const ok = await confirm({
+      title: "Delete all training notes",
+      message: `Permanently delete all ${knowledge.length || noteCount} saved Q&A note(s) ${scopeLabel}? This cannot be undone.`,
+      confirmLabel: "Delete all",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setDeletingAllNotes(true);
+    try {
+      const res = await deleteAllTrainingNotes({
+        workspace_id: filterWorkspace || null,
+      });
+      resetKnowledgeForm();
+      setSelectedNoteIds(new Set());
+      setDuplicateScan(null);
+      await loadKnowledge();
+      await loadStatus();
+      notifySuccess(`Deleted ${res.deleted ?? 0} training note(s).`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete all notes.");
+    } finally {
+      setDeletingAllNotes(false);
+    }
+  }
+
+  async function importQaFromFile(file, { replaceAll = false } = {}) {
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const notes = await parseTrainingQaFile(file);
+      if (notes.length === 0) {
+        notifyError(
+          "No Q&A rows found. Use columns question/topic + answer/content, or Q:/A: text blocks.",
+        );
+        return;
+      }
+
+      if (replaceAll) {
+        const ok = await confirm({
+          title: "Replace all training notes",
+          message: `Delete all current notes${filterWorkspace ? ` in ${workspaceLabel(filterWorkspace)}` : ""} and import ${notes.length} note(s) from “${file.name}”?`,
+          confirmLabel: "Delete & import",
+          destructive: true,
+        });
+        if (!ok) return;
+        await deleteAllTrainingNotes({ workspace_id: filterWorkspace || null });
+      }
+
+      const res = await bulkImportTrainingNotes(notes);
+      resetKnowledgeForm();
+      setSelectedNoteIds(new Set());
+      await loadKnowledge();
+      await loadStatus();
+      notifySuccess(
+        replaceAll
+          ? `Replaced training set with ${res.created ?? notes.length} note(s).`
+          : `Imported ${res.created ?? notes.length} note(s) from file.`,
+      );
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "File import failed.");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (replaceFileInputRef.current) replaceFileInputRef.current.value = "";
+    }
+  }
+
   async function scanDuplicates() {
     setScanningDuplicates(true);
     try {
@@ -293,10 +450,11 @@ export function PlatformAiTrainingScreen() {
       setDuplicateScan(res);
       const defaults = {};
       for (const [idx, cluster] of (res.clusters ?? []).entries()) {
-        const first = cluster.entries?.[0];
-        if (first?.id) defaults[idx] = first.id;
+        // Pre-select all but the newest (first) note as candidates to merge/remove.
+        const ids = (cluster.entries ?? []).map((e) => e.id).filter(Boolean);
+        defaults[idx] = ids.slice(1);
       }
-      setKeepByCluster(defaults);
+      setSelectedByCluster(defaults);
     } catch (err) {
       setDuplicateScan(null);
       notifyError(err instanceof ApiError ? err.message : "Failed to scan for duplicates.");
@@ -305,24 +463,55 @@ export function PlatformAiTrainingScreen() {
     }
   }
 
-  async function mergeDuplicateCluster(clusterIndex) {
-    const cluster = duplicateScan?.clusters?.[clusterIndex];
-    if (!cluster?.entries?.length) return;
+  function toggleClusterNote(clusterIndex, entryId) {
+    setSelectedByCluster((prev) => {
+      const current = new Set(prev[clusterIndex] ?? []);
+      if (current.has(entryId)) current.delete(entryId);
+      else current.add(entryId);
+      return { ...prev, [clusterIndex]: [...current] };
+    });
+  }
 
-    const keepId = keepByCluster[clusterIndex] ?? cluster.entries[0]?.id;
-    const mergeIds = cluster.entries.map((e) => e.id).filter((id) => id !== keepId);
-    if (!keepId || mergeIds.length === 0) return;
+  function toggleAllClusterNotes(clusterIndex, entryIds, selectAll) {
+    setSelectedByCluster((prev) => ({
+      ...prev,
+      [clusterIndex]: selectAll ? [...entryIds] : [],
+    }));
+  }
+
+  function clusterActionIds(clusterIndex) {
+    const cluster = duplicateScan?.clusters?.[clusterIndex];
+    if (!cluster?.entries?.length) return { keepId: null, actionIds: [] };
+
+    const selected = new Set(selectedByCluster[clusterIndex] ?? []);
+    const allIds = cluster.entries.map((e) => e.id);
+    const actionIds = allIds.filter((id) => selected.has(id));
+    const unselected = allIds.filter((id) => !selected.has(id));
+    // Keep the first unselected note; if everything is selected, keep the first and act on the rest.
+    const keepId = unselected[0] ?? allIds[0] ?? null;
+    const mergeOrRemoveIds = actionIds.filter((id) => id !== keepId);
+
+    return { keepId, actionIds: mergeOrRemoveIds };
+  }
+
+  async function mergeDuplicateCluster(clusterIndex) {
+    const { keepId, actionIds } = clusterActionIds(clusterIndex);
+    if (!keepId || actionIds.length === 0) {
+      notifyError("Select at least one note to merge into the note you leave unchecked.");
+      return;
+    }
 
     const ok = await confirm({
       title: "Merge duplicate notes",
-      message: `Keep one note and delete ${mergeIds.length} duplicate(s)? Content from all notes will be combined.`,
+      message: `Merge ${actionIds.length} selected note(s) into the kept note? Selected notes will be deleted after combining content.`,
       confirmLabel: "Merge",
     });
     if (!ok) return;
 
     setMergingClusterKey(String(clusterIndex));
     try {
-      await mergeTrainingNotes({ keep_id: keepId, merge_ids: mergeIds });
+      await mergeTrainingNotes({ keep_id: keepId, merge_ids: actionIds });
+      setSelectedNoteIds(new Set());
       await loadKnowledge();
       await loadStatus();
       await scanDuplicates();
@@ -335,24 +524,24 @@ export function PlatformAiTrainingScreen() {
   }
 
   async function removeDuplicateCluster(clusterIndex) {
-    const cluster = duplicateScan?.clusters?.[clusterIndex];
-    if (!cluster?.entries?.length) return;
-
-    const keepId = keepByCluster[clusterIndex] ?? cluster.entries[0]?.id;
-    const removeIds = cluster.entries.map((e) => e.id).filter((id) => id !== keepId);
-    if (removeIds.length === 0) return;
+    const { actionIds } = clusterActionIds(clusterIndex);
+    if (actionIds.length === 0) {
+      notifyError("Select at least one note to remove.");
+      return;
+    }
 
     const ok = await confirm({
       title: "Remove duplicate notes",
-      message: `Delete ${removeIds.length} duplicate note(s) and keep the selected one?`,
-      confirmLabel: "Remove duplicates",
+      message: `Delete ${actionIds.length} selected note(s)? Unchecked notes are kept.`,
+      confirmLabel: "Remove selected",
       destructive: true,
     });
     if (!ok) return;
 
     setMergingClusterKey(String(clusterIndex));
     try {
-      await bulkDeleteTrainingNotes(removeIds);
+      await bulkDeleteTrainingNotes(actionIds);
+      setSelectedNoteIds(new Set());
       await loadKnowledge();
       await loadStatus();
       await scanDuplicates();
@@ -361,6 +550,147 @@ export function PlatformAiTrainingScreen() {
       notifyError(err instanceof ApiError ? err.message : "Failed to remove duplicates.");
     } finally {
       setMergingClusterKey(null);
+    }
+  }
+
+  /**
+   * For each cluster, keep the newest (first) note and act on the rest.
+   * @returns {Array<{ keepId: number, actionIds: number[] }>}
+   */
+  function allClusterDuplicateActions() {
+    return (duplicateScan?.clusters ?? [])
+      .map((cluster) => {
+        const allIds = (cluster.entries ?? []).map((e) => e.id).filter(Boolean);
+        if (allIds.length < 2) return null;
+        return {
+          keepId: allIds[0],
+          actionIds: allIds.slice(1),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  async function bulkDeleteInChunks(ids) {
+    const chunkSize = 100;
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const res = await bulkDeleteTrainingNotes(chunk);
+      deleted += Number(res.deleted ?? chunk.length);
+    }
+    return deleted;
+  }
+
+  async function mergeAllDuplicates() {
+    const plans = allClusterDuplicateActions();
+    if (plans.length === 0) {
+      notifyError("No duplicate clusters to merge.");
+      return;
+    }
+    const extraCount = plans.reduce((sum, p) => sum + p.actionIds.length, 0);
+    const ok = await confirm({
+      title: "Merge all duplicates",
+      message: `Merge ${plans.length} cluster(s): keep the newest note in each and combine ${extraCount} duplicate(s) into them?`,
+      confirmLabel: "Merge all",
+    });
+    if (!ok) return;
+
+    setMergingClusterKey("merge-all");
+    try {
+      let merged = 0;
+      for (const plan of plans) {
+        await mergeTrainingNotes({ keep_id: plan.keepId, merge_ids: plan.actionIds });
+        merged += plan.actionIds.length;
+      }
+      setSelectedNoteIds(new Set());
+      setSelectedByCluster({});
+      await loadKnowledge();
+      await loadStatus();
+      await scanDuplicates();
+      notifySuccess(`Merged ${merged} duplicate note(s) across ${plans.length} cluster(s).`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to merge all duplicates.");
+      await loadKnowledge();
+      await scanDuplicates();
+    } finally {
+      setMergingClusterKey(null);
+    }
+  }
+
+  async function deleteAllDuplicates() {
+    const plans = allClusterDuplicateActions();
+    if (plans.length === 0) {
+      notifyError("No duplicate notes to delete.");
+      return;
+    }
+    const ids = plans.flatMap((p) => p.actionIds);
+    const ok = await confirm({
+      title: "Delete all duplicates",
+      message: `Delete ${ids.length} duplicate note(s) across ${plans.length} cluster(s)? The newest note in each cluster is kept.`,
+      confirmLabel: "Delete all duplicates",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setMergingClusterKey("delete-all");
+    try {
+      const deleted = await bulkDeleteInChunks(ids);
+      if (form.id && ids.includes(form.id)) resetKnowledgeForm();
+      setSelectedNoteIds(new Set());
+      setSelectedByCluster({});
+      await loadKnowledge();
+      await loadStatus();
+      await scanDuplicates();
+      notifySuccess(`Deleted ${deleted} duplicate note(s).`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete all duplicates.");
+      await loadKnowledge();
+      await scanDuplicates();
+    } finally {
+      setMergingClusterKey(null);
+    }
+  }
+
+  function toggleNoteSelection(id) {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllNotes() {
+    setSelectedNoteIds((prev) => {
+      if (knowledge.length > 0 && prev.size === knowledge.length) return new Set();
+      return new Set(knowledge.map((e) => e.id));
+    });
+  }
+
+  async function deleteSelectedNotes() {
+    const ids = [...selectedNoteIds];
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected notes",
+      message: `Delete ${ids.length} platform training note(s)? They will stop applying to all tenants.`,
+      confirmLabel: "Delete selected",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBulkDeletingNotes(true);
+    try {
+      await bulkDeleteTrainingNotes(ids);
+      if (form.id && ids.includes(form.id)) resetKnowledgeForm();
+      setSelectedNoteIds(new Set());
+      await loadKnowledge();
+      await loadStatus();
+      notifySuccess(`Deleted ${ids.length} training note(s).`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete selected notes.");
+    } finally {
+      setBulkDeletingNotes(false);
     }
   }
 
@@ -458,6 +788,31 @@ export function PlatformAiTrainingScreen() {
                   {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Test answers in the Test console tab
                 </p>
               </div>
+            <div className="flex flex-wrap items-start gap-2">
+              <button
+                type="button"
+                disabled={exportingExcel || knowledge.length === 0}
+                onClick={() => void exportNotesExcel()}
+                className="theme-secondary-btn rounded-lg px-3 py-2 text-xs disabled:opacity-50"
+              >
+                {exportingExcel ? "Exporting…" : "Export Excel"}
+              </button>
+              <button
+                type="button"
+                disabled={knowledge.length === 0}
+                onClick={() => exportNotesPdf()}
+                className="theme-secondary-btn rounded-lg px-3 py-2 text-xs disabled:opacity-50"
+              >
+                Export PDF
+              </button>
+              <button
+                type="button"
+                disabled={deletingAllNotes || (knowledge.length === 0 && noteCount === 0)}
+                onClick={() => void deleteAllNotes()}
+                className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                {deletingAllNotes ? "Deleting…" : "Delete all"}
+              </button>
               <PrimaryButton
                 type="button"
                 showIcon={false}
@@ -466,6 +821,7 @@ export function PlatformAiTrainingScreen() {
               >
                 {installingFoundation ? "Installing…" : "Install foundation notes"}
               </PrimaryButton>
+            </div>
             </div>
           </div>
 
@@ -566,6 +922,54 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                   </PrimaryButton>
                 </form>
               </div>
+
+              <div className="theme-inset-panel rounded-xl border p-5 shadow-sm">
+                <h3 className="theme-heading text-sm font-semibold">Upload / replace Q&A file</h3>
+                <p className="theme-subtext mt-1 text-sm">
+                  Upload Excel (.xlsx), CSV, or a text/markdown file with Q&A. Spreadsheet columns:{" "}
+                  <span className="font-medium">question</span> (or topic),{" "}
+                  <span className="font-medium">answer</span> (or content), optional path / workspace_id.
+                  Export Excel first for a ready template.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void importQaFromFile(file, { replaceAll: false });
+                  }}
+                />
+                <input
+                  ref={replaceFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void importQaFromFile(file, { replaceAll: true });
+                  }}
+                />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <PrimaryButton
+                    type="button"
+                    showIcon={false}
+                    disabled={uploadingFile}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadingFile ? "Importing…" : "Upload & add notes"}
+                  </PrimaryButton>
+                  <button
+                    type="button"
+                    disabled={uploadingFile}
+                    onClick={() => replaceFileInputRef.current?.click()}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Delete all & re-upload
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="theme-inset-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border p-5 shadow-sm">
@@ -617,39 +1021,83 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
 
                 {duplicateScan ? (
                   <div className="mt-3 space-y-3">
-                    <p className="theme-subtext text-xs">
-                      {duplicateScan.cluster_count > 0
-                        ? `${duplicateScan.cluster_count} cluster(s) · ${duplicateScan.duplicate_entry_count} extra note(s) can be merged or removed`
-                        : "No duplicate topics found at this threshold."}
-                    </p>
-                    {(duplicateScan.clusters ?? []).map((cluster, clusterIndex) => (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="theme-subtext text-xs">
+                        {duplicateScan.cluster_count > 0
+                          ? `${duplicateScan.cluster_count} cluster(s) · ${duplicateScan.duplicate_entry_count} extra note(s) can be merged or removed`
+                          : "No duplicate topics found at this threshold."}
+                      </p>
+                      {duplicateScan.cluster_count > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          <PrimaryButton
+                            type="button"
+                            showIcon={false}
+                            disabled={mergingClusterKey != null || scanningDuplicates}
+                            onClick={() => void mergeAllDuplicates()}
+                          >
+                            {mergingClusterKey === "merge-all" ? "Merging…" : "Merge all duplicates"}
+                          </PrimaryButton>
+                          <button
+                            type="button"
+                            disabled={mergingClusterKey != null || scanningDuplicates}
+                            onClick={() => void deleteAllDuplicates()}
+                            className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {mergingClusterKey === "delete-all" ? "Deleting…" : "Delete all duplicates"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {(duplicateScan.clusters ?? []).map((cluster, clusterIndex) => {
+                      const entryIds = (cluster.entries ?? []).map((e) => e.id);
+                      const selectedIds = new Set(selectedByCluster[clusterIndex] ?? []);
+                      const allSelected = entryIds.length > 0 && entryIds.every((id) => selectedIds.has(id));
+                      const selectedCount = entryIds.filter((id) => selectedIds.has(id)).length;
+
+                      return (
                       <div
                         key={`dup-${clusterIndex}-${cluster.entries?.[0]?.id ?? clusterIndex}`}
                         className="rounded-md border border-[var(--theme-border)] p-3 text-sm"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="theme-heading text-xs font-medium">
-                            {cluster.similarity}% similar · {cluster.entries?.length ?? 0} notes
-                          </p>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <p className="theme-heading text-xs font-medium">
+                              {cluster.similarity}% similar · {cluster.entries?.length ?? 0} notes
+                              {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
+                            </p>
+                            <label className="theme-subtext flex cursor-pointer items-center gap-1.5 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={(e) =>
+                                  toggleAllClusterNotes(clusterIndex, entryIds, e.target.checked)
+                                }
+                              />
+                              Select all
+                            </label>
+                          </div>
                           <div className="flex gap-1">
                             <button
                               type="button"
-                              disabled={mergingClusterKey === String(clusterIndex)}
+                              disabled={mergingClusterKey != null || selectedCount === 0}
                               onClick={() => void mergeDuplicateCluster(clusterIndex)}
-                              className="theme-link rounded px-2 py-1 text-xs hover:bg-[var(--theme-hover)]"
+                              className="theme-link rounded px-2 py-1 text-xs hover:bg-[var(--theme-hover)] disabled:opacity-40"
                             >
-                              Merge
+                              Merge selected
                             </button>
                             <button
                               type="button"
-                              disabled={mergingClusterKey === String(clusterIndex)}
+                              disabled={mergingClusterKey != null || selectedCount === 0}
                               onClick={() => void removeDuplicateCluster(clusterIndex)}
-                              className="rounded px-2 py-1 text-xs text-red-500 hover:bg-[color-mix(in_srgb,#ef4444_12%,var(--theme-page-bg))]"
+                              className="rounded px-2 py-1 text-xs text-red-500 hover:bg-[color-mix(in_srgb,#ef4444_12%,var(--theme-page-bg))] disabled:opacity-40"
                             >
-                              Remove extras
+                              Remove selected
                             </button>
                           </div>
                         </div>
+                        <p className="theme-subtext mt-1 text-[11px]">
+                          Checked notes are merged or removed. Leave at least one unchecked to keep.
+                        </p>
                         <ul className="mt-2 space-y-2">
                           {(cluster.entries ?? []).map((entry) => (
                             <li
@@ -658,12 +1106,9 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                             >
                               <label className="flex cursor-pointer items-start gap-2">
                                 <input
-                                  type="radio"
-                                  name={`keep-cluster-${clusterIndex}`}
-                                  checked={(keepByCluster[clusterIndex] ?? cluster.entries?.[0]?.id) === entry.id}
-                                  onChange={() =>
-                                    setKeepByCluster((prev) => ({ ...prev, [clusterIndex]: entry.id }))
-                                  }
+                                  type="checkbox"
+                                  checked={selectedIds.has(entry.id)}
+                                  onChange={() => toggleClusterNote(clusterIndex, entry.id)}
                                   className="mt-0.5"
                                 />
                                 <span className="min-w-0">
@@ -677,7 +1122,8 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                           ))}
                         </ul>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>
@@ -689,19 +1135,48 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                   No platform training notes yet. Click &quot;Install foundation notes&quot; or add a Q&A above.
                 </p>
               ) : (
-                <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                <>
+                  <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2">
+                    <label className="theme-subtext flex cursor-pointer items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={knowledge.length > 0 && selectedNoteIds.size === knowledge.length}
+                        onChange={toggleSelectAllNotes}
+                      />
+                      Select all ({selectedNoteIds.size}/{knowledge.length})
+                    </label>
+                    <button
+                      type="button"
+                      disabled={selectedNoteIds.size === 0 || bulkDeletingNotes}
+                      onClick={() => void deleteSelectedNotes()}
+                      className="rounded px-2 py-1 text-xs text-red-500 hover:bg-[color-mix(in_srgb,#ef4444_12%,var(--theme-page-bg))] disabled:opacity-40"
+                    >
+                      {bulkDeletingNotes
+                        ? "Deleting…"
+                        : `Delete selected${selectedNoteIds.size ? ` (${selectedNoteIds.size})` : ""}`}
+                    </button>
+                  </div>
+                <ul className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {knowledge.map((entry) => (
                     <li key={entry.id} className="rounded-lg border border-[var(--theme-border)] p-3 text-sm">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="theme-heading font-medium">{entry.topic}</p>
-                          <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
-                          <p className="theme-subtext mt-2 text-xs">
-                            Platform-wide
-                            {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
-                            {entry.path ? ` · ${entry.path}` : ""}
-                          </p>
-                        </div>
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-1 shrink-0"
+                            checked={selectedNoteIds.has(entry.id)}
+                            onChange={() => toggleNoteSelection(entry.id)}
+                          />
+                          <div className="min-w-0">
+                            <p className="theme-heading font-medium">{entry.topic}</p>
+                            <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
+                            <p className="theme-subtext mt-2 text-xs">
+                              Platform-wide
+                              {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
+                              {entry.path ? ` · ${entry.path}` : ""}
+                            </p>
+                          </div>
+                        </label>
                         <div className="flex shrink-0 gap-1">
                           <button
                             type="button"
@@ -722,6 +1197,7 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                     </li>
                   ))}
                 </ul>
+                </>
               )}
             </div>
           </div>

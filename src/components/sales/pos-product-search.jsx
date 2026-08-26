@@ -10,7 +10,6 @@ import {
   productCartStockDisplayMode,
   productStockAtLocation,
 } from "@/lib/pos-stock";
-import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
@@ -131,18 +130,18 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return () => assignRef(inputRef, null);
   }, [inputRef]);
 
-  const exactBarcodeMatch =
-    barcodeEnabled &&
-    results.some((product) => isExactProductCodeQuery(query, product.product_code));
+  const hasActiveQuery = Boolean(String(query ?? "").trim());
+  // Keep results visible while typing: do not hide the list on exact SKU match
+  // (that made the menu vanish before a click) or on a brief busy disable.
 
   useEffect(() => {
     // Keep sticky highlight across typing when the product is still in the list.
     // Only clear when the query is emptied.
-    if (!String(query ?? "").trim()) {
+    if (!hasActiveQuery) {
       highlightCodeRef.current = null;
       setHighlight(-1);
     }
-  }, [query]);
+  }, [hasActiveQuery, query]);
 
   useEffect(() => {
     if (results.length === 0) {
@@ -162,9 +161,20 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     highlightCodeRef.current = results[0]?.product_code ?? null;
   }, [results]);
 
+  // If a brief remount closed the menu while the cashier is still typing in Scan,
+  // reopen so results stay pickable.
+  useEffect(() => {
+    if (disabled || !hasActiveQuery) return;
+    if (typeof document === "undefined") return;
+    if (document.activeElement !== localInputRef.current) return;
+    if (results.length > 0 || searching) {
+      setOpen(true);
+    }
+  }, [disabled, hasActiveQuery, results, searching]);
+
   useEffect(() => {
     if (!open || highlight < 0 || !results.length) return;
-    optionRefs.current.get(highlight)?.scrollIntoView({ block: "nearest" });
+    optionRefs.current.get(highlight)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [highlight, open, results.length]);
 
   function setHighlightAt(index) {
@@ -225,7 +235,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const showDropdown = open && !disabled && !(barcodeEnabled && exactBarcodeMatch);
+  // Do not hide on exact SKU match — that closed the list the moment a typed code
+  // matched a product, before the cashier could click a row. Enter still handles
+  // barcode quick-add / Find pick.
+  const showDropdown = open && !disabled;
 
   function pick(product) {
     onSelect?.(product);
@@ -395,6 +408,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         role="option"
                         aria-selected={keyboardActive}
                         onMouseEnter={() => setHighlightAt(index)}
+                        onMouseDown={(e) => {
+                          // Prevent input blur before click so the list cannot close mid-pick.
+                          e.preventDefault();
+                        }}
                         onClick={() => pick(product)}
                         className={`${negative ? "classic-pos-find-row--negative" : ""} ${
                           keyboardActive ? "classic-pos-find-row--active" : ""
@@ -521,6 +538,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       role="option"
                       aria-selected={keyboardActive || selected}
                       onMouseEnter={() => setHighlightAt(index)}
+                      onMouseDown={(e) => {
+                        // Prevent input blur before click so the list cannot close mid-pick.
+                        e.preventDefault();
+                      }}
                       onClick={() => pick(product)}
                       className={`theme-table-row cursor-pointer border-b border-[var(--theme-border)] ${
                         keyboardActive

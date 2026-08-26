@@ -15972,7 +15972,7 @@ export function PosScreen({ standalone = false }) {
                   barcodeEnabled={enableBarcodeScanner}
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
-                  disabled={busy || posSearchSuspended}
+                  disabled={posSearchSuspended}
                 />
               )}
               <div className="space-y-1">
@@ -16564,7 +16564,7 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
-                    disabled={busy || posSearchSuspended}
+                    disabled={posSearchSuspended}
                   />
                 }
                 qtyRef={qtyInputRef}

@@ -94,11 +94,120 @@ export function parseTrainingQaPaste(text) {
 }
 
 export async function bulkImportTrainingNotes(notes) {
-  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/bulk`, {
+  const chunkSize = 500;
+  let created = 0;
+  const entries = [];
+  for (let i = 0; i < notes.length; i += chunkSize) {
+    const chunk = notes.slice(i, i + chunkSize);
+    const res = await apiRequest(`${AI_TRAINING_API_BASE}/knowledge/bulk`, {
+      method: "POST",
+      body: { notes: chunk },
+    });
+    created += Number(res.created ?? chunk.length);
+    if (Array.isArray(res.entries)) entries.push(...res.entries);
+  }
+  return { created, entries };
+}
+
+/**
+ * Delete every platform training note (optional workspace filter).
+ * @param {{ workspace_id?: string | null }} [opts]
+ */
+export async function deleteAllTrainingNotes(opts = {}) {
+  return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/delete-all`, {
     method: "POST",
-    body: { notes },
+    body: {
+      confirm: true,
+      workspace_id: opts.workspace_id || null,
+    },
   });
 }
+
+/**
+ * Normalize spreadsheet / CSV column keys for Q&A import.
+ * @param {Record<string, string>} row
+ * @returns {{ question: string, answer: string, path?: string, workspace_id?: string } | null}
+ */
+export function mapTrainingQaSpreadsheetRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const normalized = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[String(key).trim().toLowerCase().replace(/\s+/g, "_")] = String(value ?? "").trim();
+  }
+
+  const question =
+    normalized.question ||
+    normalized.topic ||
+    normalized.q ||
+    normalized.title ||
+    "";
+  const answer =
+    normalized.answer ||
+    normalized.content ||
+    normalized.a ||
+    normalized.note ||
+    "";
+  const path = normalized.path || normalized.screen || normalized.href || "";
+  const workspace_id =
+    normalized.workspace_id ||
+    normalized.workspace ||
+    normalized.module ||
+    "";
+
+  if (!question || !answer) return null;
+
+  return {
+    question: question.slice(0, 200),
+    answer: answer.slice(0, 8000),
+    ...(path ? { path: path.slice(0, 200) } : {}),
+    ...(workspace_id ? { workspace_id } : {}),
+  };
+}
+
+/**
+ * Parse Excel/CSV rows or Q:/A: text into training notes.
+ * @param {File} file
+ * @returns {Promise<Array<{ question: string, answer: string, path?: string, workspace_id?: string }>>}
+ */
+export async function parseTrainingQaFile(file) {
+  const name = String(file?.name ?? "").toLowerCase();
+  const isText = name.endsWith(".txt") || name.endsWith(".md");
+
+  if (isText) {
+    const text = await file.text();
+    return parseTrainingQaPaste(text);
+  }
+
+  const { parseSpreadsheet } = await import("@/components/catalog/catalog-import-export-shared");
+  const rows = await parseSpreadsheet(file);
+  /** @type {Array<{ question: string, answer: string, path?: string, workspace_id?: string }>} */
+  const notes = [];
+  for (const row of rows) {
+    const mapped = mapTrainingQaSpreadsheetRow(row);
+    if (mapped) notes.push(mapped);
+  }
+  return notes;
+}
+
+/**
+ * Rows for Excel / PDF export of saved training notes.
+ * @param {Array<Record<string, unknown>>} knowledge
+ */
+export function trainingNotesExportRows(knowledge) {
+  return (knowledge ?? []).map((entry) => ({
+    question: String(entry.topic ?? ""),
+    answer: String(entry.content ?? ""),
+    path: String(entry.path ?? ""),
+    workspace_id: String(entry.workspace_id ?? ""),
+  }));
+}
+
+export const TRAINING_NOTES_EXPORT_COLUMNS = [
+  { key: "question", label: "Question" },
+  { key: "answer", label: "Answer", wrap: true },
+  { key: "path", label: "Path" },
+  { key: "workspace_id", label: "Workspace" },
+];
 
 export async function installFoundationTrainingNotes() {
   return apiRequest(`${AI_TRAINING_API_BASE}/knowledge/install-foundation`, {
