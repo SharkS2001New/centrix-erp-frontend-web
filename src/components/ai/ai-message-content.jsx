@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { AiMessageChart } from "@/components/ai/ai-message-chart";
 import {
+  chartFromMarkdownTable,
   latexToPlain,
   parseMarkdownHeading,
   splitMarkdownContentBlocks,
@@ -160,41 +162,45 @@ const HEADING_CLASS = {
  * @param {((event: import("react").MouseEvent, href: string) => void) | undefined} onNavigate
  */
 function renderMarkdownTable(table, onNavigate) {
+  const autoChart = chartFromMarkdownTable(table);
   return (
-    <div key={`table-${table.startIndex}`} className="overflow-x-auto rounded-md border border-slate-200">
-      <table className="w-full min-w-[16rem] border-collapse text-left text-sm">
-        <thead className="bg-slate-50">
-          <tr>
-            {table.headers.map((header, colIndex) => (
-              <th
-                key={`th-${table.startIndex}-${colIndex}`}
-                className="border-b border-slate-200 px-3 py-2 font-semibold text-slate-800"
-              >
-                {renderInline(header, `th-${table.startIndex}-${colIndex}`, onNavigate)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, rowIndex) => (
-            <tr key={`tr-${table.startIndex}-${rowIndex}`} className="odd:bg-white even:bg-slate-50/60">
-              {row.map((cell, colIndex) => (
-                <td
-                  key={`td-${table.startIndex}-${rowIndex}-${colIndex}`}
-                  className="border-t border-slate-100 px-3 py-2 align-top text-slate-800"
+    <div key={`table-${table.startIndex}`} className="space-y-2">
+      <div className="overflow-x-auto rounded-md border border-slate-200">
+        <table className="w-full min-w-[16rem] border-collapse text-left text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              {table.headers.map((header, colIndex) => (
+                <th
+                  key={`th-${table.startIndex}-${colIndex}`}
+                  className="border-b border-slate-200 px-3 py-2 font-semibold text-slate-800"
                 >
-                  {renderInline(cell, `td-${table.startIndex}-${rowIndex}-${colIndex}`, onNavigate)}
-                </td>
+                  {renderInline(header, `th-${table.startIndex}-${colIndex}`, onNavigate)}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {table.rows.map((row, rowIndex) => (
+              <tr key={`tr-${table.startIndex}-${rowIndex}`} className="odd:bg-white even:bg-slate-50/60">
+                {row.map((cell, colIndex) => (
+                  <td
+                    key={`td-${table.startIndex}-${rowIndex}-${colIndex}`}
+                    className="border-t border-slate-100 px-3 py-2 align-top text-slate-800"
+                  >
+                    {renderInline(cell, `td-${table.startIndex}-${rowIndex}-${colIndex}`, onNavigate)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {autoChart ? <AiMessageChart chart={autoChart} /> : null}
     </div>
   );
 }
 
-/** Render assistant/user chat text with markdown emphasis, tables, and clickable Centrix paths. */
+/** Render assistant/user chat text with markdown emphasis, tables, charts, and clickable Centrix paths. */
 export function AiMessageContent({ content, onNavigate, className = "" }) {
   if (!content) return null;
 
@@ -204,6 +210,10 @@ export function AiMessageContent({ content, onNavigate, className = "" }) {
   return (
     <div className={`space-y-2 text-sm leading-relaxed ${className}`}>
       {blocks.map((block) => {
+        if (block.type === "chart") {
+          return <AiMessageChart key={`chart-${block.startIndex}`} chart={block.chart} />;
+        }
+
         if (block.type === "table") {
           return renderMarkdownTable(block, onNavigate);
         }

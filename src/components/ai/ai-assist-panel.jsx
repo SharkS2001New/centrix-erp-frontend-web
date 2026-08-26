@@ -33,6 +33,12 @@ function closePanel(setOpen, setExpanded) {
   setOpen(false);
 }
 
+/** Confirm / form UI is only for write creates — never for open/navigate deep links. */
+function isWritePendingAction(action) {
+  const type = String(action?.type ?? "");
+  return type.startsWith("create_") || type === "record_customer_payment";
+}
+
 function ExpandIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -538,11 +544,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               {messages.map((m, i) => (
                 <div
                   key={i}
-                  className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                  className={`rounded-lg px-3 py-2 text-sm ${
                     m.role === "user"
-                      ? expanded
-                        ? "ml-16 bg-indigo-50 text-indigo-900"
-                        : "ml-8 bg-indigo-50 text-indigo-900"
+                      ? `whitespace-pre-wrap ${
+                          expanded
+                            ? "ml-16 bg-indigo-50 text-indigo-900"
+                            : "ml-8 bg-indigo-50 text-indigo-900"
+                        }`
                       : expanded
                         ? "mr-16 bg-slate-100 text-slate-800"
                         : "mr-4 bg-slate-100 text-slate-800"
@@ -555,7 +563,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </div>
               ))}
 
-              {formSpec?.fields?.length ? (
+              {formSpec?.fields?.length && isWritePendingAction(pendingAction) ? (
                 <div className={expanded ? "mx-8" : "mr-4"}>
                   {pendingAction?.summary ? (
                     <p className="mb-1 text-sm font-medium text-slate-800">{pendingAction.summary}</p>
@@ -568,29 +576,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     onSubmit={submitForm}
                     onCancel={clearActionState}
                   />
-                </div>
-              ) : pendingAction ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-                  <p className="font-medium text-amber-950">Ready to create</p>
-                  <p className="mt-1 text-amber-900">{pendingAction.summary ?? pendingAction.type}</p>
-                  <div className="mt-3 flex justify-center gap-2">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => send("yes, confirm", { confirm: true })}
-                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={clearActionState}
-                      className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100"
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
               ) : null}
 

@@ -1887,7 +1887,7 @@ export default function SalesOrdersListScreen({
             : shopDebtorsBucket === "partial"
               ? "Same partially paid orders as Sales → Partially paid, for regular and debtor customers only."
               : shopDebtorsBucket === "paid"
-                ? "Same paid orders as Sales → Paid, for regular and debtor customers only."
+                ? "Credit sales for regular and debtor customers that were unpaid and have now been fully paid — not walk-in or cash POS sales."
                 : shopDebtorsOnly
                   ? "Sales orders for regular and debtor customers only."
                   : routeOrdersOnly

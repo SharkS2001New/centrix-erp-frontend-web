@@ -29,7 +29,43 @@ describe("ai message format", () => {
       "Amount",
     ]);
     expect(isMarkdownTableSeparator("|---|---:|:---|")).toBe(true);
+    expect(isMarkdownTableSeparator("|---|--:|:--:|--:|")).toBe(true);
     expect(isMarkdownTableSeparator("| Product | Qty |")).toBe(false);
+  });
+
+  it("parses short LLM alignment separators into a real table", () => {
+    const lines = [
+      "| Category | Amount (KES) | Entries |",
+      "|---|--:|:--:|",
+      "| **Utilities** | 751,435 | 11 |",
+      "| **Other** | 380 | 2 |",
+      "| **Total** | **751,815** | **13** |",
+    ];
+    const blocks = splitMarkdownContentBlocks(lines);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("table");
+    expect(blocks[0].rows).toHaveLength(3);
+  });
+
+  it("parses chart fences", () => {
+    const lines = [
+      "Breakdown:",
+      "```chart",
+      '{"type":"bar","items":[{"label":"Utilities","value":100},{"label":"Other","value":20}]}',
+      "```",
+      "Done.",
+    ];
+    const blocks = splitMarkdownContentBlocks(lines);
+    expect(blocks[1]).toMatchObject({
+      type: "chart",
+      chart: {
+        type: "bar",
+        items: [
+          { label: "Utilities", value: 100 },
+          { label: "Other", value: 20 },
+        ],
+      },
+    });
   });
 
   it("parses a markdown table block with qty labels", () => {

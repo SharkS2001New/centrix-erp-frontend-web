@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
+import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
   AI_TRAINING_WORKSPACE_OPTIONS,
@@ -780,9 +781,10 @@ export function PlatformAiTrainingScreen() {
               <div>
                 <h2 className="theme-heading text-base font-semibold">Train Centrix AI (Q&A notes)</h2>
                 <p className="theme-subtext mt-2 max-w-4xl text-sm">
-                  Teach the assistant once for every tenant: questions users ask, the correct Centrix answer, and the
-                  screen path. Notes are matched by relevance — you do not need a code change for each FAQ. Live numbers
-                  (sales, stock, attendance) still come from tools. Centrix AI accepts questions in English only.
+                  Teach the assistant once for every tenant with a sample question and a sample of how to respond
+                  (approach, facts pattern, and screen path). Notes are matched by relevance — the AI uses them as
+                  style guides and writes a fresh answer for each user; it does not paste the saved answer verbatim.
+                  Live numbers (sales, stock, attendance) still come from tools. Centrix AI accepts questions in English only.
                 </p>
                 <p className="theme-text-muted mt-2 text-xs">
                   {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Test answers in the Test console tab
@@ -832,12 +834,13 @@ export function PlatformAiTrainingScreen() {
                   {form.id ? "Edit Q&A note" : "Add Q&A note"}
                 </h3>
                 <p className="theme-subtext mt-1 text-sm">
-                  Topic = the question users ask. Content = the answer Centrix should give (include the path).
+                  Topic = a sample question users ask. Content = a sample of how Centrix should think and reply
+                  (include the path). The assistant adapts this style — it does not quote the answer word-for-word.
                 </p>
 
                 <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(52vh,480px)] flex-col gap-3">
                   <label className="block text-sm">
-                    <span className="theme-heading mb-1 block font-medium">Question / topic</span>
+                    <span className="theme-heading mb-1 block font-medium">Sample question</span>
                     <input
                       className={inputClassName()}
                       value={form.topic}
@@ -847,12 +850,12 @@ export function PlatformAiTrainingScreen() {
                     />
                   </label>
                   <label className="block min-h-0 flex-1 text-sm">
-                    <span className="theme-heading mb-1 block font-medium">Answer / training note</span>
+                    <span className="theme-heading mb-1 block font-medium">Sample answer style</span>
                     <textarea
                       className={`${inputClassName()} min-h-[min(28vh,240px)] flex-1`}
                       value={form.content}
                       onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                      placeholder="Explain how Centrix works and which screen to open, e.g. Use UoM base units… open /uoms"
+                      placeholder="Show the approach and screen path, e.g. Explain UoM base units… then open /uoms — AI will adapt this, not quote it"
                       required
                     />
                   </label>
@@ -1286,17 +1289,19 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
             {messages.map((m, i) => (
               <div
                 key={i}
-                className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                className={`rounded-lg px-3 py-2 text-sm ${
                   m.role === "user"
-                    ? "ml-8 bg-[var(--theme-primary-subtle)] theme-heading"
+                    ? "ml-8 whitespace-pre-wrap bg-[var(--theme-primary-subtle)] theme-heading"
                     : "mr-4 bg-[var(--theme-surface-muted)] theme-text-muted"
                 }`}
               >
-                {m.content}
+                {m.role === "assistant" ? <AiMessageContent content={m.content} /> : m.content}
               </div>
             ))}
 
-            {formSpec?.fields?.length ? (
+            {formSpec?.fields?.length &&
+            (String(pendingAction?.type ?? "").startsWith("create_") ||
+              pendingAction?.type === "record_customer_payment") ? (
               <div className="mr-4">
                 {pendingAction?.summary ? (
                   <p className="theme-heading mb-1 text-sm font-medium">{pendingAction.summary}</p>
@@ -1309,11 +1314,6 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                   onSubmit={() => sendChat("confirm", { previewForm: true })}
                   onCancel={clearChatState}
                 />
-              </div>
-            ) : pendingAction ? (
-              <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm">
-                <p className="theme-heading font-medium">Proposed action (preview)</p>
-                <p className="theme-text-muted mt-1">{pendingAction.summary ?? pendingAction.type}</p>
               </div>
             ) : null}
 
