@@ -112,11 +112,13 @@ export function splitMarkdownContentBlocks(lines) {
   while (i < lines.length) {
     const chart = parseChartFenceAt(lines, i);
     if (chart) {
-      blocks.push({
-        type: "chart",
-        chart: chart.chart,
-        startIndex: i,
-      });
+      if (chart.chart) {
+        blocks.push({
+          type: "chart",
+          chart: chart.chart,
+          startIndex: i,
+        });
+      }
       i = chart.nextIndex;
       continue;
     }
@@ -143,9 +145,12 @@ export function splitMarkdownContentBlocks(lines) {
  * {"type":"bar","title":"Expenses","items":[{"label":"Utilities","value":751435},{"label":"Other","value":380}]}
  * ```
  *
+ * Always consumes the fence (even when JSON is broken) so raw ```chart never leaks into the chat.
+ * Repairs the common LLM mistake of stuffing many label/value pairs into one object.
+ *
  * @param {string[]} lines
  * @param {number} startIndex
- * @returns {{ chart: object, nextIndex: number } | null}
+ * @returns {{ chart: object | null, nextIndex: number } | null}
  */
 export function parseChartFenceAt(lines, startIndex) {
   const open = String(lines[startIndex] ?? "").trim();
@@ -154,33 +159,118 @@ export function parseChartFenceAt(lines, startIndex) {
 
   const body = [];
   let i = startIndex + 1;
+  let closed = false;
   while (i < lines.length) {
     const line = lines[i];
     if (String(line ?? "").trim() === "```") {
+      closed = true;
       break;
     }
     body.push(line);
     i += 1;
   }
-  if (i >= lines.length) return null;
 
-  try {
-    const parsed = JSON.parse(body.join("\n"));
-    if (!parsed || typeof parsed !== "object") return null;
-    return { chart: parsed, nextIndex: i + 1 };
-  } catch {
-    return null;
+  // Unclosed fence: still consume through EOF so backticks are not shown as text.
+  const nextIndex = closed ? i + 1 : lines.length;
+  const bodyText = body.join("\n").trim();
+  if (!bodyText) {
+    return { chart: null, nextIndex };
   }
+
+  const chart = coerceChartPayload(bodyText);
+  return { chart, nextIndex };
 }
 
 /**
- * Detect a Category/Label + Amount table suitable for a small bar chart.
+ * Build a chart object from fence body text, repairing common LLM JSON mistakes.
+ *
+ * @param {string} bodyText
+ * @returns {object | null}
+ */
+export function coerceChartPayload(bodyText) {
+  const text = String(bodyText ?? "").trim();
+  if (!text) return null;
+
+  /** @type {object | null} */
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Try wrapping if the model omitted outer braces.
+    try {
+      parsed = JSON.parse(`{${text.replace(/^\{|\}$/g, "")}}`);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  const repairedItems = extractChartItemsFromText(text);
+  const typeFromText = text.match(/"type"\s*:\s*"(bar|donut|pie)"/i)?.[1]?.toLowerCase();
+  const titleFromText = text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)"/i)?.[1]
+    ?.replace(/\\"/g, '"');
+
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const fromParsed = normalizeChartItems(parsed.items ?? parsed.segments);
+    const items = repairedItems.length > fromParsed.length ? repairedItems : fromParsed;
+    if (items.length < 2) return null;
+    return {
+      type: String(parsed.type ?? typeFromText ?? "bar").toLowerCase(),
+      title: parsed.title != null ? String(parsed.title) : titleFromText,
+      items,
+    };
+  }
+
+  if (repairedItems.length < 2) return null;
+  return {
+    type: typeFromText ?? "bar",
+    title: titleFromText,
+    items: repairedItems,
+  };
+}
+
+/**
+ * Pull label/value pairs in order from fence text (survives duplicate JSON keys).
+ *
+ * @param {string} text
+ * @returns {Array<{ label: string, value: number }>}
+ */
+export function extractChartItemsFromText(text) {
+  /** @type {Array<{ label: string, value: number }>} */
+  const items = [];
+  const re = /"label"\s*:\s*"((?:\\.|[^"\\])*)"\s*,\s*"value"\s*:\s*(-?\d+(?:\.\d+)?)/gi;
+  for (const match of String(text ?? "").matchAll(re)) {
+    const label = match[1].replace(/\\"/g, '"').trim();
+    const value = Number(match[2]);
+    if (!label || !Number.isFinite(value) || value < 0) continue;
+    items.push({ label, value });
+  }
+  return items.slice(0, 8);
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {Array<{ label: string, value: number }>}
+ */
+function normalizeChartItems(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row) => ({
+      label: String(row?.label ?? row?.name ?? "").trim(),
+      value: Number(row?.value ?? row?.amount ?? 0),
+    }))
+    .filter((row) => row.label && Number.isFinite(row.value) && row.value >= 0)
+    .slice(0, 8);
+}
+
+/**
+ * Detect a Category/Label + Amount table suitable for a small chart.
  * Callers should only use this when the user explicitly asked for a chart.
  *
  * @param {{ headers: string[], rows: string[][] }} table
- * @returns {{ type: 'bar', title?: string, items: Array<{ label: string, value: number }> } | null}
+ * @param {{ type?: string } | undefined} options
+ * @returns {{ type: string, title?: string, items: Array<{ label: string, value: number }> } | null}
  */
-export function chartFromMarkdownTable(table) {
+export function chartFromMarkdownTable(table, options = undefined) {
   const headers = (table?.headers ?? []).map((h) => String(h ?? "").trim());
   if (headers.length < 2 || !(table?.rows?.length >= 2)) return null;
 
@@ -206,9 +296,9 @@ export function chartFromMarkdownTable(table) {
   }
 
   if (items.length < 2) return null;
-  // Cap chart noise for long product lists
   const top = [...items].sort((a, b) => b.value - a.value).slice(0, 8);
-  return { type: "bar", items: top };
+  const type = normalizePreferredChartType(options?.type) ?? "bar";
+  return { type, items: top };
 }
 
 /**
@@ -222,6 +312,31 @@ export function userAskedForChart(text) {
   if (!s.trim()) return false;
   return /\b(chart|charts|graph|graphs|pie|donut|doughnut|histogram|visualization|visuali[sz]e)\b/.test(s)
     || /\b(show|plot|draw)\b.{0,40}\b(as |a |the )?(chart|graph|pie|donut)\b/.test(s);
+}
+
+/**
+ * Chart type the user named (pie / donut / bar). Null if they only said "chart" or "graph".
+ *
+ * @param {unknown} text
+ * @returns {'bar' | 'donut' | 'pie' | null}
+ */
+export function preferredChartType(text) {
+  const s = String(text ?? "").toLowerCase();
+  if (!s.trim()) return null;
+  if (/\b(donut|doughnut)\b/.test(s)) return "donut";
+  if (/\bpie\b/.test(s)) return "pie";
+  if (/\b(bar|histogram|column)\b/.test(s)) return "bar";
+  return null;
+}
+
+/**
+ * @param {unknown} type
+ * @returns {'bar' | 'donut' | 'pie' | null}
+ */
+export function normalizePreferredChartType(type) {
+  const t = String(type ?? "").toLowerCase();
+  if (t === "bar" || t === "donut" || t === "pie") return t;
+  return null;
 }
 
 /**

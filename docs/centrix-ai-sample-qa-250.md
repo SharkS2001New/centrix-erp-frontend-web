@@ -378,7 +378,7 @@ Answers cite real Centrix paths where possible. Prefer live tools for numbers (s
 **Path:** /hr/payroll
 
 **Q:** Show expenses as a pie chart
-**A:** Only when the user asks for a chart/graph/pie — use a markdown table plus optional ```chart fence. Otherwise table only (no auto charts).  
+**A:** Only when the user asks for a chart/graph/pie — use a markdown table plus optional ```chart fence with type matching their request (pie/donut/bar). items must be separate objects. UI also has Bar/Pie/Donut toggle. Otherwise table only.  
 **Path:** /expenses
 
 **Q:** NSSF / PAYE deductions explained  

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  coerceChartPayload,
   isMarkdownTableSeparator,
   latexToPlain,
   parseMarkdownHeading,
   parseMarkdownTableAt,
+  preferredChartType,
   splitMarkdownContentBlocks,
   splitMarkdownTableRow,
   userAskedForChart,
@@ -69,8 +71,33 @@ describe("ai message format", () => {
     });
   });
 
-  it("detects when the user asked for a chart", () => {
+  it("repairs duplicate-key chart items and hides broken fence text", () => {
+    const broken =
+      '{"type":"bar","title":"Purchases","items":[{"label":"SUGAR 50 KG","value":1084000,"label":"BANJAB RICE 25KG","value":332700,"label":"STAR BIRIYANI","value":221000}]}';
+    const repaired = coerceChartPayload(broken);
+    expect(repaired).toMatchObject({
+      type: "bar",
+      title: "Purchases",
+      items: [
+        { label: "SUGAR 50 KG", value: 1084000 },
+        { label: "BANJAB RICE 25KG", value: 332700 },
+        { label: "STAR BIRIYANI", value: 221000 },
+      ],
+    });
+
+    const lines = ["Intro", "```chart", broken, "```", "After"];
+    const blocks = splitMarkdownContentBlocks(lines);
+    expect(blocks.map((b) => b.type)).toEqual(["line", "chart", "line"]);
+    expect(blocks[1].chart.items).toHaveLength(3);
+    expect(blocks.some((b) => b.type === "line" && String(b.line).includes("```"))).toBe(false);
+  });
+
+  it("detects when the user asked for a chart and which type", () => {
     expect(userAskedForChart("Show expenses as a pie chart")).toBe(true);
+    expect(preferredChartType("Show expenses as a pie chart")).toBe("pie");
+    expect(preferredChartType("donut please")).toBe("donut");
+    expect(preferredChartType("bar chart of sales")).toBe("bar");
+    expect(preferredChartType("show a chart")).toBe(null);
     expect(userAskedForChart("Can you graph sales by cashier?")).toBe(true);
     expect(userAskedForChart("Expenses by category this month")).toBe(false);
   });

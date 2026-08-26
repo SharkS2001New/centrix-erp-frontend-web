@@ -161,9 +161,14 @@ const HEADING_CLASS = {
  * @param {{ headers: string[], rows: string[][], startIndex: number }} table
  * @param {((event: import("react").MouseEvent, href: string) => void) | undefined} onNavigate
  * @param {boolean} showCharts
+ * @param {'bar' | 'donut' | 'pie' | null | undefined} preferredType
+ * @param {boolean} skipAutoChart
  */
-function renderMarkdownTable(table, onNavigate, showCharts) {
-  const autoChart = showCharts ? chartFromMarkdownTable(table) : null;
+function renderMarkdownTable(table, onNavigate, showCharts, preferredType, skipAutoChart) {
+  const autoChart =
+    showCharts && !skipAutoChart
+      ? chartFromMarkdownTable(table, { type: preferredType ?? "bar" })
+      : null;
   return (
     <div key={`table-${table.startIndex}`} className="space-y-2">
       <div className="overflow-x-auto rounded-md border border-slate-200">
@@ -196,28 +201,47 @@ function renderMarkdownTable(table, onNavigate, showCharts) {
           </tbody>
         </table>
       </div>
-      {autoChart ? <AiMessageChart chart={autoChart} /> : null}
+      {autoChart ? <AiMessageChart chart={autoChart} preferredType={preferredType} /> : null}
     </div>
   );
 }
 
 /** Render assistant/user chat text with markdown emphasis, tables, charts, and clickable Centrix paths. */
-export function AiMessageContent({ content, onNavigate, className = "", showCharts = false }) {
+export function AiMessageContent({
+  content,
+  onNavigate,
+  className = "",
+  showCharts = false,
+  preferredChartType = null,
+}) {
   if (!content) return null;
 
   const lines = latexToPlain(String(content)).replace(/\r\n/g, "\n").split("\n");
   const blocks = splitMarkdownContentBlocks(lines);
+  const hasChartFence = blocks.some((b) => b.type === "chart");
 
   return (
     <div className={`space-y-2 text-sm leading-relaxed ${className}`}>
       {blocks.map((block) => {
         if (block.type === "chart") {
           if (!showCharts) return null;
-          return <AiMessageChart key={`chart-${block.startIndex}`} chart={block.chart} />;
+          return (
+            <AiMessageChart
+              key={`chart-${block.startIndex}`}
+              chart={block.chart}
+              preferredType={preferredChartType}
+            />
+          );
         }
 
         if (block.type === "table") {
-          return renderMarkdownTable(block, onNavigate, showCharts);
+          return renderMarkdownTable(
+            block,
+            onNavigate,
+            showCharts,
+            preferredChartType,
+            hasChartFence,
+          );
         }
 
         const line = block.line;

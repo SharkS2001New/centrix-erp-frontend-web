@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { CHART_COLORS } from "@/components/reports/report-charts";
+import { normalizePreferredChartType } from "@/lib/ai-message-format";
 
 /**
  * Compact bar / donut chart for Centrix AI replies.
+ * Includes a type toggle so the user can switch bar ↔ pie without re-asking.
  *
  * @param {{
  *   chart: {
@@ -12,26 +15,49 @@ import { CHART_COLORS } from "@/components/reports/report-charts";
  *     items?: Array<{ label?: string, value?: number }>,
  *     segments?: Array<{ label?: string, value?: number }>,
  *   },
+ *   preferredType?: 'bar' | 'donut' | 'pie' | null,
  * }} props
  */
-export function AiMessageChart({ chart }) {
-  if (!chart || typeof chart !== "object") return null;
+export function AiMessageChart({ chart, preferredType = null }) {
+  const items = chart && typeof chart === "object" ? normalizeItems(chart) : [];
+  const initial =
+    normalizePreferredChartType(preferredType)
+    ?? normalizePreferredChartType(chart?.type)
+    ?? "bar";
+  const [kind, setKind] = useState(initial);
 
-  const items = normalizeItems(chart);
-  if (items.length < 2) return null;
+  if (!chart || typeof chart !== "object" || items.length < 2) return null;
 
-  const kind = String(chart.type ?? "bar").toLowerCase();
   const title = chart.title ? String(chart.title) : null;
+  const isRound = kind === "donut" || kind === "pie";
 
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3">
-      {title ? <p className="mb-2 text-xs font-semibold text-slate-800">{title}</p> : null}
-      {kind === "donut" || kind === "pie" ? (
-        <Donut items={items} />
-      ) : (
-        <Bars items={items} />
-      )}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        {title ? <p className="m-0 text-xs font-semibold text-slate-800">{title}</p> : <span />}
+        <div className="flex shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-[11px]">
+          <ChartTypeButton active={!isRound} onClick={() => setKind("bar")} label="Bar" />
+          <ChartTypeButton active={kind === "pie"} onClick={() => setKind("pie")} label="Pie" />
+          <ChartTypeButton active={kind === "donut"} onClick={() => setKind("donut")} label="Donut" />
+        </div>
+      </div>
+      {isRound ? <Donut items={items} hole={kind === "donut"} /> : <Bars items={items} />}
     </div>
+  );
+}
+
+function ChartTypeButton({ active, onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded px-2 py-0.5 font-medium transition-colors ${
+        active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+      }`}
+      aria-pressed={active}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -91,10 +117,10 @@ function Bars({ items }) {
   );
 }
 
-function Donut({ items }) {
+function Donut({ items, hole = true }) {
   const total = items.reduce((sum, i) => sum + i.value, 0) || 1;
   const size = 132;
-  const stroke = 22;
+  const stroke = hole ? 22 : 48;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -109,7 +135,7 @@ function Donut({ items }) {
 
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-28 w-28" role="img" aria-label="Donut chart">
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-28 w-28" role="img" aria-label={hole ? "Donut chart" : "Pie chart"}>
         {segments.map(({ item, dash, offset }, index) => (
           <circle
             key={`${item.label}-${index}`}
