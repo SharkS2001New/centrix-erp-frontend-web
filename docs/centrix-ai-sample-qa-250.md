@@ -369,8 +369,12 @@ Answers cite real Centrix paths where possible. Prefer live tools for numbers (s
 **A:** Leave balances report or employee leave tab.  
 **Path:** /reports/leave-balance
 
-**Q:** Run payroll for this month — steps?  
-**A:** Ensure attendance → payroll run → review statutory → approve/pay; preview with get_employee_payroll_preview.  
+**Q:** Run payroll for this month — steps?
+**A:** Ensure attendance → approve pending overtime (only approved OT is paid) → payroll run → review statutory → approve/pay; preview with get_employee_payroll_preview.  
+**Path:** /hr/payroll
+
+**Q:** Does pending overtime count in payroll?
+**A:** No — only approved overtime is included in payroll runs and get_employee_payroll_preview. Pending OT must be approved first; denied OT never pays.  
 **Path:** /hr/payroll
 
 **Q:** NSSF / PAYE deductions explained  

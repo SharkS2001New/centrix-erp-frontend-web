@@ -97,31 +97,33 @@ function Donut({ items }) {
   const stroke = 22;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+
+  /** @type {Array<{ item: { label: string, value: number }, dash: number, offset: number }>} */
+  const segments = [];
+  let runningOffset = 0;
+  for (const item of items) {
+    const dash = (item.value / total) * circumference;
+    segments.push({ item, dash, offset: runningOffset });
+    runningOffset += dash;
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-4">
       <svg viewBox={`0 0 ${size} ${size}`} className="h-28 w-28" role="img" aria-label="Donut chart">
-        {items.map((item, index) => {
-          const pct = item.value / total;
-          const dash = pct * circumference;
-          const el = (
-            <circle
-              key={`${item.label}-${index}`}
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              fill="none"
-              stroke={CHART_COLORS[index % CHART_COLORS.length]}
-              strokeWidth={stroke}
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeDashoffset={-offset}
-              transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            />
-          );
-          offset += dash;
-          return el;
-        })}
+        {segments.map(({ item, dash, offset }, index) => (
+          <circle
+            key={`${item.label}-${index}`}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={CHART_COLORS[index % CHART_COLORS.length]}
+            strokeWidth={stroke}
+            strokeDasharray={`${dash} ${circumference - dash}`}
+            strokeDashoffset={-offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        ))}
       </svg>
       <ul className="min-w-0 flex-1 space-y-1 text-xs text-slate-700">
         {items.map((item, index) => (

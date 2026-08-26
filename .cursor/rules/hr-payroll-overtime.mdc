@@ -1,0 +1,12 @@
+---
+description: HR payroll — overtime only counts when approved, never when pending
+alwaysApply: true
+---
+
+# HR payroll overtime
+
+- Overtime enters payroll **only** when `employee_overtime.status` is `approved`.
+- **Pending** overtime must not be included in payroll runs, earnings calculation, settlement, or AI payroll preview (`get_employee_payroll_preview`).
+- Denied/rejected OT never pays. Auto clock-out OT starts as pending until approved.
+- When explaining payroll or payslip amounts, state that pending OT is excluded until approved.
+- Implementation: `PayrollEarningsService::approvedOvertimeInPeriod` and `PayrollCycleSettlementService` filter `status = approved` only.

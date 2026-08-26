@@ -372,7 +372,7 @@ Format: **Q:** / **A:** / **Path:** for training import.
 **Path:** /hr/leave
 
 **Q:** How do I run payroll?  
-**A:** Confirm attendance → /hr/payroll run for period → review → finalize.  
+**A:** Confirm attendance → approve pending overtime (only approved OT pays) → /hr/payroll run for period → review → finalize.  
 **Path:** /hr/payroll
 
 **Q:** How do I record an expense?  
@@ -464,7 +464,7 @@ Format: **Q:** / **A:** / **Path:** for training import.
 **Path:** /reports/supplier-statement
 
 **Q:** Month-end: what must finish before payroll?  
-**A:** Attendance sync complete, absents/lateness reviewed, leave approved, then payroll run.  
+**A:** Attendance sync complete, absents/lateness reviewed, leave approved, pending overtime approved (pending OT is not paid), then payroll run.  
 **Path:** /hr/attendance
 
 **Q:** Investor funded goods on LPO-889 — how to reflect end-to-end?  
