@@ -251,9 +251,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         setMessages((prev) => [...prev, { role: "assistant", content }]);
       }
 
-      if (res.pending_action) {
-        setPendingAction(res.pending_action);
-      } else {
+      if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
+        setPendingAction(res.pending_action || null);
+      } else if (res.action_result || res.declined_off_topic) {
         setPendingAction(null);
       }
 
