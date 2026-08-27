@@ -41,6 +41,9 @@ export function HrCrudPage({
   renderFormFields,
   getRowKey = (row) => row.id,
   searchFilter,
+  /** Show search box in the filter toolbar (server `q` + optional client refine). */
+  showSearch = true,
+  searchPlaceholder = "Search…",
   loadExtra,
   listSearchParams,
   onSaved,
@@ -59,7 +62,7 @@ export function HrCrudPage({
   /**
    * Map loaded rows into export-ready objects keyed by exportColumns.
    * When set, export uses these rows instead of re-fetching the API (keeps display values).
-   * @type {((ctx: { rows: object[], filtered: object[], extra: object }) => object[] | Promise<object[]>) | undefined}
+   * @type {((ctx: { rows: object[], filtered: object[], extra: object, search: string, listSearchParams?: object }) => object[] | Promise<object[]>) | undefined}
    */
   getExportRows,
   /** Called after a successful create with the API response body (if any). */
@@ -206,47 +209,57 @@ export function HrCrudPage({
           rows,
           filtered,
           extra,
+          search: debouncedSearch.trim(),
+          listSearchParams,
         }),
       );
-  }, [getExportRows, rows, filtered, extra]);
+  }, [getExportRows, rows, filtered, extra, debouncedSearch, listSearchParams]);
+
+  const headerActions = (
+    <HrPageActions>
+      {exportEnabled && exportColumns.length > 0 ? (
+        <CatalogListExport
+          title={resolvedExportTitle}
+          filename={exportFilename ?? resolvedExportTitle}
+          apiPath={apiPath}
+          columns={exportColumns}
+          totalCount={total || filtered.length}
+          getSearchParams={() => ({
+            per_page: 200,
+            ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+            ...(listSearchParams ?? {}),
+          })}
+          getInlineRows={getInlineExportRows}
+          disabled={loading}
+        />
+      ) : null}
+      <PrimaryButton type="button" onClick={openCreate}>
+        {addButtonLabel}
+      </PrimaryButton>
+    </HrPageActions>
+  );
 
   const content = (
     <>
       <div className="mb-4 space-y-3">
         {embedded && title ? (
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
-            {subtitle ? (
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{subtitle}</p>
-            ) : null}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
+              {subtitle ? (
+                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{subtitle}</p>
+              ) : null}
+            </div>
+            <div className="ml-auto shrink-0">{headerActions}</div>
           </div>
         ) : null}
         <FilterToolbar>
           {filterSlot}
-          {searchFilter ? (
+          {showSearch ? (
             <SearchInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-            />
-          ) : null}
-          <PrimaryButton type="button" onClick={openCreate}>
-            {addButtonLabel}
-          </PrimaryButton>
-          {embedded && exportEnabled && exportColumns.length > 0 ? (
-            <CatalogListExport
-              title={resolvedExportTitle}
-              filename={exportFilename ?? resolvedExportTitle}
-              apiPath={apiPath}
-              columns={exportColumns}
-              totalCount={total || filtered.length}
-              getSearchParams={() => ({
-                per_page: 200,
-                ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-                ...(listSearchParams ?? {}),
-              })}
-              getInlineRows={getInlineExportRows}
-              disabled={loading}
+              placeholder={searchPlaceholder}
             />
           ) : null}
         </FilterToolbar>
@@ -354,30 +367,7 @@ export function HrCrudPage({
   }
 
   return (
-    <CatalogPageShell
-      title={title}
-      subtitle={subtitle}
-      action={
-        exportEnabled && exportColumns.length > 0 ? (
-          <HrPageActions>
-            <CatalogListExport
-              title={resolvedExportTitle}
-              filename={exportFilename ?? resolvedExportTitle}
-              apiPath={apiPath}
-              columns={exportColumns}
-              totalCount={total || filtered.length}
-              getSearchParams={() => ({
-                per_page: 200,
-                ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-                ...(listSearchParams ?? {}),
-              })}
-              getInlineRows={getInlineExportRows}
-              disabled={loading}
-            />
-          </HrPageActions>
-        ) : null
-      }
-    >
+    <CatalogPageShell title={title} subtitle={subtitle} action={headerActions}>
       {content}
     </CatalogPageShell>
   );

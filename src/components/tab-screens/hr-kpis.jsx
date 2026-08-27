@@ -219,12 +219,13 @@ export function HrKpisScreen() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold text-slate-900">Employee KPIs</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             Set organization-wide targets for all staff, track who has met them, and manage individual KPIs from employee profiles.
           </p>
         </div>
+        <div className="ml-auto shrink-0">
         {canManage ? (
           <HrPageActions>
             <CatalogListExport
@@ -253,6 +254,7 @@ export function HrKpisScreen() {
             />
           </HrPageActions>
         )}
+        </div>
       </div>
 
       <div className="flex gap-2 border-b border-slate-200">

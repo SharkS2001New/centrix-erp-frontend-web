@@ -36,7 +36,7 @@ export const HR_REPORT_DEFS = [
   {
     key: "cash-advances",
     label: "Cash advances",
-    subtitle: "Salary advances by date — filter previous months, status, and branch",
+    subtitle: "Salary advances by date — filter by status and branch",
     icon: "wallet",
   },
   { key: "staff-turnover", label: "Staff turnover", subtitle: "Joiners, leavers, and turnover rate", icon: "swap" },

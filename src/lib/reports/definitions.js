@@ -737,7 +737,6 @@ export const REPORT_DEFINITIONS = {
     section: "Finance",
     apiPath: "/reports/profit-loss-by-product",
     showDateRange: true,
-    defaultDateRangeDays: 0,
     columns: [
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       {
@@ -827,7 +826,6 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/profit-loss",
     dateColumn: "period",
     showDateRange: true,
-    defaultDateRangeDays: 0,
     variant: "profit-loss",
   },
 
@@ -1051,7 +1049,6 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/top-debtors",
     dateColumn: null,
     showDateRange: true,
-    defaultDateRangeDays: 6,
     columns: [
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name },
@@ -1127,7 +1124,6 @@ export const REPORT_DEFINITIONS = {
     section: "Finance",
     apiPath: "/reports/invoice-payments",
     dateColumn: "date_paid",
-    defaultDateRangeDays: 364,
     showDateRange: true,
     columns: [
       { key: "date_paid", label: "Date paid", accessor: (r) => r.date_paid },

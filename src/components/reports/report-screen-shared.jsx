@@ -379,12 +379,12 @@ export function ReportPageShell({
         ]}
       />
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
         {hasHeaderActions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
             {printAction ? (
               <button
                 type="button"

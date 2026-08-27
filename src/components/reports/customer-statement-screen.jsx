@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatReportKes, formatReportCell } from "@/lib/reports/format";
 import { printCustomerStatement } from "@/lib/reports/customer-statement-print";
-import { defaultDateRange } from "@/lib/datetime";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import {
@@ -27,12 +26,16 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 
 export function CustomerStatementScreen() {
   const searchParams = useSearchParams();
-  const { organization, generalSettings } = useAuth();
+  const { organization, generalSettings, capabilities } = useAuth();
   const initialCustomer = searchParams.get("customer") ?? "";
-  const defaultRange = useMemo(() => defaultDateRange(365), []);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [explainOpen, setExplainOpen] = useState(false);
 
   const [customerNum, setCustomerNum] = useState(initialCustomer);

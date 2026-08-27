@@ -115,12 +115,12 @@ export function CatalogPageShell({
             className="flex min-w-0 flex-1 items-start gap-3"
           />
         ) : (
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="theme-heading text-xl font-medium">{title}</h1>
             {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
           </div>
         )}
-        {action}
+        {action ? <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">{action}</div> : null}
       </div>
       {banner}
       {toolbar}

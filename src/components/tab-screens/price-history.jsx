@@ -241,31 +241,33 @@ export function PriceHistoryScreen() {
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-medium text-slate-900">Price history</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             Selling price changes for {dateRangeLabel}, grouped by product
           </p>
         </div>
-        <CatalogListExport
-          title="Price history"
-          filename="price-history"
-          apiPath="/price-history"
-          columns={PRICE_HISTORY_EXPORT_COLUMNS}
-          totalCount={totalRecords}
-          getSearchParams={() =>
-            buildPriceHistoryParams({
-              page: 1,
-              perPage: 200,
-              debouncedSearch,
-              categoryFilter,
-              userFilter,
-              fromDate,
-              toDate,
-            })
-          }
-          disabled={loading || listLoading}
-        />
+        <div className="ml-auto shrink-0">
+          <CatalogListExport
+            title="Price history"
+            filename="price-history"
+            apiPath="/price-history"
+            columns={PRICE_HISTORY_EXPORT_COLUMNS}
+            totalCount={totalRecords}
+            getSearchParams={() =>
+              buildPriceHistoryParams({
+                page: 1,
+                perPage: 200,
+                debouncedSearch,
+                categoryFilter,
+                userFilter,
+                fromDate,
+                toDate,
+              })
+            }
+            disabled={loading || listLoading}
+          />
+        </div>
       </div>
 
       <div className="mb-3.5 flex flex-wrap items-end gap-2">

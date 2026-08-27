@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PaginationBar, FilterSelect } from "@/components/catalog/catalog-shared";
@@ -10,7 +10,6 @@ import { ReportExportToolbar } from "@/components/reports/report-export-toolbar"
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
   fetchLegacyArchiveSale,
   fetchLegacyArchiveSales,
@@ -27,7 +26,7 @@ import {
   openSaleOrderPrintWindow,
 } from "@/lib/print-dispatch";
 import { notifyError } from "@/lib/notify";
-import { getOrderDocumentType } from "@/lib/sales-settings";
+import { getOrderDocumentType, getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 
 const PAGE_SIZE = 20;
@@ -38,8 +37,6 @@ const CHANNELS = [
   { key: "mobile", label: "Mobile" },
   { key: "debtor", label: "Debtor / credit" },
 ];
-
-const defaultRange = defaultDashboardDateRange(13);
 
 const CHANNEL_LABELS = {
   pos: "POS",
@@ -378,6 +375,11 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
 }
 
 export function LegacyArchiveReportScreen() {
+  const { capabilities } = useAuth();
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [status, setStatus] = useState(null);
   const [summary, setSummary] = useState(null);
   const [sales, setSales] = useState({ data: [], meta: {} });
@@ -522,7 +524,7 @@ export function LegacyArchiveReportScreen() {
     <div>
       <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Legacy archive" }]} />
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
           <p className="mt-1 text-sm text-slate-500">
             Browse historical LightStores sales (read-only). Pick a date range — {pageSize} sales load per page.
@@ -543,33 +545,35 @@ export function LegacyArchiveReportScreen() {
           ) : null}
         </div>
         {applied.fromDate && applied.toDate ? (
-          <ReportExportToolbar
-            filename="legacy-sales-archive"
-            title="Legacy sales archive"
-            subtitle="Historical LightStores sales"
-            columns={LEGACY_EXPORT_COLUMNS}
-            exportSource={{
-              source: "legacy_archive_sales",
-              searchParams: {
-                channel: applied.q ? "all" : applied.channel,
-                from_date: applied.fromDate,
-                to_date: applied.toDate,
-                ...(applied.q ? { q: applied.q } : {}),
-                ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
-                ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
-              },
-            }}
-            meta={{
-              fromDate: applied.fromDate,
-              toDate: applied.toDate,
-              extraLines: [
-                ...(applied.q ? [`Search: ${applied.q}`] : []),
-                ...(applied.minOrderTotal !== "" ? [`Min total (KES): ${applied.minOrderTotal}`] : []),
-                ...(applied.maxOrderTotal !== "" ? [`Max total (KES): ${applied.maxOrderTotal}`] : []),
-              ],
-            }}
-            disabled={loadingSales}
-          />
+          <div className="ml-auto shrink-0">
+            <ReportExportToolbar
+              filename="legacy-sales-archive"
+              title="Legacy sales archive"
+              subtitle="Historical LightStores sales"
+              columns={LEGACY_EXPORT_COLUMNS}
+              exportSource={{
+                source: "legacy_archive_sales",
+                searchParams: {
+                  channel: applied.q ? "all" : applied.channel,
+                  from_date: applied.fromDate,
+                  to_date: applied.toDate,
+                  ...(applied.q ? { q: applied.q } : {}),
+                  ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
+                  ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
+                },
+              }}
+              meta={{
+                fromDate: applied.fromDate,
+                toDate: applied.toDate,
+                extraLines: [
+                  ...(applied.q ? [`Search: ${applied.q}`] : []),
+                  ...(applied.minOrderTotal !== "" ? [`Min total (KES): ${applied.minOrderTotal}`] : []),
+                  ...(applied.maxOrderTotal !== "" ? [`Max total (KES): ${applied.maxOrderTotal}`] : []),
+                ],
+              }}
+              disabled={loadingSales}
+            />
+          </div>
         ) : null}
       </div>
 

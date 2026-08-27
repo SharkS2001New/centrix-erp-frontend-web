@@ -22,6 +22,8 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -344,6 +346,102 @@ export function InvestorsIdScreen() {
 
   const reportTotals = useMemo(() => report?.totals ?? {}, [report]);
 
+  const reportExportConfig = useMemo(() => {
+    const kindLabel = REPORT_KINDS.find((k) => k.id === reportKind)?.label ?? "Report";
+    const investorSlug = String(investor?.investor_code || investorId || "investor").replace(
+      /\s+/g,
+      "-",
+    );
+    if (reportKind === "stock") {
+      const rows = report?.rows ?? [];
+      return {
+        title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
+        filename: `investor-${investorSlug}-stock`,
+        columns: [
+          { key: "product_name", label: "Product" },
+          { key: "product_code", label: "Code" },
+          { key: "qty_purchased", label: "Purchased", align: "right" },
+          { key: "qty_sold", label: "Sold", align: "right" },
+          { key: "qty_remaining", label: "Remaining", align: "right" },
+          { key: "unit_cost", label: "Unit cost", align: "right" },
+          { key: "stock_value", label: "Stock value", align: "right" },
+        ],
+        totalCount: rows.length,
+        getInlineRows: async () =>
+          rows.map((row) => ({
+            product_name: row.product_name || "",
+            product_code: row.product_code || "",
+            qty_purchased: row.qty_purchased ?? "",
+            qty_sold: row.qty_sold ?? "",
+            qty_remaining: row.qty_remaining ?? "",
+            unit_cost: row.unit_cost ?? "",
+            stock_value: row.stock_value ?? "",
+          })),
+      };
+    }
+    if (reportKind === "money-flow") {
+      const events = report?.events ?? [];
+      return {
+        title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
+        filename: `investor-${investorSlug}-money-flow`,
+        columns: [
+          { key: "date", label: "Date" },
+          { key: "label", label: "Event" },
+          { key: "in", label: "In", align: "right" },
+          { key: "out", label: "Out", align: "right" },
+          { key: "balance", label: "Balance", align: "right" },
+        ],
+        totalCount: events.length,
+        getInlineRows: async () =>
+          events.map((ev) => ({
+            date: ev.date || "",
+            label: ev.label || "",
+            in: ev.in ?? "",
+            out: ev.out ?? "",
+            balance: ev.balance ?? "",
+          })),
+      };
+    }
+    const lines = report?.lines ?? [];
+    return {
+      title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
+      filename: `investor-${investorSlug}-sales`,
+      columns: [
+        { key: "invoice_label", label: "Invoice" },
+        { key: "sale_date", label: "Date" },
+        { key: "product_name", label: "Product" },
+        { key: "quantity_sold", label: "Qty", align: "right" },
+        { key: "sales_value", label: "Sales", align: "right" },
+        { key: "cost_value", label: "Cost", align: "right" },
+        { key: "profit", label: "Profit", align: "right" },
+        { key: "payment_status", label: "Payment" },
+      ],
+      totalCount: lines.length,
+      getInlineRows: async () =>
+        lines.map((line) => ({
+          invoice_label: line.invoice_label || "",
+          sale_date: line.sale_date || "",
+          product_name: line.product_name || "",
+          quantity_sold: line.quantity_sold ?? "",
+          sales_value: line.sales_value ?? "",
+          cost_value: line.cost_value ?? "",
+          profit: line.profit ?? "",
+          payment_status: line.payment_status || "",
+        })),
+    };
+  }, [report, reportKind, investor, investorId]);
+
+  const overviewStats = useMemo(() => {
+    const cashCount = contributions.filter(
+      (c) => String(c.contribution_type || "").toLowerCase() === "cash",
+    ).length;
+    const stockCount = contributions.filter(
+      (c) => String(c.contribution_type || "").toLowerCase() === "stock",
+    ).length;
+    const activeBatches = batches.filter((b) => Number(b.qty_remaining ?? 0) > 0).length;
+    return { cashCount, stockCount, activeBatches, spendCount: spends.length };
+  }, [contributions, batches, spends]);
+
   if (!enabled) {
     return (
       <div className="theme-workspace p-6">
@@ -445,43 +543,192 @@ export function InvestorsIdScreen() {
       </div>
 
       {tab === "overview" && (
-        <div className="theme-panel space-y-3 rounded-xl p-4 text-sm text-slate-700 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Capital form
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {Number(summary.cash_contributed ?? 0) > 0 ? (
-              <ContributionTypeBadge type="cash" />
-            ) : null}
-            {Number(summary.stock_contributed ?? 0) > 0 ? (
-              <ContributionTypeBadge type="stock" />
-            ) : null}
-            {Number(summary.cash_contributed ?? 0) <= 0 &&
-            Number(summary.stock_contributed ?? 0) <= 0 ? (
-              <span className="text-slate-500">No contributions yet — use Add contribution.</span>
-            ) : null}
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="theme-panel rounded-xl p-5 shadow-sm lg:col-span-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Investor profile
+              </p>
+              <dl className="mt-4 space-y-3 text-sm">
+                <div>
+                  <dt className="text-slate-500">Status</dt>
+                  <dd className="mt-1">
+                    <StatusBadge active={investor.is_active !== false} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Code</dt>
+                  <dd className="mt-0.5 font-mono text-slate-900">{investor.investor_code || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Contact</dt>
+                  <dd className="mt-0.5 text-slate-900">{investor.contact_person || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Phone</dt>
+                  <dd className="mt-0.5 text-slate-900">{investor.phone || "—"}</dd>
+                </div>
+                {investor.email ? (
+                  <div>
+                    <dt className="text-slate-500">Email</dt>
+                    <dd className="mt-0.5 break-all text-slate-900">{investor.email}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {investor.notes ? (
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{investor.notes}</p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="theme-panel rounded-xl p-5 shadow-sm lg:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Capital summary
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {Number(summary.cash_contributed ?? 0) > 0 ? (
+                    <ContributionTypeBadge type="cash" />
+                  ) : null}
+                  {Number(summary.stock_contributed ?? 0) > 0 ? (
+                    <ContributionTypeBadge type="stock" />
+                  ) : null}
+                  {Number(summary.cash_contributed ?? 0) <= 0 &&
+                  Number(summary.stock_contributed ?? 0) <= 0 ? (
+                    <span className="text-xs text-slate-500">No contributions yet</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">Cash deposited</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                    {formatKesCompact(summary.cash_contributed ?? 0)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {overviewStats.cashCount} cash contribution
+                    {overviewStats.cashCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">Stock contributed</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                    {formatKesCompact(summary.stock_contributed ?? 0)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {overviewStats.stockCount} stock contribution
+                    {overviewStats.stockCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">Cash spent</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                    {formatKesCompact(summary.cash_spent ?? 0)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {overviewStats.spendCount} linked spend
+                    {overviewStats.spendCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">Total contributed</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                    {formatKesCompact(summary.total_contributed ?? 0)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {overviewStats.activeBatches} active batch
+                    {overviewStats.activeBatches === 1 ? "" : "es"} on hand
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <p>
-            <span className="font-medium text-slate-900">Cash in:</span>{" "}
-            {formatKesCompact(summary.cash_contributed ?? 0)}
-            <span className="text-slate-500"> (money deposited)</span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-900">Stock in:</span>{" "}
-            {formatKesCompact(summary.stock_contributed ?? 0)}
-            <span className="text-slate-500"> (investor paid for goods)</span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-900">Cash spent:</span>{" "}
-            {formatKesCompact(summary.cash_spent ?? 0)}
-          </p>
-          <p>
-            <span className="font-medium text-slate-900">Total contributed:</span>{" "}
-            {formatKesCompact(summary.total_contributed ?? 0)}
-          </p>
-          {investor.notes ? (
-            <p className="border-t border-slate-100 pt-3 text-slate-600">{investor.notes}</p>
-          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="theme-panel rounded-xl p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Recent contributions
+                </p>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--brand-primary)] hover:underline"
+                  onClick={() => setTab("contributions")}
+                >
+                  View all
+                </button>
+              </div>
+              {contributions.length === 0 ? (
+                <p className="text-sm text-slate-500">No contributions yet — use Add contribution.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {contributions.slice(0, 5).map((c) => (
+                    <li key={c.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ContributionTypeBadge type={c.contribution_type} />
+                          <span className="text-slate-500">{formatShortDate(c.contribution_date)}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                          {c.payment_code || c.supplier?.supplier_name || c.lpo_no
+                            ? [c.payment_code, c.supplier?.supplier_name, c.lpo_no ? `LPO ${c.lpo_no}` : null]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : "—"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-medium tabular-nums text-slate-900">
+                        {formatKesCompact(c.amount ?? 0)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="theme-panel rounded-xl p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Product batches
+                </p>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--brand-primary)] hover:underline"
+                  onClick={() => setTab("batches")}
+                >
+                  View all
+                </button>
+              </div>
+              {batches.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No product batches yet — allocate products from a stock contribution.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {batches.slice(0, 5).map((b) => (
+                    <li key={b.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">
+                          {b.product_name || b.product_code || "Product"}
+                        </p>
+                        <p className="mt-0.5 font-mono text-xs text-slate-400">{b.product_code}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="tabular-nums text-slate-900">
+                          {Number(b.qty_remaining ?? 0)} left
+                        </p>
+                        <p className="text-xs tabular-nums text-slate-400">
+                          of {Number(b.qty_purchased ?? 0)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -549,7 +796,7 @@ export function InvestorsIdScreen() {
                                 setAllocForm({
                                   ...EMPTY_ALLOCATE,
                                   lpo_no: c.lpo_no ? String(c.lpo_no) : "",
-                                  from_lpo: Boolean(c.lpo_no),
+                                  from_lpo: false,
                                 });
                                 setFormError(null);
                                 setAllocDrawer(c);
@@ -715,6 +962,14 @@ export function InvestorsIdScreen() {
                 >
                   {reportLoading ? "Loading…" : "Refresh"}
                 </button>
+                <CatalogListExport
+                  title={reportExportConfig.title}
+                  filename={reportExportConfig.filename}
+                  columns={reportExportConfig.columns}
+                  totalCount={reportExportConfig.totalCount}
+                  getInlineRows={reportExportConfig.getInlineRows}
+                  disabled={reportLoading || !report || reportExportConfig.totalCount === 0}
+                />
               </div>
 
               {reportKind === "sales" && report && (
@@ -1065,25 +1320,43 @@ export function InvestorsIdScreen() {
             </Field>
           ) : (
             <>
-              <Field label="Product code" required>
-                <input
-                  className={inputClassName()}
+              <Field label="Product" required>
+                <ProductSearchSelect
                   value={allocForm.product_code}
-                  onChange={(e) =>
-                    setAllocForm((p) => ({ ...p, product_code: e.target.value }))
-                  }
+                  onChange={(code) => {
+                    setAllocForm((p) => ({
+                      ...p,
+                      product_code: code,
+                      ...(code ? {} : { product_name: "", packaging: "" }),
+                    }));
+                  }}
+                  onProductSelect={(product) => {
+                    setAllocForm((p) => ({
+                      ...p,
+                      product_code: product?.product_code ?? "",
+                      product_name: product?.product_name ?? "",
+                      packaging: product?.uom?.uom_type || product?.packaging || p.packaging,
+                      unit_cost:
+                        product?.last_cost_price != null && product.last_cost_price !== ""
+                          ? String(product.last_cost_price)
+                          : p.unit_cost,
+                    }));
+                  }}
                   required
+                  placeholder="Search by product name…"
                 />
               </Field>
-              <Field label="Product name">
-                <input
-                  className={inputClassName()}
-                  value={allocForm.product_name}
-                  onChange={(e) =>
-                    setAllocForm((p) => ({ ...p, product_name: e.target.value }))
-                  }
-                />
-              </Field>
+              {allocForm.product_code ? (
+                <p className="text-xs text-slate-500">
+                  Code: <span className="font-mono">{allocForm.product_code}</span>
+                  {allocForm.product_name ? (
+                    <>
+                      {" "}
+                      · {allocForm.product_name}
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Qty purchased" required>
                   <input

@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
 import {
   Field,
+  FILTER_CONTROL_CLASS,
   formatShortDate,
   inputClassName,
   parseDecimalInput,
@@ -16,23 +17,8 @@ import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
 import { notifySuccess } from "@/lib/notify";
-
-function todayIso() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function daysAgoIso(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import { HrDateField } from "@/components/hr/hr-list-toolbar";
 
 function PrintIcon() {
   return (
@@ -68,10 +54,14 @@ function statusLabel(status) {
 }
 
 export function HrCashAdvancesScreen() {
-  const { hasPermission, user, organization, generalSettings } = useAuth();
+  const { hasPermission, user, organization, generalSettings, capabilities } = useAuth();
   const canApprove = canApproveCashAdvances({ hasPermission });
-  const [fromDate, setFromDate] = useState(() => daysAgoIso(89));
-  const [toDate, setToDate] = useState(() => todayIso());
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [statusFilter, setStatusFilter] = useState("");
 
   const listSearchParams = useMemo(
@@ -127,38 +117,38 @@ export function HrCashAdvancesScreen() {
   return (
     <HrCrudPage
       title="Cash advances"
-      subtitle="Salary advances recovered through payroll — filter by date to include previous months. New advances go to a manager with approval rights."
+      subtitle="Salary advances recovered through payroll. New advances go to a manager with approval rights."
       addButtonLabel="Add advance"
       drawerWide
       drawerCreateTitle="Request cash advance"
       apiPath="/employee-cash-advances"
       listSearchParams={listSearchParams}
+      searchPlaceholder="Search employee, notes, status…"
+      searchFilter={(r, q) => {
+        const emp = r.employee;
+        const hay = [
+          composeEmployeeDisplayName(emp),
+          emp?.employee_code,
+          emp?.full_name,
+          r.notes,
+          r.status,
+          statusLabel(r.status),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      }}
       filterSlot={
         <>
-          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
-            From
-            <input
-              type="date"
-              className={inputClassName()}
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
-            To
-            <input
-              type="date"
-              className={inputClassName()}
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
-            Status
+          <HrDateField label="From" value={fromDate} onChange={setFromDate} />
+          <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <Field label="Status">
             <select
-              className={inputClassName()}
+              className={FILTER_CONTROL_CLASS}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Status"
             >
               <option value="">All statuses</option>
               <option value="pending">Pending approval</option>
@@ -166,7 +156,7 @@ export function HrCashAdvancesScreen() {
               <option value="repaid">Repaid</option>
               <option value="cancelled">Cancelled</option>
             </select>
-          </label>
+          </Field>
         </>
       }
       exportTitle="Cash advances"
@@ -181,12 +171,17 @@ export function HrCashAdvancesScreen() {
         { key: "status", label: "Status" },
         { key: "notes", label: "Notes" },
       ]}
-      getExportRows={async () => {
+      getExportRows={async ({ search }) => {
         const all = [];
         let page = 1;
         for (;;) {
           const res = await apiRequest("/employee-cash-advances", {
-            searchParams: { per_page: 200, page, ...listSearchParams },
+            searchParams: {
+              per_page: 200,
+              page,
+              ...listSearchParams,
+              ...(search ? { q: search } : {}),
+            },
           });
           const batch = res.data ?? [];
           all.push(...batch);

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
-import { clampDashboardDateRange, defaultDashboardDateRange, lastWeekDashboardDateRange } from "@/lib/dashboard-dates";
+import { clampDashboardDateRange } from "@/lib/dashboard-dates";
 import { defaultReportBranchId } from "@/lib/reports/report-filters";
 import {
   CHART_COLORS,
@@ -20,6 +20,7 @@ import {
   DashboardRefreshButton,
 } from "@/components/dashboard/dashboard-shared";
 import { resolveDashboardAnalyticsScope } from "@/lib/workspace-reports";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { P } from "@/lib/permission-codes";
 
 export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true }) {
@@ -70,16 +71,16 @@ export function ReportsDashboardSection({
   enabled: enabledProp,
   refreshKey = 0,
 }) {
-  const { user, isOrgWide, hasPermission } = useAuth();
+  const { user, isOrgWide, hasPermission, capabilities } = useAuth();
   const canViewReports = hasPermission(P.reports.hub.view);
   const scope = resolveDashboardAnalyticsScope(workspaceScope, hasPermission);
   const hasScopedAnalytics = Boolean(scope.kpis.length || scope.charts.length);
   // Business summary alone must not load sales analytics payloads.
   const enabled = enabledProp ?? (canViewReports && hasScopedAnalytics);
-  // Business summary (backoffice) and Sales analytics share the last-7-days default.
-  const useWeekDefault = workspaceScope === "backoffice" || workspaceScope === "sales";
-  const minRangeDays = useWeekDefault ? 7 : null;
-  const defaults = useWeekDefault ? lastWeekDashboardDateRange() : defaultDashboardDateRange();
+  const defaults = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);
@@ -90,37 +91,23 @@ export function ReportsDashboardSection({
   const effectiveTo = controlledTo ?? toDate;
   const effectiveBranch = controlledBranch ?? branchId;
 
-  const applyFromDate = useCallback(
-    (nextFrom) => {
-      if (minRangeDays == null) {
-        setFromDate(nextFrom);
-        return;
-      }
-      const clamped = clampDashboardDateRange(nextFrom, toDate, {
-        minInclusiveDays: minRangeDays,
-        changed: "from",
-      });
-      setFromDate(clamped.from);
-      setToDate(clamped.to);
-    },
-    [minRangeDays, toDate],
-  );
+  const applyFromDate = useCallback((nextFrom) => {
+    const clamped = clampDashboardDateRange(nextFrom, toDate, {
+      minInclusiveDays: 1,
+      changed: "from",
+    });
+    setFromDate(clamped.from);
+    setToDate(clamped.to);
+  }, [toDate]);
 
-  const applyToDate = useCallback(
-    (nextTo) => {
-      if (minRangeDays == null) {
-        setToDate(nextTo);
-        return;
-      }
-      const clamped = clampDashboardDateRange(fromDate, nextTo, {
-        minInclusiveDays: minRangeDays,
-        changed: "to",
-      });
-      setFromDate(clamped.from);
-      setToDate(clamped.to);
-    },
-    [minRangeDays, fromDate],
-  );
+  const applyToDate = useCallback((nextTo) => {
+    const clamped = clampDashboardDateRange(fromDate, nextTo, {
+      minInclusiveDays: 1,
+      changed: "to",
+    });
+    setFromDate(clamped.from);
+    setToDate(clamped.to);
+  }, [fromDate]);
 
   const { dashboard, loading, error, reload } = useReportsDashboard({
     fromDate: effectiveFrom,
@@ -225,7 +212,7 @@ export function ReportsDashboardSection({
           onBranchChange={setBranchId}
           onRefresh={reload}
           refreshing={loading}
-          minRangeDays={minRangeDays}
+          minRangeDays={1}
         />
       ) : (
         <div className="mb-2 flex justify-end">

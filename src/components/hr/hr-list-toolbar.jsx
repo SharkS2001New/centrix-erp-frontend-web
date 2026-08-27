@@ -2,9 +2,9 @@
 
 import { Field, FILTER_CONTROL_CLASS, FilterToolbar, PrimaryButton } from "@/components/catalog/catalog-shared";
 
-/** Title-row actions: Refresh, Export, Add — same alignment as inventory/sales. */
+/** Title-row actions: Export (and Add/Refresh) — pinned far right beside the page title. */
 export function HrPageActions({ children }) {
-  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+  return <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{children}</div>;
 }
 
 /** Left-aligned filter row: dates, search, and related controls sit on one line. */

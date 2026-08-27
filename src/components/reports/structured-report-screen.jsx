@@ -30,7 +30,6 @@ import {
   reportHidesBranchFilter,
   reportShowsDateRange,
   defaultReportExtraFilterValues,
-  reportDefaultDateRangeDays,
   REPORT_DEFAULT_DATE_RANGE_DAYS,
 } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
@@ -75,21 +74,12 @@ function StandardReportScreen({ definition }) {
     if (definition.emptyDateRange) {
       return { from: "", to: "" };
     }
-    if (definition.defaultDateRangeDays != null) {
-      return defaultReportDateRange(definition.defaultDateRangeDays);
-    }
+    // Only intentional overrides (AR week, P&L today). Everything else uses org setting.
     if (Object.prototype.hasOwnProperty.call(REPORT_DEFAULT_DATE_RANGE_DAYS, definition.key)) {
-      return defaultReportDateRange(
-        reportDefaultDateRangeDays(definition.key, capabilities?.module_settings),
-      );
+      return defaultReportDateRange(REPORT_DEFAULT_DATE_RANGE_DAYS[definition.key]);
     }
     return getReportsDefaultDateRange(capabilities?.module_settings);
-  }, [
-    definition.defaultDateRangeDays,
-    definition.emptyDateRange,
-    definition.key,
-    capabilities?.module_settings,
-  ]);
+  }, [definition.emptyDateRange, definition.key, capabilities?.module_settings]);
   const defaultRange = useMemo(() => resolveDefaultRange(), [resolveDefaultRange]);
   const branchInitialized = useRef(false);
 
