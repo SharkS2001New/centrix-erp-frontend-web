@@ -2,6 +2,7 @@
 
 export const AI_WORKSPACE_STARTERS = {
   backoffice: [
+    "Help",
     "Help me create a new product",
     "Create a sales order for a customer",
     "Which products are low on stock?",
@@ -12,6 +13,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Where is the sales dashboard?",
   ],
   hospitality_backoffice: [
+    "Help",
     "Where is front desk check-in?",
     "How do I open a guest folio?",
     "Where are room reservations?",
@@ -21,6 +23,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Where do I manage hotel outlets?",
   ],
   hotel_bar_pos: [
+    "Help",
     "How do I open a bar check?",
     "How do I room-charge a check to a folio?",
     "Where do I settle a hotel POS check?",
@@ -28,6 +31,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Where are held / unpaid checks?",
   ],
   accounting: [
+    "Help",
     "How do I post a journal entry?",
     "Where are accounts receivable?",
     "Record a partial payment for a customer invoice",
@@ -36,6 +40,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Explain the chart of accounts",
   ],
   hr: [
+    "Help",
     "How do I add a new employee?",
     "Where do I manage departments?",
     "How does payroll work?",
@@ -44,6 +49,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Where are leave requests?",
   ],
   distribution: [
+    "Help",
     "How do I dispatch orders to a trip?",
     "Where do I assign a driver to an order?",
     "How do I record proof of delivery?",
@@ -52,6 +58,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Where is the mobile route sales report?",
   ],
   admin: [
+    "Help",
     "How do I add a new user?",
     "Where are roles and permissions?",
     "How do I configure sales settings?",
@@ -60,6 +67,7 @@ export const AI_WORKSPACE_STARTERS = {
     "Which modules are enabled?",
   ],
   pos: [
+    "Help",
     "How do I open a till session?",
     "How do I hold an order?",
     "Where is price check?",

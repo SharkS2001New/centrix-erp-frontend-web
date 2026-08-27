@@ -1025,6 +1025,17 @@ export function outboxRowHasHealablePaymentSplitsError(row) {
 const IN_FLIGHT_PREVIOUS_ORDER_EDIT_STATUSES = new Set(["pending", "syncing", "error"]);
 const offlineCheckoutInFlight = new Map();
 
+/** F10 payment dialog open — background wipe must not empty the sticky cart. */
+let posPaymentDialogOpen = false;
+
+export function setPosPaymentDialogOpen(open) {
+  posPaymentDialogOpen = Boolean(open);
+}
+
+export function isPosPaymentDialogOpen() {
+  return posPaymentDialogOpen;
+}
+
 function normalizeCheckoutScalar(value) {
   if (value == null) return null;
   if (typeof value === "number") {
@@ -1217,13 +1228,14 @@ export function setLiveTemporaryCartOccupancy(cart) {
     String(cart?.id ?? "") === "pending-fresh";
 
   // Mid-checkout: IDB may already be cleared but the till UI still owns this sale.
-  if (isPosOfflineCheckoutInFlight()) {
+  if (isPosOfflineCheckoutInFlight() || posPaymentDialogOpen) {
     writeLiveTemporaryCartOccupancy({
       cartId: serverId ?? -1,
       lineCount: Math.max(lineCount, 1),
       isEdit,
       updatedAt: Date.now(),
-      checkoutInFlight: true,
+      checkoutInFlight: isPosOfflineCheckoutInFlight(),
+      paymentDialogOpen: posPaymentDialogOpen,
     });
     return;
   }
@@ -1358,6 +1370,11 @@ export async function assertPosTillAvailableForSync({
 export async function wipeTemporaryCartLines(cart, options = {}) {
   if (!cart) return cart;
   const preserveEditMarkers = Boolean(options.preserveEditMarkers);
+  const force = Boolean(options.force);
+  // Payment dialog still owns this sale — wiping here causes "Cart is empty" on Continue.
+  if (!force && (posPaymentDialogOpen || isPosOfflineCheckoutInFlight())) {
+    return cart;
+  }
   const hadHeld = cart.held_order_num ?? null;
   const hadSuperseded = cart.superseded_sale_id ?? null;
   if (!isServerPosCartId(cart.id)) {
@@ -3816,6 +3833,12 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
     if (!targetCartId) return;
     // Failed revise leaves restore-to-cart / PUT lines on the sticky TemporaryCart —
     // wipe so the next till sale cannot inherit the previous order's items.
+    // Never wipe while F10 payment is open — that races checkout ("Cart is empty.").
+    if (posPaymentDialogOpen || isPosOfflineCheckoutInFlight()) return;
+    if (isLiveTemporaryCartOccupied({ ignoreCartId: null })) {
+      const occ = readLiveTemporaryCartOccupancy();
+      if (occ && Number(occ.cartId) === Number(targetCartId)) return;
+    }
     await wipeTemporaryCartLines({ id: targetCartId, lines: [{}] }).catch(() => {});
   }
 

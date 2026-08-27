@@ -231,6 +231,7 @@ import {
   setLiveTemporaryCartOccupancy,
   clearLiveTemporaryCartOccupancy,
   isPosOfflineCheckoutInFlight,
+  setPosPaymentDialogOpen,
   isFreshOfflinePosNewSale,
   cartMatchesFailedOutboxResidue,
   listOfflinePendingSalesForEdit,
@@ -3907,12 +3908,17 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!posSearchSuspended) return undefined;
     focusSearchAfterAdd.current = false;
-    closeProductSearchDropdown();
-    setSearchResults([]);
-    searchInputRef.current?.blur?.();
+    // Never wipe search results while the cashier has an active query — overlays /
+    // preparingNext / autoHeldBusy can flicker and previously cleared the list mid-type.
+    const activeQuery = String(searchQuery ?? "").trim();
+    if (!activeQuery) {
+      closeProductSearchDropdown();
+      setSearchResults([]);
+      searchInputRef.current?.blur?.();
+    }
     defaultScanFocusDoneRef.current = false;
     return undefined;
-  }, [posSearchSuspended]);
+  }, [posSearchSuspended, searchQuery]);
 
   useEffect(() => {
     if (cartActionPending || posSearchSuspended || !focusSearchAfterAdd.current) return;
@@ -5018,6 +5024,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
     paymentOpenRef.current = false;
+    setPosPaymentDialogOpen(false);
     receiptPrintStatusRef.current = null;
     setPaymentOpen(false);
     setReceiptPrintStatus(null);
@@ -5084,6 +5091,7 @@ export function PosScreen({ standalone = false }) {
 
     paymentOpenRef.current = true;
     paymentOpenedAtRef.current = Date.now();
+    setPosPaymentDialogOpen(true);
     // Drop leftover "printed" from the previous ticket so F10 keyup cannot treat
     // this newly opened checkout as ORDER COMPLETE and immediately close it.
     receiptPrintStatusRef.current = null;
@@ -5482,8 +5490,10 @@ export function PosScreen({ standalone = false }) {
       } finally {
         if (seq === searchSeq.current) {
           setSearching(false);
+          // Do not clear mid-search when the remote returned empty — keep whatever
+          // was already painted (local catalog) so the dropdown never blinks shut.
           if (!committedNonEmpty && trimmed) {
-            setSearchResults([]);
+            setSearchResults((prev) => (prev.length > 0 ? prev : []));
           }
         }
       }
@@ -11220,6 +11230,45 @@ export function PosScreen({ standalone = false }) {
           /* fall through to user-facing error */
         }
       }
+      // Sticky TemporaryCart was wiped mid-payment (background sync) while UI still
+      // has lines — rematerialize once so walk-in Continue does not show "Cart is empty."
+      if (
+        !options._cartRetry &&
+        !isPreviousOrderCashEdit &&
+        /cart is empty/i.test(String(e?.message ?? "")) &&
+        (cartRef.current ?? activeCart)?.lines?.length > 0
+      ) {
+        try {
+          const live = cartRef.current ?? activeCart;
+          if (isServerPosCartId(live?.id)) {
+            await apiRequest(`/sales/carts/${live.id}/lines`, {
+              method: "PUT",
+              body: {
+                lines: (live.lines ?? []).map((line) => ({
+                  product_code: line.product_code,
+                  qty: line.qty,
+                  unit_price: line.unit_price,
+                  discount: line.discount ?? 0,
+                  on_wholesale_retail: line.on_wholesale_retail,
+                  uom_id: line.uom_id,
+                })),
+                order_discount: Number(live.order_discount ?? 0) || 0,
+              },
+              loading: false,
+              reportIssues: false,
+            });
+            return handleCheckout(body, { ...options, _cartRetry: true });
+          }
+          const materialized = await materializeOfflineCartOnServer(live);
+          if (isServerPosCartId(materialized?.id)) {
+            cartRef.current = materialized;
+            setCart(materialized);
+            return handleCheckout(body, { ...options, _cartRetry: true });
+          }
+        } catch {
+          /* fall through */
+        }
+      }
       const message =
         e instanceof ApiError
           ? e.message
@@ -12632,7 +12681,11 @@ export function PosScreen({ standalone = false }) {
       await clearPromise;
       report(28);
 
-      const cartPromise = loadCashierCart({ skipEditDraftRestore: true, applyState: false });
+      const cartPromise = loadCashierCart({
+        skipEditDraftRestore: true,
+        forceEmpty: true,
+        applyState: false,
+      });
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         activeCart,
         sessionPosOrders,

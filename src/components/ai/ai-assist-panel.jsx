@@ -578,8 +578,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               {messages.length === 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-600">
-                    Ask about <span className="font-medium text-slate-800">{workspaceLabel}</span> — navigation,
-                    workflows, or creating records in this module.
+                    Ask anything about <span className="font-medium text-slate-800">{workspaceLabel}</span>.
+                    Not sure what to type? Send <span className="font-medium text-slate-800">Help</span> for a full list.
                   </p>
                   <div className={expanded ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
                     {starters.map((q) => (
@@ -774,7 +774,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 value={input}
                 entityRefs={entityRefs}
                 disabled={loading}
-                placeholder={`Ask in English about ${workspaceLabel}… Type @ for products, suppliers, customers`}
+                placeholder={`Ask anything… Type Help for ideas · @ for products, suppliers, customers`}
                 textareaClassName="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
                 onChange={({ text, entityRefs: nextRefs }) => {
                   setInput(text);

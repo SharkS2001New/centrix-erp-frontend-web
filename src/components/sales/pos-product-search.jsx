@@ -161,16 +161,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     highlightCodeRef.current = results[0]?.product_code ?? null;
   }, [results]);
 
-  // If a brief remount closed the menu while the cashier is still typing in Scan,
-  // reopen so results stay pickable.
+  // While the cashier is mid-search, keep the menu open even if busy/disabled
+  // flickers or focus briefly leaves Scan (overlays, route markup, auto-held).
   useEffect(() => {
-    if (disabled || !hasActiveQuery) return;
-    if (typeof document === "undefined") return;
-    if (document.activeElement !== localInputRef.current) return;
+    if (!hasActiveQuery) return;
     if (results.length > 0 || searching) {
       setOpen(true);
     }
-  }, [disabled, hasActiveQuery, results, searching]);
+  }, [hasActiveQuery, results, searching]);
 
   useEffect(() => {
     if (!open || highlight < 0 || !results.length) return;
@@ -189,7 +187,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   useLayoutEffect(() => {
-    if (!classic || !open || disabled) {
+    // Position the classic portal even while briefly disabled mid-search so the
+    // dropdown does not collapse when busy flags flicker.
+    if (!classic || !open || (disabled && !hasActiveQuery)) {
       setMenuBox(null);
       return undefined;
     }
@@ -223,22 +223,36 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       window.removeEventListener("resize", updateBox);
       window.removeEventListener("scroll", updateBox, true);
     };
-  }, [classic, open, disabled, results.length, searching]);
+  }, [classic, open, disabled, hasActiveQuery, results.length, searching]);
 
   useEffect(() => {
     function onDocClick(e) {
+      // Never dismiss results while the cashier is still searching.
+      if (String(query ?? "").trim() && (results.length > 0 || searching)) {
+        const inRoot = rootRef.current?.contains(e.target);
+        const inList = listRef.current?.contains(e.target);
+        // Allow intentional outside click to close only when not mid-search typing
+        // in the scan field — but keep open if click is inside input/list.
+        if (inRoot || inList) return;
+        if (typeof document !== "undefined" && document.activeElement === localInputRef.current) {
+          return;
+        }
+      }
       const inRoot = rootRef.current?.contains(e.target);
       const inList = listRef.current?.contains(e.target);
       if (!inRoot && !inList) setOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
+  }, [query, results.length, searching]);
 
   // Do not hide on exact SKU match — that closed the list the moment a typed code
   // matched a product, before the cashier could click a row. Enter still handles
   // barcode quick-add / Find pick.
-  const showDropdown = open && !disabled;
+  // Keep the list visible while searching even if `disabled` briefly flips true
+  // (posSearchSuspended / busy) — results must never close mid-query.
+  const showDropdown =
+    open && (hasActiveQuery ? results.length > 0 || searching : !disabled);
 
   function pick(product) {
     onSelect?.(product);

@@ -50,4 +50,22 @@ describe("wipeTemporaryCartLines", () => {
     expect(next.lines).toEqual([]);
     expect(next.id).toBe(7);
   });
+
+  it("does not DELETE while the F10 payment dialog is open", async () => {
+    const { wipeTemporaryCartLines, setPosPaymentDialogOpen } = await import("@/lib/pos-offline");
+    setPosPaymentDialogOpen(true);
+    try {
+      const cart = {
+        id: 99,
+        lines: [{ product_code: "C", quantity: 1 }],
+        order_discount: 2,
+      };
+      const next = await wipeTemporaryCartLines(cart);
+      expect(apiRequest).not.toHaveBeenCalled();
+      expect(next.lines).toHaveLength(1);
+      expect(next.order_discount).toBe(2);
+    } finally {
+      setPosPaymentDialogOpen(false);
+    }
+  });
 });
