@@ -1,20 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { suggestReportBuilderWithAi } from "@/lib/reports/report-builder-ai-suggest";
 import { SECONDARY_BTN_CLASS, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
+import {
+  workspaceBuilderExamplePrompts,
+  workspaceBuilderMentionHint,
+  workspaceBuilderMentionTypes,
+  workspaceBuilderPlaceholder,
+} from "@/lib/workspace-reports";
 
 const MAX_WORDS = 150;
-
-const EXAMPLE_PROMPTS = [
-  "Sales by product this month",
-  "Purchases by supplier last 7 days",
-  "Debtors aging with unpaid balances",
-];
 
 function wordCount(text) {
   return String(text ?? "")
@@ -25,7 +25,7 @@ function wordCount(text) {
 
 /**
  * Natural-language report draft — works with keyword matching; uses org AI when connected.
- * Supports @mentions for products/suppliers/customers. Ambiguous free-text still prompts to pick.
+ * Examples, @mentions, and placeholders stay scoped to the active workspace module.
  */
 export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" }) {
   const [instruction, setInstruction] = useState("");
@@ -36,6 +36,32 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
   const [selectedCustomerNums, setSelectedCustomerNums] = useState(() => new Set());
   const [selectedSupplierIds, setSelectedSupplierIds] = useState(() => new Set());
   const words = wordCount(instruction);
+
+  const examplePrompts = useMemo(
+    () => workspaceBuilderExamplePrompts(workspaceId),
+    [workspaceId],
+  );
+  const mentionTypes = useMemo(
+    () => workspaceBuilderMentionTypes(workspaceId),
+    [workspaceId],
+  );
+  const mentionHint = useMemo(
+    () => workspaceBuilderMentionHint(workspaceId),
+    [workspaceId],
+  );
+  const placeholder = useMemo(
+    () => workspaceBuilderPlaceholder(workspaceId),
+    [workspaceId],
+  );
+
+  useEffect(() => {
+    setInstruction("");
+    setEntityRefs([]);
+    setPending(null);
+    setSelectedCodes(new Set());
+    setSelectedCustomerNums(new Set());
+    setSelectedSupplierIds(new Set());
+  }, [workspaceId]);
 
   const productCandidateRows = useMemo(() => {
     const groups = pending?.product_resolution?.queries ?? [];
@@ -230,11 +256,10 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
         Describe the report you need
       </h2>
       <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-        Plain English, under {MAX_WORDS} words. Type @ to pick products, suppliers, or customers. Mention dates
-        (e.g. yesterday) when needed.
+        Plain English, under {MAX_WORDS} words. {mentionHint} Mention dates (e.g. yesterday) when needed.
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {EXAMPLE_PROMPTS.map((example) => (
+        {examplePrompts.map((example) => (
           <button
             key={example}
             type="button"
@@ -257,7 +282,9 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
           entityRefs={entityRefs}
           disabled={busy}
           maxLength={1200}
-          placeholder={"e.g. Yesterday's sales for @Sugar\nDaily purchases by @supplier"}
+          allowedTypes={mentionTypes}
+          placeholder={placeholder}
+          hint={mentionHint}
           textareaClassName={`${inputClassName()} resize-y bg-white dark:bg-slate-900`}
           onChange={({ text, entityRefs: nextRefs }) => {
             setInstruction(text);

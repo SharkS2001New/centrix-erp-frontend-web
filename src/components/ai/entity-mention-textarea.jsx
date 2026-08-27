@@ -30,6 +30,7 @@ const LIST_MAX_HEIGHT = 240;
  *   textareaClassName?: string,
  *   hint?: string | null,
  *   maxLength?: number,
+ *   allowedTypes?: Array<'product'|'supplier'|'customer'|'employee'|'user'|'branch'>,
  * }} props
  */
 export function EntityMentionTextarea({
@@ -44,6 +45,7 @@ export function EntityMentionTextarea({
   textareaClassName = "",
   hint = "Type @ to pick a product, supplier, customer, employee, user, or branch",
   maxLength,
+  allowedTypes,
 }) {
   const listId = useId();
   const textareaRef = useRef(null);
@@ -51,7 +53,16 @@ export function EntityMentionTextarea({
   const abortRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState(null);
-  const [entityType, setEntityType] = useState("product");
+  const mentionTabs = useMemo(() => {
+    if (!Array.isArray(allowedTypes) || allowedTypes.length === 0) {
+      return ENTITY_MENTION_TYPES;
+    }
+    const allowed = new Set(allowedTypes);
+    const filtered = ENTITY_MENTION_TYPES.filter((tab) => allowed.has(tab.type));
+    return filtered.length > 0 ? filtered : ENTITY_MENTION_TYPES;
+  }, [allowedTypes]);
+  const defaultEntityType = mentionTabs[0]?.type ?? "product";
+  const [entityType, setEntityType] = useState(defaultEntityType);
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -62,6 +73,12 @@ export function EntityMentionTextarea({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mentionTabs.some((tab) => tab.type === entityType)) {
+      setEntityType(defaultEntityType);
+    }
+  }, [defaultEntityType, entityType, mentionTabs]);
 
   const refs = useMemo(() => serializeEntityRefs(entityRefs), [entityRefs]);
 
@@ -258,7 +275,7 @@ export function EntityMentionTextarea({
             className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900"
           >
             <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
-              {ENTITY_MENTION_TYPES.map((tab) => (
+              {mentionTabs.map((tab) => (
                 <button
                   key={tab.type}
                   type="button"

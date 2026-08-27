@@ -4,10 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { queueReportBuilderPreview } from "@/lib/report-export-api";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
+import {
+  WORKSPACE_BUILDER_LABEL,
+  workspaceBuilderSourceHint,
+} from "@/lib/workspace-reports";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
@@ -117,8 +123,29 @@ function PreviewFeedback({ feedback }) {
 export function ReportBuilderScreen() {
   const router = useRouter();
   const { runBackgroundTask } = useBackgroundTasks();
-  const workspaceId = getStoredWorkspace() ?? "backoffice";
+  const { workspaceId: tabWorkspaceId } = useTabWorkspace();
+  const {
+    hasPermission,
+    hasNavPermission,
+    isModuleEnabled,
+    isSuperAdmin,
+    user,
+    organization,
+    capabilities,
+  } = useAuth();
+  const workspaceId =
+    tabWorkspaceId ??
+    getStoredWorkspace() ??
+    defaultWorkspaceId(capabilities, {
+      user,
+      organization,
+      isSuperAdmin,
+      hasPermission,
+      hasNavPermission,
+      isModuleEnabled,
+    });
   const workspaceLabel = WORKSPACE_BUILDER_LABEL[workspaceId] ?? "Workspace data";
+  const sourceHint = workspaceBuilderSourceHint(workspaceId);
   const maxSources = 4;
   const [schema, setSchema] = useState(null);
   const [templates, setTemplates] = useState([]);
@@ -138,6 +165,16 @@ export function ReportBuilderScreen() {
 
   useEffect(() => {
     const params = { workspace_id: workspaceId };
+    setError(null);
+    setPreviewRows([]);
+    setPreviewFeedback(null);
+    setPreviewFilters({});
+    setSourceQuery("");
+    setColumnQuery("");
+    setName("");
+    setDescription("");
+    setIsShared(false);
+    setSpec(emptySpec());
     Promise.all([
       apiRequest("/reports/builder/schema", { searchParams: params }),
       apiRequest("/reports/builder/templates", { searchParams: params }),
@@ -547,8 +584,7 @@ export function ReportBuilderScreen() {
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">1. Start with a data source</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Choose what the report is about (sales, stock, suppliers…). Add related sources only if you need
-              columns from them.
+              {sourceHint} Add related sources only if you need columns from them.
             </p>
             <input
               className={`${inputClassName()} mt-3`}

@@ -671,25 +671,6 @@ export function HrPayrollScreen() {
         submitLabel={runnablePeriods.length ? "Generate" : "Close"}
         wide
       >
-        <div className="mb-4 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-          <p className="font-semibold text-slate-800">When can payroll run?</p>
-          {(runSchedule?.rules ?? (scheduleEnforced
-            ? [
-                "Payroll may run for the current month only on that month's last calendar day.",
-                `Payroll for the previous month may run during the first ${graceDays} days of the following month.`,
-                "Upcoming (future) months cannot be processed.",
-                "Payroll runs can be deleted until they are marked as paid.",
-              ]
-            : [
-                "Month-end schedule enforcement is off.",
-                "Payroll may run for the current or any past month at any time.",
-                "Upcoming (future) months cannot be processed.",
-                "Payroll runs can be deleted until they are marked as paid.",
-              ]
-          )).map((rule) => (
-            <p key={rule}>• {rule}</p>
-          ))}
-        </div>
         <Field label="Pay period">
           {runnablePeriods.length === 0 ? (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">

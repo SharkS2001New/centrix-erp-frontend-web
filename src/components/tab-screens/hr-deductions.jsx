@@ -2,12 +2,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { CatalogPageShell, Field, FormDrawer, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { GovernmentDeductionsAside } from "@/components/hr/government-deductions-aside";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
-import { apiRequest, ApiError } from "@/lib/api";
-import { notifyError, notifySuccess } from "@/lib/notify";
+import { apiRequest } from "@/lib/api";
 
 const EMPTY_TYPE_FORM = {
   deduction_code: "",
@@ -17,7 +16,7 @@ const EMPTY_TYPE_FORM = {
   default_percentage: "",
   is_active: true,
   frequency: "per_cycle", // per_cycle | one_time
-  apply_scope: "template", // template | all | selected
+  apply_scope: "selected", // all | selected
   employee_ids: [],
 };
 
@@ -109,7 +108,7 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
           />
         </Field>
       ) : (
-        <Field label="Default amount per payroll (KES, full)">
+        <Field label="Amount per payroll (KES, full)">
           <input
             type="number"
             min="0"
@@ -148,26 +147,26 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
           <span>
             <span className="font-medium">One-time</span>
             <span className="mt-0.5 block text-slate-500">
-              Deducted on the next payroll only, then closed automatically (e.g. damages, advance recovery).
+              Deducted on the next payroll only, then closed automatically.
             </span>
           </span>
         </label>
       </fieldset>
 
       <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
-        <legend className="px-1 text-xs font-medium text-slate-600">Who this applies to</legend>
+        <legend className="px-1 text-xs font-medium text-slate-600">Employees</legend>
         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
           <input
             type="radio"
             name="apply_scope"
             className="mt-0.5"
-            checked={form.apply_scope === "template"}
-            onChange={() => setScope("template")}
+            checked={form.apply_scope === "selected"}
+            onChange={() => setScope("selected")}
           />
           <span>
-            <span className="font-medium">Template only</span>
+            <span className="font-medium">Selected employees</span>
             <span className="mt-0.5 block text-slate-500">
-              Saved as a type — assign employees later (or use Assign below).
+              Create the deduction and assign it to the people you pick below.
             </span>
           </span>
         </label>
@@ -180,24 +179,9 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
             onChange={() => setScope("all")}
           />
           <span>
-            <span className="font-medium">Apply to all employees</span>
+            <span className="font-medium">All employees</span>
             <span className="mt-0.5 block text-slate-500">
               Org-wide every pay run (e.g. SACCO for everyone).
-            </span>
-          </span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-          <input
-            type="radio"
-            name="apply_scope"
-            className="mt-0.5"
-            checked={form.apply_scope === "selected"}
-            onChange={() => setScope("selected")}
-          />
-          <span>
-            <span className="font-medium">Apply to selected employees</span>
-            <span className="mt-0.5 block text-slate-500">
-              Create the type once and assign it to the people you pick below.
             </span>
           </span>
         </label>
@@ -210,7 +194,7 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
                 value={empSearch}
                 onChange={(e) => setEmpSearch(e.target.value)}
                 placeholder="Search employees…"
-            className={`${inputClassName()} w-72 sm:w-96 max-w-md`}
+                className={`${inputClassName()} w-72 max-w-md sm:w-96`}
               />
               <button
                 type="button"
@@ -270,7 +254,7 @@ function buildTypeBody(form, organizationId) {
       .replace(/[^A-Z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 45);
-  const scope = form.apply_scope || (form.applies_to_all ? "all" : "template");
+  const scope = form.apply_scope === "all" ? "all" : "selected";
   const employeeIds =
     scope === "selected"
       ? (form.employee_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
@@ -292,6 +276,8 @@ function buildTypeBody(form, organizationId) {
 }
 
 function typeFormFromRow(row) {
+  const assignees = Array.isArray(row?.assigned_employees) ? row.assigned_employees : [];
+  const applyScope = row?.applies_to_all ? "all" : "selected";
   return {
     deduction_code: row?.deduction_code ?? "",
     name: row?.name ?? "",
@@ -300,211 +286,32 @@ function typeFormFromRow(row) {
     default_percentage: row?.default_percentage != null ? String(row.default_percentage) : "",
     is_active: row?.is_active !== false,
     frequency: row?.frequency === "one_time" ? "one_time" : "per_cycle",
-    apply_scope: row?.applies_to_all ? "all" : "template",
-    employee_ids: [],
+    apply_scope: applyScope,
+    employee_ids: assignees.map((e) => String(e.id)),
   };
 }
 
-function AssignDeductionFormFields({ form, setForm, extra }) {
-  const [typeDrawerOpen, setTypeDrawerOpen] = useState(false);
-  const [typeForm, setTypeForm] = useState(EMPTY_TYPE_FORM);
-  const [typeSaving, setTypeSaving] = useState(false);
-  const [typeError, setTypeError] = useState(null);
-
-  async function saveType(e) {
-    e.preventDefault();
-    if (!typeForm.name?.trim()) {
-      setTypeError("Type name is required.");
-      return;
-    }
-    if (typeForm.apply_scope === "selected" && !(typeForm.employee_ids ?? []).length) {
-      setTypeError("Select at least one employee, or choose another scope.");
-      return;
-    }
-    if (!extra.organizationId) {
-      setTypeError("Your user account has no organization.");
-      return;
-    }
-    setTypeSaving(true);
-    setTypeError(null);
-    try {
-      const created = await apiRequest("/payroll-deduction-types", {
-        method: "POST",
-        body: buildTypeBody(typeForm, extra.organizationId),
-      });
-      const nextTypes = [...(extra.types ?? []), created];
-      extra.setExtra?.((prev) => ({ ...prev, types: nextTypes }));
-      setForm((p) => ({
-        ...p,
-        deduction_type_id: String(created.id),
-        name: created.name ?? p.name,
-        calc_type: created.calc_type ?? p.calc_type,
-        frequency: created.frequency === "one_time" ? "one_time" : "per_cycle",
-        amount: created.default_amount != null ? String(created.default_amount) : p.amount,
-        percentage:
-          created.default_percentage != null ? String(created.default_percentage) : p.percentage,
-      }));
-      setTypeDrawerOpen(false);
-      setTypeForm(EMPTY_TYPE_FORM);
-      const n = Number(created.assigned_employee_count ?? 0);
-      notifySuccess(
-        n > 0 ? `Deduction type created and assigned to ${n} employee(s).` : "Deduction type created.",
-      );
-      void extra.reload?.();
-    } catch (err) {
-      setTypeError(err instanceof ApiError ? err.message : "Could not create type.");
-      notifyError(err instanceof ApiError ? err.message : "Could not create type.");
-    } finally {
-      setTypeSaving(false);
-    }
-  }
-
-  return (
-    <>
-      <HrSelectField
-        label="Employee"
-        value={form.employee_id}
-        onChange={(v) => setForm((p) => ({ ...p, employee_id: v }))}
-        required
-        options={(extra.employees ?? []).map((e) => ({
-          value: String(e.id),
-          label: composeEmployeeDisplayName(e),
-        }))}
-      />
-      <HrSelectField
-        label="Type"
-        value={form.deduction_type_id}
-        onAdd={() => {
-          setTypeError(null);
-          setTypeForm(EMPTY_TYPE_FORM);
-          setTypeDrawerOpen(true);
-        }}
-        addLabel="Add type"
-        onChange={(v) => {
-          const t = (extra.types ?? []).find((x) => String(x.id) === v);
-          setForm((p) => ({
-            ...p,
-            deduction_type_id: v,
-            name: t?.name ?? p.name,
-            calc_type: t?.calc_type ?? p.calc_type,
-            frequency: t?.frequency === "one_time" ? "one_time" : "per_cycle",
-            amount: t?.default_amount != null ? String(t.default_amount) : p.amount,
-            percentage:
-              t?.default_percentage != null ? String(t.default_percentage) : p.percentage,
-          }));
-        }}
-        options={(extra.types ?? []).map((t) => ({
-          value: String(t.id),
-          label: `${t.name}${t.frequency === "one_time" ? " (one-time)" : ""}`,
-        }))}
-      />
-      <Field label="Name on payslip">
-        <input
-          type="text"
-          value={form.name}
-          onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-          className={inputClassName()}
-        />
-      </Field>
-      <HrSelectField
-        label="Calculation"
-        value={form.calc_type}
-        onChange={(v) => setForm((p) => ({ ...p, calc_type: v }))}
-        options={[
-          { value: "fixed", label: "Fixed amount (KES)" },
-          { value: "percentage", label: "% of contract gross (basic + allowances)" },
-        ]}
-      />
-      {form.calc_type === "percentage" ? (
-        <Field label="Percentage">
-          <input
-            type="number"
-            value={form.percentage}
-            onChange={(e) => setForm((p) => ({ ...p, percentage: e.target.value }))}
-            className={inputClassName()}
-          />
-        </Field>
-      ) : (
-        <Field label="Amount per payroll (KES, full — not prorated)">
-          <input
-            type="number"
-            min="0"
-            value={form.amount}
-            onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
-            className={inputClassName()}
-          />
-        </Field>
-      )}
-      <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
-        <legend className="px-1 text-xs font-medium text-slate-600">How often</legend>
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-          <input
-            type="radio"
-            name="assign_deduction_frequency"
-            className="mt-0.5"
-            checked={(form.frequency || "per_cycle") === "per_cycle"}
-            onChange={() => setForm((p) => ({ ...p, frequency: "per_cycle" }))}
-          />
-          <span>
-            <span className="font-medium">Every payroll cycle</span>
-            <span className="mt-0.5 block text-slate-500">Repeats each pay run until deactivated.</span>
-          </span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-          <input
-            type="radio"
-            name="assign_deduction_frequency"
-            className="mt-0.5"
-            checked={form.frequency === "one_time"}
-            onChange={() => setForm((p) => ({ ...p, frequency: "one_time" }))}
-          />
-          <span>
-            <span className="font-medium">One-time</span>
-            <span className="mt-0.5 block text-slate-500">
-              Taken on the next payroll only, then closed.
-            </span>
-          </span>
-        </label>
-      </fieldset>
-
-      <FormDrawer
-        title="Add deduction type"
-        open={typeDrawerOpen}
-        onClose={() => setTypeDrawerOpen(false)}
-        onSubmit={saveType}
-        saving={typeSaving}
-        error={typeError}
-        submitLabel="Create type"
-        wide
-      >
-        <DeductionTypeFormFields
-          form={typeForm}
-          setForm={setTypeForm}
-          employees={extra.employees ?? []}
-        />
-      </FormDrawer>
-    </>
-  );
+function formatAssigneesColumn(row) {
+  if (row?.applies_to_all) return "All employees";
+  const assignees = Array.isArray(row?.assigned_employees) ? row.assigned_employees : [];
+  if (assignees.length === 0) return "—";
+  const names = assignees
+    .map((e) => String(e.name ?? "").trim())
+    .filter(Boolean);
+  if (names.length === 0) return `${assignees.length} employee${assignees.length === 1 ? "" : "s"}`;
+  if (names.length <= 3) return names.join(", ");
+  return `${names.slice(0, 3).join(", ")} +${names.length - 3} more`;
 }
 
 export function HrDeductionsScreen() {
-  const [typesVersion, setTypesVersion] = useState(0);
   const [tab, setTab] = useState("govt");
-  const bumpTypes = useCallback(() => setTypesVersion((v) => v + 1), []);
 
   const loadEmployeesExtra = useCallback(async () => {
-    const emps = await apiRequest("/employees", { searchParams: { per_page: 200 } });
+    const emps = await apiRequest("/employees", {
+      searchParams: { per_page: 200, fields: "lean" },
+    });
     return { employees: emps.data ?? [] };
   }, []);
-
-  const loadAssignExtra = useCallback(async () => {
-    void typesVersion;
-    const [emps, types] = await Promise.all([
-      apiRequest("/employees", { searchParams: { per_page: 200 } }),
-      apiRequest("/payroll-deduction-types", { searchParams: { per_page: 200 } }),
-    ]);
-    return { employees: emps.data ?? [], types: types.data ?? [] };
-  }, [typesVersion]);
 
   const tabClass = (id) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
@@ -528,205 +335,112 @@ export function HrDeductionsScreen() {
       {tab === "govt" ? (
         <GovernmentDeductionsAside />
       ) : (
-        <div className="space-y-10">
-          <HrCrudPage
-            embedded
-            title="Other deductions"
-            subtitle={
-              <>
-                Create once: template only, all employees, or selected employees (assigns in one save).{" "}
-                <Link href="/reports/other-deductions" className="font-medium text-slate-800 underline-offset-2 hover:underline">
-                  View deductions by pay period
-                </Link>
-              </>
+        <HrCrudPage
+          embedded
+          title="Other deductions"
+          subtitle={
+            <>
+              Create a deduction and assign employees in one step.{" "}
+              <Link
+                href="/reports/other-deductions"
+                className="font-medium text-slate-800 underline-offset-2 hover:underline"
+              >
+                View deductions by pay period
+              </Link>
+            </>
+          }
+          addButtonLabel="Add deduction"
+          drawerCreateTitle="Add deduction"
+          drawerWide
+          apiPath="/payroll-deduction-types"
+          loadExtra={loadEmployeesExtra}
+          exportTitle="Other deductions"
+          exportFilename="other-deductions"
+          exportColumns={[
+            { key: "deduction_code", label: "Code" },
+            { key: "name", label: "Type" },
+            { key: "employees", label: "Employees" },
+            { key: "when", label: "When" },
+            { key: "calculation", label: "Calculation" },
+            { key: "default_display", label: "Amount", align: "right" },
+          ]}
+          getExportRows={({ filtered }) =>
+            filtered.map((r) => ({
+              deduction_code: r.deduction_code ?? "",
+              name: r.name ?? "",
+              employees: formatAssigneesColumn(r),
+              when: r.frequency === "one_time" ? "One-time" : "Every cycle",
+              calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+              default_display:
+                r.calc_type === "percentage"
+                  ? `${r.default_percentage ?? 0}%`
+                  : formatHrKesFull(r.default_amount),
+            }))
+          }
+          columns={[
+            { key: "deduction_code", label: "Code" },
+            { key: "name", label: "Type" },
+            {
+              key: "employees",
+              label: "Employees",
+              render: (r) => (
+                <span className="max-w-[280px] whitespace-normal text-slate-700" title={formatAssigneesColumn(r)}>
+                  {formatAssigneesColumn(r)}
+                </span>
+              ),
+            },
+            {
+              key: "frequency",
+              label: "When",
+              render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
+            },
+            {
+              key: "calc_type",
+              label: "Calculation",
+              render: (r) =>
+                r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+            },
+            {
+              key: "default_amount",
+              label: "Amount",
+              render: (r) =>
+                r.calc_type === "percentage"
+                  ? `${r.default_percentage ?? 0}%`
+                  : formatHrKesFull(r.default_amount),
+            },
+          ]}
+          searchFilter={(r, q) => {
+            const assignees = Array.isArray(r.assigned_employees)
+              ? r.assigned_employees.map((e) => e.name ?? "").join(" ")
+              : "";
+            return `${r.deduction_code} ${r.name} ${assignees}`.toLowerCase().includes(q);
+          }}
+          buildEmptyForm={(_, row) => typeFormFromRow(row)}
+          buildBody={(form, orgId) => buildTypeBody(form, orgId)}
+          validateForm={(form) => {
+            if (!form.name?.trim()) return "Type name is required.";
+            if (form.apply_scope === "selected" && !(form.employee_ids ?? []).length) {
+              return "Select at least one employee, or choose All employees.";
             }
-            addButtonLabel="Add deduction"
-            drawerCreateTitle="Add deduction"
-            drawerWide
-            apiPath="/payroll-deduction-types"
-            onSaved={bumpTypes}
-            loadExtra={loadEmployeesExtra}
-            exportTitle="Other deductions"
-            exportFilename="other-deductions"
-            exportColumns={[
-              { key: "deduction_code", label: "Code" },
-              { key: "name", label: "Type" },
-              { key: "when", label: "When" },
-              { key: "scope", label: "Scope" },
-              { key: "calculation", label: "Calculation" },
-              { key: "default_display", label: "Default", align: "right" },
-            ]}
-            getExportRows={({ filtered }) =>
-              filtered.map((r) => ({
-                deduction_code: r.deduction_code ?? "",
-                name: r.name ?? "",
-                when: r.frequency === "one_time" ? "One-time" : "Every cycle",
-                scope: r.applies_to_all ? "All employees" : "Template / assigned",
-                calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-                default_display:
-                  r.calc_type === "percentage"
-                    ? `${r.default_percentage ?? 0}%`
-                    : formatHrKesFull(r.default_amount),
-              }))
+            if (form.calc_type === "fixed" && (!form.default_amount || Number(form.default_amount) <= 0)) {
+              return "Enter the deduction amount.";
             }
-            columns={[
-              { key: "deduction_code", label: "Code" },
-              { key: "name", label: "Type" },
-              {
-                key: "frequency",
-                label: "When",
-                render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
-              },
-              {
-                key: "applies_to_all",
-                label: "Scope",
-                render: (r) => (r.applies_to_all ? "All employees" : "Template / assigned"),
-              },
-              {
-                key: "calc_type",
-                label: "Calculation",
-                render: (r) =>
-                  r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-              },
-              {
-                key: "default_amount",
-                label: "Default",
-                render: (r) =>
-                  r.calc_type === "percentage"
-                    ? `${r.default_percentage ?? 0}%`
-                    : formatHrKesFull(r.default_amount),
-              },
-            ]}
-            searchFilter={(r, q) => `${r.deduction_code} ${r.name}`.toLowerCase().includes(q)}
-            buildEmptyForm={(_, row) => typeFormFromRow(row)}
-            buildBody={(form, orgId) => buildTypeBody(form, orgId)}
-            validateForm={(form) => {
-              if (!form.name?.trim()) return "Type name is required.";
-              if (form.apply_scope === "selected" && !(form.employee_ids ?? []).length) {
-                return "Select at least one employee, or choose another scope.";
-              }
-              return null;
-            }}
-            renderFormFields={(form, setForm, extra) => (
-              <DeductionTypeFormFields
-                form={form}
-                setForm={setForm}
-                employees={extra.employees ?? []}
-              />
-            )}
-          />
-
-          <HrCrudPage
-            embedded
-            title="Assign to employees"
-            subtitle="Per-employee amounts on payroll. Org-wide types apply automatically unless overridden here."
-            addButtonLabel="Assign deduction"
-            drawerWide
-            apiPath="/employee-deductions"
-            loadExtra={loadAssignExtra}
-            exportTitle="Employee deductions"
-            exportFilename="employee-deductions"
-            exportColumns={[
-              { key: "employee", label: "Employee" },
-              { key: "name", label: "Type" },
-              { key: "when", label: "When" },
-              { key: "calculation", label: "Calculation" },
-              { key: "amount_display", label: "Amount", align: "right" },
-            ]}
-            getExportRows={({ filtered, extra }) => {
-              const employees = extra.employees ?? [];
-              return filtered.map((r) => {
-                const emp =
-                  employees.find((e) => e.id === r.employee_id) ?? r.employee ?? null;
-                const when = r.payroll_run_id
-                  ? "One-time (applied)"
-                  : r.frequency === "one_time"
-                    ? "One-time"
-                    : "Every cycle";
-                return {
-                  employee: emp
-                    ? composeEmployeeDisplayName(emp)
-                    : String(r.employee_id ?? ""),
-                  name: r.name ?? "",
-                  when,
-                  calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-                  amount_display:
-                    r.calc_type === "percentage"
-                      ? `${r.percentage}% of gross`
-                      : formatHrKesFull(r.amount),
-                };
-              });
-            }}
-            columns={[
-              {
-                key: "employee_id",
-                label: "Employee",
-                render: (r, { employees = [] }) => {
-                  const emp = employees.find((e) => e.id === r.employee_id);
-                  return emp ? composeEmployeeDisplayName(emp) : r.employee_id;
-                },
-              },
-              { key: "name", label: "Type" },
-              {
-                key: "frequency",
-                label: "When",
-                render: (r) =>
-                  r.payroll_run_id
-                    ? "One-time (applied)"
-                    : r.frequency === "one_time"
-                      ? "One-time"
-                      : "Every cycle",
-              },
-              {
-                key: "calc_type",
-                label: "Calculation",
-                render: (r) =>
-                  r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-              },
-              {
-                key: "amount",
-                label: "Amount",
-                render: (r) =>
-                  r.calc_type === "percentage"
-                    ? `${r.percentage}% of gross`
-                    : formatHrKesFull(r.amount),
-              },
-            ]}
-            buildEmptyForm={(extra, row) => ({
-              employee_id: row?.employee_id != null ? String(row.employee_id) : "",
-              deduction_type_id:
-                row?.deduction_type_id != null ? String(row.deduction_type_id) : "",
-              name: row?.name ?? "",
-              calc_type: row?.calc_type ?? "fixed",
-              amount: row?.amount != null ? String(row.amount) : "",
-              percentage: row?.percentage != null ? String(row.percentage) : "",
-              is_active: row?.is_active !== false,
-              frequency: row?.frequency === "one_time" ? "one_time" : "per_cycle",
-            })}
-            buildBody={(form) => ({
-              employee_id: Number(form.employee_id),
-              deduction_type_id: form.deduction_type_id ? Number(form.deduction_type_id) : null,
-              name: form.name.trim(),
-              calc_type: form.calc_type,
-              amount: form.calc_type === "fixed" ? parseFloat(form.amount) || 0 : 0,
-              percentage:
-                form.calc_type === "percentage" ? parseFloat(form.percentage) || 0 : null,
-              is_active: form.is_active,
-              frequency: form.frequency === "one_time" ? "one_time" : "per_cycle",
-            })}
-            validateForm={(form) => {
-              if (!form.employee_id) return "Select an employee.";
-              if (!form.name?.trim()) return "Type name is required.";
-              if (form.calc_type === "fixed" && (!form.amount || Number(form.amount) <= 0)) {
-                return "Enter the fixed deduction amount.";
-              }
-              return null;
-            }}
-            renderFormFields={(form, setForm, extra) => (
-              <AssignDeductionFormFields form={form} setForm={setForm} extra={extra} />
-            )}
-          />
-        </div>
+            if (
+              form.calc_type === "percentage" &&
+              (!form.default_percentage || Number(form.default_percentage) <= 0)
+            ) {
+              return "Enter the percentage.";
+            }
+            return null;
+          }}
+          renderFormFields={(form, setForm, extra) => (
+            <DeductionTypeFormFields
+              form={form}
+              setForm={setForm}
+              employees={extra.employees ?? []}
+            />
+          )}
+        />
       )}
     </CatalogPageShell>
   );

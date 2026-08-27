@@ -143,10 +143,43 @@ export function HrAttendanceScreen({ mode = "today" }) {
     selectedCount,
     toggleOne,
     toggleAllOnPage,
-    clearSelection,
+    clearSelection: clearRowSelection,
     isAllOnPageSelected,
     isSomeOnPageSelected,
   } = usePageRowSelection();
+
+  /** Keep selected attendance rows across pages so bulk waive covers every selected user. */
+  const [selectedRecordById, setSelectedRecordById] = useState(() => new Map());
+
+  const clearSelection = useCallback(() => {
+    clearRowSelection();
+    setSelectedRecordById(new Map());
+  }, [clearRowSelection]);
+
+  useEffect(() => {
+    setSelectedRecordById((prev) => {
+      const next = new Map();
+      for (const key of selectedIds) {
+        const fromPage = records.find((r) => String(r.id) === key);
+        if (fromPage) {
+          next.set(key, fromPage);
+        } else if (prev.has(key)) {
+          next.set(key, prev.get(key));
+        }
+      }
+      if (next.size === prev.size) {
+        let unchanged = true;
+        for (const [key, row] of next) {
+          if (prev.get(key) !== row) {
+            unchanged = false;
+            break;
+          }
+        }
+        if (unchanged) return prev;
+      }
+      return next;
+    });
+  }, [records, selectedIds]);
 
   const loadActive = useCallback(async () => {
     setActiveLoading(true);
@@ -271,25 +304,38 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const recordPageIds = useMemo(() => records.map((r) => r.id), [records]);
 
   const selectedRecords = useMemo(
-    () => records.filter((r) => selectedIds.has(String(r.id))),
-    [records, selectedIds],
+    () => Array.from(selectedRecordById.values()),
+    [selectedRecordById],
   );
 
-  const selectedWaiveableCount = useMemo(
+  const selectedWaiveable = useMemo(
     () =>
       selectedRecords.filter(
         (r) => attendanceLatenessParts(r).total > 0 && !r.lateness_waived && !r.pending_waiver,
-      ).length,
+      ),
     [selectedRecords],
   );
 
-  const selectedUndoWaiveCount = useMemo(
+  const selectedUndoWaive = useMemo(
     () =>
       selectedRecords.filter(
         (r) => attendanceLatenessParts(r).total > 0 && r.lateness_waived && !r.pending_waiver,
-      ).length,
+      ),
     [selectedRecords],
   );
+
+  const selectedWaiveableCount = selectedWaiveable.length;
+  const selectedUndoWaiveCount = selectedUndoWaive.length;
+
+  const selectedWaiveableEmployeeCount = useMemo(() => {
+    const ids = new Set(selectedWaiveable.map((r) => Number(r.employee_id)).filter((id) => id > 0));
+    return ids.size;
+  }, [selectedWaiveable]);
+
+  const selectedUndoWaiveEmployeeCount = useMemo(() => {
+    const ids = new Set(selectedUndoWaive.map((r) => Number(r.employee_id)).filter((id) => id > 0));
+    return ids.size;
+  }, [selectedUndoWaive]);
 
   function canReviewWaiver(record) {
     const pending = record?.pending_waiver;
@@ -941,16 +987,15 @@ export function HrAttendanceScreen({ mode = "today" }) {
   }
 
   async function waiveSelectedLateness(waived) {
-    const eligible = selectedRecords.filter(
-      (r) => attendanceLatenessParts(r).total > 0 && !r.pending_waiver,
-    );
-    const ids = eligible
-      .filter((r) => (waived ? !r.lateness_waived : !!r.lateness_waived))
-      .map((r) => Number(r.id));
+    const eligible = waived ? selectedWaiveable : selectedUndoWaive;
+    const ids = eligible.map((r) => Number(r.id)).filter((id) => id > 0);
+    const employeeCount = new Set(
+      eligible.map((r) => Number(r.employee_id)).filter((id) => id > 0),
+    ).size;
     if (ids.length === 0) {
       notifyError(
         waived
-          ? "None of the selected records can request a lateness waiver."
+          ? "None of the selected records can request a lateness waiver. Select late (unwaived) rows — you can multi-select across pages."
           : "None of the selected records can request undoing a waiver.",
       );
       return;
@@ -959,7 +1004,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
     let reason = "";
     if (waived) {
       const entered = window.prompt(
-        `Request lateness waiver for ${ids.length} record${ids.length === 1 ? "" : "s"}?\nRequires manager approval. One reason is sent with all:`,
+        `Request lateness waiver for ${ids.length} record${ids.length === 1 ? "" : "s"}` +
+          ` (${employeeCount} employee${employeeCount === 1 ? "" : "s"})?\n` +
+          `Requires manager approval. One reason is sent with all:`,
         "",
       );
       if (entered === null) return;
@@ -967,7 +1014,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
     } else {
       const ok = await confirm({
         title: "Request undo lateness waiver?",
-        message: `Submit undo requests for ${ids.length} record${ids.length === 1 ? "" : "s"}? A manager must approve before payroll hours change.`,
+        message: `Submit undo requests for ${ids.length} record${ids.length === 1 ? "" : "s"} (${employeeCount} employee${employeeCount === 1 ? "" : "s"})? A manager must approve before payroll hours change.`,
         confirmLabel: "Submit request",
       });
       if (!ok) return;
@@ -975,16 +1022,27 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
     setBatchBusy(true);
     try {
-      const res = await apiRequest("/employee-attendance/bulk-waive-lateness", {
-        method: "POST",
-        body: {
-          ids,
-          lateness_waived: waived,
-          lateness_waiver_reason: waived ? reason || null : null,
-        },
-      });
-      const updated = Number(res.submitted_count ?? res.updated_count ?? 0);
-      const skipped = Number(res.skipped_count ?? 0);
+      // Backend accepts up to 200 ids per call — chunk if needed.
+      const chunkSize = 200;
+      let updated = 0;
+      let skipped = 0;
+      let firstSkipReason = null;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const res = await apiRequest("/employee-attendance/bulk-waive-lateness", {
+          method: "POST",
+          body: {
+            ids: chunk,
+            lateness_waived: waived,
+            lateness_waiver_reason: waived ? reason || null : null,
+          },
+        });
+        updated += Number(res.submitted_count ?? res.updated_count ?? 0);
+        skipped += Number(res.skipped_count ?? 0);
+        if (!firstSkipReason && res.skipped?.[0]?.reason) {
+          firstSkipReason = res.skipped[0].reason;
+        }
+      }
       clearSelection();
       await loadHistory();
       if (updated > 0 && skipped === 0) {
@@ -994,7 +1052,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
       } else if (updated > 0) {
         notifySuccess(`Submitted ${updated}; skipped ${skipped}.`);
       } else {
-        notifyError(res.skipped?.[0]?.reason ?? "No waiver requests submitted.");
+        notifyError(firstSkipReason ?? "No waiver requests submitted.");
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Bulk waiver request failed");
@@ -1879,7 +1937,11 @@ export function HrAttendanceScreen({ mode = "today" }) {
               >
                 {batchBusy
                   ? "Working…"
-                  : `Request waive (${selectedWaiveableCount})`}
+                  : `Request waive (${selectedWaiveableCount}${
+                      selectedWaiveableEmployeeCount > 1
+                        ? ` · ${selectedWaiveableEmployeeCount} users`
+                        : ""
+                    })`}
               </button>
             ) : null}
             {selectedUndoWaiveCount > 0 ? (
@@ -1889,7 +1951,11 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 onClick={() => void waiveSelectedLateness(false)}
                 className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
               >
-                Request undo ({selectedUndoWaiveCount})
+                Request undo ({selectedUndoWaiveCount}
+                {selectedUndoWaiveEmployeeCount > 1
+                  ? ` · ${selectedUndoWaiveEmployeeCount} users`
+                  : ""}
+                )
               </button>
             ) : null}
             <BatchDeleteButton

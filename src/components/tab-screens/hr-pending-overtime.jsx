@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useConfirm } from "@/contexts/confirm-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { P } from "@/lib/permission-codes";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,6 +18,13 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { HrPageActions } from "@/components/hr/hr-list-toolbar";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialActions,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PENDING_OT_EXPORT_COLUMNS = [
   { key: "work_date", label: "Date" },
@@ -28,6 +36,7 @@ const PENDING_OT_EXPORT_COLUMNS = [
 
 export function HrPendingOvertimeScreen() {
   const { hasPermission } = useAuth();
+  const confirm = useConfirm();
   const canManage = hasPermission(P.hr.pending_overtime.approve) || hasPermission(P.hr.manage);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -36,6 +45,16 @@ export function HrPendingOvertimeScreen() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +78,10 @@ export function HrPendingOvertimeScreen() {
   }, [page, pageSize]);
 
   useTabAwareDataLoad(load);
+
+  const pageRowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   function employeeName(row) {
     const emp = employees.find((e) => e.id === row.employee_id) ?? row.employee;
@@ -93,6 +116,7 @@ export function HrPendingOvertimeScreen() {
     try {
       await apiRequest(`/employee-overtime/${id}/approve`, { method: "POST" });
       notifySuccess("Overtime approved. It now appears on the Overtime page.");
+      clearSelection();
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not approve");
@@ -106,6 +130,7 @@ export function HrPendingOvertimeScreen() {
     try {
       await apiRequest(`/employee-overtime/${id}/deny`, { method: "POST" });
       notifySuccess("Denied. The overtime was removed and clock-out was set to shift end.");
+      clearSelection();
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not deny");
@@ -114,7 +139,93 @@ export function HrPendingOvertimeScreen() {
     }
   }
 
+  async function approveSelected() {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || batchBusy) return;
+
+    const ok = await confirm({
+      title: "Approve selected overtime",
+      message: `Approve ${ids.length} pending overtime ${ids.length === 1 ? "entry" : "entries"}? They will move to the Overtime page for payroll.`,
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const { succeeded, failed } = await runSequentialActions({
+        items: ids,
+        action: async (id) => {
+          await apiRequest(`/employee-overtime/${id}/approve`, { method: "POST" });
+        },
+      });
+      clearSelection();
+      await load();
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "1 overtime approved."
+            : `${succeeded.length} overtime entries approved.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Could not approve selected overtime.");
+      } else {
+        notifyError(
+          `Approved ${succeeded.length}; ${failed.length} failed${
+            failed[0]?.message ? ` (${failed[0].message})` : ""
+          }`,
+        );
+      }
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function denySelected() {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || batchBusy) return;
+
+    const ok = await confirm({
+      title: "Deny selected overtime",
+      message: `Deny ${ids.length} pending overtime ${
+        ids.length === 1 ? "entry" : "entries"
+      }? Each will be removed and clock-out reset to shift end.`,
+      confirmLabel: "Deny",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const { succeeded, failed } = await runSequentialActions({
+        items: ids,
+        action: async (id) => {
+          await apiRequest(`/employee-overtime/${id}/deny`, { method: "POST" });
+        },
+      });
+      clearSelection();
+      await load();
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "1 overtime denied."
+            : `${succeeded.length} overtime entries denied.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Could not deny selected overtime.");
+      } else {
+        notifyError(
+          `Denied ${succeeded.length}; ${failed.length} failed${
+            failed[0]?.message ? ` (${failed[0].message})` : ""
+          }`,
+        );
+      }
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const actionBusy = batchBusy || busyId != null;
 
   return (
     <CatalogPageShell
@@ -148,6 +259,13 @@ export function HrPendingOvertimeScreen() {
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
+                {canManage ? (
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                  />
+                ) : null}
                 <th className="py-2 pr-4 font-medium">Date</th>
                 <th className="py-2 pr-4 font-medium">Employee</th>
                 <th className="py-2 pr-4 font-medium">Hours</th>
@@ -159,6 +277,13 @@ export function HrPendingOvertimeScreen() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-slate-100">
+                  {canManage ? (
+                    <TableRowSelectCell
+                      checked={selectedIds.has(String(r.id))}
+                      onChange={() => toggleOne(r.id)}
+                      label={`Select overtime for ${employeeName(r)}`}
+                    />
+                  ) : null}
                   <td className="py-2 pr-4">{formatShortDate(r.work_date)}</td>
                   <td className="py-2 pr-4">{employeeName(r)}</td>
                   <td className="py-2 pr-4">{r.hours}</td>
@@ -171,7 +296,7 @@ export function HrPendingOvertimeScreen() {
                           type="button"
                           showIcon={false}
                           onClick={() => approve(r.id)}
-                          disabled={busyId === r.id}
+                          disabled={actionBusy}
                         >
                           Approve
                         </PrimaryButton>
@@ -179,7 +304,7 @@ export function HrPendingOvertimeScreen() {
                           type="button"
                           className={SECONDARY_BTN_CLASS}
                           onClick={() => deny(r.id)}
-                          disabled={busyId === r.id}
+                          disabled={actionBusy}
                         >
                           Deny
                         </button>
@@ -197,13 +322,38 @@ export function HrPendingOvertimeScreen() {
         totalPages={totalPages}
         total={total}
         pageSize={pageSize}
-        onChange={setPage}
+        onChange={(next) => {
+          clearSelection();
+          setPage(next);
+        }}
         onPageSizeChange={(size) => {
+          clearSelection();
           setPageSize(size);
           setPage(1);
         }}
         pageSizeOptions={[10, 25, 50, 100]}
       />
+
+      {canManage ? (
+        <BatchActionBar count={selectedCount} onClear={clearSelection}>
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={batchBusy || selectedCount === 0}
+            onClick={() => void approveSelected()}
+          >
+            {batchBusy ? "Working…" : `Approve (${selectedCount})`}
+          </PrimaryButton>
+          <button
+            type="button"
+            disabled={batchBusy || selectedCount === 0}
+            onClick={() => void denySelected()}
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {batchBusy ? "Working…" : `Deny (${selectedCount})`}
+          </button>
+        </BatchActionBar>
+      ) : null}
     </CatalogPageShell>
   );
 }

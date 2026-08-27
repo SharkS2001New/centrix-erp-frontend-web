@@ -229,6 +229,8 @@ export function HrPayrollRunsIdScreen() {
   }, [payrollSheetDisplayRows, safeLinesPage, linesPageSize]);
   const canPrintOrEmailReceipts =
     run && ["processed", "paid"].includes(run.status) && lines.length > 0;
+  const canExcludeFromRun =
+    canProcess && run && run.status !== "paid" && lines.length > 0;
 
   function toggleLineSelected(lineId, checked) {
     const key = String(lineId);
@@ -485,6 +487,28 @@ export function HrPayrollRunsIdScreen() {
     run?.paid_by_user?.full_name ??
     run?.paidByUser?.full_name ??
     null;
+
+  async function excludeSelectedFromRun() {
+    if (!canExcludeFromRun || selectedCount === 0) return;
+    const ok = await confirm({
+      title: "Exclude from this payroll run?",
+      message: `Remove ${selectedCount} employee${selectedCount === 1 ? "" : "s"} from this run? They will not be paid on this payroll. Attendance and deductions for them are reopened so you can include them in a later run if needed.`,
+      confirmLabel: "Exclude",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await apiRequest(`/payroll/runs/${runId}/exclude-lines`, {
+        method: "POST",
+        body: { line_ids: [...selectedLineIds].map((id) => Number(id)) },
+      });
+      setSelectedLineIds(new Set());
+      await loadData();
+      notifySuccess(res.message ?? "Employees excluded from this payroll run.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not exclude employees");
+    }
+  }
 
   async function deleteRun() {
     if (deleteBusy) return;
@@ -746,17 +770,48 @@ export function HrPayrollRunsIdScreen() {
               <p className="mt-0.5 text-xs text-slate-500">
                 Basic salary, overtime, statutory deductions, advances, and net pay — matching the
                 payroll sheet layout. Export CSV or Print / PDF from the actions above.
+                {canExcludeFromRun
+                  ? " To skip someone who should not be paid, select their row(s) and choose Exclude from run."
+                  : ""}
               </p>
-              {canPrintOrEmailReceipts && selectedCount > 0 ? (
-                <p className="mt-2 text-xs font-medium text-slate-700">
-                  {selectedCount} selected
+              {selectedCount > 0 ? (
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-700">
+                  <span>{selectedCount} selected</span>
                   <button
                     type="button"
                     onClick={() => setSelectedLineIds(new Set())}
-                    className="ml-2 text-[#185FA5] hover:underline"
+                    className="text-[#185FA5] hover:underline"
                   >
                     Clear
                   </button>
+                  {canExcludeFromRun ? (
+                    <button
+                      type="button"
+                      onClick={() => void excludeSelectedFromRun()}
+                      className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-amber-900 hover:bg-amber-100"
+                    >
+                      Exclude from run ({selectedCount})
+                    </button>
+                  ) : null}
+                  {canPrintOrEmailReceipts ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => printReceiptLines(selectedLines, "print")}
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50"
+                      >
+                        Print selected
+                      </button>
+                      <button
+                        type="button"
+                        disabled={emailing || processing}
+                        onClick={() => void emailSelectedReceipts()}
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Email selected
+                      </button>
+                    </>
+                  ) : null}
                 </p>
               ) : null}
             </div>
@@ -765,7 +820,7 @@ export function HrPayrollRunsIdScreen() {
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className={`w-10 ${SHEET_CELL}`}>
-                      {canPrintOrEmailReceipts ? (
+                      {(lines.length > 0 && run?.status !== "paid") || canPrintOrEmailReceipts ? (
                         <input
                           type="checkbox"
                           checked={allLinesSelected}
@@ -815,7 +870,7 @@ export function HrPayrollRunsIdScreen() {
                           }`}
                         >
                           <td className={SHEET_CELL} onClick={(e) => e.stopPropagation()}>
-                            {canPrintOrEmailReceipts ? (
+                            {(run?.status !== "paid" || canPrintOrEmailReceipts) ? (
                               <input
                                 type="checkbox"
                                 checked={isChecked}
