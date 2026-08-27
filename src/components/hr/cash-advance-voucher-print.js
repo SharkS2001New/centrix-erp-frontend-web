@@ -7,7 +7,6 @@ import {
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
-  DOCUMENT_PRINT_EDGE_BODY_BOTTOM,
   DOCUMENT_PRINT_EDGE_BODY_SIDES,
   DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
@@ -20,6 +19,9 @@ import {
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 
 const PRINT_VARIANT = "payroll_receipt";
+
+/** Usable A4 height after top/side padding — keep voucher + footer on one sheet. */
+const PAGE_INNER_MIN_HEIGHT = "277mm";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -94,107 +96,146 @@ function voucherStyles(generalSettings = null) {
       font-family: ${font};
       color: #000;
       margin: 0;
-      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM};
+      /* Footer is in-flow inside .sheet — do not reserve a second page with large bottom padding. */
+      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_TOP};
       font-size: ${px(10)};
-      line-height: 1.25;
+      line-height: 1.2;
       ${orgPrintInkStyles(generalSettings, PRINT_VARIANT)}
     }
-    .sheet { page-break-inside: avoid; break-inside: avoid; }
+    .sheet {
+      min-height: ${PAGE_INNER_MIN_HEIGHT};
+      display: flex;
+      flex-direction: column;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+    .sheet-body { flex: 1 1 auto; }
     .org-header {
       text-align: center;
-      margin-bottom: 4px !important;
-      padding-bottom: 4px !important;
+      margin-bottom: 3px !important;
+      padding-bottom: 3px !important;
       border-bottom: 1px solid #000;
     }
     .org-logo {
       display: block;
-      margin: 0 auto 4px !important;
-      max-height: 32px !important;
-      max-width: 160px !important;
+      margin: 0 auto 3px !important;
+      max-height: 28px !important;
+      max-width: 150px !important;
       object-fit: contain;
     }
     .org-name {
-      font-size: ${px(13)};
+      font-size: ${px(12)};
       font-weight: 700;
       letter-spacing: 0.03em;
       text-transform: uppercase;
-      line-height: 1.15;
+      line-height: 1.1;
     }
-    .header { text-align: center; margin: 4px 0 6px; }
-    .header .doc-title { margin: 0; font-size: ${px(12)}; font-weight: 700; text-transform: uppercase; }
-    .header .doc-sub { margin: 2px 0 0; font-size: ${px(9)}; color: #444; }
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 4px 0; font-size: ${px(10)}; }
-    .meta strong { display: inline-block; min-width: 96px; font-weight: 700; }
+    .header { text-align: center; margin: 3px 0 5px; }
+    .header .doc-title { margin: 0; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
+    .header .doc-sub { margin: 2px 0 0; font-size: ${px(8)}; color: #444; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 14px; margin: 3px 0; font-size: ${px(9)}; }
+    .meta strong { display: inline-block; min-width: 90px; font-weight: 700; }
     .amount-box {
       border: 2px solid #000;
-      padding: 6px 10px;
-      margin: 6px 0 4px;
+      padding: 5px 8px;
+      margin: 5px 0 3px;
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: 10px;
+      gap: 8px;
     }
-    .amount-box .label { font-size: ${px(10)}; font-weight: 700; text-transform: uppercase; }
-    .amount-box .value { font-size: ${px(14)}; font-weight: 700; letter-spacing: 0.02em; }
+    .amount-box .label { font-size: ${px(9)}; font-weight: 700; text-transform: uppercase; }
+    .amount-box .value { font-size: ${px(13)}; font-weight: 700; letter-spacing: 0.02em; }
     .notes {
       border: 1px solid #000;
-      min-height: 28px;
-      max-height: 56px;
+      min-height: 22px;
+      max-height: 44px;
       overflow: hidden;
-      padding: 4px 8px;
+      padding: 3px 6px;
       margin-top: 2px;
-      font-size: ${px(10)};
+      font-size: ${px(9)};
     }
-    .notes-label { font-weight: 700; margin-top: 6px; font-size: ${px(9)}; text-transform: uppercase; }
+    .notes-label { font-weight: 700; margin-top: 4px; font-size: ${px(8)}; text-transform: uppercase; }
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px 16px;
-      margin-top: 8px;
+      gap: 6px 14px;
+      margin-top: 6px;
     }
     .sig-block h3 {
       margin: 0 0 1px;
-      font-size: ${px(9)};
+      font-size: ${px(8)};
       font-weight: 700;
       text-transform: uppercase;
     }
-    .sig-block .hint { font-size: ${px(8)}; color: #555; margin: 0 0 4px; }
+    .sig-block .hint { font-size: ${px(7)}; color: #555; margin: 0 0 2px; }
     .sig-block .line {
       border-top: 1px solid #000;
-      padding-top: 2px;
-      margin-top: 12px;
-      font-size: ${px(9)};
-      min-height: 1.1em;
+      padding-top: 1px;
+      margin-top: 10px;
+      font-size: ${px(8)};
+      min-height: 1em;
     }
     .sig-block .line.prefilled {
-      margin-top: 8px;
+      margin-top: 6px;
       font-weight: 600;
     }
     .sig-block .line .filled {
       display: block;
       margin-bottom: 1px;
-      font-size: ${px(10)};
+      font-size: ${px(9)};
       font-weight: 700;
     }
     .sig-block .stamp {
       border: 1px dashed #666;
-      height: 36px;
-      margin-top: 6px;
+      height: 28px;
+      margin-top: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: ${px(8)};
+      font-size: ${px(7)};
       color: #666;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: PRINT_VARIANT })}
+    /* Keep footer with the voucher on page 1 (override global position:fixed). */
+    body.cash-advance-voucher .doc-print-edge-footer,
+    body.cash-advance-voucher.has-doc-print-edge-footer .doc-print-edge-footer {
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      margin-top: 10px !important;
+      padding: 6px 0 0 !important;
+      flex: 0 0 auto;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-before: avoid;
+      break-before: avoid;
+    }
     @media print {
+      body.cash-advance-voucher.has-doc-print-edge-footer {
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_TOP} !important;
+      }
       body { font-size: ${px(10, true)}; }
-      .org-name { font-size: ${px(13, true)}; }
-      .header .doc-title { font-size: ${px(12, true)}; }
-      .amount-box .value { font-size: ${px(14, true)}; }
-      .sheet { page-break-inside: avoid; break-inside: avoid; }
+      .org-name { font-size: ${px(12, true)}; }
+      .header .doc-title { font-size: ${px(11, true)}; }
+      .amount-box .value { font-size: ${px(13, true)}; }
+      .sheet {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+      }
+      body.cash-advance-voucher .doc-print-edge-footer,
+      body.cash-advance-voucher.has-doc-print-edge-footer .doc-print-edge-footer {
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+      }
     }
   `;
 }
@@ -243,8 +284,9 @@ export async function printCashAdvanceVoucher({
   <title>Cash advance voucher ${escapeHtml(advance?.id ?? "")}</title>
   <style>${voucherStyles(generalSettings)}</style>
 </head>
-<body class="has-doc-print-edge-footer">
+<body class="has-doc-print-edge-footer cash-advance-voucher">
   <div class="sheet">
+    <div class="sheet-body">
   ${buildReportOrgHeaderHtml(branding)}
   <div class="header">
     <h1 class="doc-title">Employee cash advance voucher</h1>
@@ -297,10 +339,11 @@ export async function printCashAdvanceVoucher({
       <div class="line">Reference / receipt no.</div>
     </div>
   </div>
-  </div>
+    </div>
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy,
   })}
+  </div>
 </body>
 </html>`;
 

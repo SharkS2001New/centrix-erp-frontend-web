@@ -69,6 +69,31 @@ export function HrCashAdvancesScreen() {
     });
   }
 
+  function mapAdvanceExportRow(r, employees = []) {
+    const emp = r.employee ?? employees.find((e) => Number(e.id) === Number(r.employee_id));
+    const mode = r.repayment_mode === "fixed_per_cycle" ? "fixed_per_cycle" : "full_next_cycle";
+    const next =
+      r.next_deduction_amount != null
+        ? Number(r.next_deduction_amount)
+        : r.status === "open"
+          ? Number(r.balance ?? 0)
+          : 0;
+    return {
+      employee: emp ? composeEmployeeDisplayName(emp) : "",
+      advance_date: formatShortDate(r.advance_date),
+      amount: formatHrKesFull(r.amount),
+      balance: formatHrKesFull(r.balance),
+      next_deduction:
+        r.status === "open" && next > 0 ? formatHrKesFull(next) : "—",
+      repayment:
+        mode === "full_next_cycle"
+          ? "Full balance next cycle"
+          : `${formatHrKesFull(r.repayment_amount)} / payroll`,
+      status: statusLabel(r.status),
+      notes: r.notes || "",
+    };
+  }
+
   return (
     <HrCrudPage
       title="Cash advances"
@@ -77,6 +102,34 @@ export function HrCashAdvancesScreen() {
       drawerWide
       drawerCreateTitle="Request cash advance"
       apiPath="/employee-cash-advances"
+      exportTitle="Cash advances"
+      exportFilename="cash-advances"
+      exportColumns={[
+        { key: "employee", label: "Employee" },
+        { key: "advance_date", label: "Date" },
+        { key: "amount", label: "Advanced", align: "right" },
+        { key: "balance", label: "Outstanding", align: "right" },
+        { key: "next_deduction", label: "Next payroll deduction", align: "right" },
+        { key: "repayment", label: "Repayment" },
+        { key: "status", label: "Status" },
+        { key: "notes", label: "Notes" },
+      ]}
+      getExportRows={async () => {
+        const all = [];
+        let page = 1;
+        for (;;) {
+          const res = await apiRequest("/employee-cash-advances", {
+            searchParams: { per_page: 200, page },
+          });
+          const batch = res.data ?? [];
+          all.push(...batch);
+          const n = Number(res.meta?.total ?? all.length);
+          if (all.length >= n || batch.length === 0) break;
+          page += 1;
+          if (page > 100) break;
+        }
+        return all.map((r) => mapAdvanceExportRow(r));
+      }}
       loadExtra={async () => {
         const res = await apiRequest("/employees", {
           searchParams: { per_page: 200, fields: "lean" },
