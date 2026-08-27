@@ -164,7 +164,7 @@ export function InvestorsIdScreen() {
   useEffect(() => {
     const fromUrl = searchParams.get("tab");
     if (fromUrl === "reports" && investorId) {
-      router.replace(`/investors/reports/${investorId}`);
+      router.replace(`/investors/reports?investor=${investorId}`);
       return;
     }
     if (fromUrl && TABS.some((t) => t.id === fromUrl)) setTab(fromUrl);
@@ -499,7 +499,7 @@ export function InvestorsIdScreen() {
         <div className="flex flex-wrap gap-2">
           {canReport ? (
             <Link
-              href={`/investors/reports/${investorId}`}
+              href={`/investors/reports?investor=${investorId}`}
               className={SECONDARY_BTN_CLASS}
             >
               Reports

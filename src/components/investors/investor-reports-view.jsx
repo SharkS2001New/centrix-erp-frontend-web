@@ -42,12 +42,14 @@ function paymentBadge(status) {
  * @param {{ investor_name?: string, investor_code?: string } | null} [props.investor]
  * @param {boolean} props.canView
  * @param {string} [props.initialKind]
+ * @param {(kind: string) => void} [props.onReportKindChange]
  */
 export function InvestorReportsView({
   investorId,
   investor = null,
   canView,
   initialKind = "sales",
+  onReportKindChange,
 }) {
   const [reportKind, setReportKind] = useState(() => {
     const kind = String(initialKind || "sales");
@@ -193,7 +195,10 @@ export function InvestorReportsView({
             <button
               key={k.id}
               type="button"
-              onClick={() => setReportKind(k.id)}
+              onClick={() => {
+                setReportKind(k.id);
+                onReportKindChange?.(k.id);
+              }}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 reportKind === k.id
                   ? "bg-slate-900 text-white"

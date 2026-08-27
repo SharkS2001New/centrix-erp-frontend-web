@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
@@ -13,61 +13,114 @@ import { P } from "@/lib/permission-codes";
 import { notifyError } from "@/lib/notify";
 import {
   CatalogPageShell,
-  SearchInput,
+  Field,
+  FilterSelect,
   SECONDARY_BTN_CLASS,
-  formatKesCompact,
 } from "@/components/catalog/catalog-shared";
-import { useListUrlSearch } from "@/lib/use-list-url-search";
-import { INVESTOR_REPORT_KINDS } from "@/components/investors/investor-reports-view";
+import {
+  INVESTOR_REPORT_KINDS,
+  InvestorReportsView,
+} from "@/components/investors/investor-reports-view";
 
-const REPORT_LINK_CLASS =
-  "text-sm font-medium text-[var(--brand-primary)] hover:underline whitespace-nowrap";
+function normalizeKind(kind) {
+  const id = String(kind || "sales");
+  return INVESTOR_REPORT_KINDS.some((k) => k.id === id) ? id : "sales";
+}
 
 export function InvestorsReportsScreen() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { capabilities, hasPermission } = useAuth();
   const enabled = isPlatformInvestorsEnabled(capabilities);
   const canView =
     enabled &&
     (hasPermission?.(P.investors.reports.view) || hasPermission?.(P.investors.investors.view));
 
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const investorFromUrl = searchParams.get("investor") || "";
+  const kindFromUrl = normalizeKind(searchParams.get("kind"));
 
-  const loadData = useCallback(async () => {
+  const [investors, setInvestors] = useState([]);
+  const [listLoading, setListLoading] = useState(true);
+
+  const replaceQuery = useCallback(
+    (patch) => {
+      const params = new URLSearchParams(searchParams.toString());
+      Object.entries(patch).forEach(([key, value]) => {
+        if (value == null || value === "") params.delete(key);
+        else params.set(key, String(value));
+      });
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const loadInvestors = useCallback(async () => {
     if (!canView) {
-      setRows([]);
-      setLoading(false);
+      setInvestors([]);
+      setListLoading(false);
       return;
     }
-    setLoading(true);
+    setListLoading(true);
     try {
       const res = await apiRequest("/investors", {
-        searchParams: buildPageParams({ page: 1, perPage: 100, q: debouncedSearch }),
+        searchParams: buildPageParams({ page: 1, perPage: 200, q: "" }),
       });
-      setRows(parsePaginator(res).items);
+      setInvestors(parsePaginator(res).items);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load investors");
+      setInvestors([]);
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
-  }, [canView, debouncedSearch]);
+  }, [canView]);
 
-  useTabAwareDataLoad(loadData);
+  useTabAwareDataLoad(loadInvestors);
   useTabTitle(tabSectionTitle("Reports", "Investors"));
+
+  useEffect(() => {
+    if (!canView || listLoading || investors.length === 0) return;
+    const ids = new Set(investors.map((row) => String(row.id)));
+    if (investorFromUrl && ids.has(String(investorFromUrl))) return;
+    replaceQuery({ investor: String(investors[0].id), kind: kindFromUrl });
+  }, [
+    canView,
+    listLoading,
+    investors,
+    investorFromUrl,
+    kindFromUrl,
+    replaceQuery,
+  ]);
+
+  const selectedInvestor = useMemo(
+    () => investors.find((row) => String(row.id) === String(investorFromUrl)) ?? null,
+    [investors, investorFromUrl],
+  );
+
+  const investorOptions = useMemo(
+    () =>
+      investors.map((row) => ({
+        value: String(row.id),
+        label: `${row.investor_name || "Investor"}${
+          row.investor_code ? ` (${row.investor_code})` : ""
+        }`,
+      })),
+    [investors],
+  );
 
   return (
     <CatalogPageShell
       title="Reports-Investors"
-      subtitle="Open sales, stock balance, and money-flow reports for each investor"
+      subtitle="Sales, stock balance, and money-flow — filter by investor"
       action={
         <button
           type="button"
           className={SECONDARY_BTN_CLASS}
-          onClick={() => void loadData()}
-          disabled={loading || !canView}
+          onClick={() => void loadInvestors()}
+          disabled={listLoading || !canView}
         >
-          {loading ? "Refreshing…" : "Refresh"}
+          {listLoading ? "Refreshing…" : "Refresh"}
         </button>
       }
     >
@@ -75,74 +128,46 @@ export function InvestorsReportsScreen() {
         <p className="mb-4 text-sm text-amber-800">Investors are disabled for this organization.</p>
       ) : !canView ? (
         <p className="mb-4 text-sm text-slate-600">You do not have permission to view investor reports.</p>
+      ) : listLoading && investors.length === 0 ? (
+        <p className="text-sm text-slate-500">Loading investors…</p>
+      ) : investors.length === 0 ? (
+        <p className="text-sm text-slate-500">No investors yet. Add an investor first.</p>
       ) : (
-        <>
-          <div className="mb-4 max-w-md">
-            <SearchInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search investors…"
+        <div className="space-y-4">
+          <div className="max-w-md">
+            <Field label="Investor">
+              <FilterSelect
+                value={String(investorFromUrl || "")}
+                onChange={(e) =>
+                  replaceQuery({ investor: e.target.value, kind: kindFromUrl })
+                }
+                options={investorOptions}
+                placeholder="Select investor"
+                searchPlaceholder="Search investors…"
+                disabled={listLoading}
+                className="w-full min-w-0"
+              />
+            </Field>
+          </div>
+
+          {selectedInvestor ? (
+            <InvestorReportsView
+              key={String(selectedInvestor.id)}
+              investorId={selectedInvestor.id}
+              investor={selectedInvestor}
+              canView={canView}
+              initialKind={kindFromUrl}
+              onReportKindChange={(kind) =>
+                replaceQuery({
+                  investor: String(selectedInvestor.id),
+                  kind: normalizeKind(kind),
+                })
+              }
             />
-          </div>
-          <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-            {loading ? (
-              <p className="p-8 text-sm text-slate-500">Loading…</p>
-            ) : (
-              <table className="w-full min-w-[720px] border-collapse text-sm">
-                <thead>
-                  <tr className="theme-table-head-row text-left text-xs font-medium">
-                    <th className="px-4 py-2.5">Investor</th>
-                    <th className="px-4 py-2.5 text-right">Stock value</th>
-                    <th className="px-4 py-2.5 text-right">Cash pool</th>
-                    <th className="px-4 py-2.5">Reports</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-10 text-center text-slate-500">
-                        No investors found.
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((row) => (
-                      <tr key={row.id} className="theme-table-row border-t border-slate-100">
-                        <td className="px-4 py-2.5">
-                          <Link
-                            href={`/investors/${row.id}`}
-                            className="font-medium text-slate-900 hover:text-[var(--brand-primary)] hover:underline"
-                          >
-                            {row.investor_name}
-                          </Link>
-                          <div className="font-mono text-xs text-slate-500">{row.investor_code}</div>
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">
-                          {formatKesCompact(row.summary?.stock_value ?? 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">
-                          {formatKesCompact(row.summary?.cash_pool_balance ?? 0)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex flex-wrap gap-x-3 gap-y-1">
-                            {INVESTOR_REPORT_KINDS.map((kind) => (
-                              <Link
-                                key={kind.id}
-                                href={`/investors/reports/${row.id}?kind=${kind.id}`}
-                                className={REPORT_LINK_CLASS}
-                              >
-                                {kind.label}
-                              </Link>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
+          ) : (
+            <p className="text-sm text-slate-500">Select an investor to view the report.</p>
+          )}
+        </div>
       )}
     </CatalogPageShell>
   );

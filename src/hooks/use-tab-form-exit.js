@@ -41,10 +41,10 @@ export function tabDetailTitle(entityLabel, recordName) {
  */
 export function tabSectionTitle(pageLabel, moduleLabel) {
   const page = titleCaseEntity(pageLabel);
-  const module = titleCaseEntity(moduleLabel);
-  if (!page) return module || "Page";
-  if (!module) return page;
-  return `${page}-${module}`;
+  const area = titleCaseEntity(moduleLabel);
+  if (!page) return area || "Page";
+  if (!area) return page;
+  return `${page}-${area}`;
 }
 
 /** Tab title for edit forms, e.g. "Edit Product - ABABIL". */
