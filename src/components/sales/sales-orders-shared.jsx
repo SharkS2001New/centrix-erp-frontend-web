@@ -1069,6 +1069,7 @@ export function OrderListTableHead({
   showSourceColumn = true,
   showPlacedByColumn = true,
   showDiscountColumn = false,
+  showActionsColumn = true,
   sort = null,
   sortDir = "desc",
   onSort,
@@ -1151,7 +1152,7 @@ export function OrderListTableHead({
         {showMethodColumn ? <th className="px-4 py-2.5">Method</th> : null}
         {showSourceColumn ? <th className="px-4 py-2.5">{header("Source", "channel")}</th> : null}
         {showPlacedByColumn ? <th className="px-4 py-2.5">{header("Placed by", "created_at")}</th> : null}
-        <th className="px-4 py-2.5 w-28 text-right">Actions</th>
+        {showActionsColumn ? <th className="px-4 py-2.5 w-28 text-right">Actions</th> : null}
       </tr>
       {filtersEnabled ? (
         <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,var(--theme-surface-muted)_70%,transparent)]">
@@ -1190,7 +1191,7 @@ export function OrderListTableHead({
             </th>
           ) : null}
           {showPlacedByColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("placed_by", "Name")}</th> : null}
-          <th className="px-2 py-1.5" />
+          {showActionsColumn ? <th className="px-2 py-1.5" /> : null}
         </tr>
       ) : null}
     </>
@@ -1243,6 +1244,7 @@ export function OrderListTableRow({
   selection = null,
   onRestore = null,
   restoreLabel = null,
+  showActionsColumn = true,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
@@ -1461,20 +1463,22 @@ export function OrderListTableRow({
             <SaleCreatedByCell sale={sale} />
           </td>
         ) : null}
-        <td className="px-4 py-3">
-          <OrderRowActions
-            busy={actionBusy}
-            onView={onView}
-            onPrint={onPrint}
-            onCollectPayment={onCollectPayment}
-            onEdit={onEdit}
-            onReturn={onReturn}
-            onRestore={onRestore}
-            restoreLabel={restoreLabel ?? "Restore order"}
-            onOpenMenu={onOpenActionsMenu}
-            printAriaLabel={printAriaLabel}
-          />
-        </td>
+        {showActionsColumn ? (
+          <td className="px-4 py-3">
+            <OrderRowActions
+              busy={actionBusy}
+              onView={onView}
+              onPrint={onPrint}
+              onCollectPayment={onCollectPayment}
+              onEdit={onEdit}
+              onReturn={onReturn}
+              onRestore={onRestore}
+              restoreLabel={restoreLabel ?? "Restore order"}
+              onOpenMenu={onOpenActionsMenu}
+              printAriaLabel={printAriaLabel}
+            />
+          </td>
+        ) : null}
       </tr>
       {expanded ? (
         <tr className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)]">

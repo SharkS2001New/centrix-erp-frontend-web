@@ -4,6 +4,7 @@ import {
   tabDetailTitle,
   tabEditTitle,
   tabNameFirstWord,
+  tabSectionTitle,
 } from "@/hooks/use-tab-form-exit";
 
 describe("tab title helpers", () => {
@@ -13,13 +14,16 @@ describe("tab title helpers", () => {
     expect(tabNameFirstWord("")).toBe("");
   });
 
-  it("builds detail titles as Entity - FirstWord", () => {
-    expect(tabDetailTitle("Product", "ABABIL PERBOILED 25KG")).toBe("Product - ABABIL");
-    expect(tabDetailTitle("customer", "OMEGA PRIME DISTRIBUTORS LTD")).toBe(
-      "Customer - OMEGA",
-    );
+  it("builds detail titles as Entity-FirstWord", () => {
+    expect(tabDetailTitle("Product", "ABABIL PERBOILED 25KG")).toBe("Product-ABABIL");
+    expect(tabDetailTitle("customer", "OMEGA PRIME DISTRIBUTORS LTD")).toBe("Customer-OMEGA");
     expect(tabDetailTitle("Supplier", "")).toBe("Supplier");
-    expect(tabDetailTitle("menu product", "Grilled Chicken")).toBe("Menu Product - Grilled");
+    expect(tabDetailTitle("menu product", "Grilled Chicken")).toBe("Menu Product-Grilled");
+  });
+
+  it("builds section titles as Page-Module", () => {
+    expect(tabSectionTitle("Reports", "Investors")).toBe("Reports-Investors");
+    expect(tabSectionTitle("Overview", "Investors")).toBe("Overview-Investors");
   });
 
   it("builds short edit titles", () => {
@@ -31,3 +35,4 @@ describe("tab title helpers", () => {
     expect(tabAddTitle("product")).toBe("Add product");
   });
 });
+

@@ -23,6 +23,7 @@ import {
   inputClassName,
   PaginationBar,
   PencilIcon,
+  EyeIcon,
   PrimaryButton,
   SearchInput,
   SECONDARY_BTN_CLASS,
@@ -30,6 +31,8 @@ import {
   TrashIcon,
   formatKesCompact,
 } from "@/components/catalog/catalog-shared";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 
 const EMPTY_FORM = {
   investor_code: "",
@@ -131,6 +134,7 @@ export function InvestorsScreen() {
   }, [enabled, page, pageSize, debouncedSearch]);
 
   useTabAwareDataLoad(loadData);
+  useTabTitle(tabSectionTitle("Investors"));
 
   useEffect(() => {
     setPage(1);
@@ -265,6 +269,27 @@ export function InvestorsScreen() {
         </p>
       )}
 
+      {enabled && rows.length > 0 ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Open batches (page)"
+            value={rows.reduce((n, r) => n + Number(r.summary?.open_batches ?? 0), 0)}
+          />
+          <StatCard
+            label="Stock value (page)"
+            value={formatKesCompact(
+              rows.reduce((n, r) => n + Number(r.summary?.stock_value ?? 0), 0),
+            )}
+          />
+          <StatCard
+            label="Cash pools (page)"
+            value={formatKesCompact(
+              rows.reduce((n, r) => n + Number(r.summary?.cash_pool_balance ?? 0), 0),
+            )}
+          />
+        </div>
+      ) : null}
+
       <div className="mb-4 max-w-md">
         <SearchInput
           value={search}
@@ -348,6 +373,12 @@ export function InvestorsScreen() {
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1">
+                              <IconButton
+                                label="View"
+                                onClick={() => router.push(`/investors/${row.id}`)}
+                              >
+                                <EyeIcon />
+                              </IconButton>
                               {canEdit ? (
                                 <IconButton
                                   label="Edit"
@@ -459,27 +490,6 @@ export function InvestorsScreen() {
           Active
         </label>
       </FormDrawer>
-
-      {enabled && rows.length > 0 ? (
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <StatCard
-            label="Open batches (page)"
-            value={rows.reduce((n, r) => n + Number(r.summary?.open_batches ?? 0), 0)}
-          />
-          <StatCard
-            label="Stock value (page)"
-            value={formatKesCompact(
-              rows.reduce((n, r) => n + Number(r.summary?.stock_value ?? 0), 0),
-            )}
-          />
-          <StatCard
-            label="Cash pools (page)"
-            value={formatKesCompact(
-              rows.reduce((n, r) => n + Number(r.summary?.cash_pool_balance ?? 0), 0),
-            )}
-          />
-        </div>
-      ) : null}
     </CatalogPageShell>
   );
 }

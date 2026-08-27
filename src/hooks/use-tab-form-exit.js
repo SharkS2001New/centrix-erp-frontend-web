@@ -25,14 +25,26 @@ export function tabAddTitle(entityLabel) {
 }
 
 /**
- * Tab title for detail/profile pages, e.g. "Product - ABABIL".
- * Uses the entity type + the first word of the record name.
+ * Tab title for detail/profile pages, e.g. "Investors-HASCO".
+ * Uses Section-Record so tabs stay systematic and easy to tell apart.
  */
 export function tabDetailTitle(entityLabel, recordName) {
   const entity = titleCaseEntity(entityLabel);
   const first = tabNameFirstWord(recordName);
   if (!entity) return first || "Details";
-  return first ? `${entity} - ${first}` : entity;
+  return first ? `${entity}-${first}` : entity;
+}
+
+/**
+ * Tab title for section pages, e.g. "Reports-Investors".
+ * Prefer Page-Module (or Feature-Area) so related tabs do not collide.
+ */
+export function tabSectionTitle(pageLabel, moduleLabel) {
+  const page = titleCaseEntity(pageLabel);
+  const module = titleCaseEntity(moduleLabel);
+  if (!page) return module || "Page";
+  if (!module) return page;
+  return `${page}-${module}`;
 }
 
 /** Tab title for edit forms, e.g. "Edit Product - ABABIL". */

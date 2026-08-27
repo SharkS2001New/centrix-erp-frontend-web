@@ -426,6 +426,11 @@ export const SCREEN_COMPONENTS = {
   "investors-reports": lazy(() =>
     import("@/components/tab-screens/investors-reports").then((m) => ({ default: m.InvestorsReportsScreen })),
   ),
+  "investors-reports-id": lazy(() =>
+    import("@/components/tab-screens/investors-reports-id").then((m) => ({
+      default: m.InvestorsReportsIdScreen,
+    })),
+  ),
   "lpo-new": lazy(() =>
     import("@/components/tab-screens/lpo-new").then((m) => ({ default: m.LpoNewScreen })),
   ),

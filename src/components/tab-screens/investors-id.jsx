@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -17,26 +17,21 @@ import {
   FormDrawer,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
+  SearchableSelect,
   StatCard,
   formatKesCompact,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { formatSupplierKes } from "@/components/suppliers/suppliers-shared";
 
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "contributions", label: "Contributions" },
   { id: "batches", label: "Product batches" },
   { id: "spends", label: "Spends" },
-  { id: "reports", label: "Reports" },
-];
-
-const REPORT_KINDS = [
-  { id: "sales", label: "Sales & profit" },
-  { id: "stock", label: "Stock balance" },
-  { id: "money-flow", label: "Money flow" },
 ];
 
 const EMPTY_CONTRIBUTION = {
@@ -72,6 +67,11 @@ const EMPTY_SPEND = {
   spend_date: new Date().toISOString().slice(0, 10),
   reference_label: "",
   notes: "",
+  /** @type {"lpo" | "supplier"} */
+  supplier_link_mode: "lpo",
+  supplier_id: "",
+  lpo_no: "",
+  reference_id: "",
 };
 
 function ContributionTypeBadge({ type }) {
@@ -105,23 +105,9 @@ function StatusBadge({ active }) {
   );
 }
 
-function paymentBadge(status) {
-  const s = String(status || "unpaid").toLowerCase();
-  const cls =
-    s === "paid"
-      ? "bg-emerald-100 text-emerald-800"
-      : s === "partial"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-rose-100 text-rose-800";
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${cls}`}>
-      {s}
-    </span>
-  );
-}
-
 export function InvestorsIdScreen() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const investorId = params.id;
   const { capabilities, hasPermission } = useAuth();
@@ -134,6 +120,7 @@ export function InvestorsIdScreen() {
 
   const [tab, setTab] = useState(() => {
     const fromUrl = searchParams.get("tab");
+    if (fromUrl === "reports") return "overview";
     return TABS.some((t) => t.id === fromUrl) ? fromUrl : "overview";
   });
   const [payload, setPayload] = useState(null);
@@ -147,14 +134,13 @@ export function InvestorsIdScreen() {
   const [allocForm, setAllocForm] = useState(EMPTY_ALLOCATE);
   const [spendDrawer, setSpendDrawer] = useState(false);
   const [spendForm, setSpendForm] = useState(EMPTY_SPEND);
+  const [spendSuppliers, setSpendSuppliers] = useState([]);
+  const [spendLpos, setSpendLpos] = useState([]);
+  const [spendPayments, setSpendPayments] = useState([]);
+  const [spendMetaLoading, setSpendMetaLoading] = useState(false);
+  const [spendPaymentsLoading, setSpendPaymentsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
-
-  const [reportKind, setReportKind] = useState("sales");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [report, setReport] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!enabled) {
@@ -177,15 +163,19 @@ export function InvestorsIdScreen() {
 
   useEffect(() => {
     const fromUrl = searchParams.get("tab");
+    if (fromUrl === "reports" && investorId) {
+      router.replace(`/investors/reports/${investorId}`);
+      return;
+    }
     if (fromUrl && TABS.some((t) => t.id === fromUrl)) setTab(fromUrl);
-  }, [searchParams]);
+  }, [searchParams, investorId, router]);
 
   const investor = payload?.data;
   const summary = payload?.summary ?? {};
 
   useTabTitle(
     investor
-      ? tabDetailTitle("Investor", investor.investor_name || investor.investor_code || investorId)
+      ? tabDetailTitle("Investors", investor.investor_name || investor.investor_code || investorId)
       : null,
   );
 
@@ -293,17 +283,45 @@ export function InvestorsIdScreen() {
   async function saveSpend(e) {
     e.preventDefault();
     setFormError(null);
+
+    if (spendForm.spend_type === "supplier_payment") {
+      if (spendForm.supplier_link_mode === "lpo" && !spendForm.lpo_no && !spendForm.reference_id) {
+        setFormError("Choose an LPO, or link an existing supplier payment.");
+        return;
+      }
+      if (
+        spendForm.supplier_link_mode === "supplier" &&
+        !spendForm.supplier_id &&
+        !spendForm.reference_id
+      ) {
+        setFormError("Choose a supplier, or link an existing supplier payment.");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const body = {
+        spend_type: spendForm.spend_type,
+        amount: Number(spendForm.amount) || null,
+        spend_date: spendForm.spend_date,
+        reference_label: spendForm.reference_label.trim() || null,
+        notes: spendForm.notes.trim() || null,
+      };
+      if (spendForm.spend_type === "supplier_payment") {
+        if (spendForm.reference_id) {
+          body.reference_id = Number(spendForm.reference_id);
+        }
+        if (spendForm.supplier_link_mode === "lpo" && spendForm.lpo_no) {
+          body.lpo_no = Number(spendForm.lpo_no);
+        }
+        if (spendForm.supplier_id) {
+          body.supplier_id = Number(spendForm.supplier_id);
+        }
+      }
       await apiRequest(`/investors/${investorId}/spends`, {
         method: "POST",
-        body: {
-          spend_type: spendForm.spend_type,
-          amount: Number(spendForm.amount) || null,
-          spend_date: spendForm.spend_date,
-          reference_label: spendForm.reference_label.trim() || null,
-          notes: spendForm.notes.trim() || null,
-        },
+        body,
       });
       setSpendDrawer(false);
       notifySuccess("Spend linked");
@@ -315,121 +333,109 @@ export function InvestorsIdScreen() {
     }
   }
 
-  const loadReport = useCallback(async () => {
-    if (!canReport) return;
-    setReportLoading(true);
-    try {
-      const search = {};
-      if (fromDate) search.from_date = fromDate;
-      if (toDate) search.to_date = toDate;
-      const path =
-        reportKind === "stock"
-          ? `/investors/${investorId}/reports/stock`
-          : reportKind === "money-flow"
-            ? `/investors/${investorId}/reports/money-flow`
-            : `/investors/${investorId}/reports/sales`;
-      const data = await apiRequest(path, { searchParams: search });
-      setReport(data);
-    } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load report");
-      setReport(null);
-    } finally {
-      setReportLoading(false);
-    }
-  }, [canReport, fromDate, toDate, investorId, reportKind]);
+  useEffect(() => {
+    if (!spendDrawer || spendForm.spend_type !== "supplier_payment") return undefined;
+    let cancelled = false;
+    setSpendMetaLoading(true);
+    Promise.all([
+      apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      apiRequest("/lpo-mst", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
+    ])
+      .then(([supRes, lpoRes]) => {
+        if (cancelled) return;
+        setSpendSuppliers(supRes?.data ?? []);
+        setSpendLpos(lpoRes?.data ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setSpendMetaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spendDrawer, spendForm.spend_type]);
 
   useEffect(() => {
-    if (tab === "reports" && canReport) {
-      void loadReport();
+    if (!spendDrawer || spendForm.spend_type !== "supplier_payment") {
+      setSpendPayments([]);
+      return undefined;
     }
-  }, [tab, canReport, loadReport]);
-
-  const reportTotals = useMemo(() => report?.totals ?? {}, [report]);
-
-  const reportExportConfig = useMemo(() => {
-    const kindLabel = REPORT_KINDS.find((k) => k.id === reportKind)?.label ?? "Report";
-    const investorSlug = String(investor?.investor_code || investorId || "investor").replace(
-      /\s+/g,
-      "-",
-    );
-    if (reportKind === "stock") {
-      const rows = report?.rows ?? [];
-      return {
-        title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
-        filename: `investor-${investorSlug}-stock`,
-        columns: [
-          { key: "product_name", label: "Product" },
-          { key: "product_code", label: "Code" },
-          { key: "qty_purchased", label: "Purchased", align: "right" },
-          { key: "qty_sold", label: "Sold", align: "right" },
-          { key: "qty_remaining", label: "Remaining", align: "right" },
-          { key: "unit_cost", label: "Unit cost", align: "right" },
-          { key: "stock_value", label: "Stock value", align: "right" },
-        ],
-        totalCount: rows.length,
-        getInlineRows: async () =>
-          rows.map((row) => ({
-            product_name: row.product_name || "",
-            product_code: row.product_code || "",
-            qty_purchased: row.qty_purchased ?? "",
-            qty_sold: row.qty_sold ?? "",
-            qty_remaining: row.qty_remaining ?? "",
-            unit_cost: row.unit_cost ?? "",
-            stock_value: row.stock_value ?? "",
-          })),
-      };
+    const hasLpo = spendForm.supplier_link_mode === "lpo" && spendForm.lpo_no;
+    const hasSupplier =
+      spendForm.supplier_link_mode === "supplier" && spendForm.supplier_id;
+    if (!hasLpo && !hasSupplier) {
+      setSpendPayments([]);
+      return undefined;
     }
-    if (reportKind === "money-flow") {
-      const events = report?.events ?? [];
-      return {
-        title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
-        filename: `investor-${investorSlug}-money-flow`,
-        columns: [
-          { key: "date", label: "Date" },
-          { key: "label", label: "Event" },
-          { key: "in", label: "In", align: "right" },
-          { key: "out", label: "Out", align: "right" },
-          { key: "balance", label: "Balance", align: "right" },
-        ],
-        totalCount: events.length,
-        getInlineRows: async () =>
-          events.map((ev) => ({
-            date: ev.date || "",
-            label: ev.label || "",
-            in: ev.in ?? "",
-            out: ev.out ?? "",
-            balance: ev.balance ?? "",
-          })),
-      };
+    let cancelled = false;
+    setSpendPaymentsLoading(true);
+    const searchParams = { per_page: 50 };
+    if (hasLpo) searchParams.lpo_no = spendForm.lpo_no;
+    if (hasSupplier || spendForm.supplier_id) {
+      searchParams.supplier_id = spendForm.supplier_id;
     }
-    const lines = report?.lines ?? [];
-    return {
-      title: `${kindLabel} — ${investor?.investor_name || investorSlug}`,
-      filename: `investor-${investorSlug}-sales`,
-      columns: [
-        { key: "invoice_label", label: "Invoice" },
-        { key: "sale_date", label: "Date" },
-        { key: "product_name", label: "Product" },
-        { key: "quantity_sold", label: "Qty", align: "right" },
-        { key: "sales_value", label: "Sales", align: "right" },
-        { key: "cost_value", label: "Cost", align: "right" },
-        { key: "profit", label: "Profit", align: "right" },
-        { key: "payment_status", label: "Payment" },
-      ],
-      totalCount: lines.length,
-      getInlineRows: async () =>
-        lines.map((line) => ({
-          invoice_label: line.invoice_label || "",
-          sale_date: line.sale_date || "",
-          product_name: line.product_name || "",
-          quantity_sold: line.quantity_sold ?? "",
-          sales_value: line.sales_value ?? "",
-          cost_value: line.cost_value ?? "",
-          profit: line.profit ?? "",
-          payment_status: line.payment_status || "",
-        })),
+    apiRequest("/supplier-payments", { searchParams })
+      .then((res) => {
+        if (cancelled) return;
+        setSpendPayments(res?.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSpendPayments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSpendPaymentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
-  }, [report, reportKind, investor, investorId]);
+  }, [
+    spendDrawer,
+    spendForm.spend_type,
+    spendForm.supplier_link_mode,
+    spendForm.lpo_no,
+    spendForm.supplier_id,
+  ]);
+
+  const spendSupplierOptions = useMemo(
+    () =>
+      spendSuppliers.map((s) => ({
+        value: String(s.id),
+        label: s.supplier_name || s.supplier_code || `Supplier #${s.id}`,
+      })),
+    [spendSuppliers],
+  );
+
+  const spendLpoOptions = useMemo(
+    () =>
+      spendLpos.map((lpo) => {
+        const display = lpoRowDisplayNumber(lpo);
+        const supplierName = lpo.supplier?.supplier_name || "";
+        return {
+          value: String(lpo.lpo_no),
+          label: supplierName ? `${display} · ${supplierName}` : display,
+          supplier_id: lpo.supplier_id != null ? String(lpo.supplier_id) : "",
+        };
+      }),
+    [spendLpos],
+  );
+
+  const spendPaymentOptions = useMemo(
+    () =>
+      spendPayments.map((p) => {
+        const amount = formatSupplierKes(p.amount_paid ?? 0);
+        const date = p.date_paid || "";
+        const lpoBit = p.lpo_no ? ` · LPO ${lpoRowDisplayNumber(p)}` : "";
+        const ref = p.reference_number ? ` · ${p.reference_number}` : "";
+        return {
+          value: String(p.id),
+          label: `#${p.id} · ${amount}${date ? ` · ${date}` : ""}${lpoBit}${ref}`,
+          amount: p.amount_paid,
+          reference_label: p.reference_number
+            ? `Supplier payment #${p.id} · ${p.reference_number}`
+            : `Supplier payment #${p.id}`,
+        };
+      }),
+    [spendPayments],
+  );
 
   const overviewStats = useMemo(() => {
     const cashCount = contributions.filter(
@@ -491,6 +497,14 @@ export function InvestorsIdScreen() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canReport ? (
+            <Link
+              href={`/investors/reports/${investorId}`}
+              className={SECONDARY_BTN_CLASS}
+            >
+              Reports
+            </Link>
+          ) : null}
           {(canCreate || canEdit) && (
             <PrimaryButton
               onClick={() => {
@@ -873,11 +887,12 @@ export function InvestorsIdScreen() {
       {tab === "spends" && (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
+            <table className="w-full min-w-[880px] border-collapse text-sm">
               <thead>
                 <tr className="theme-table-head-row text-left text-xs font-medium">
                   <th className="px-4 py-2.5">Date</th>
                   <th className="px-4 py-2.5">Type</th>
+                  <th className="px-4 py-2.5">Supplier / LPO</th>
                   <th className="px-4 py-2.5">Label</th>
                   <th className="px-4 py-2.5 text-right">Amount</th>
                   <th className="px-4 py-2.5">Notes</th>
@@ -886,7 +901,7 @@ export function InvestorsIdScreen() {
               <tbody>
                 {spends.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                       No spends linked to this investor&apos;s cash pool.
                     </td>
                   </tr>
@@ -896,6 +911,25 @@ export function InvestorsIdScreen() {
                       <td className="px-4 py-2.5">{formatShortDate(s.spend_date)}</td>
                       <td className="px-4 py-2.5 capitalize">
                         {String(s.spend_type || "").replaceAll("_", " ")}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {s.supplier?.supplier_name || s.lpo_no || s.reference_id ? (
+                          <div>
+                            <div className="text-slate-900">
+                              {s.supplier?.supplier_name || "—"}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {[
+                                s.lpo_no ? `LPO ${lpoRowDisplayNumber(s)}` : null,
+                                s.reference_id ? `Payment #${s.reference_id}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </div>
+                          </div>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="px-4 py-2.5">{s.reference_label || "—"}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">
@@ -908,272 +942,6 @@ export function InvestorsIdScreen() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {tab === "reports" && (
-        <div className="space-y-4">
-          {!canReport ? (
-            <p className="text-sm text-slate-600">You do not have permission to view investor reports.</p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="flex flex-wrap gap-1">
-                  {REPORT_KINDS.map((k) => (
-                    <button
-                      key={k.id}
-                      type="button"
-                      onClick={() => setReportKind(k.id)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                        reportKind === k.id
-                          ? "bg-slate-900 text-white"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      }`}
-                    >
-                      {k.label}
-                    </button>
-                  ))}
-                </div>
-                {reportKind !== "stock" ? (
-                  <>
-                    <Field label="From">
-                      <input
-                        type="date"
-                        className={inputClassName()}
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                      />
-                    </Field>
-                    <Field label="To">
-                      <input
-                        type="date"
-                        className={inputClassName()}
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                      />
-                    </Field>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  className={SECONDARY_BTN_CLASS}
-                  onClick={() => void loadReport()}
-                  disabled={reportLoading}
-                >
-                  {reportLoading ? "Loading…" : "Refresh"}
-                </button>
-                <CatalogListExport
-                  title={reportExportConfig.title}
-                  filename={reportExportConfig.filename}
-                  columns={reportExportConfig.columns}
-                  totalCount={reportExportConfig.totalCount}
-                  getInlineRows={reportExportConfig.getInlineRows}
-                  disabled={reportLoading || !report || reportExportConfig.totalCount === 0}
-                />
-              </div>
-
-              {reportKind === "sales" && report && (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <StatCard label="Sales" value={formatKesCompact(reportTotals.sales_value ?? 0)} />
-                    <StatCard label="Cost" value={formatKesCompact(reportTotals.cost_value ?? 0)} />
-                    <StatCard
-                      label="Gross profit"
-                      value={formatKesCompact(reportTotals.gross_profit ?? 0)}
-                    />
-                    <StatCard label="Expenses" value={formatKesCompact(reportTotals.expenses ?? 0)} />
-                    <StatCard
-                      label="Net profit"
-                      value={formatKesCompact(reportTotals.net_profit ?? 0)}
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <StatCard label="Paid sales" value={formatKesCompact(reportTotals.paid_sales ?? 0)} />
-                    <StatCard
-                      label="Partial sales"
-                      value={formatKesCompact(reportTotals.partial_sales ?? 0)}
-                    />
-                    <StatCard
-                      label="Unpaid sales"
-                      value={formatKesCompact(reportTotals.unpaid_sales ?? 0)}
-                    />
-                  </div>
-                  <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[1000px] border-collapse text-sm">
-                        <thead>
-                          <tr className="theme-table-head-row text-left text-xs font-medium">
-                            <th className="px-3 py-2">Invoice</th>
-                            <th className="px-3 py-2">Date</th>
-                            <th className="px-3 py-2">Product</th>
-                            <th className="px-3 py-2 text-right">Qty</th>
-                            <th className="px-3 py-2 text-right">Sales</th>
-                            <th className="px-3 py-2 text-right">Cost</th>
-                            <th className="px-3 py-2 text-right">Profit</th>
-                            <th className="px-3 py-2">Payment</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.lines ?? []).length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
-                                No attributed sales in this period.
-                              </td>
-                            </tr>
-                          ) : (
-                            (report.lines ?? []).map((line, idx) => (
-                              <tr
-                                key={`${line.sale_id}-${line.product_code}-${idx}`}
-                                className="theme-table-row border-t border-slate-100"
-                              >
-                                <td className="px-3 py-2 font-mono text-xs">{line.invoice_label}</td>
-                                <td className="px-3 py-2">{formatShortDate(line.sale_date)}</td>
-                                <td className="px-3 py-2">{line.product_name}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {line.quantity_sold}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatKesCompact(line.sales_value)}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatKesCompact(line.cost_value)}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatKesCompact(line.profit)}
-                                </td>
-                                <td className="px-3 py-2">{paymentBadge(line.payment_status)}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {reportKind === "stock" && report && (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <StatCard label="Qty purchased" value={reportTotals.qty_purchased ?? 0} />
-                    <StatCard label="Qty remaining" value={reportTotals.qty_remaining ?? 0} />
-                    <StatCard
-                      label="Stock value"
-                      value={formatKesCompact(reportTotals.stock_value ?? 0)}
-                    />
-                  </div>
-                  <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[880px] border-collapse text-sm">
-                        <thead>
-                          <tr className="theme-table-head-row text-left text-xs font-medium">
-                            <th className="px-3 py-2">Product</th>
-                            <th className="px-3 py-2 text-right">Purchased</th>
-                            <th className="px-3 py-2 text-right">Sold</th>
-                            <th className="px-3 py-2 text-right">Remaining</th>
-                            <th className="px-3 py-2 text-right">Unit cost</th>
-                            <th className="px-3 py-2 text-right">Stock value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.rows ?? []).length === 0 ? (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
-                                No batches.
-                              </td>
-                            </tr>
-                          ) : (
-                            (report.rows ?? []).map((row) => (
-                              <tr key={row.batch_id} className="theme-table-row border-t border-slate-100">
-                                <td className="px-3 py-2">
-                                  <div className="font-medium">{row.product_name || row.product_code}</div>
-                                  <div className="font-mono text-xs text-slate-500">
-                                    {row.product_code}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">{row.qty_purchased}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">{row.qty_sold}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">{row.qty_remaining}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatKesCompact(row.unit_cost)}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatKesCompact(row.stock_value)}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {reportKind === "money-flow" && report && (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard
-                      label="Net profit"
-                      value={formatKesCompact(report.summary?.net_profit ?? 0)}
-                    />
-                    <StatCard
-                      label="Cash pool"
-                      value={formatKesCompact(report.summary?.cash_pool_balance ?? 0)}
-                    />
-                    <StatCard
-                      label="Stock value"
-                      value={formatKesCompact(report.summary?.stock_value ?? 0)}
-                    />
-                    <StatCard
-                      label="Sales value"
-                      value={formatKesCompact(report.summary?.sales_value ?? 0)}
-                    />
-                  </div>
-                  <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[800px] border-collapse text-sm">
-                        <thead>
-                          <tr className="theme-table-head-row text-left text-xs font-medium">
-                            <th className="px-3 py-2">Date</th>
-                            <th className="px-3 py-2">Event</th>
-                            <th className="px-3 py-2 text-right">In</th>
-                            <th className="px-3 py-2 text-right">Out</th>
-                            <th className="px-3 py-2 text-right">Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.events ?? []).length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
-                                No money-flow events.
-                              </td>
-                            </tr>
-                          ) : (
-                            (report.events ?? []).map((ev, idx) => (
-                              <tr key={`${ev.type}-${ev.reference_id}-${idx}`} className="theme-table-row border-t border-slate-100">
-                                <td className="px-3 py-2">{formatShortDate(ev.date)}</td>
-                                <td className="px-3 py-2">{ev.label}</td>
-                                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                                  {ev.in ? formatKesCompact(ev.in) : "—"}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums text-rose-700">
-                                  {ev.out ? formatKesCompact(ev.out) : "—"}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums font-medium">
-                                  {formatKesCompact(ev.balance)}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-            </>
-          )}
         </div>
       )}
 
@@ -1401,13 +1169,151 @@ export function InvestorsIdScreen() {
             <select
               className={inputClassName()}
               value={spendForm.spend_type}
-              onChange={(e) => setSpendForm((p) => ({ ...p, spend_type: e.target.value }))}
+              onChange={(e) => {
+                const spend_type = e.target.value;
+                setSpendForm((p) => ({
+                  ...EMPTY_SPEND,
+                  spend_type,
+                  spend_date: p.spend_date,
+                  amount: spend_type === "supplier_payment" ? p.amount : p.amount,
+                }));
+              }}
             >
               <option value="expense">Expense</option>
               <option value="supplier_payment">Supplier payment</option>
               <option value="other">Other</option>
             </select>
           </Field>
+
+          {spendForm.spend_type === "supplier_payment" ? (
+            <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+              <p className="text-xs text-slate-600">
+                Trace this cash-pool spend to an LPO or supplier so it connects with supplier
+                payments across the ERP.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    spendForm.supplier_link_mode === "lpo"
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-700 ring-1 ring-slate-200"
+                  }`}
+                  onClick={() =>
+                    setSpendForm((p) => ({
+                      ...p,
+                      supplier_link_mode: "lpo",
+                      supplier_id: "",
+                      reference_id: "",
+                    }))
+                  }
+                >
+                  Against LPO
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    spendForm.supplier_link_mode === "supplier"
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-700 ring-1 ring-slate-200"
+                  }`}
+                  onClick={() =>
+                    setSpendForm((p) => ({
+                      ...p,
+                      supplier_link_mode: "supplier",
+                      lpo_no: "",
+                      reference_id: "",
+                    }))
+                  }
+                >
+                  Supplier only (no LPO)
+                </button>
+              </div>
+
+              {spendForm.supplier_link_mode === "lpo" ? (
+                <Field label="LPO" required>
+                  <SearchableSelect
+                    value={spendForm.lpo_no}
+                    loading={spendMetaLoading}
+                    options={spendLpoOptions}
+                    placeholder="Search LPO…"
+                    searchPlaceholder="LPO number or supplier…"
+                    required={!spendForm.reference_id}
+                    onChange={(value) => {
+                      const opt = spendLpoOptions.find((o) => o.value === String(value));
+                      setSpendForm((p) => ({
+                        ...p,
+                        lpo_no: value ? String(value) : "",
+                        supplier_id: opt?.supplier_id || "",
+                        reference_id: "",
+                        reference_label: value
+                          ? `LPO ${lpoRowDisplayNumber({ lpo_no: value })}${
+                              opt?.label?.includes("·")
+                                ? ` · ${opt.label.split("·").slice(1).join("·").trim()}`
+                                : ""
+                            }`
+                          : p.reference_label,
+                      }));
+                    }}
+                  />
+                </Field>
+              ) : (
+                <Field label="Supplier" required>
+                  <SearchableSelect
+                    value={spendForm.supplier_id}
+                    loading={spendMetaLoading}
+                    options={spendSupplierOptions}
+                    placeholder="Search supplier…"
+                    searchPlaceholder="Supplier name…"
+                    required={!spendForm.reference_id}
+                    onChange={(value) => {
+                      const opt = spendSupplierOptions.find((o) => o.value === String(value));
+                      setSpendForm((p) => ({
+                        ...p,
+                        supplier_id: value ? String(value) : "",
+                        lpo_no: "",
+                        reference_id: "",
+                        reference_label: opt?.label
+                          ? `Supplier payment · ${opt.label}`
+                          : p.reference_label,
+                      }));
+                    }}
+                  />
+                </Field>
+              )}
+
+              {(spendForm.lpo_no || spendForm.supplier_id) && (
+                <Field label="Existing supplier payment (optional)">
+                  <SearchableSelect
+                    value={spendForm.reference_id}
+                    loading={spendPaymentsLoading}
+                    options={spendPaymentOptions}
+                    placeholder="Link a recorded payment…"
+                    searchPlaceholder="Payment #, ref, amount…"
+                    emptyLabel={
+                      spendPaymentsLoading ? "Loading…" : "No matching supplier payments"
+                    }
+                    onChange={(value) => {
+                      const opt = spendPaymentOptions.find((o) => o.value === String(value));
+                      setSpendForm((p) => ({
+                        ...p,
+                        reference_id: value ? String(value) : "",
+                        amount:
+                          value && opt?.amount != null ? String(opt.amount) : p.amount,
+                        reference_label: value
+                          ? opt?.reference_label || p.reference_label
+                          : p.reference_label,
+                      }));
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Linking a payment ties this investor spend to Purchasing → Supplier payments.
+                  </p>
+                </Field>
+              )}
+            </div>
+          ) : null}
+
           <Field label="Date" required>
             <input
               type="date"
@@ -1417,7 +1323,7 @@ export function InvestorsIdScreen() {
               required
             />
           </Field>
-          <Field label="Amount">
+          <Field label="Amount" required={spendForm.spend_type !== "supplier_payment" || !spendForm.reference_id}>
             <input
               type="number"
               step="0.01"
@@ -1425,6 +1331,7 @@ export function InvestorsIdScreen() {
               className={inputClassName()}
               value={spendForm.amount}
               onChange={(e) => setSpendForm((p) => ({ ...p, amount: e.target.value }))}
+              required={spendForm.spend_type !== "supplier_payment" || !spendForm.reference_id}
             />
           </Field>
           <Field label="Label">

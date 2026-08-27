@@ -752,7 +752,8 @@ export default function SalesOrdersListScreen({
     showSourceColumn,
     showPlacedByColumn: visibleColumnSet.has("placed_by"),
     showDiscountColumn,
-    showSelectionColumn: true,
+    showSelectionColumn: !routeOrdersOnly,
+    showActionsColumn: !routeOrdersOnly,
   });
 
   const listDefaultDaysForArchive =
@@ -2278,6 +2279,7 @@ export default function SalesOrdersListScreen({
                       showSourceColumn={showSourceColumn}
                       showPlacedByColumn={visibleColumnSet.has("placed_by")}
                       showDiscountColumn={showDiscountColumn}
+                      showActionsColumn={!routeOrdersOnly}
                       sort={tableSort}
                       sortDir={tableSortDir}
                       onSort={(columnId) => {
@@ -2294,11 +2296,15 @@ export default function SalesOrdersListScreen({
                           : statusOptions
                       }
                       sourceOptions={showSourceColumn ? sourceOptions : []}
-                      selection={{
-                        checked: allOnPageSelected,
-                        indeterminate: someOnPageSelected,
-                        onChange: (checked) => toggleAllOnPage(checked, pageRowIds),
-                      }}
+                      selection={
+                        routeOrdersOnly
+                          ? null
+                          : {
+                              checked: allOnPageSelected,
+                              indeterminate: someOnPageSelected,
+                              onChange: (checked) => toggleAllOnPage(checked, pageRowIds),
+                            }
+                      }
                     />
                   </thead>
                   <tbody>
@@ -2349,16 +2355,26 @@ export default function SalesOrdersListScreen({
                             uomById={uomById}
                             expanded={expandedIds.has(key)}
                             onToggleExpand={() => toggleExpand(sale.id)}
-                            onContextMenu={(event) => openOrderContextMenu(event, sale)}
-                            onView={() => viewOrder(sale)}
-                            onPrint={() => void printOrder(sale)}
+                            onContextMenu={
+                              routeOrdersOnly
+                                ? undefined
+                                : (event) => openOrderContextMenu(event, sale)
+                            }
+                            onView={routeOrdersOnly ? undefined : () => viewOrder(sale)}
+                            onPrint={routeOrdersOnly ? undefined : () => void printOrder(sale)}
                             printAriaLabel={orderPrintAriaLabel}
-                            onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
+                            onOpenActionsMenu={
+                              routeOrdersOnly
+                                ? undefined
+                                : (event) => openActionsMenuFromButton(event, sale)
+                            }
                             onCollectPayment={
-                              canCollectPayments &&
-                              canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
-                                ? () => openCollectPayment(sale)
-                                : null
+                              routeOrdersOnly
+                                ? null
+                                : canCollectPayments &&
+                                    canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
+                                  ? () => openCollectPayment(sale)
+                                  : null
                             }
                             onEdit={
                               !routeOrdersOnly &&
@@ -2400,15 +2416,20 @@ export default function SalesOrdersListScreen({
                             showDiscountColumn={showDiscountColumn}
                             showApprovalColumn={showApprovalColumn}
                             showRejectionStrip={showRejectionStrip}
+                            showActionsColumn={!routeOrdersOnly}
                             queueSlug={paymentQueueSlug}
                             onApproveActionRequest={approveActionRequest}
                             onRejectActionRequest={rejectActionRequest}
                             canApproveDiscounts={canApproveDiscounts}
                             capabilities={capabilities}
-                            selection={{
-                              checked: selectedIds.has(key),
-                              onChange: () => toggleOne(sale.id),
-                            }}
+                            selection={
+                              routeOrdersOnly
+                                ? null
+                                : {
+                                    checked: selectedIds.has(key),
+                                    onChange: () => toggleOne(sale.id),
+                                  }
+                            }
                           />
                         );
                       })
@@ -2418,13 +2439,15 @@ export default function SalesOrdersListScreen({
               </div>
             </>
           )}
-          <OrderContextMenu
-            open={Boolean(contextMenu)}
-            x={contextMenu?.x ?? 0}
-            y={contextMenu?.y ?? 0}
-            items={contextMenuItems}
-            onClose={() => setContextMenu(null)}
-          />
+          {!routeOrdersOnly ? (
+            <OrderContextMenu
+              open={Boolean(contextMenu)}
+              x={contextMenu?.x ?? 0}
+              y={contextMenu?.y ?? 0}
+              items={contextMenuItems}
+              onClose={() => setContextMenu(null)}
+            />
+          ) : null}
           <PaginationBar
             page={page}
             totalPages={totalPages}
@@ -2507,37 +2530,37 @@ export default function SalesOrdersListScreen({
           if (!listLoading) setRejectContext(null);
         }}
       />
-      <BatchActionBar count={selectedCount} onClear={clearSelection}>
-        <button
-          type="button"
-          disabled={Boolean(batchBusy) || selectedCount === 0}
-          onClick={() => void printSelectedOrders()}
-          className="theme-primary-btn rounded-lg px-4 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {batchBusy === "print-load"
-            ? "Loading…"
-            : batchBusy === "print"
-              ? "Printing…"
-              : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
-        </button>
-        {!routeOrdersOnly && hasPermission(P.sales.orders.edit) ? (
+      {!routeOrdersOnly ? (
+        <BatchActionBar count={selectedCount} onClear={clearSelection}>
           <button
             type="button"
-            disabled={blockingBatchBusy || !canMergeSelected}
-            title={
-              canMergeSelected
-                ? "Merge selected mobile orders for the same customer into one"
-                : "Select 2+ mobile orders for the same customer and route"
-            }
-            onClick={() => void mergeSelectedOrders()}
-            className="rounded-lg border border-[var(--theme-border)] bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={Boolean(batchBusy) || selectedCount === 0}
+            onClick={() => void printSelectedOrders()}
+            className="theme-primary-btn rounded-lg px-4 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {batchBusy === "merge"
-              ? "Merging…"
-              : `Merge${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+            {batchBusy === "print-load"
+              ? "Loading…"
+              : batchBusy === "print"
+                ? "Printing…"
+                : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
           </button>
-        ) : null}
-        {!routeOrdersOnly ? (
+          {hasPermission(P.sales.orders.edit) ? (
+            <button
+              type="button"
+              disabled={blockingBatchBusy || !canMergeSelected}
+              title={
+                canMergeSelected
+                  ? "Merge selected mobile orders for the same customer into one"
+                  : "Select 2+ mobile orders for the same customer and route"
+              }
+              onClick={() => void mergeSelectedOrders()}
+              className="rounded-lg border border-[var(--theme-border)] bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {batchBusy === "merge"
+                ? "Merging…"
+                : `Merge${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={blockingBatchBusy || selectedCount === 0}
@@ -2548,8 +2571,8 @@ export default function SalesOrdersListScreen({
               ? "Cancelling…"
               : `Cancel${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
           </button>
-        ) : null}
-      </BatchActionBar>
+        </BatchActionBar>
+      ) : null}
       <AiInsightPanel
         open={explainOpen}
         onClose={() => setExplainOpen(false)}

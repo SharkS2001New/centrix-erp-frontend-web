@@ -20,6 +20,7 @@ export function orderTableColumnCount({
   showPlacedByColumn = true,
   showDiscountColumn = false,
   showSelectionColumn = false,
+  showActionsColumn = true,
 }) {
   let count = 1; // expand
   if (showOrderColumn) count += 1;
@@ -38,7 +39,7 @@ export function orderTableColumnCount({
   if (showSourceColumn) count += 1;
   if (showPlacedByColumn) count += 1;
   if (showSelectionColumn) count += 1;
-  count += 1; // actions
+  if (showActionsColumn) count += 1;
   return count;
 }
 

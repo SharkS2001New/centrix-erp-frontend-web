@@ -456,7 +456,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/investors/reports",
-        label: "Investor reports",
+        label: "Reports-Investors",
         module: "investors",
         permissionAny: [P.investors.reports.view, P.investors.investors.view],
         requirePlatformInvestors: true,

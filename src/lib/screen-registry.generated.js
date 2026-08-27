@@ -658,6 +658,11 @@ function match_investors_reports(pathname) {
   return pathname === "/investors/reports";
 }
 
+function match_investors_reports_id(pathname) {
+  const m = pathname.match(/^\/investors\/reports\/([^/]+)$/);
+  return Boolean(m);
+}
+
 function match_lpo_new(pathname) {
   return pathname === "/lpo/new";
 }
@@ -1807,9 +1812,15 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "investors-reports",
-    title: "Reports",
+    title: "Reports-Investors",
     route: "/investors/reports",
     match: match_investors_reports,
+  },
+  {
+    id: "investors-reports-id",
+    title: "Reports-Investors",
+    route: "/investors/reports/[id]",
+    match: match_investors_reports_id,
   },
   {
     id: "lpo-new",

@@ -6,6 +6,8 @@ import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 import { isPlatformInvestorsEnabled } from "@/lib/platform-org-features";
 import { P } from "@/lib/permission-codes";
 import { notifyError } from "@/lib/notify";
@@ -16,6 +18,10 @@ import {
   formatKesCompact,
 } from "@/components/catalog/catalog-shared";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { INVESTOR_REPORT_KINDS } from "@/components/investors/investor-reports-view";
+
+const REPORT_LINK_CLASS =
+  "text-sm font-medium text-[var(--brand-primary)] hover:underline whitespace-nowrap";
 
 export function InvestorsReportsScreen() {
   const { capabilities, hasPermission } = useAuth();
@@ -48,11 +54,12 @@ export function InvestorsReportsScreen() {
   }, [canView, debouncedSearch]);
 
   useTabAwareDataLoad(loadData);
+  useTabTitle(tabSectionTitle("Reports", "Investors"));
 
   return (
     <CatalogPageShell
-      title="Investor reports"
-      subtitle="Open an investor to run sales, stock balance, and money-flow reports"
+      title="Reports-Investors"
+      subtitle="Open sales, stock balance, and money-flow reports for each investor"
       action={
         <button
           type="button"
@@ -81,7 +88,7 @@ export function InvestorsReportsScreen() {
             {loading ? (
               <p className="p-8 text-sm text-slate-500">Loading…</p>
             ) : (
-              <table className="w-full min-w-[640px] border-collapse text-sm">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">Investor</th>
@@ -101,7 +108,12 @@ export function InvestorsReportsScreen() {
                     rows.map((row) => (
                       <tr key={row.id} className="theme-table-row border-t border-slate-100">
                         <td className="px-4 py-2.5">
-                          <div className="font-medium text-slate-900">{row.investor_name}</div>
+                          <Link
+                            href={`/investors/${row.id}`}
+                            className="font-medium text-slate-900 hover:text-[var(--brand-primary)] hover:underline"
+                          >
+                            {row.investor_name}
+                          </Link>
                           <div className="font-mono text-xs text-slate-500">{row.investor_code}</div>
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums">
@@ -111,12 +123,17 @@ export function InvestorsReportsScreen() {
                           {formatKesCompact(row.summary?.cash_pool_balance ?? 0)}
                         </td>
                         <td className="px-4 py-2.5">
-                          <Link
-                            href={`/investors/${row.id}?tab=reports`}
-                            className="text-sm font-medium text-[var(--brand-primary)] hover:underline"
-                          >
-                            Open reports
-                          </Link>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            {INVESTOR_REPORT_KINDS.map((kind) => (
+                              <Link
+                                key={kind.id}
+                                href={`/investors/reports/${row.id}?kind=${kind.id}`}
+                                className={REPORT_LINK_CLASS}
+                              >
+                                {kind.label}
+                              </Link>
+                            ))}
+                          </div>
                         </td>
                       </tr>
                     ))
