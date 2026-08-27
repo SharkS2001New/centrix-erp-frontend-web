@@ -304,11 +304,11 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     return supplierSubroute;
   }
 
-  const item = getNavRouteRules().find((rule) =>
+  const matchingItems = getNavRouteRules().filter((rule) =>
     rule.exact ? pathname === rule.href : pathname === rule.href || pathname.startsWith(`${rule.href}/`),
   );
 
-  if (!item) {
+  if (matchingItems.length === 0) {
     if (pathname === "/profile" || pathname.startsWith("/profile/")) {
       return true;
     }
@@ -337,5 +337,10 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     return true;
   }
 
-  return isNavItemVisible(item, ctx);
+  // Same href can appear in multiple workspaces (e.g. Drivers/Vehicles under Field sales
+  // and Distribution). Prefer the longest match, then allow if any of those defs is visible.
+  const bestLen = matchingItems[0].href.length;
+  return matchingItems
+    .filter((item) => item.href.length === bestLen)
+    .some((item) => isNavItemVisible(item, ctx));
 }

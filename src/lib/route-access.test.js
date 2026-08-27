@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canAccessRoute } from "@/lib/route-access";
+
+vi.mock("@/lib/auth-storage", () => ({
+  getStoredWorkspace: vi.fn(() => null),
+  getStoredToken: vi.fn(() => null),
+}));
+
+import { getStoredWorkspace } from "@/lib/auth-storage";
 
 const baseCtx = {
   hasPermission: () => true,
@@ -11,6 +18,10 @@ const baseCtx = {
 };
 
 describe("route-access", () => {
+  beforeEach(() => {
+    getStoredWorkspace.mockReturnValue(null);
+  });
+
   it("allows notifications for any authenticated user", () => {
     expect(canAccessRoute("/notifications", baseCtx)).toBe(true);
   });
@@ -93,5 +104,23 @@ describe("route-access", () => {
         hasPermission: (code) => code === "hr.attendance.view",
       }),
     ).toBe(false);
+  });
+
+  it("allows Distribution drivers/vehicles when Field-sales fleet nav is hidden", () => {
+    getStoredWorkspace.mockReturnValue("distribution");
+    const ctx = {
+      ...baseCtx,
+      isModuleEnabled: (key) => key === "distribution",
+      hasPermission: (code) =>
+        code === "fulfillment.drivers.view" || code === "fulfillment.vehicles.view",
+      capabilities: {
+        modules: { distribution: true },
+        distribution_ops_enabled: true,
+        module_settings: {},
+      },
+    };
+
+    expect(canAccessRoute("/fulfillment/drivers", ctx)).toBe(true);
+    expect(canAccessRoute("/fulfillment/vehicles", ctx)).toBe(true);
   });
 });

@@ -317,9 +317,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       setError(null);
       setLastFailedMessage(null);
       setActionResult(null);
-      if (!confirm) {
-        clearActionState();
-      }
       setLoading(true);
       setStreamStatus(null);
       if (!confirm) {
@@ -327,12 +324,23 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
       setInput("");
       setEntityRefs([]);
+      const normalizedConfirmText = message.replace(/\*+/g, " ").replace(/\s+/g, " ").trim();
+      const typedConfirm =
+        Boolean(pendingAction) &&
+        (/^(yes|yeah|yep|confirm|proceed|go ahead|do it|create it|ok|okay)\b/i.test(
+          normalizedConfirmText,
+        ) ||
+          /^(?:please\s+)?save(?:\s+(?:it|this|the))?(?:\s+(?:product|supplier|customer|employee|lpo|order|purchase\s+order|draft))?\s*$/i.test(
+            normalizedConfirmText,
+          ));
+      const effectiveConfirm = confirm || typedConfirm;
       try {
         const history = messages.slice(-6);
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
           buildPageContext({ pathname, screenKey: workspaceId });
+        const mergedFormValues = formValuesOverride ?? formValues;
         const requestBody = {
           context: "erp",
           workspace_id: workspaceId,
@@ -342,15 +350,15 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           conversation_id: conversationId || undefined,
           history,
           entity_refs: refsForSend.length ? refsForSend : undefined,
-          pending_action: confirm && pendingAction ? pendingAction : undefined,
-          form_values: confirm && Object.keys(formValuesOverride ?? formValues).length
-            ? formValuesOverride ?? formValues
-            : undefined,
-          confirm_action: confirm,
+          // Keep create/write drafts across turns so "confirm" can POST (e.g. create_lpo).
+          pending_action: pendingAction || undefined,
+          form_values:
+            Object.keys(mergedFormValues || {}).length > 0 ? mergedFormValues : undefined,
+          confirm_action: effectiveConfirm || undefined,
         };
 
         const useStream =
-          !confirm &&
+          !effectiveConfirm &&
           !pendingAction &&
           status?.supports_streaming !== false;
 
@@ -410,7 +418,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "AI request failed";
         setError(msg);
-        setLastFailedMessage(confirm ? null : message);
+        setLastFailedMessage(confirm || effectiveConfirm ? null : message);
       } finally {
         setLoading(false);
       }

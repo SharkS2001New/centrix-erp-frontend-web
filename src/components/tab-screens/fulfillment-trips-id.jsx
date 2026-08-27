@@ -26,7 +26,7 @@ import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print"
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
-import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";

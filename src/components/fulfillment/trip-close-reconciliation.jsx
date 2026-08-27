@@ -15,6 +15,7 @@ import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel"
 import { PodAttachmentLink } from "@/components/fulfillment/pod-attachment-preview";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatCollectedCashDefault } from "@/lib/trip-cod";
+import { formatOrderNumber } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function varianceTone(variance) {

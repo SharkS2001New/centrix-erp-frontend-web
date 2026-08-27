@@ -116,6 +116,11 @@ import {
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
+import {
+  RouteOrdersListEyebrow,
+  RouteOrdersOpsShortcuts,
+  RouteOrdersSummaryStats,
+} from "@/components/fulfillment/route-orders-ops-chrome";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { ActionFeedbackBanner } from "@/components/shared/action-feedback-banner";
@@ -509,9 +514,12 @@ export default function SalesOrdersListScreen({
     ? queueConfig.fixedSourceFilter
     : sourceFilter;
   // Source is only useful on View All — queue pages (Mobile, Unpaid, Paid, …) already imply context.
+  // Route orders are distribution-scoped; source/user filters stay on sales All Orders.
   const showSourceFilter =
+    !routeOrdersOnly &&
     !queueConfig?.lockSourceFilter &&
     (!queueConfig?.slug || queueConfig.slug === "all");
+  const showCashierFilter = !routeOrdersOnly;
   const showRouteFilter = routeOrdersOnly || queueConfig?.slug === "mobile";
 
   const routeFilterOptions = useMemo(() => {
@@ -1878,7 +1886,14 @@ export default function SalesOrdersListScreen({
               : shopDebtorsOnly
                 ? "Shop debtors"
                 : routeOrdersOnly
-                  ? (queueConfig?.title ?? "Route orders")
+                  ? (
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      Route orders
+                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900">
+                        Distribution
+                      </span>
+                    </span>
+                  )
                   : queueConfig?.title ?? "All Orders"
       }
         subtitle={
@@ -1891,8 +1906,7 @@ export default function SalesOrdersListScreen({
                 : shopDebtorsOnly
                   ? "Sales orders for regular and debtor customers only."
                   : routeOrdersOnly
-                    ? (queueConfig?.subtitle
-                      ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
+                    ? `Delivery-route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only here — change status in Sales → Orders.`
                     : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
         }
       action={
@@ -1906,18 +1920,6 @@ export default function SalesOrdersListScreen({
             >
               {loading || listLoading ? "Refreshing…" : "Refresh"}
             </button>
-            <Link
-              href="/fulfillment/dispatch"
-              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Dispatch board
-            </Link>
-            <Link
-              href="/fulfillment/routes"
-              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Routes
-            </Link>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -1969,6 +1971,15 @@ export default function SalesOrdersListScreen({
       toolbar={
         <div className="mb-4">
           <FilterToolbar className="mb-0">
+            {routeOrdersOnly && showRouteFilter ? (
+              <Field label="Route">
+                <FilterSelect
+                  value={routeFilter}
+                  onChange={(e) => handleRouteFilterChange(e.target.value)}
+                  options={routeFilterOptions}
+                />
+              </Field>
+            ) : null}
             <Field label="From">
               <input
                 type="date"
@@ -1992,7 +2003,7 @@ export default function SalesOrdersListScreen({
             >
               Filter
             </button>
-            {showRouteFilter ? (
+            {!routeOrdersOnly && showRouteFilter ? (
               <Field label="Route">
                 <FilterSelect
                   value={routeFilter}
@@ -2018,35 +2029,40 @@ export default function SalesOrdersListScreen({
                 />
               </Field>
             ) : null}
-            <Field label="User">
-              <FilterSelect
-                value={cashierFilter}
-                onChange={(e) => setCashierFilter(e.target.value)}
-                options={sellerFilterOptions}
-              />
-            </Field>
+            {showCashierFilter ? (
+              <Field label="User">
+                <FilterSelect
+                  value={cashierFilter}
+                  onChange={(e) => setCashierFilter(e.target.value)}
+                  options={sellerFilterOptions}
+                />
+              </Field>
+            ) : null}
           </FilterToolbar>
         </div>
       }
       banner={
-        actionMessage || printJobBusy ? (
-          <div
-            className="mb-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-            role="status"
-            aria-live="polite"
-          >
-            {printJobBusy ? (
-              <span
-                className="mt-0.5 inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
-                aria-hidden
+        <>
+          {routeOrdersOnly ? <RouteOrdersOpsShortcuts hasPermission={hasPermission} /> : null}
+          {actionMessage || printJobBusy ? (
+            <div
+              className="mb-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              role="status"
+              aria-live="polite"
+            >
+              {printJobBusy ? (
+                <span
+                  className="mt-0.5 inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                  aria-hidden
+                />
+              ) : null}
+              <ActionFeedbackBanner
+                message={actionMessage ?? "Printing in background — you can keep working…"}
+                className="mb-0 border-0 bg-transparent p-0"
               />
-            ) : null}
-            <ActionFeedbackBanner
-              message={actionMessage ?? "Printing in background — you can keep working…"}
-              className="mb-0 border-0 bg-transparent p-0"
-            />
-          </div>
-        ) : null
+            </div>
+          ) : null}
+        </>
       }
     >
       <div className="mt-8 space-y-6">
@@ -2074,7 +2090,17 @@ export default function SalesOrdersListScreen({
           </div>
         ) : null}
         {!loading ? (
-          <OrderSummaryStats summary={summary} hint={summaryHint} />
+          routeOrdersOnly ? (
+            <RouteOrdersSummaryStats
+              summary={summary}
+              hint={summaryHint}
+              rows={rows}
+              routeFilter={routeFilter}
+              routeById={routeById}
+            />
+          ) : (
+            <OrderSummaryStats summary={summary} hint={summaryHint} />
+          )
         ) : null}
 
         <div className="grid grid-cols-12 items-start gap-3">
@@ -2082,7 +2108,11 @@ export default function SalesOrdersListScreen({
             <SearchInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search product, customer, amount, S0034, POS #…"
+              placeholder={
+                routeOrdersOnly
+                  ? "Search customer, order #, product…"
+                  : "Search product, customer, amount, S0034, POS #…"
+              }
               className="w-full min-w-0"
             />
           </div>
@@ -2112,6 +2142,9 @@ export default function SalesOrdersListScreen({
         </div>
 
         <div className="theme-panel theme-table-shell relative overflow-hidden rounded-xl shadow-sm">
+          {routeOrdersOnly ? (
+            <RouteOrdersListEyebrow routeFilter={routeFilter} routeById={routeById} />
+          ) : null}
           {showTransitionOverlay ? (
             <div
               className="absolute inset-0 z-20 flex min-h-[120px] items-center justify-center bg-white/60 backdrop-blur-[1px]"
