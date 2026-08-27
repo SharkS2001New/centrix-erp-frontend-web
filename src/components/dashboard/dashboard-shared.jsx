@@ -101,39 +101,53 @@ export function DashboardDateRangeBar({
   showBranch = true,
   onRefresh,
   refreshing = false,
+  /** Inclusive minimum span (e.g. 7 = at least one week). */
+  minRangeDays = null,
+  hint = null,
 }) {
+  const minHint =
+    hint ??
+    (minRangeDays != null && Number(minRangeDays) > 1
+      ? `Select at least ${Number(minRangeDays)} days (From → To).`
+      : null);
+
   return (
-    <div className="mb-6 flex flex-wrap items-end gap-3">
-      <Field label="From">
-        <input
-          type="date"
-          className={inputClassName()}
-          value={fromDate}
-          onChange={(e) => onFromDateChange(e.target.value)}
-        />
-      </Field>
-      <Field label="To">
-        <input
-          type="date"
-          className={inputClassName()}
-          value={toDate}
-          onChange={(e) => onToDateChange(e.target.value)}
-        />
-      </Field>
-      {showBranch ? (
-        <Field label="Branch">
-          <SearchableSelect
+    <div className="mb-6 space-y-2">
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="From">
+          <input
+            type="date"
             className={inputClassName()}
-            value={branchId}
-            onChange={(next) => onBranchChange(next)}
-            options={[
-              { value: "", label: "All branches" },
-              ...branches.map((b) => ({ value: b.id, label: b.branch_name })),
-            ]}
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(e) => onFromDateChange(e.target.value)}
           />
         </Field>
-      ) : null}
-      {onRefresh ? <DashboardRefreshButton onClick={onRefresh} loading={refreshing} /> : null}
+        <Field label="To">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => onToDateChange(e.target.value)}
+          />
+        </Field>
+        {showBranch ? (
+          <Field label="Branch">
+            <SearchableSelect
+              className={inputClassName()}
+              value={branchId}
+              onChange={(next) => onBranchChange(next)}
+              options={[
+                { value: "", label: "All branches" },
+                ...branches.map((b) => ({ value: b.id, label: b.branch_name })),
+              ]}
+            />
+          </Field>
+        ) : null}
+        {onRefresh ? <DashboardRefreshButton onClick={onRefresh} loading={refreshing} /> : null}
+      </div>
+      {minHint ? <p className="theme-subtext text-xs">{minHint}</p> : null}
     </div>
   );
 }

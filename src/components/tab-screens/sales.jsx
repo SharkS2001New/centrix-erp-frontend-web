@@ -10,18 +10,15 @@ import {
   PrimaryLink,
 } from "@/components/catalog/catalog-shared";
 import {
-  DashboardPanel,
   DashboardQuickLinks,
   DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
-import { HourlySalesChart } from "@/components/sales/sales-shared";
 import { OrderSummaryStats, normalizeOrdersListSummary, summarizeOrders } from "@/components/sales/sales-orders-shared";
 import { SaleCreatedByCell } from "@/components/sales/sales-orders-columns";
 import {
-  buildHourlySalesChart,
   formatReceiptNumber,
   formatSaleKes,
   saleCustomerLabel,
@@ -71,7 +68,6 @@ export function SalesScreen() {
   useTabAwareDataLoad(loadData);
 
   const orderSummaryDisplay = orderSummary ?? summarizeOrders(sales);
-  const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);
 
   const recentOrders = useMemo(
     () =>
@@ -118,10 +114,6 @@ export function SalesScreen() {
           <DashboardSection title="Today's orders" subtitle="Excluding held orders">
             <OrderSummaryStats summary={orderSummaryDisplay} hint="Today" />
           </DashboardSection>
-
-          <DashboardPanel title="Hourly sales" subtitle="Revenue by hour (today)">
-            <HourlySalesChart points={hourly} />
-          </DashboardPanel>
 
           <ReportsDashboardSection compact showFilters workspaceScope="sales" />
 
