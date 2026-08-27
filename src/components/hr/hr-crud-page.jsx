@@ -48,6 +48,8 @@ export function HrCrudPage({
   addButtonLabel = "Add new",
   drawerCreateTitle,
   renderRowActions,
+  /** Optional controls rendered inside the list FilterToolbar (before search). */
+  filterSlot = null,
   exportEnabled = true,
   exportFilename,
   /** Report title for PDF/CSV (defaults to page title). */
@@ -84,7 +86,7 @@ export function HrCrudPage({
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, apiPath]);
+  }, [debouncedSearch, apiPath, listSearchParams]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -218,10 +220,9 @@ export function HrCrudPage({
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{subtitle}</p>
             ) : null}
           </div>
-        ) : !embedded && title ? (
-          <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
         ) : null}
         <FilterToolbar>
+          {filterSlot}
           {searchFilter ? (
             <SearchInput
               value={search}

@@ -400,6 +400,7 @@ export function reportPermissionCode(reportKey) {
     "bank-transfer": P.hr.payroll.view,
     "nssf-remittance": P.hr.payroll.view,
     "other-deductions": P.hr.payroll.view,
+    "cash-advances": P.hr.cash_advances.view,
     "staff-turnover": P.hr.employees.view,
     headcount: P.hr.employees.view,
     "contract-expiry": P.hr.employees.view,

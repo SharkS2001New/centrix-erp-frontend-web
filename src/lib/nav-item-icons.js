@@ -201,6 +201,7 @@ export const NAV_HREF_ICONS = {
   "/reports/bank-transfer": "wallet",
   "/reports/nssf-remittance": "percent",
   "/reports/other-deductions": "receipt",
+  "/reports/cash-advances": "wallet",
   "/reports/staff-turnover": "swap",
   "/reports/headcount": "hr",
   "/reports/contract-expiry": "alert",

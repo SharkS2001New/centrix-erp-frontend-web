@@ -25,6 +25,7 @@ import {
   EMPTY_PAYROLL_RUN_FORM,
   PayrollRunStatusBadge,
   buildPayPeriodBody,
+  composeEmployeeDisplayName,
   formatHrKes,
   formatHrKesFull,
   formatPeriodRange,
@@ -61,6 +62,8 @@ export function HrPayrollScreen() {
   const [periods, setPeriods] = useState([]);
   const [payrollEligibleCount, setPayrollEligibleCount] = useState(0);
   const [departments, setDepartments] = useState([]);
+  const [runEmployees, setRunEmployees] = useState([]);
+  const [runEmpSearch, setRunEmpSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [runForm, setRunForm] = useState(EMPTY_PAYROLL_RUN_FORM);
@@ -157,6 +160,25 @@ export function HrPayrollScreen() {
     [orgPeriods],
   );
 
+  const runEmployeesInScope = useMemo(() => {
+    const deptId = runForm.department_id ? String(runForm.department_id) : "";
+    if (!deptId) return runEmployees;
+    return runEmployees.filter((e) => String(e.department_id ?? "") === deptId);
+  }, [runEmployees, runForm.department_id]);
+
+  const runExcludeCandidates = useMemo(() => {
+    const q = runEmpSearch.trim().toLowerCase();
+    if (!q) return runEmployeesInScope;
+    return runEmployeesInScope.filter((e) =>
+      composeEmployeeDisplayName(e).toLowerCase().includes(q),
+    );
+  }, [runEmployeesInScope, runEmpSearch]);
+
+  const excludedEmployeeSet = useMemo(
+    () => new Set((runForm.exclude_employee_ids ?? []).map(String)),
+    [runForm.exclude_employee_ids],
+  );
+
   const scheduleEnforced =
     typeof runSchedule?.enforce_month_end_run_schedule === "boolean"
       ? runSchedule.enforce_month_end_run_schedule
@@ -237,11 +259,30 @@ export function HrPayrollScreen() {
   async function openGenerateDrawer() {
     setRunError(null);
     setRunPreparing(true);
+    setRunEmpSearch("");
     try {
-      const available = await ensurePayPeriodForRun();
+      const [available, empRes] = await Promise.all([
+        ensurePayPeriodForRun(),
+        apiRequest("/employees", {
+          searchParams: {
+            per_page: 200,
+            fields: "lean",
+            is_active: 1,
+          },
+        }).catch(() => ({ data: [] })),
+      ]);
+      const employees = (empRes.data ?? []).filter(
+        (e) =>
+          String(e?.employment_status ?? "active") === "active" &&
+          e?.is_active !== false &&
+          Number(e?.base_salary ?? 0) > 0,
+      );
+      setRunEmployees(employees);
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
         ...payrollRunFormDefaults(capabilities?.module_settings),
+        include_all_employees: true,
+        exclude_employee_ids: [],
         pay_period_id: String(available[0]?.id ?? ""),
       });
       setRunDrawerOpen(true);
@@ -252,6 +293,8 @@ export function HrPayrollScreen() {
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
         ...payrollRunFormDefaults(capabilities?.module_settings),
+        include_all_employees: true,
+        exclude_employee_ids: [],
       });
       setRunDrawerOpen(true);
       if (err instanceof Error && err.message) {
@@ -341,6 +384,15 @@ export function HrPayrollScreen() {
       setRunError("Please select a pay period.");
       return;
     }
+    const excludeIds = runForm.include_all_employees
+      ? []
+      : (runForm.exclude_employee_ids ?? [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+    if (!runForm.include_all_employees && excludeIds.length === 0) {
+      setRunError("Select at least one employee to exclude, or turn on Include all employees.");
+      return;
+    }
     setRunSaving(true);
     setRunError(null);
     try {
@@ -355,6 +407,7 @@ export function HrPayrollScreen() {
       });
       const processOptions = {
         department_id: runForm.department_id ? Number(runForm.department_id) : null,
+        exclude_employee_ids: excludeIds,
         include_allowances: runForm.include_allowances,
         include_other_deductions: runForm.include_employee_deductions,
         include_deductions: runForm.include_employee_deductions,
@@ -362,6 +415,7 @@ export function HrPayrollScreen() {
         use_attendance_proration: runForm.use_attendance_proration,
       };
       setRunDrawerOpen(false);
+      setRunEmpSearch("");
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
         ...payrollRunFormDefaults(capabilities?.module_settings),
@@ -704,7 +758,23 @@ export function HrPayrollScreen() {
         <Field label="Department">
           <SearchableSelect
             value={runForm.department_id}
-            onChange={(v) => setRunForm((p) => ({ ...p, department_id: v }))}
+            onChange={(v) =>
+              setRunForm((p) => {
+                const nextDept = v;
+                const allowed = new Set(
+                  runEmployees
+                    .filter((e) => !nextDept || String(e.department_id ?? "") === String(nextDept))
+                    .map((e) => String(e.id)),
+                );
+                return {
+                  ...p,
+                  department_id: nextDept,
+                  exclude_employee_ids: (p.exclude_employee_ids ?? []).filter((id) =>
+                    allowed.has(String(id)),
+                  ),
+                };
+              })
+            }
             className={inputClassName()}
             options={[
               { value: "", label: "All departments" },
@@ -715,6 +785,118 @@ export function HrPayrollScreen() {
             ]}
           />
         </Field>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={runForm.include_all_employees !== false}
+            onChange={(e) =>
+              setRunForm((p) => ({
+                ...p,
+                include_all_employees: e.target.checked,
+                exclude_employee_ids: e.target.checked ? [] : p.exclude_employee_ids ?? [],
+              }))
+            }
+            className="mt-0.5 rounded border-slate-300"
+          />
+          <span>
+            <span className="font-medium">Include all employees</span>
+            <span className="mt-0.5 block text-slate-500">
+              Every eligible employee in the scope above is paid. Uncheck to pick people who should
+              not be on this payroll.
+            </span>
+          </span>
+        </label>
+        {runForm.include_all_employees === false ? (
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">Exclude from this run</p>
+              <span className="text-xs text-slate-500">
+                {excludedEmployeeSet.size} selected
+                {runEmployeesInScope.length
+                  ? ` · ${runEmployeesInScope.length} in scope`
+                  : ""}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={runEmpSearch}
+                onChange={(e) => setRunEmpSearch(e.target.value)}
+                placeholder="Search employees…"
+                className={`${inputClassName()} w-72 max-w-full sm:w-80`}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setRunForm((p) => ({
+                    ...p,
+                    exclude_employee_ids: [
+                      ...new Set([
+                        ...(p.exclude_employee_ids ?? []).map(String),
+                        ...runExcludeCandidates.map((e) => String(e.id)),
+                      ]),
+                    ],
+                  }))
+                }
+                className="text-xs font-medium text-[#185FA5] hover:underline"
+              >
+                Select shown
+              </button>
+              <button
+                type="button"
+                onClick={() => setRunForm((p) => ({ ...p, exclude_employee_ids: [] }))}
+                className="text-xs font-medium text-slate-600 hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white">
+              {runExcludeCandidates.length === 0 ? (
+                <p className="px-3 py-4 text-center text-xs text-slate-500">
+                  No eligible employees found
+                  {runForm.department_id ? " in this department" : ""}.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {runExcludeCandidates.map((emp) => {
+                    const id = String(emp.id);
+                    const checked = excludedEmployeeSet.has(id);
+                    return (
+                      <li key={id}>
+                        <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setRunForm((p) => {
+                                const cur = new Set((p.exclude_employee_ids ?? []).map(String));
+                                if (cur.has(id)) cur.delete(id);
+                                else cur.add(id);
+                                return { ...p, exclude_employee_ids: [...cur] };
+                              })
+                            }
+                            className="rounded border-slate-300"
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {composeEmployeeDisplayName(emp)}
+                          </span>
+                          {emp.employee_code ? (
+                            <span className="shrink-0 font-mono text-xs text-slate-400">
+                              {emp.employee_code}
+                            </span>
+                          ) : null}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <p className="text-xs text-slate-500">
+              Ticked employees are skipped on Generate. Everyone else in scope still gets paid.
+            </p>
+          </div>
+        ) : null}
         <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"

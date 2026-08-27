@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
@@ -15,6 +16,23 @@ import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
 import { notifySuccess } from "@/lib/notify";
+
+function todayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function daysAgoIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function PrintIcon() {
   return (
@@ -52,6 +70,18 @@ function statusLabel(status) {
 export function HrCashAdvancesScreen() {
   const { hasPermission, user, organization, generalSettings } = useAuth();
   const canApprove = canApproveCashAdvances({ hasPermission });
+  const [fromDate, setFromDate] = useState(() => daysAgoIso(89));
+  const [toDate, setToDate] = useState(() => todayIso());
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const listSearchParams = useMemo(
+    () => ({
+      ...(fromDate ? { from_date: fromDate } : {}),
+      ...(toDate ? { to_date: toDate } : {}),
+      ...(statusFilter ? { status: statusFilter } : {}),
+    }),
+    [fromDate, toDate, statusFilter],
+  );
 
   function printVoucher(advance, employees = []) {
     const employee =
@@ -97,11 +127,48 @@ export function HrCashAdvancesScreen() {
   return (
     <HrCrudPage
       title="Cash advances"
-      subtitle="Salary advances recovered through payroll — new advances go to a manager with approval rights"
+      subtitle="Salary advances recovered through payroll — filter by date to include previous months. New advances go to a manager with approval rights."
       addButtonLabel="Add advance"
       drawerWide
       drawerCreateTitle="Request cash advance"
       apiPath="/employee-cash-advances"
+      listSearchParams={listSearchParams}
+      filterSlot={
+        <>
+          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
+            From
+            <input
+              type="date"
+              className={inputClassName()}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
+            To
+            <input
+              type="date"
+              className={inputClassName()}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs text-slate-600">
+            Status
+            <select
+              className={inputClassName()}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">All statuses</option>
+              <option value="pending">Pending approval</option>
+              <option value="open">Open</option>
+              <option value="repaid">Repaid</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+        </>
+      }
       exportTitle="Cash advances"
       exportFilename="cash-advances"
       exportColumns={[
@@ -119,7 +186,7 @@ export function HrCashAdvancesScreen() {
         let page = 1;
         for (;;) {
           const res = await apiRequest("/employee-cash-advances", {
-            searchParams: { per_page: 200, page },
+            searchParams: { per_page: 200, page, ...listSearchParams },
           });
           const batch = res.data ?? [];
           all.push(...batch);

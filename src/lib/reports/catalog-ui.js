@@ -184,6 +184,7 @@ export const REPORT_CATEGORY_DEFS = [
       "bank-transfer",
       "nssf-remittance",
       "other-deductions",
+      "cash-advances",
       "staff-turnover",
       "headcount",
       "contract-expiry",

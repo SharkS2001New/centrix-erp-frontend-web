@@ -76,9 +76,10 @@ export function ReportsDashboardSection({
   const hasScopedAnalytics = Boolean(scope.kpis.length || scope.charts.length);
   // Business summary alone must not load sales analytics payloads.
   const enabled = enabledProp ?? (canViewReports && hasScopedAnalytics);
-  const isBackofficeDashboard = workspaceScope === "backoffice";
-  const minRangeDays = isBackofficeDashboard ? 7 : null;
-  const defaults = isBackofficeDashboard ? lastWeekDashboardDateRange() : defaultDashboardDateRange();
+  // Business summary (backoffice) and Sales analytics share the last-7-days default.
+  const useWeekDefault = workspaceScope === "backoffice" || workspaceScope === "sales";
+  const minRangeDays = useWeekDefault ? 7 : null;
+  const defaults = useWeekDefault ? lastWeekDashboardDateRange() : defaultDashboardDateRange();
   const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);

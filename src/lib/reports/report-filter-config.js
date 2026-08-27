@@ -20,6 +20,7 @@ export const REPORT_DEFAULT_DATE_RANGE_DAYS = {
   "accounts-receivable": 6,
   "profit-loss": 0,
   "profit-loss-by-product": 0,
+  "cash-advances": 89,
 };
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
@@ -77,6 +78,14 @@ export const ATTENDANCE_STATUS_OPTIONS = [
   { value: "absent", label: "Absent" },
   { value: "leave", label: "Leave" },
   { value: "holiday", label: "Holiday / off" },
+];
+
+export const CASH_ADVANCE_STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "pending", label: "Pending approval" },
+  { value: "open", label: "Open" },
+  { value: "repaid", label: "Repaid" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 export const KRA_STATUS_OPTIONS = [
@@ -178,6 +187,7 @@ export const REPORT_DATE_COLUMNS = {
   "bank-transfer": "run_date",
   "nssf-remittance": "run_date",
   "other-deductions": "run_date",
+  "cash-advances": "advance_date",
   "payroll-summary": "run_date",
   headcount: "hire_date",
   "contract-expiry": "contract_end_date",
@@ -220,6 +230,9 @@ export const REPORT_EXTRA_FILTERS = {
   "daily-sales": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
   "attendance-register": [
     { id: "status", label: "Status", type: "select", optionsKey: "attendanceStatuses" },
+  ],
+  "cash-advances": [
+    { id: "status", label: "Status", type: "select", optionsKey: "cashAdvanceStatuses" },
   ],
   "lateness-list": [
     {

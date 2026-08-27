@@ -33,6 +33,12 @@ export const HR_REPORT_DEFS = [
     subtitle: "Non-statutory deductions applied on each pay period",
     icon: "receipt",
   },
+  {
+    key: "cash-advances",
+    label: "Cash advances",
+    subtitle: "Salary advances by date — filter previous months, status, and branch",
+    icon: "wallet",
+  },
   { key: "staff-turnover", label: "Staff turnover", subtitle: "Joiners, leavers, and turnover rate", icon: "swap" },
   { key: "headcount", label: "Headcount", subtitle: "Workforce headcount by department and status", icon: "hr" },
   { key: "contract-expiry", label: "Contract expiry", subtitle: "Contracts nearing end date", icon: "alert" },

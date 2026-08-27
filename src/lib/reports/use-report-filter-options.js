@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   ATTENDANCE_STATUS_OPTIONS,
+  CASH_ADVANCE_STATUS_OPTIONS,
   INVENTORY_LOCATION_OPTIONS,
   inventoryTransactionTypeOptionsForCapabilities,
   KRA_DOCUMENT_TYPE_OPTIONS,
@@ -28,6 +29,7 @@ export function useReportFilterOptions(reportKey) {
       paymentStatuses: PAYMENT_STATUS_OPTIONS,
       orderStatuses: ORDER_STATUS_OPTIONS,
       attendanceStatuses: ATTENDANCE_STATUS_OPTIONS,
+      cashAdvanceStatuses: CASH_ADVANCE_STATUS_OPTIONS,
       kraStatuses: KRA_STATUS_OPTIONS,
       kraDocumentTypes: KRA_DOCUMENT_TYPE_OPTIONS,
       latenessWaiverStatuses: LATENESS_WAIVER_OPTIONS,

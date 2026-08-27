@@ -28,7 +28,7 @@ export function inclusiveDashboardDaySpan(from, to) {
   return Math.floor(ms / 86_400_000) + 1;
 }
 
-/** Business summary / sales analytics default: today only. */
+/** Today-only range (non–Backoffice / non–Sales analytics dashboards). */
 export function todayDashboardDateRange() {
   const today = toLocalDateInputValue();
   return { from: today, to: today };

@@ -17,6 +17,7 @@ export const REPORT_SHORT_SELECT_KEYS = new Set([
   "paymentStatuses",
   "orderStatuses",
   "attendanceStatuses",
+  "cashAdvanceStatuses",
   "kraStatuses",
   "kraDocumentTypes",
   "latenessWaiverStatuses",

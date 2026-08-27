@@ -383,6 +383,10 @@ export const EMPTY_PAYROLL_RUN_FORM = {
   pay_period_id: "",
   run_date: new Date().toISOString().slice(0, 10),
   department_id: "",
+  /** When true, every eligible employee is paid. When false, pick people to skip. */
+  include_all_employees: true,
+  /** Employee ids to omit from this run (used when include_all_employees is false). */
+  exclude_employee_ids: [],
   include_allowances: true,
   use_attendance_proration: true,
   include_overtime: true,
