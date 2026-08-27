@@ -43,6 +43,16 @@ export function humanizeBackendTerm(value) {
   return null;
 }
 
+/** Apply Backoffice wording for display (AI chat, tables, labels). */
+export function applyUserFacingBackendWording(text) {
+  if (text == null || text === "") return text;
+  const raw = String(text);
+  // Never rewrite "ERP" in prose (e.g. "Centrix ERP") — only the internal channel code "backend".
+  return raw
+    .replace(/\bBACKEND_SALE\b/g, "Backoffice sale")
+    .replace(/\bbackend\b/gi, "Backoffice");
+}
+
 export function inventoryTransactionTypeLabel(type) {
   const key = String(type ?? "").toUpperCase();
   return INVENTORY_TRANSACTION_TYPE_LABELS[key] ?? humanizeBackendTerm(type) ?? type ?? "—";

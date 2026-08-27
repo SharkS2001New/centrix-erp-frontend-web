@@ -23,6 +23,19 @@ describe("ai message format", () => {
       level: 3,
       text: "1. How Centrix Calculates Stock Value",
     });
+    expect(parseMarkdownHeading("#### HR & payroll")).toEqual({
+      level: 4,
+      text: "HR & payroll",
+    });
+    expect(parseMarkdownHeading("#### Unusually large orders")).toEqual({
+      level: 4,
+      text: "Unusually large orders",
+    });
+    expect(parseMarkdownHeading("###### Tiny")).toEqual({
+      level: 6,
+      text: "Tiny",
+    });
+    expect(parseMarkdownHeading("####### Too many")).toBeNull();
   });
 
   it("parses GFM table rows and separators", () => {

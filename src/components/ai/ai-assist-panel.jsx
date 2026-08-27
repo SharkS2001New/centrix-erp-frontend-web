@@ -636,18 +636,20 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </div>
               ) : null}
 
-              {isWritePendingAction(pendingAction) && !formSpec?.fields?.length ? (
+              {isWritePendingAction(pendingAction) &&
+              !formSpec?.fields?.length &&
+              pendingAction?.ready_to_confirm ? (
                 <div
                   className={`rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm ${
                     expanded ? "mx-8" : "mr-4"
                   }`}
                 >
                   <p className="font-medium text-indigo-900">
-                    {pendingAction?.summary || "Ready to confirm"}
+                    {pendingAction?.summary || "Ready to create"}
                   </p>
                   <p className="mt-1 text-xs text-indigo-800">
-                    Reply <span className="font-semibold">confirm</span> in chat, or use the buttons
-                    below.
+                    Details look complete. Reply <span className="font-semibold">confirm</span> in
+                    chat, or use the buttons below to save.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
@@ -656,7 +658,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                       onClick={submitForm}
                       className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                     >
-                      Confirm
+                      Confirm & save
                     </button>
                     <button
                       type="button"

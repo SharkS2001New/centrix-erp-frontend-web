@@ -301,10 +301,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      // Classic Find: any visible result → select / park on qty (Enter on qty adds).
+      // Find/select: any visible result → park on qty (Enter on qty adds).
       // Barcode quick-add only when there is no pickable row yet (true scan before
-      // search results land), so Find never skips the qty step.
-      if (classic && results.length) {
+      // search results land), so typing a name never skips qty / double-adds.
+      if (results.length) {
         setOpen(false);
         pickHighlighted();
         return;
@@ -315,12 +315,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           setOpen(false);
           return;
         }
-      }
-      // Allow picking as soon as rows exist — do not block on in-flight API refresh.
-      if (results.length) {
-        setOpen(true);
-        pickHighlighted();
-        return;
       }
       if (query.trim()) setOpen(true);
       return;

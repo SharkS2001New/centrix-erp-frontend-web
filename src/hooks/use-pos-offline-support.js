@@ -50,9 +50,14 @@ const EMPTY_SYNC_PROGRESS = {
  * Sell path: save local outbox → print → immediately flush when API is reachable
  * (including "slow" — sync still runs so the queue does not grow forever).
  * Aimed at outages up to ~1.5 hours; reconnect still flushes any leftovers.
+ *
+ * `catalogOnly`: Create Order / backoffice — warm IndexedDB + in-memory search
+ * index for the same instant/fuzzy product search as External POS, without
+ * offline selling, outbox, or ticket-number reservation.
  */
 export function usePosOfflineSupport({
   enabled = false,
+  catalogOnly = false,
   floatSessionId = null,
   organizationId = null,
   userId = null,
@@ -63,10 +68,12 @@ export function usePosOfflineSupport({
   });
   /** Fully healthy API — used for catalog warm / order-number reserve. */
   const fullyOnline = status === "online";
+  /** Offline selling / outbox only on External POS — not Create Order catalog search. */
+  const sellOffline = enabled && !catalogOnly;
   /** API reachable enough to attempt outbox flush (online or slow). */
-  const canFlushOutbox = enabled && browserOnline && apiOnline;
+  const canFlushOutbox = sellOffline && browserOnline && apiOnline;
   /** Sell locally when offline or too slow to complete API sales reliably. */
-  const offlineMode = enabled && status !== "online";
+  const offlineMode = sellOffline && status !== "online";
   const [pendingSync, setPendingSync] = useState(0);
   const [orderNumbersLeft, setOrderNumbersLeft] = useState(0);
   const [nextPosOrderNum, setNextPosOrderNum] = useState(null);
@@ -118,19 +125,23 @@ export function usePosOfflineSupport({
 
   /** Synchronous flush gate — avoids stale canFlushRef after refreshNetwork(). */
   const probeCanFlushOutbox = useCallback(async () => {
+    if (!sellOffline) {
+      canFlushRef.current = false;
+      return false;
+    }
     const browserOk = typeof navigator === "undefined" ? true : navigator.onLine;
     if (!browserOk) {
       canFlushRef.current = false;
       return false;
     }
     const result = await pingApiHealth();
-    const canFlush = enabled && browserOk && result.ok;
+    const canFlush = sellOffline && browserOk && result.ok;
     canFlushRef.current = canFlush;
     return canFlush;
-  }, [enabled]);
+  }, [sellOffline]);
 
   const refreshCounts = useCallback(async () => {
-    if (!enabled) return;
+    if (!sellOffline) return;
     try {
       const { peekPosOfflineOrderNumberCount } = await import("@/lib/pos-offline");
       const { listFailedOutboxSales } = await import("@/lib/pos-offline");
@@ -168,7 +179,7 @@ export function usePosOfflineSupport({
     } catch {
       /* ignore */
     }
-  }, [enabled, floatSessionId]);
+  }, [sellOffline, floatSessionId]);
 
   /**
    * Optimistic outbox count from Pending sync UI (e.g. after Remove).
@@ -204,6 +215,16 @@ export function usePosOfflineSupport({
   const prepare = useCallback(async () => {
     if (!enabled || !fullyOnline) return null;
     try {
+      if (catalogOnly) {
+        const warm = await warmPosOfflineCatalog({ force: false });
+        setCatalogReady(Number(warm?.count ?? 0) > 0);
+        return {
+          catalogCount: Number(warm?.count ?? 0),
+          orderNumbersAvailable: 0,
+          pendingSync: 0,
+          nextPosOrderNum: null,
+        };
+      }
       const ready = await preparePosOfflineReady({ floatSessionId });
       setCatalogReady(ready.catalogCount > 0);
       setOrderNumbersLeft(ready.orderNumbersAvailable);
@@ -216,7 +237,7 @@ export function usePosOfflineSupport({
       console.warn("POS offline prepare failed", err);
       return null;
     }
-  }, [enabled, fullyOnline, floatSessionId]);
+  }, [enabled, fullyOnline, floatSessionId, catalogOnly]);
 
   /**
    * Serialize outbox flushes so concurrent sells cannot double-post.
@@ -229,7 +250,7 @@ export function usePosOfflineSupport({
    *   clientSaleUuid — sync one queued sale (Pending sync popup).
    */
   const flushOutboxNow = useCallback((options = {}) => {
-    if (!enabled) return Promise.resolve([]);
+    if (!sellOffline) return Promise.resolve([]);
 
     const manual = Boolean(options.manual);
     const includeErrors =
@@ -414,14 +435,14 @@ export function usePosOfflineSupport({
       () => undefined,
     );
     return next;
-  }, [enabled, fullyOnline, floatSessionId, refreshCounts, notifySyncProblem]);
+  }, [sellOffline, fullyOnline, floatSessionId, refreshCounts, notifySyncProblem]);
 
   /**
    * After a local/outbox sale: probe API, flush the queue, retry until live or attempts exhausted.
    * Callers should await this so every completed sale reaches the server when online.
    */
   const flushOutboxAfterSale = useCallback(async () => {
-    if (!enabled) return { ok: true, results: [] };
+    if (!sellOffline) return { ok: true, results: [] };
 
     await refreshCounts();
 
@@ -490,11 +511,11 @@ export function usePosOfflineSupport({
       pending,
       failed,
     };
-  }, [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts, refreshNetwork]);
+  }, [sellOffline, flushOutboxNow, probeCanFlushOutbox, refreshCounts, refreshNetwork]);
 
   const beginManualOutboxSync = useCallback(
     async ({ clientSaleUuid = null, startMessage = "Checking local offline orders…" } = {}) => {
-      if (!enabled) return [];
+      if (!sellOffline) return [];
       await refreshCounts();
       const canFlush = await probeCanFlushOutbox();
       if (!canFlush) {
@@ -519,7 +540,7 @@ export function usePosOfflineSupport({
         ...(clientSaleUuid ? { clientSaleUuid } : {}),
       });
     },
-    [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts],
+    [sellOffline, flushOutboxNow, probeCanFlushOutbox, refreshCounts],
   );
 
   /** Manual Sync button — same flush path, with progress + toast feedback. */
@@ -547,6 +568,10 @@ export function usePosOfflineSupport({
     if (!enabled) return undefined;
     let cancelled = false;
     void (async () => {
+      if (catalogOnly) {
+        void prepare();
+        return;
+      }
       await refreshCounts();
       if (cancelled) return;
       void prepare();
@@ -559,11 +584,11 @@ export function usePosOfflineSupport({
     return () => {
       cancelled = true;
     };
-  }, [enabled, prepare, refreshCounts, probeCanFlushOutbox, flushOutboxNow]);
+  }, [enabled, catalogOnly, prepare, refreshCounts, probeCanFlushOutbox, flushOutboxNow]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   useEffect(() => {
-    if (!enabled || !userId || !organizationId) return undefined;
+    if (!sellOffline || !userId || !organizationId) return undefined;
     let cancelled = false;
     void (async () => {
       try {
@@ -583,13 +608,17 @@ export function usePosOfflineSupport({
     return () => {
       cancelled = true;
     };
-  }, [enabled, organizationId, userId, prepare, refreshCounts]);
+  }, [sellOffline, organizationId, userId, prepare, refreshCounts]);
 
   useEffect(() => {
     if (!enabled) return undefined;
     const wasFullyOnline = wasFullyOnlineRef.current;
     wasFullyOnlineRef.current = fullyOnline;
     if (!wasFullyOnline && fullyOnline) {
+      if (catalogOnly) {
+        void prepare();
+        return;
+      }
       // Keep selling — do not lock the till. Flush the outbox in the background
       // and keep IndexedDB Cash Sales # ahead of the server watermark.
       void (async () => {
@@ -603,22 +632,22 @@ export function usePosOfflineSupport({
         await prepare();
       })();
     }
-  }, [enabled, fullyOnline, flushOutboxNow, prepare, floatSessionId]);
+  }, [enabled, catalogOnly, fullyOnline, flushOutboxNow, prepare, floatSessionId]);
 
   // Flush when API becomes reachable again (including recovery from offline→slow).
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!sellOffline) return undefined;
     const wasCanFlush = wasCanFlushRef.current;
     wasCanFlushRef.current = canFlushOutbox;
     if (!wasCanFlush && canFlushOutbox) {
       void flushOutboxNow();
     }
-  }, [enabled, canFlushOutbox, flushOutboxNow]);
+  }, [sellOffline, canFlushOutbox, flushOutboxNow]);
 
   // Retry still-pending outbox rows while API is reachable. Skip sync_status=error
   // so a stuck previous_order_edit cannot restore-to-cart / flicker Pending sync.
   useEffect(() => {
-    if (!enabled || !canFlushOutbox || syncing) return undefined;
+    if (!sellOffline || !canFlushOutbox || syncing) return undefined;
     if (pendingSync <= 0) {
       pendingFlushRef.current = false;
       return undefined;
@@ -640,7 +669,7 @@ export function usePosOfflineSupport({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [enabled, canFlushOutbox, pendingSync, syncing, flushOutboxNow]);
+  }, [sellOffline, canFlushOutbox, pendingSync, syncing, flushOutboxNow]);
 
   const searchOffline = useCallback(async (query, limit = 40) => {
     return searchPosOfflineCatalog(query, { limit });

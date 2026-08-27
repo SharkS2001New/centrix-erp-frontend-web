@@ -8,6 +8,7 @@ import {
   parseMarkdownHeading,
   splitMarkdownContentBlocks,
 } from "@/lib/ai-message-format";
+import { applyUserFacingBackendWording } from "@/lib/user-facing-labels";
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/gi;
 /** Match Centrix paths even when wrapped in markdown emphasis. */
@@ -155,7 +156,17 @@ const HEADING_CLASS = {
   1: "m-0 text-base font-semibold text-slate-900",
   2: "m-0 text-[0.95rem] font-semibold text-slate-900",
   3: "m-0 text-sm font-semibold text-slate-800",
+  4: "m-0 text-sm font-semibold text-slate-800",
+  5: "m-0 text-[0.8125rem] font-semibold text-slate-700",
+  6: "m-0 text-xs font-semibold uppercase tracking-wide text-slate-600",
 };
+
+function headingTagForLevel(level) {
+  if (level <= 1) return "h3";
+  if (level === 2) return "h4";
+  if (level === 3) return "h5";
+  return "h6";
+}
 
 /**
  * @param {{ headers: string[], rows: string[][], startIndex: number }} table
@@ -216,7 +227,9 @@ export function AiMessageContent({
 }) {
   if (!content) return null;
 
-  const lines = latexToPlain(String(content)).replace(/\r\n/g, "\n").split("\n");
+  const lines = applyUserFacingBackendWording(latexToPlain(String(content)))
+    .replace(/\r\n/g, "\n")
+    .split("\n");
   const blocks = splitMarkdownContentBlocks(lines);
   const hasChartFence = blocks.some((b) => b.type === "chart");
 
@@ -248,10 +261,10 @@ export function AiMessageContent({
         const lineIndex = block.index;
         const heading = parseMarkdownHeading(line);
         if (heading) {
-          const Tag = heading.level === 1 ? "h3" : heading.level === 2 ? "h4" : "h5";
+          const Tag = headingTagForLevel(heading.level);
           const nodes = renderInline(heading.text, `h${lineIndex}`, onNavigate);
           return (
-            <Tag key={`line-${lineIndex}`} className={HEADING_CLASS[heading.level] ?? HEADING_CLASS[3]}>
+            <Tag key={`line-${lineIndex}`} className={HEADING_CLASS[heading.level] ?? HEADING_CLASS[4]}>
               {nodes}
             </Tag>
           );

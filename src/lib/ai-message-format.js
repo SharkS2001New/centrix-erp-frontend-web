@@ -34,7 +34,7 @@ function convertLatexFragment(inner) {
  * @returns {{ level: number, text: string } | null}
  */
 export function parseMarkdownHeading(line) {
-  const match = String(line ?? "").match(/^\s*(#{1,3})\s+(.+?)\s*$/);
+  const match = String(line ?? "").match(/^\s*(#{1,6})\s+(.+?)\s*$/);
   if (!match) return null;
   return { level: match[1].length, text: match[2] };
 }

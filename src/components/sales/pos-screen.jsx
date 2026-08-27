@@ -1408,7 +1408,8 @@ export function PosScreen({ standalone = false }) {
     syncOfflineOrders,
     syncSingleOfflineOrder,
   } = usePosOfflineSupport({
-    enabled: standalone,
+    enabled: true,
+    catalogOnly: !standalone,
     floatSessionId,
     organizationId: organization?.id ?? user?.organization_id,
     userId: user?.id,
@@ -5416,19 +5417,17 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        // Classic / standalone: paint warmed catalog immediately (already ranked in-memory).
-        if (standalone) {
-          try {
-            localPaint = await paintFromOffline();
-            if (seq === searchSeq.current && localPaint.length) {
-              seedRetailAndIndex(localPaint);
-              commitSearchResults(localPaint);
-              setSearching(false);
-              finishRetailPackages(localPaint);
-            }
-          } catch {
-            /* fall through to API */
+        // Create Order + External POS: paint warmed catalog immediately (fuzzy / multi-field).
+        try {
+          localPaint = await paintFromOffline();
+          if (seq === searchSeq.current && localPaint.length) {
+            seedRetailAndIndex(localPaint);
+            commitSearchResults(localPaint);
+            setSearching(false);
+            finishRetailPackages(localPaint);
           }
+        } catch {
+          /* fall through to API */
         }
 
         // Any local hits: merge API in background so typing stays snappy.
@@ -5462,24 +5461,26 @@ export function PosScreen({ standalone = false }) {
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
         // Network drop mid-search: keep local paint or fall back to offline catalog.
-        if (standalone) {
-          try {
-            if (localPaint.length) {
-              commitSearchResults(localPaint);
+        try {
+          if (localPaint.length) {
+            commitSearchResults(localPaint);
+            if (standalone) {
               setStatusMessage("Offline catalog — prices from last sync.");
-              return;
             }
-            const list = await paintFromOffline();
-            if (seq !== searchSeq.current) return;
-            seedRetailAndIndex(list);
-            commitSearchResults(list);
-            if (list.length) {
-              setStatusMessage("Offline catalog — prices from last sync.");
-              return;
-            }
-          } catch {
-            /* ignore */
+            return;
           }
+          const list = await paintFromOffline();
+          if (seq !== searchSeq.current) return;
+          seedRetailAndIndex(list);
+          commitSearchResults(list);
+          if (list.length) {
+            if (standalone) {
+              setStatusMessage("Offline catalog — prices from last sync.");
+            }
+            return;
+          }
+        } catch {
+          /* ignore */
         }
         setSearchResults([]);
         if (err instanceof ApiError && err.status === 403) {
@@ -5747,13 +5748,14 @@ export function PosScreen({ standalone = false }) {
       return fromResults;
     }
 
-    // Offline / previous-order edit: use the warmed IndexedDB catalog before any GET.
-    // Without this, qty Enter and swap reprice fail with "Product not found".
+    // Offline / previous-order edit / Create Order: use the warmed IndexedDB catalog
+    // before any GET so barcode and code lookups match External POS search.
     if (
-      standalone &&
-      (offlineMode ||
-        usesPosLocalDraftLineEdits(cartRef.current) ||
-        usesLocalPosCartWorkspace(cartRef.current))
+      !standalone ||
+      (standalone &&
+        (offlineMode ||
+          usesPosLocalDraftLineEdits(cartRef.current) ||
+          usesLocalPosCartWorkspace(cartRef.current)))
     ) {
       try {
         const local = await getPosOfflineProduct(trimmed);
@@ -5783,21 +5785,19 @@ export function PosScreen({ standalone = false }) {
       return enriched;
     } catch {
       // Last resort after a failed GET (drop mid-edit while still "online").
-      if (standalone) {
-        try {
-          const local = await getPosOfflineProduct(trimmed);
-          if (local && isSellableCatalogProduct(local)) {
-            const enriched = enrichProductForLpo(local, uomById, vatById);
-            productByCodeRef.current[enriched.product_code] = enriched;
-            setProductByCode((prev) =>
-              prev[enriched.product_code] ? prev : { ...prev, [enriched.product_code]: enriched },
-            );
-            await ensureRetailPackageForProduct(enriched);
-            return enriched;
-          }
-        } catch {
-          /* ignore */
+      try {
+        const local = await getPosOfflineProduct(trimmed);
+        if (local && isSellableCatalogProduct(local)) {
+          const enriched = enrichProductForLpo(local, uomById, vatById);
+          productByCodeRef.current[enriched.product_code] = enriched;
+          setProductByCode((prev) =>
+            prev[enriched.product_code] ? prev : { ...prev, [enriched.product_code]: enriched },
+          );
+          await ensureRetailPackageForProduct(enriched);
+          return enriched;
         }
+      } catch {
+        /* ignore */
       }
       return null;
     }
@@ -6730,14 +6730,13 @@ export function PosScreen({ standalone = false }) {
         swapDraftRef.current,
     );
 
-    // Classic: product already parked on the entry row with this code — Enter adds
+    // Product already parked on the entry row with this code — Enter confirms qty
     // (covers focus stuck on Scan after select). Do not quick-add a second line.
     // Never treat a mid-swap Scan Enter as a new-line add.
     if (
-      classicLayout &&
       (selectedProductRef.current || selectedProduct) &&
-      String((selectedProductRef.current ?? selectedProduct)?.product_code ?? selectedProductCode ?? "").trim() ===
-        trimmed &&
+      String((selectedProductRef.current ?? selectedProduct)?.product_code ?? selectedProductCode ?? "").trim().toLowerCase() ===
+        trimmed.toLowerCase() &&
       !swapActive
     ) {
       handleQuantityEnter();
@@ -6745,9 +6744,10 @@ export function PosScreen({ standalone = false }) {
     }
 
     let product = null;
-    // Prefer the warmed offline catalog whenever the open sale is local — including
-    // after reconnect mid-sale — so scans do not depend on live product GETs.
+    // Prefer the warmed offline catalog whenever available — Create Order shares the
+    // same IndexedDB index as External POS so scans do not wait on live product GETs.
     if (
+      !standalone ||
       classicLayout ||
       offlineMode ||
       usesLocalPosCartWorkspace(cartRef.current)
