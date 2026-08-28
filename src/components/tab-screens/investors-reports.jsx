@@ -20,7 +20,14 @@ import {
 import {
   INVESTOR_REPORT_KINDS,
   InvestorReportsView,
+  isValidInvestorRouteId,
 } from "@/components/investors/investor-reports-view";
+
+function normalizeInvestorQuery(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text || text === "undefined" || text === "null") return "";
+  return isValidInvestorRouteId(text) ? text : "";
+}
 
 function normalizeKind(kind) {
   const id = String(kind || "sales");
@@ -37,7 +44,7 @@ export function InvestorsReportsScreen() {
     enabled &&
     (hasPermission?.(P.investors.reports.view) || hasPermission?.(P.investors.investors.view));
 
-  const investorFromUrl = searchParams.get("investor") || "";
+  const investorFromUrl = normalizeInvestorQuery(searchParams.get("investor"));
   const kindFromUrl = normalizeKind(searchParams.get("kind"));
 
   const [investors, setInvestors] = useState([]);
@@ -81,9 +88,11 @@ export function InvestorsReportsScreen() {
 
   useEffect(() => {
     if (!canView || listLoading || investors.length === 0) return;
-    const ids = new Set(investors.map((row) => String(row.id)));
+    const validInvestors = investors.filter((row) => isValidInvestorRouteId(row.id));
+    if (validInvestors.length === 0) return;
+    const ids = new Set(validInvestors.map((row) => String(row.id)));
     if (investorFromUrl && ids.has(String(investorFromUrl))) return;
-    replaceQuery({ investor: String(investors[0].id), kind: kindFromUrl });
+    replaceQuery({ investor: String(validInvestors[0].id), kind: kindFromUrl });
   }, [
     canView,
     listLoading,
@@ -93,14 +102,20 @@ export function InvestorsReportsScreen() {
     replaceQuery,
   ]);
 
-  const selectedInvestor = useMemo(
-    () => investors.find((row) => String(row.id) === String(investorFromUrl)) ?? null,
-    [investors, investorFromUrl],
-  );
+  const selectedInvestor = useMemo(() => {
+    if (!isValidInvestorRouteId(investorFromUrl)) return null;
+    return (
+      investors.find(
+        (row) => isValidInvestorRouteId(row.id) && String(row.id) === String(investorFromUrl),
+      ) ?? null
+    );
+  }, [investors, investorFromUrl]);
 
   const investorOptions = useMemo(
     () =>
-      investors.map((row) => ({
+      investors
+        .filter((row) => isValidInvestorRouteId(row.id))
+        .map((row) => ({
         value: String(row.id),
         label: `${row.investor_name || "Investor"}${
           row.investor_code ? ` (${row.investor_code})` : ""

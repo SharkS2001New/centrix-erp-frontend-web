@@ -110,11 +110,15 @@ export function FulfillmentTripsIdScreen() {
     try {
       const [tripRes, listRes, pickRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${tripId}`),
-        apiRequest(`/dispatch-trips/${tripId}/loading-list`),
-        apiRequest(`/dispatch-trips/${tripId}/picking-list`),
+        apiRequest(`/dispatch-trips/${tripId}/loading-list`).catch(() => null),
+        apiRequest(`/dispatch-trips/${tripId}/picking-list`).catch(() => null),
       ]);
-      const nextPicking = pickRes.picking_list ?? pickRes;
-      const nextLoading = listRes.loading_list ?? listRes;
+      if (!tripRes) {
+        notifyError("Failed to load trip");
+        return;
+      }
+      const nextPicking = pickRes?.picking_list ?? pickRes ?? null;
+      const nextLoading = listRes?.loading_list ?? listRes ?? null;
       const productCodes = [
         ...(nextPicking?.lines ?? []).map((line) => line.product_code),
         ...(nextLoading?.lines ?? []).map((line) => line.product_code),
@@ -141,8 +145,8 @@ export function FulfillmentTripsIdScreen() {
           ]),
         ),
       );
-      setPreparedBy(listRes.loading_list?.prepared_by_name ?? tripRes.prepared_by_name ?? "");
-      setCheckedBy(listRes.loading_list?.checked_by_name ?? tripRes.checked_by_name ?? "");
+      setPreparedBy(listRes?.loading_list?.prepared_by_name ?? tripRes.prepared_by_name ?? "");
+      setCheckedBy(listRes?.loading_list?.checked_by_name ?? tripRes.checked_by_name ?? "");
       setPickerName(nextPicking?.picker_name ?? user?.full_name ?? user?.username ?? "");
       const expectedCash = resolveTripExpectedCash(tripRes);
       setCollectedCash(

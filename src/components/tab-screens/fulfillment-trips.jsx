@@ -320,7 +320,7 @@ export function FulfillmentTripsScreen() {
                     <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
                     <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
                     <td className="px-4 py-3">
-                      {trip.turn_boys?.length
+                      {Array.isArray(trip.turn_boys) && trip.turn_boys.length
                         ? trip.turn_boys.map((employee) => employee.full_name).join(", ")
                         : "—"}
                     </td>

@@ -57,6 +57,11 @@ import {
 } from "@/lib/pos-line";
 import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-uom";
 import {
+  hydrateProductLiveStock,
+  mergeProductStockFields,
+  productStockFieldsMissing,
+} from "@/lib/stock-cache";
+import {
   computeProductLineDiscount,
   formatProductDiscountLabel,
   productHasConfiguredDiscount,
@@ -5337,12 +5342,26 @@ export function PosScreen({ standalone = false }) {
           let next = prev;
           for (const p of list) {
             const code = p?.product_code;
-            if (!code || prev[code]) continue;
+            if (!code) continue;
+            const existing = prev[code];
+            if (existing) {
+              const merged = mergeProductStockFields(existing, p);
+              if (merged !== existing) {
+                if (!changed) {
+                  next = { ...prev };
+                  changed = true;
+                }
+                next[code] = merged;
+                productByCodeRef.current[code] = merged;
+              }
+              continue;
+            }
             if (!changed) {
               next = { ...prev };
               changed = true;
             }
             next[code] = p;
+            productByCodeRef.current[code] = p;
           }
           return changed ? next : prev;
         });
@@ -5721,6 +5740,7 @@ export function PosScreen({ standalone = false }) {
   async function resolveProductByCode(code) {
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return null;
+    const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
     // Prefer cache first — previous-order qty edits must not wait on retail-package fetch.
     const cached = productByCodeRef.current[trimmed];
     if (cached) {
@@ -5733,8 +5753,18 @@ export function PosScreen({ standalone = false }) {
           return next;
         });
       } else {
-        await ensureRetailPackageForProduct(cached);
-        return cached;
+        let resolved = cached;
+        if (productStockFieldsMissing(cached)) {
+          resolved = await hydrateProductLiveStock(
+            enrichProductForLpo(cached, uomById, vatById),
+            branchId,
+            apiRequest,
+          );
+          productByCodeRef.current[trimmed] = resolved;
+          setProductByCode((prev) => ({ ...prev, [trimmed]: resolved }));
+        }
+        await ensureRetailPackageForProduct(resolved);
+        return resolved;
       }
     }
     const fromResults = searchResults.find(
@@ -5760,10 +5790,15 @@ export function PosScreen({ standalone = false }) {
       try {
         const local = await getPosOfflineProduct(trimmed);
         if (local && isSellableCatalogProduct(local)) {
-          const enriched = enrichProductForLpo(local, uomById, vatById);
+          let enriched = enrichProductForLpo(local, uomById, vatById);
+          if (productStockFieldsMissing(enriched)) {
+            enriched = await hydrateProductLiveStock(enriched, branchId, apiRequest);
+          }
           productByCodeRef.current[enriched.product_code] = enriched;
           setProductByCode((prev) =>
-            prev[enriched.product_code] ? prev : { ...prev, [enriched.product_code]: enriched },
+            prev[enriched.product_code]
+              ? { ...prev, [enriched.product_code]: mergeProductStockFields(prev[enriched.product_code], enriched) }
+              : { ...prev, [enriched.product_code]: enriched },
           );
           await ensureRetailPackageForProduct(enriched);
           return enriched;
@@ -6641,11 +6676,16 @@ export function PosScreen({ standalone = false }) {
     }
     if (!assertRouteReadyForAdd()) return;
 
-    setProductByCode((prev) =>
-      prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
-    );
-    productByCodeRef.current[product.product_code] =
-      productByCodeRef.current[product.product_code] ?? product;
+    setProductByCode((prev) => {
+      const existing = prev[product.product_code];
+      if (!existing) return { ...prev, [product.product_code]: product };
+      const merged = mergeProductStockFields(existing, product);
+      return merged === existing ? prev : { ...prev, [product.product_code]: merged };
+    });
+    productByCodeRef.current[product.product_code] = mergeProductStockFields(
+      productByCodeRef.current[product.product_code],
+      product,
+    ) ?? product;
 
     // Retail markup comes from retail_package_settings for this item — load before pricing.
     await ensureRetailPackageForProduct(product);
@@ -6755,7 +6795,12 @@ export function PosScreen({ standalone = false }) {
       try {
         const local = await getPosOfflineProduct(trimmed);
         if (local && isSellableCatalogProduct(local)) {
-          product = enrichProductForLpo(local, uomById, vatById);
+          let enriched = enrichProductForLpo(local, uomById, vatById);
+          const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
+          if (productStockFieldsMissing(enriched)) {
+            enriched = await hydrateProductLiveStock(enriched, branchId, apiRequest);
+          }
+          product = enriched;
         }
       } catch {
         /* fall through to API */
@@ -6850,11 +6895,20 @@ export function PosScreen({ standalone = false }) {
 
   async function pickProduct(product) {
     if (!product) return;
-    setProductByCode((prev) =>
-      prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
-    );
-    productByCodeRef.current[product.product_code] =
-      productByCodeRef.current[product.product_code] ?? product;
+    const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
+    if (productStockFieldsMissing(product)) {
+      product = await hydrateProductLiveStock(product, branchId, apiRequest);
+    }
+    setProductByCode((prev) => {
+      const existing = prev[product.product_code];
+      if (!existing) return { ...prev, [product.product_code]: product };
+      const merged = mergeProductStockFields(existing, product);
+      return merged === existing ? prev : { ...prev, [product.product_code]: merged };
+    });
+    productByCodeRef.current[product.product_code] = mergeProductStockFields(
+      productByCodeRef.current[product.product_code],
+      product,
+    ) ?? product;
 
     const activeReplacingId = replacingLineIdRef.current;
     const activeCart = cartRef.current ?? cart;
@@ -7649,7 +7703,11 @@ export function PosScreen({ standalone = false }) {
     if (!selectedProduct || allowNegativeStock) {
       return { ok: true };
     }
-    const product = productByCode[selectedProduct.product_code] ?? selectedProduct;
+    const cached = productByCode[selectedProduct.product_code];
+    const product =
+      cached && !productStockFieldsMissing(cached)
+        ? cached
+        : selectedProduct;
     const retailPackage = getRetailPackage(product.product_code);
     const computed = computePosLine({
       product,

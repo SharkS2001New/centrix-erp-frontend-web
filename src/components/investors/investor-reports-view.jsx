@@ -19,6 +19,14 @@ export const INVESTOR_REPORT_KINDS = [
   { id: "money-flow", label: "Money flow" },
 ];
 
+/** Reject missing, placeholder, or non-numeric investor route ids. */
+export function isValidInvestorRouteId(id) {
+  if (id == null || id === "") return false;
+  const text = String(id).trim();
+  if (text === "undefined" || text === "null") return false;
+  return /^\d+$/.test(text);
+}
+
 function paymentBadge(status) {
   const s = String(status || "unpaid").toLowerCase();
   const cls =
@@ -68,7 +76,8 @@ export function InvestorReportsView({
   }, [initialKind]);
 
   const loadReport = useCallback(async () => {
-    if (!canView || !investorId) return;
+    if (!canView || !isValidInvestorRouteId(investorId)) return;
+    const routeId = String(investorId).trim();
     setReportLoading(true);
     try {
       const search = {};
@@ -76,10 +85,10 @@ export function InvestorReportsView({
       if (toDate) search.to_date = toDate;
       const path =
         reportKind === "stock"
-          ? `/investors/${investorId}/reports/stock`
+          ? `/investors/${routeId}/reports/stock`
           : reportKind === "money-flow"
-            ? `/investors/${investorId}/reports/money-flow`
-            : `/investors/${investorId}/reports/sales`;
+            ? `/investors/${routeId}/reports/money-flow`
+            : `/investors/${routeId}/reports/sales`;
       const data = await apiRequest(path, { searchParams: search });
       setReport(data);
     } catch (e) {

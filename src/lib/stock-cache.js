@@ -120,6 +120,72 @@ export function mergeProductWithLiveStock(product, stockByCode) {
   return { ...product, ...stockRowToProductFields(stock, product) };
 }
 
+const PRODUCT_STOCK_OVERLAY_KEYS = [
+  "stock_in_shop",
+  "stock_in_store",
+  "stock_on_hand_shop",
+  "stock_on_hand_store",
+  "stock_available_shop",
+  "stock_available_store",
+  "stock_reserved_shop",
+  "stock_reserved_store",
+  "shop_quantity",
+  "store_quantity",
+];
+
+/** True when the row never received branch stock (offline catalog strips these fields). */
+export function productStockFieldsMissing(product) {
+  if (!product) return true;
+  if (product.branch_stock && typeof product.branch_stock === "object") return false;
+  return PRODUCT_STOCK_OVERLAY_KEYS.every((key) => product[key] == null);
+}
+
+/** Prefer incoming live stock fields when updating an indexed/cached product row. */
+export function mergeProductStockFields(existing, incoming) {
+  if (!existing) return incoming ?? null;
+  if (!incoming) return existing;
+  const next = { ...existing, ...incoming };
+  for (const key of PRODUCT_STOCK_OVERLAY_KEYS) {
+    if (incoming[key] != null) next[key] = incoming[key];
+  }
+  if (incoming.branch_stock && typeof incoming.branch_stock === "object") {
+    next.branch_stock = {
+      ...(existing.branch_stock && typeof existing.branch_stock === "object"
+        ? existing.branch_stock
+        : {}),
+      ...incoming.branch_stock,
+    };
+  }
+  return next;
+}
+
+/**
+ * Fetch live branch stock for one product (Create Order / POS offline catalog).
+ * @param {object} product
+ * @param {string | number | null | undefined} branchId
+ * @param {(path: string, options?: object) => Promise<object>} request
+ */
+export async function hydrateProductLiveStock(product, branchId, request) {
+  if (!product?.product_code || !productStockFieldsMissing(product)) {
+    return product;
+  }
+  try {
+    const searchParams = { status: "active" };
+    if (branchId) searchParams.branch_id = branchId;
+    const row = await request(`/products/${encodeURIComponent(product.product_code)}`, {
+      searchParams,
+    });
+    return mergeProductStockFields(product, row ?? {});
+  } catch {
+    try {
+      const stockByCode = await fetchStockLevelsMap(null, branchId);
+      return mergeProductWithLiveStock(product, stockByCode);
+    } catch {
+      return product;
+    }
+  }
+}
+
 /** @param {Array<object>} products
  *  @param {Map<string, object> | Record<string, object>} stockByCode
  */
