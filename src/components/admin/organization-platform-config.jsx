@@ -1861,6 +1861,12 @@ export function OrganizationModuleToggles({
       domainChildrenMap,
       mobileOrdersEnabled,
     );
+    if (workspaceId === "centrix_payments" && typeof onSalesChange === "function") {
+      onSalesChange({
+        ...(salesPlatform ?? {}),
+        enable_centrix_payments: enable,
+      });
+    }
     if (onSetModules) {
       onSetModules(next);
       return;

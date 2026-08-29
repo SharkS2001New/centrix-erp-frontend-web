@@ -183,7 +183,10 @@ export default function ManageOrganizationPage() {
           vat_regno: vatRegno || null,
           deployment_profile: deploymentProfile,
           applications: applicationsFromEnabledModules(enabledModules),
-          sales_platform: salesPlatform,
+          sales_platform: {
+            ...salesPlatform,
+            enable_centrix_payments: Boolean(enabledModules.centrix_payments),
+          },
           payroll_platform: payrollPlatformToApi(payrollPlatform ?? defaultPayrollPlatformState()),
           is_active: orgActive,
         },

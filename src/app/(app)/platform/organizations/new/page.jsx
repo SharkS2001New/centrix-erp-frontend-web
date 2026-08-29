@@ -94,7 +94,10 @@ export default function RegisterOrganizationPage() {
         body: {
           deployment_profile: deploymentProfile,
           applications: applicationsFromEnabledModules(enabledModules),
-          sales_platform: salesPlatform,
+          sales_platform: {
+            ...salesPlatform,
+            enable_centrix_payments: Boolean(enabledModules.centrix_payments),
+          },
         },
       });
       setPreview(payload);
@@ -288,7 +291,10 @@ export default function RegisterOrganizationPage() {
           name,
           deployment_profile: deploymentProfile,
           enabled_modules: enabledModules,
-          sales_platform: salesPlatform,
+          sales_platform: {
+            ...salesPlatform,
+            enable_centrix_payments: Boolean(enabledModules.centrix_payments),
+          },
         },
       });
       setTemplates((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
@@ -337,7 +343,10 @@ export default function RegisterOrganizationPage() {
           vat_regno: vatRegno || null,
           deployment_profile: deploymentProfile,
           applications: applicationsFromEnabledModules(enabledModules),
-          sales_platform: salesPlatform,
+          sales_platform: {
+            ...salesPlatform,
+            enable_centrix_payments: Boolean(enabledModules.centrix_payments),
+          },
           payroll_platform: payrollPlatformToApi(payrollPlatform),
           admin_username: managerUsername,
           admin_email: managerEmail,
