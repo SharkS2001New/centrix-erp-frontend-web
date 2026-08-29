@@ -91,6 +91,22 @@ export function isCentrixPaymentsEnabled(capabilities) {
   );
 }
 
+/** M-Pesa keys, paybills, and Equity accounts inside the Centrix Payments application. */
+export function canAccessCentrixPaymentsConfiguration({ user, capabilities, hasPermission }) {
+  if (!isCentrixPaymentsEnabled(capabilities)) return false;
+  if (user?.is_admin || capabilities?.is_admin) return true;
+  if (typeof hasPermission !== "function") return false;
+  return (
+    hasPermission("centrix_payments.settings.view") ||
+    hasPermission("centrix_payments.settings.edit") ||
+    hasPermission("centrix_payments.mpesa.manage") ||
+    hasPermission("centrix_payments.mpesa.view") ||
+    hasPermission("centrix_payments.bank.manage") ||
+    hasPermission("centrix_payments.bank.view") ||
+    hasPermission("centrix_payments.accounts.edit")
+  );
+}
+
 /** POS / checkout M-Pesa (manual + STK infrastructure) requires Centrix Payments + platform M-Pesa. */
 export function isPosMpesaPaymentsEnabled(capabilities) {
   return isCentrixPaymentsEnabled(capabilities) && isPlatformMpesaStkEnabled(capabilities);

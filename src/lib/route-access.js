@@ -11,6 +11,10 @@ import {
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
 import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/platform-shell-access";
+import {
+  canAccessCentrixPaymentsConfiguration,
+  isCentrixPaymentsEnabled,
+} from "@/lib/platform-org-features";
 import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
@@ -165,6 +169,15 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     pathname === "/admin/equity-accounts" ||
     pathname.startsWith("/admin/equity-accounts/")
   ) {
+    if (
+      canAccessCentrixPaymentsConfiguration({
+        user: ctx.user,
+        capabilities: ctx.capabilities,
+        hasPermission: ctx.hasPermission,
+      })
+    ) {
+      return true;
+    }
     return canAccessTenantOrganizationSettings({
       organization: ctx.organization,
       isSuperAdmin: ctx.isSuperAdmin,
@@ -172,6 +185,29 @@ export function canAccessRoute(pathname, ctx, options = {}) {
       user: ctx.user,
       capabilities: ctx.capabilities,
     });
+  }
+
+  if (
+    pathname === "/centrix-payments/settings/mpesa" ||
+    pathname.startsWith("/centrix-payments/settings/mpesa/") ||
+    pathname === "/centrix-payments/settings/paybills" ||
+    pathname.startsWith("/centrix-payments/settings/paybills/") ||
+    pathname === "/centrix-payments/settings/equity" ||
+    pathname.startsWith("/centrix-payments/settings/equity/")
+  ) {
+    if (!isCentrixPaymentsEnabled(ctx.capabilities)) return false;
+    return canAccessCentrixPaymentsConfiguration({
+      user: ctx.user,
+      capabilities: ctx.capabilities,
+      hasPermission: ctx.hasPermission,
+    });
+  }
+
+  if (
+    pathname.startsWith("/centrix-payments") &&
+    !isCentrixPaymentsEnabled(ctx.capabilities)
+  ) {
+    return false;
   }
 
   if (

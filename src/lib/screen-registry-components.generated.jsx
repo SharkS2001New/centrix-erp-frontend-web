@@ -39,6 +39,15 @@ export const SCREEN_COMPONENTS = {
   "accounting-journal-entries-new": lazy(() =>
     import("@/components/tab-screens/accounting-journal-entries-new").then((m) => ({ default: m.AccountingJournalEntriesNewScreen })),
   ),
+  "centrix-payments-settings-equity": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-settings-equity").then((m) => ({ default: m.CentrixPaymentsEquitySettingsScreen })),
+  ),
+  "centrix-payments-settings-mpesa": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-settings-mpesa").then((m) => ({ default: m.CentrixPaymentsMpesaSettingsScreen })),
+  ),
+  "centrix-payments-settings-paybills": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-settings-paybills").then((m) => ({ default: m.CentrixPaymentsPaybillsSettingsScreen })),
+  ),
   "fulfillment-orders-cancelled": lazy(() =>
     import("@/components/tab-screens/fulfillment-orders-cancelled").then((m) => ({ default: m.FulfillmentOrdersCancelledScreen })),
   ),

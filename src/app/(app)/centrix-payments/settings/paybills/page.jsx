@@ -1,8 +1,10 @@
 "use client";
 
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { CentrixPaymentsPaybillsSettingsScreen } from "@/components/tab-screens/centrix-payments-settings-paybills";
 
-/** Legacy route — paybill management lives under Centrix Payments settings. */
-export function CentrixPaymentsMpesaScreen() {
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
   return <CentrixPaymentsPaybillsSettingsScreen />;
 }

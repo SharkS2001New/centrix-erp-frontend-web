@@ -1,4 +1,5 @@
 import { P } from "@/lib/permission-codes";
+import { isCentrixPaymentsEnabled } from "@/lib/platform-org-features";
 
 /** Company code for the platform shell organization (not a trading tenant). */
 export const PLATFORM_COMPANY_CODE = "PLATFORM";
@@ -38,6 +39,7 @@ const OPERATIONAL_MODULE_KEYS = [
   "customers_suppliers",
   "accounting",
   "payments",
+  "centrix_payments",
   "hr_payroll",
   "distribution",
 ];
@@ -100,7 +102,7 @@ export function canAccessTenantOrganizationSettings({
   if (shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })) {
     return false;
   }
-  if (!hasOperationalModule(capabilities)) {
+  if (!hasOperationalModule(capabilities) && !isCentrixPaymentsEnabled(capabilities)) {
     return false;
   }
   if (isSuperAdmin?.()) {

@@ -70,6 +70,18 @@ function match_accounting_journal_entries_new(pathname) {
   return pathname === "/accounting/journal-entries/new";
 }
 
+function match_centrix_payments_settings_equity(pathname) {
+  return pathname === "/centrix-payments/settings/equity";
+}
+
+function match_centrix_payments_settings_mpesa(pathname) {
+  return pathname === "/centrix-payments/settings/mpesa";
+}
+
+function match_centrix_payments_settings_paybills(pathname) {
+  return pathname === "/centrix-payments/settings/paybills";
+}
+
 function match_fulfillment_orders_cancelled(pathname) {
   return pathname === "/fulfillment/orders/cancelled";
 }
@@ -1063,6 +1075,24 @@ export const SCREEN_REGISTRY = [
     title: "New",
     route: "/accounting/journal-entries/new",
     match: match_accounting_journal_entries_new,
+  },
+  {
+    id: "centrix-payments-settings-equity",
+    title: "Equity",
+    route: "/centrix-payments/settings/equity",
+    match: match_centrix_payments_settings_equity,
+  },
+  {
+    id: "centrix-payments-settings-mpesa",
+    title: "Mpesa",
+    route: "/centrix-payments/settings/mpesa",
+    match: match_centrix_payments_settings_mpesa,
+  },
+  {
+    id: "centrix-payments-settings-paybills",
+    title: "Paybills",
+    route: "/centrix-payments/settings/paybills",
+    match: match_centrix_payments_settings_paybills,
   },
   {
     id: "fulfillment-orders-cancelled",
