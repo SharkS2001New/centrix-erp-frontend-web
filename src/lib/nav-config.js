@@ -49,7 +49,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -1349,6 +1349,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Attendance clock-in",
         module: "admin",
         permission: P.admin.attendance_clock.view,
+        requireHrPayroll: true,
         orgAdminOnly: true,
       },
     ],
@@ -1510,6 +1511,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   }
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
+  if (item.requireHrPayroll && !capabilities?.modules?.hr_payroll) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
