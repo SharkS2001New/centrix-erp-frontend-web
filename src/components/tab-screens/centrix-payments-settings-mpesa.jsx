@@ -5,36 +5,34 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   PaymentsAccessGate,
   PaymentsEmptyState,
-  PaymentsHero,
   PaymentsSettingsBreadcrumb,
 } from "@/components/centrix-payments/centrix-payments-shared";
+import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
 import { canAccessCentrixPaymentsConfiguration } from "@/lib/platform-org-features";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 
 export function CentrixPaymentsMpesaSettingsScreen() {
-  const { user, organization, capabilities, hasPermission } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const canConfigure = canAccessCentrixPaymentsConfiguration({
     user,
     capabilities,
     hasPermission,
   });
 
-  useTabTitle(tabSectionTitle("M-Pesa settings", "Centrix Payments"));
+  useTabTitle(tabSectionTitle("M-Pesa Daraja", "Centrix Payments"));
 
   return (
     <PaymentsAccessGate
       permissionAny={[P.centrix_payments.settings.view, P.centrix_payments.settings.edit]}
-      title="M-Pesa settings"
+      title="M-Pesa Daraja"
     >
-      <div className="space-y-6 pb-8">
-        <PaymentsHero
-          organizationName={organization?.org_name}
-          eyebrow="Centrix Payments · M-Pesa"
-          subtitle="Safaricom Daraja credentials, STK push defaults, and organization-wide M-Pesa behaviour."
-        />
-        <PaymentsSettingsBreadcrumb title="M-Pesa settings" />
+      <CatalogPageShell
+        title="M-Pesa Daraja"
+        subtitle="Safaricom consumer key, secret, STK push defaults, and organization-wide M-Pesa behaviour."
+        banner={<PaymentsSettingsBreadcrumb title="M-Pesa Daraja" />}
+      >
         {!canConfigure ? (
           <PaymentsEmptyState
             title="Insufficient permissions"
@@ -43,7 +41,7 @@ export function CentrixPaymentsMpesaSettingsScreen() {
         ) : (
           <AdminMpesaSettingsScreen embedded showBreadcrumb={false} hidePageHeader />
         )}
-      </div>
+      </CatalogPageShell>
     </PaymentsAccessGate>
   );
 }

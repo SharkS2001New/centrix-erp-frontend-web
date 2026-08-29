@@ -9,7 +9,7 @@ import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 import { P } from "@/lib/permission-codes";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import {
   DashboardLoading,
   DashboardRefreshButton,
@@ -17,7 +17,6 @@ import {
   PaymentStatusBadge,
   PaymentsAccessGate,
   PaymentsEmptyState,
-  PaymentsHero,
 } from "@/components/centrix-payments/centrix-payments-shared";
 
 const PROVIDER_META = {
@@ -83,7 +82,7 @@ function AccountCard({ row, canManage, onTest, testing }) {
 }
 
 export function CentrixPaymentsAccountsScreen() {
-  const { organization, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const canManage = hasPermission?.(P.centrix_payments.accounts.edit);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,69 +143,69 @@ export function CentrixPaymentsAccountsScreen() {
 
   return (
     <PaymentsAccessGate permission={P.centrix_payments.accounts.view} title="Payment accounts">
-      <div className="space-y-8 pb-8">
-        <PaymentsHero
-          organizationName={organization?.org_name}
-          subtitle="Every M-Pesa paybill, Equity collection account, and bank connection your organization uses to receive and reconcile payments."
-          action={
-            <div className="flex flex-wrap gap-2">
-              {canManage ? (
-                <PrimaryButton type="button" onClick={() => void syncAccounts()} disabled={syncing}>
-                  {syncing ? "Syncing…" : "Sync providers"}
-                </PrimaryButton>
-              ) : null}
-              <DashboardRefreshButton onClick={loadData} loading={loading} className="!border-white/30 !bg-white/15 !text-white hover:!bg-white/25" />
-            </div>
-          }
-        />
+      <CatalogPageShell
+        title="Payment accounts"
+        subtitle="M-Pesa paybills, Equity collection accounts, and bank connections used to receive payments."
+        action={
+          <div className="flex flex-wrap gap-2">
+            {canManage ? (
+              <PrimaryButton type="button" onClick={() => void syncAccounts()} disabled={syncing}>
+                {syncing ? "Syncing…" : "Sync providers"}
+              </PrimaryButton>
+            ) : null}
+            <DashboardRefreshButton onClick={loadData} loading={loading} />
+          </div>
+        }
+      >
+        <div className="space-y-8 pb-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { key: "mpesa", label: "M-Pesa accounts", href: "/centrix-payments/settings/paybills" },
+              { key: "equity", label: "Equity accounts", href: "/centrix-payments/settings/equity" },
+              { key: "bank", label: "Bank accounts", href: "/centrix-payments/accounts" },
+            ].map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="theme-panel rounded-xl border px-4 py-3 text-sm shadow-sm transition hover:border-teal-500/40"
+              >
+                <p className="theme-subtext text-xs uppercase tracking-wide">{item.label}</p>
+                <p className="theme-heading mt-1 text-2xl font-semibold tabular-nums">
+                  {groupedCount[item.key] ?? 0}
+                </p>
+              </Link>
+            ))}
+          </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { key: "mpesa", label: "M-Pesa accounts", href: "/centrix-payments/settings/paybills" },
-            { key: "equity", label: "Equity accounts", href: "/centrix-payments/settings/equity" },
-            { key: "bank", label: "Bank accounts", href: "/centrix-payments/accounts" },
-          ].map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className="theme-panel rounded-xl border px-4 py-3 text-sm shadow-sm transition hover:border-teal-500/40"
-            >
-              <p className="theme-subtext text-xs uppercase tracking-wide">{item.label}</p>
-              <p className="theme-heading mt-1 text-2xl font-semibold tabular-nums">
-                {groupedCount[item.key] ?? 0}
-              </p>
-            </Link>
-          ))}
+          <DashboardSection
+            title="Connected accounts"
+            subtitle="Unified view across M-Pesa, Equity, and bank providers"
+          >
+            {loading ? (
+              <DashboardLoading label="Loading payment accounts…" />
+            ) : rows.length === 0 ? (
+              <PaymentsEmptyState
+                title="No payment accounts yet"
+                description="Add M-Pesa paybills and Equity collection accounts, then sync to see them here."
+                actionHref="/centrix-payments/settings/paybills"
+                actionLabel="Configure paybills"
+              />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {rows.map((row) => (
+                  <AccountCard
+                    key={row.id}
+                    row={row}
+                    canManage={canManage}
+                    testing={testingId === row.id}
+                    onTest={(id) => void testConnection(id)}
+                  />
+                ))}
+              </div>
+            )}
+          </DashboardSection>
         </div>
-
-        <DashboardSection
-          title="Connected accounts"
-          subtitle="Unified view across M-Pesa, Equity, and bank providers"
-        >
-          {loading ? (
-            <DashboardLoading label="Loading payment accounts…" />
-          ) : rows.length === 0 ? (
-            <PaymentsEmptyState
-              title="No payment accounts yet"
-              description="Add M-Pesa paybills and Equity collection accounts, then sync to see them here."
-              actionHref="/centrix-payments/settings/paybills"
-              actionLabel="Configure M-Pesa paybills"
-            />
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {rows.map((row) => (
-                <AccountCard
-                  key={row.id}
-                  row={row}
-                  canManage={canManage}
-                  testing={testingId === row.id}
-                  onTest={(id) => void testConnection(id)}
-                />
-              ))}
-            </div>
-          )}
-        </DashboardSection>
-      </div>
+      </CatalogPageShell>
     </PaymentsAccessGate>
   );
 }

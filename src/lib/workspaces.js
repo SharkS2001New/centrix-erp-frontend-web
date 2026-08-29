@@ -50,7 +50,12 @@ export const WORKSPACE_SECTION_IDS = {
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance", "admin_tax"],
   accounting: ["accounting", "expenses", "reports"],
-  centrix_payments: ["centrix_payments"],
+  centrix_payments: [
+    "centrix_payments_overview",
+    "centrix_payments_collect",
+    "centrix_payments_channels",
+    "centrix_payments_reconcile",
+  ],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
 };
@@ -60,7 +65,17 @@ export const WORKSPACE_NAV_ZONES = {
   accounting: [
     { label: null, sectionIds: ["accounting", "expenses", "reports"] },
   ],
-  centrix_payments: [{ label: null, sectionIds: ["centrix_payments"] }],
+  centrix_payments: [
+    {
+      label: null,
+      sectionIds: [
+        "centrix_payments_overview",
+        "centrix_payments_collect",
+        "centrix_payments_channels",
+        "centrix_payments_reconcile",
+      ],
+    },
+  ],
   hr: [
     { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
   ],
@@ -168,6 +183,9 @@ export const WORKSPACE_PATH_PREFIXES = {
   accounting: ["/accounting", "/expenses", "/finance"],
   centrix_payments: [
     "/centrix-payments",
+    "/accounting/mpesa-reconciliation",
+    "/accounting/equity-reconciliation",
+    "/accounting/bank-reconciliation",
   ],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment"],
@@ -274,6 +292,16 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
 
   if (workspaceId === "centrix_payments") {
     if (item.href?.startsWith("/centrix-payments")) {
+      return true;
+    }
+    if (
+      item.href === "/accounting/mpesa-reconciliation" ||
+      item.href?.startsWith("/accounting/mpesa-reconciliation/") ||
+      item.href === "/accounting/equity-reconciliation" ||
+      item.href?.startsWith("/accounting/equity-reconciliation/") ||
+      item.href === "/accounting/bank-reconciliation" ||
+      item.href?.startsWith("/accounting/bank-reconciliation/")
+    ) {
       return true;
     }
     return pathBelongsToWorkspace(item.href, "centrix_payments");

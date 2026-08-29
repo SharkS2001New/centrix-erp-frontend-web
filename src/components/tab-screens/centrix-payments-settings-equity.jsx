@@ -5,16 +5,16 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   PaymentsAccessGate,
   PaymentsEmptyState,
-  PaymentsHero,
   PaymentsSettingsBreadcrumb,
 } from "@/components/centrix-payments/centrix-payments-shared";
+import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
 import { canAccessCentrixPaymentsConfiguration } from "@/lib/platform-org-features";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 
 export function CentrixPaymentsEquitySettingsScreen() {
-  const { user, organization, capabilities, hasPermission } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const canConfigure = canAccessCentrixPaymentsConfiguration({
     user,
     capabilities,
@@ -26,15 +26,13 @@ export function CentrixPaymentsEquitySettingsScreen() {
   return (
     <PaymentsAccessGate
       permissionAny={[P.centrix_payments.bank.view, P.centrix_payments.bank.manage]}
-      title="Equity Bank accounts"
+      title="Equity Bank"
     >
-      <div className="space-y-6 pb-8">
-        <PaymentsHero
-          organizationName={organization?.org_name}
-          eyebrow="Centrix Payments · Equity Bank"
-          subtitle="Collection accounts and paybill reconciliation with Equity Bank."
-        />
-        <PaymentsSettingsBreadcrumb title="Equity Bank" />
+      <CatalogPageShell
+        title="Equity Bank"
+        subtitle="Collection accounts and paybill reconciliation with Equity Bank."
+        banner={<PaymentsSettingsBreadcrumb title="Equity Bank" />}
+      >
         {!canConfigure ? (
           <PaymentsEmptyState
             title="Insufficient permissions"
@@ -43,7 +41,7 @@ export function CentrixPaymentsEquitySettingsScreen() {
         ) : (
           <AdminEquityAccountsScreen embedded showBreadcrumb={false} hidePageHeader />
         )}
-      </div>
+      </CatalogPageShell>
     </PaymentsAccessGate>
   );
 }

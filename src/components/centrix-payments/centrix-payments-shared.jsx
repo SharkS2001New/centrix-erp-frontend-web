@@ -370,7 +370,7 @@ export function PaymentsSettingsBreadcrumb({ title }) {
   return (
     <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm">
       <Link href="/centrix-payments/settings" className="font-medium text-teal-700 hover:text-teal-900 dark:text-teal-300">
-        Settings
+        Channel setup
       </Link>
       <span className="text-slate-400">/</span>
       <span className="theme-subtext">{title}</span>
@@ -432,6 +432,57 @@ function setupStepsFromAvailability(availability) {
   ];
 }
 
+export function PaymentsAttentionStrip({ availability, totals, hasPermission }) {
+  const exceptions = (totals?.failed_payments ?? 0) + (totals?.unmatched_payments ?? 0);
+  const pending = totals?.pending_payments ?? 0;
+  const steps = setupStepsFromAvailability(availability ?? {});
+  const incompleteSetup = steps.filter((step) => !step.done);
+
+  const canConfigure =
+    hasPermission?.(P.centrix_payments.settings.view) ||
+    hasPermission?.(P.centrix_payments.settings.edit) ||
+    hasPermission?.(P.centrix_payments.mpesa.manage);
+  const canViewTransactions = hasPermission?.(P.centrix_payments.transactions.view);
+
+  if ((!incompleteSetup.length || !canConfigure) && exceptions === 0 && pending === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3">
+      {incompleteSetup.length > 0 && canConfigure ? (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+          <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+            {incompleteSetup.length} channel setup step{incompleteSetup.length === 1 ? "" : "s"} remaining
+          </p>
+          <Link
+            href={incompleteSetup[0]?.href ?? "/centrix-payments/settings/mpesa"}
+            className="mt-1 inline-block text-sm font-medium text-teal-800 hover:underline dark:text-teal-200"
+          >
+            Continue in Channel setup →
+          </Link>
+        </div>
+      ) : null}
+      {canViewTransactions && (exceptions > 0 || pending > 0) ? (
+        <div className="theme-panel rounded-xl border px-4 py-3">
+          <p className="theme-heading text-sm font-medium">Activity needing review</p>
+          <p className="theme-subtext mt-1 text-sm">
+            {pending > 0 ? `${pending} pending` : null}
+            {pending > 0 && exceptions > 0 ? " · " : null}
+            {exceptions > 0 ? `${exceptions} failed or unmatched` : null}
+          </p>
+          <Link
+            href="/centrix-payments/transactions"
+            className="mt-2 inline-block text-sm font-medium text-teal-700 hover:underline dark:text-teal-300"
+          >
+            Open transaction ledger →
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function PaymentsSetupGuide({ availability, hasPermission }) {
   const steps = setupStepsFromAvailability(availability ?? {});
   const incomplete = steps.filter((step) => !step.done);
@@ -458,7 +509,7 @@ export function PaymentsSetupGuide({ availability, hasPermission }) {
             href="/centrix-payments/settings"
             className="inline-flex rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
           >
-            Open settings hub
+            Open channel setup
           </Link>
         ) : null}
       </div>

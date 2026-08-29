@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { apiRequest } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
@@ -12,12 +12,10 @@ import {
   DashboardLoading,
   DashboardPanel,
   DashboardRefreshButton,
-  DashboardSection,
   DashboardSummaryTable,
   PaymentStatusBadge,
   PaymentsAccessGate,
   PaymentsEmptyState,
-  PaymentsHero,
   formatTransactionRow,
 } from "@/components/centrix-payments/centrix-payments-shared";
 
@@ -44,7 +42,6 @@ function matchesFilter(row, filter) {
 }
 
 export function CentrixPaymentsTransactionsScreen() {
-  const { organization } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -84,34 +81,30 @@ export function CentrixPaymentsTransactionsScreen() {
 
   return (
     <PaymentsAccessGate permission={P.centrix_payments.transactions.view} title="Transactions">
-      <div className="space-y-8 pb-8">
-        <PaymentsHero
-          organizationName={organization?.org_name}
-          subtitle="Full ledger of STK push requests, M-Pesa C2B notifications, and sale payments recorded in Centrix."
-          action={
-            <DashboardRefreshButton onClick={loadData} loading={loading} className="!border-white/30 !bg-white/15 !text-white hover:!bg-white/25" />
-          }
-        />
+      <CatalogPageShell
+        title="Transaction ledger"
+        subtitle="STK push requests, M-Pesa C2B notifications, and sale payments recorded in Centrix."
+        action={<DashboardRefreshButton onClick={loadData} loading={loading} />}
+      >
+        <div className="space-y-6 pb-4">
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFilter(item.id)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  filter === item.id
+                    ? "bg-teal-700 text-white shadow-sm"
+                    : "theme-panel border text-slate-600 hover:border-teal-500/40"
+                }`}
+              >
+                {item.label}
+                <span className="ml-1.5 tabular-nums opacity-80">({counts[item.id] ?? 0})</span>
+              </button>
+            ))}
+          </div>
 
-        <div className="flex flex-wrap gap-2">
-          {STATUS_FILTERS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setFilter(item.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                filter === item.id
-                  ? "bg-teal-700 text-white shadow-sm"
-                  : "theme-panel border text-slate-600 hover:border-teal-500/40"
-              }`}
-            >
-              {item.label}
-              <span className="ml-1.5 tabular-nums opacity-80">({counts[item.id] ?? 0})</span>
-            </button>
-          ))}
-        </div>
-
-        <DashboardSection title="Payment ledger" subtitle="Filter by status to focus on exceptions or confirmed collections">
           {loading ? (
             <DashboardLoading label="Loading transactions…" />
           ) : filteredRows.length === 0 ? (
@@ -119,8 +112,8 @@ export function CentrixPaymentsTransactionsScreen() {
               title={rows.length === 0 ? "No transactions yet" : "No transactions in this filter"}
               description={
                 rows.length === 0
-                  ? "Once you start collecting via STK or C2B, payments will appear here in real time."
-                  : "Try another status filter to see more results."
+                  ? "Once you start collecting via STK or C2B, payments will appear here."
+                  : "Try another status filter."
               }
               actionHref={rows.length === 0 ? "/centrix-payments/settings/mpesa" : undefined}
               actionLabel="Configure M-Pesa"
@@ -146,8 +139,8 @@ export function CentrixPaymentsTransactionsScreen() {
               />
             </DashboardPanel>
           )}
-        </DashboardSection>
-      </div>
+        </div>
+      </CatalogPageShell>
     </PaymentsAccessGate>
   );
 }

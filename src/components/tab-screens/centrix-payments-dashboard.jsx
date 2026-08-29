@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -12,26 +14,15 @@ import { formatKesCompact } from "@/components/catalog/catalog-shared";
 import {
   DashboardErrorBanner,
   DashboardLoading,
-  DashboardPanel,
   DashboardRefreshButton,
-  DashboardSection,
-  DashboardSummaryTable,
-  filterPaymentsLinks,
-  formatTransactionRow,
-  PAYMENTS_QUICK_GROUPS,
-  PaymentStatusBadge,
   PaymentsAccessGate,
-  PaymentsHero,
+  PaymentsAttentionStrip,
   PaymentsKpiGrid,
-  PaymentsProviderGrid,
-  PaymentsQuickLinkGroups,
-  PaymentsSetupGuide,
 } from "@/components/centrix-payments/centrix-payments-shared";
 
 export function CentrixPaymentsDashboardScreen() {
-  const { organization, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const [payload, setPayload] = useState(null);
-  const [recentRows, setRecentRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -39,19 +30,12 @@ export function CentrixPaymentsDashboardScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [dashboard, transactions] = await Promise.all([
-        apiRequest("/centrix-payments/dashboard"),
-        apiRequest("/centrix-payments/transactions", { searchParams: { limit: 8 } }).catch(() => ({
-          data: [],
-        })),
-      ]);
+      const dashboard = await apiRequest("/centrix-payments/dashboard");
       setPayload(dashboard);
-      setRecentRows(Array.isArray(transactions?.data) ? transactions.data : []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payments dashboard");
       setError(e instanceof Error ? e.message : "Failed to load dashboard");
       setPayload(null);
-      setRecentRows([]);
     } finally {
       setLoading(false);
     }
@@ -62,102 +46,81 @@ export function CentrixPaymentsDashboardScreen() {
 
   const totals = payload?.totals ?? {};
   const availability = payload?.availability ?? {};
-  const recentTableRows = useMemo(() => recentRows.map(formatTransactionRow), [recentRows]);
-  const quickGroups = useMemo(
-    () => filterPaymentsLinks(PAYMENTS_QUICK_GROUPS, hasPermission),
-    [hasPermission],
-  );
+  const canViewTransactions = hasPermission?.(P.centrix_payments.transactions.view);
+
+  const subtitle = useMemo(() => {
+    const parts = [];
+    if (totals.pending_payments > 0) parts.push(`${totals.pending_payments} pending`);
+    const exceptions = (totals.failed_payments ?? 0) + (totals.unmatched_payments ?? 0);
+    if (exceptions > 0) parts.push(`${exceptions} need attention`);
+    if (parts.length === 0) return "Today's collections and payment health";
+    return `Today's collections · ${parts.join(" · ")}`;
+  }, [totals]);
 
   return (
     <PaymentsAccessGate permission={P.centrix_payments.dashboard.view} title="Overview">
-      <div className="space-y-8 pb-8">
-        <PaymentsHero
-          organizationName={organization?.org_name}
-          subtitle="Monitor collections, configure M-Pesa and bank channels, and reconcile incoming payments — all in one place."
-          action={<DashboardRefreshButton onClick={loadData} loading={loading} className="!border-white/30 !bg-white/15 !text-white hover:!bg-white/25" />}
-        />
-
+      <CatalogPageShell
+        title="Payments overview"
+        subtitle={subtitle}
+        action={<DashboardRefreshButton onClick={loadData} loading={loading} />}
+      >
         <DashboardErrorBanner message={error} />
 
         {loading && !payload ? (
           <DashboardLoading label="Loading payments overview…" />
         ) : (
-          <>
-            <DashboardSection title="Today at a glance" subtitle="Collections and payment health for your organization">
-              <PaymentsKpiGrid
-                items={[
-                  {
-                    id: "collections",
-                    label: "Today's collections",
-                    value: formatKesCompact(totals.today_collections ?? 0),
-                    hint: "STK, C2B, and recorded sale payments",
-                  },
-                  {
-                    id: "successful",
-                    label: "Successful",
-                    value: String(totals.successful_payments ?? 0),
-                    hint: "Completed payment requests",
-                  },
-                  {
-                    id: "pending",
-                    label: "Pending",
-                    value: String(totals.pending_payments ?? 0),
-                    hint: "Awaiting customer or callback",
-                  },
-                  {
-                    id: "exceptions",
-                    label: "Needs attention",
-                    value: String((totals.failed_payments ?? 0) + (totals.unmatched_payments ?? 0)),
-                    hint: `${totals.failed_payments ?? 0} failed · ${totals.unmatched_payments ?? 0} unmatched`,
-                  },
-                ]}
-              />
-            </DashboardSection>
+          <div className="space-y-6">
+            <PaymentsKpiGrid
+              items={[
+                {
+                  id: "collections",
+                  label: "Today's collections",
+                  value: formatKesCompact(totals.today_collections ?? 0),
+                  hint: "STK, C2B, and recorded payments",
+                },
+                {
+                  id: "successful",
+                  label: "Successful",
+                  value: String(totals.successful_payments ?? 0),
+                  hint: "Completed today",
+                },
+                {
+                  id: "pending",
+                  label: "Pending",
+                  value: String(totals.pending_payments ?? 0),
+                  hint: "Awaiting callback",
+                },
+                {
+                  id: "exceptions",
+                  label: "Needs attention",
+                  value: String((totals.failed_payments ?? 0) + (totals.unmatched_payments ?? 0)),
+                  hint: "Failed or unmatched",
+                },
+              ]}
+            />
 
-            <PaymentsSetupGuide availability={availability} hasPermission={hasPermission} />
+            <PaymentsAttentionStrip
+              availability={availability}
+              totals={totals}
+              hasPermission={hasPermission}
+            />
 
-            <DashboardSection
-              title="Payment channels"
-              subtitle="Connection status for M-Pesa, Equity, and bank accounts"
-            >
-              <PaymentsProviderGrid availability={availability} hasPermission={hasPermission} />
-            </DashboardSection>
-
-            {hasPermission?.(P.centrix_payments.transactions.view) ? (
-              <DashboardSection
-                title="Recent transactions"
-                subtitle="Latest STK requests, C2B payments, and sale collections"
-                action={
-                  <DashboardRefreshButton onClick={loadData} loading={loading} />
-                }
-              >
-                <DashboardPanel className="!p-0 overflow-hidden">
-                  <DashboardSummaryTable
-                    columns={[
-                      { key: "source", label: "Source" },
-                      { key: "provider", label: "Provider" },
-                      { key: "reference", label: "Reference", mono: true },
-                      { key: "amount", label: "Amount", align: "right" },
-                      {
-                        key: "status",
-                        label: "Status",
-                        render: (row) => <PaymentStatusBadge status={row.status} />,
-                      },
-                      { key: "date", label: "Date" },
-                    ]}
-                    rows={recentTableRows}
-                    emptyMessage="No payments recorded yet. Configure M-Pesa or connect a paybill to start collecting."
-                    viewAllHref="/centrix-payments/transactions"
-                    viewAllLabel="Open transaction ledger →"
-                  />
-                </DashboardPanel>
-              </DashboardSection>
+            {canViewTransactions ? (
+              <p className="theme-subtext text-sm">
+                Open the{" "}
+                <Link href="/centrix-payments/transactions" className="theme-link font-medium">
+                  transaction ledger
+                </Link>{" "}
+                for the full history, or use{" "}
+                <Link href="/centrix-payments/accounts" className="theme-link font-medium">
+                  payment accounts
+                </Link>{" "}
+                to review connected channels.
+              </p>
             ) : null}
-
-            <PaymentsQuickLinkGroups groups={quickGroups} />
-          </>
+          </div>
         )}
-      </div>
+      </CatalogPageShell>
     </PaymentsAccessGate>
   );
 }
