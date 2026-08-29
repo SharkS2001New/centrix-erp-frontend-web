@@ -4,6 +4,7 @@ import { normalizeNotificationActionUrl } from "@/lib/notification-action-url";
 const MODULES_BY_WORKSPACE = {
   backoffice: ["sales", "purchasing", "inventory"],
   accounting: ["accounting"],
+  centrix_payments: ["centrix_payments"],
   hr: ["hr_payroll"],
   admin: ["admin"],
   pos: ["sales"],
@@ -55,6 +56,12 @@ const PREFIXES_BY_WORKSPACE = {
   ],
   admin: ["/admin"],
   accounting: ["/accounting", "/expenses", "/finance"],
+  centrix_payments: [
+    "/centrix-payments",
+    "/admin/mpesa-settings",
+    "/admin/mpesa-paybills",
+    "/admin/equity-accounts",
+  ],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment", "/dispatch-trips"],
 };

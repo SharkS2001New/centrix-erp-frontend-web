@@ -355,21 +355,21 @@ export default function PlatformPlansPage() {
                     key: "commerce",
                     label: "Retail & Distribution",
                     workspaces: licensableWorkspacesForIndustry("commerce").filter(
-                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
+                      (ws) => !["accounting", "centrix_payments", "hr", "admin"].includes(ws.id),
                     ),
                   },
                   {
                     key: "hospitality",
                     label: "Hotel & Hospitality",
                     workspaces: licensableWorkspacesForIndustry("hospitality").filter(
-                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
+                      (ws) => !["accounting", "centrix_payments", "hr", "admin"].includes(ws.id),
                     ),
                   },
                   {
                     key: "shared",
                     label: "Shared",
                     workspaces: licensableWorkspacesForIndustry("commerce").filter((ws) =>
-                      ["accounting", "hr", "admin"].includes(ws.id),
+                      ["accounting", "centrix_payments", "hr", "admin"].includes(ws.id),
                     ),
                   },
                 ].map((group) => (

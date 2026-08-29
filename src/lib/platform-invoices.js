@@ -459,6 +459,15 @@ export const PLATFORM_BILLING_MODULES = [
     moduleKeys: ["distribution", "distribution.dashboard", "distribution.reports"],
   },
   {
+    key: "centrix_payments",
+    group: "workspaces",
+    label: "Centrix Payments",
+    description: "Standalone payment hub — M-Pesa STK, accounts, transactions, and reconciliation.",
+    default_amount: 8000,
+    billing_period: "monthly",
+    moduleKeys: ["centrix_payments", "centrix_payments.reports"],
+  },
+  {
     key: "kra_etims",
     group: "integrations",
     label: "KRA integrations via eTIMS",
@@ -533,6 +542,7 @@ const LEGACY_BILLING_KEY_MAP = {
   hr: "hr_payroll",
   hr_payroll: "hr_payroll",
   distribution: "distribution",
+  centrix_payments: "centrix_payments",
   kra: "kra_etims",
   kra_etims: "kra_etims",
   etims: "kra_etims",

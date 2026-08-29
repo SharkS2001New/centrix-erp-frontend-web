@@ -822,12 +822,6 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.enable_investors)}
             onChange={(v) => patch({ enable_investors: v })}
           />
-          <Toggle
-            label="Enable Centrix Payments"
-            description="When on, this organization gets Centrix Payments for M-Pesa STK, payment accounts, transactions, and reconciliation. Disabling hides payment features but preserves history."
-            checked={Boolean(salesPlatform?.enable_centrix_payments)}
-            onChange={(v) => patch({ enable_centrix_payments: v })}
-          />
           <AdvancedDataImportPlatformFields salesPlatform={salesPlatform} onPatch={patch} />
         </div>
       )}

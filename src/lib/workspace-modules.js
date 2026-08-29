@@ -49,6 +49,12 @@ export const PROVISIONABLE_WORKSPACES = [
     icon: "chart",
   },
   {
+    id: "centrix_payments",
+    label: "Centrix Payments",
+    description: "M-Pesa STK, payment accounts, transactions, and reconciliation — standalone or with ERP.",
+    icon: "payments",
+  },
+  {
     id: "hr",
     label: "Human Resources",
     description: "Employees, attendance, payroll, and HR reports.",
@@ -116,6 +122,8 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
       return Boolean(enabledModules.distribution);
     case "accounting":
       return Boolean(enabledModules.accounting);
+    case "centrix_payments":
+      return Boolean(enabledModules.centrix_payments);
     case "hr":
       return Boolean(enabledModules.hr_payroll);
     case "admin":
@@ -176,6 +184,11 @@ function enableWorkspacePatch(workspaceId) {
         "accounting.dashboard": true,
         "accounting.reports": true,
       };
+    case "centrix_payments":
+      return {
+        centrix_payments: true,
+        "centrix_payments.reports": true,
+      };
     case "hr":
       return {
         hr_payroll: true,
@@ -214,6 +227,8 @@ function disableWorkspacePatch(workspaceId) {
       return { distribution: false };
     case "accounting":
       return { accounting: false };
+    case "centrix_payments":
+      return { centrix_payments: false, "centrix_payments.reports": false };
     case "hr":
       return { hr_payroll: false };
     case "admin":
@@ -304,13 +319,14 @@ export function workspaceToggleIcon(iconKey) {
  * @param {Array<{ key: string, application_ids?: string[] | null, industry?: string }>} profilePresets
  */
 /** Application IDs allowed for Retail & Distribution tenants. */
-export const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "hr", "admin"];
+export const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "centrix_payments", "hr", "admin"];
 
 /** Application IDs allowed for Hotel & Hospitality tenants. */
 export const HOSPITALITY_APP_IDS = [
   "hotel_bar_pos",
   "hospitality_backoffice",
   "accounting",
+  "centrix_payments",
   "hr",
   "admin",
 ];

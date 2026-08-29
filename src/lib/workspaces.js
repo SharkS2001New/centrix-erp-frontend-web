@@ -33,7 +33,6 @@ export const WORKSPACE_SECTION_IDS = {
     "customers",
     "expenses",
     "investors",
-    "centrix_payments",
     "inventory",
     "stock_movements",
     "suppliers",
@@ -51,6 +50,7 @@ export const WORKSPACE_SECTION_IDS = {
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance", "admin_tax"],
   accounting: ["accounting", "expenses", "reports"],
+  centrix_payments: ["centrix_payments"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
 };
@@ -60,6 +60,7 @@ export const WORKSPACE_NAV_ZONES = {
   accounting: [
     { label: null, sectionIds: ["accounting", "expenses", "reports"] },
   ],
+  centrix_payments: [{ label: null, sectionIds: ["centrix_payments"] }],
   hr: [
     { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
   ],
@@ -159,13 +160,18 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/purchases",
     "/expenses",
     "/investors",
-    "/centrix-payments",
     "/routes",
     "/till-management",
     "/platform",
   ],
   admin: ["/admin"],
   accounting: ["/accounting", "/expenses", "/finance"],
+  centrix_payments: [
+    "/centrix-payments",
+    "/admin/mpesa-settings",
+    "/admin/mpesa-paybills",
+    "/admin/equity-accounts",
+  ],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment"],
 };
@@ -267,6 +273,23 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
       item.href?.startsWith("/expenses") ||
       item.href?.startsWith("/finance")
     );
+  }
+
+  if (workspaceId === "centrix_payments") {
+    if (item.href?.startsWith("/centrix-payments")) {
+      return true;
+    }
+    if (
+      item.href === "/admin/mpesa-settings" ||
+      item.href?.startsWith("/admin/mpesa-settings/") ||
+      item.href === "/admin/mpesa-paybills" ||
+      item.href?.startsWith("/admin/mpesa-paybills/") ||
+      item.href === "/admin/equity-accounts" ||
+      item.href?.startsWith("/admin/equity-accounts/")
+    ) {
+      return true;
+    }
+    return pathBelongsToWorkspace(item.href, "centrix_payments");
   }
 
   if (workspaceId === "hr") {
