@@ -489,6 +489,10 @@ function match_centrix_payments_reconciliation(pathname) {
   return pathname === "/centrix-payments/reconciliation";
 }
 
+function match_centrix_payments_settings(pathname) {
+  return pathname === "/centrix-payments/settings";
+}
+
 function match_centrix_payments_transactions(pathname) {
   return pathname === "/centrix-payments/transactions";
 }
@@ -1591,6 +1595,12 @@ export const SCREEN_REGISTRY = [
     title: "Reconciliation",
     route: "/centrix-payments/reconciliation",
     match: match_centrix_payments_reconciliation,
+  },
+  {
+    id: "centrix-payments-settings",
+    title: "Settings",
+    route: "/centrix-payments/settings",
+    match: match_centrix_payments_settings,
   },
   {
     id: "centrix-payments-transactions",

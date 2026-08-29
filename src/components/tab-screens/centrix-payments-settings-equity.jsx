@@ -2,36 +2,48 @@
 
 import { AdminEquityAccountsScreen } from "@/components/tab-screens/admin-equity-accounts";
 import { useAuth } from "@/contexts/auth-context";
-import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import {
-  canAccessCentrixPaymentsConfiguration,
-  isCentrixPaymentsEnabled,
-} from "@/lib/platform-org-features";
+  PaymentsAccessGate,
+  PaymentsEmptyState,
+  PaymentsHero,
+  PaymentsSettingsBreadcrumb,
+} from "@/components/centrix-payments/centrix-payments-shared";
+import { P } from "@/lib/permission-codes";
+import { canAccessCentrixPaymentsConfiguration } from "@/lib/platform-org-features";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
 
 export function CentrixPaymentsEquitySettingsScreen() {
-  const { user, capabilities, hasPermission } = useAuth();
-  const enabled = isCentrixPaymentsEnabled(capabilities);
+  const { user, organization, capabilities, hasPermission } = useAuth();
   const canConfigure = canAccessCentrixPaymentsConfiguration({
     user,
     capabilities,
     hasPermission,
   });
 
-  if (!enabled) {
-    return (
-      <CatalogPageShell title="Equity Bank accounts" subtitle="Collection accounts and paybills">
-        <p className="text-sm text-amber-800">Centrix Payments is disabled for this organization.</p>
-      </CatalogPageShell>
-    );
-  }
+  useTabTitle(tabSectionTitle("Equity Bank", "Centrix Payments"));
 
-  if (!canConfigure) {
-    return (
-      <CatalogPageShell title="Equity Bank accounts" subtitle="Collection accounts and paybills">
-        <p className="text-sm text-amber-800">You do not have permission to manage bank accounts.</p>
-      </CatalogPageShell>
-    );
-  }
-
-  return <AdminEquityAccountsScreen embedded showBreadcrumb={false} />;
+  return (
+    <PaymentsAccessGate
+      permissionAny={[P.centrix_payments.bank.view, P.centrix_payments.bank.manage]}
+      title="Equity Bank accounts"
+    >
+      <div className="space-y-6 pb-8">
+        <PaymentsHero
+          organizationName={organization?.org_name}
+          eyebrow="Centrix Payments · Equity Bank"
+          subtitle="Collection accounts and paybill reconciliation with Equity Bank."
+        />
+        <PaymentsSettingsBreadcrumb title="Equity Bank" />
+        {!canConfigure ? (
+          <PaymentsEmptyState
+            title="Insufficient permissions"
+            description="Ask an administrator to grant bank account management access on your role."
+          />
+        ) : (
+          <AdminEquityAccountsScreen embedded showBreadcrumb={false} hidePageHeader />
+        )}
+      </div>
+    </PaymentsAccessGate>
+  );
 }

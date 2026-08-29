@@ -14,12 +14,14 @@ import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
  *   apiPrefix?: string,
  *   embedded?: boolean,
  *   showBreadcrumb?: boolean,
+ *   hidePageHeader?: boolean,
  * }} [props]
  */
 export function AdminMpesaSettingsScreen({
   apiPrefix = "/erp/settings",
   embedded = false,
   showBreadcrumb = true,
+  hidePageHeader = false,
 } = {}) {
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
@@ -28,8 +30,12 @@ export function AdminMpesaSettingsScreen({
   const body = (
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
-        title="M-Pesa settings"
-        subtitle="Organization Daraja defaults and saved paybills. Use the tabs to switch between defaults and the paybill list."
+        title={hidePageHeader ? undefined : "M-Pesa settings"}
+        subtitle={
+          hidePageHeader
+            ? undefined
+            : "Organization Daraja defaults and saved paybills. Use the tabs to switch between defaults and the paybill list."
+        }
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

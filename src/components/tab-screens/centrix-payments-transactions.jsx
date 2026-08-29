@@ -1,38 +1,59 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabSectionTitle } from "@/hooks/use-tab-form-exit";
-import { isCentrixPaymentsEnabled } from "@/lib/platform-org-features";
 import { P } from "@/lib/permission-codes";
 import { notifyError } from "@/lib/notify";
 import {
-  CatalogPageShell,
-  SECONDARY_BTN_CLASS,
-  formatKesCompact,
-  formatShortDate,
-} from "@/components/catalog/catalog-shared";
+  DashboardLoading,
+  DashboardPanel,
+  DashboardRefreshButton,
+  DashboardSection,
+  DashboardSummaryTable,
+  PaymentStatusBadge,
+  PaymentsAccessGate,
+  PaymentsEmptyState,
+  PaymentsHero,
+  formatTransactionRow,
+} from "@/components/centrix-payments/centrix-payments-shared";
+
+const STATUS_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "success", label: "Successful" },
+  { id: "pending", label: "Pending" },
+  { id: "failed", label: "Failed" },
+];
+
+function matchesFilter(row, filter) {
+  if (filter === "all") return true;
+  const status = String(row.status ?? "").toLowerCase();
+  if (filter === "success") {
+    return ["completed", "success", "paid", "matched"].includes(status);
+  }
+  if (filter === "pending") {
+    return ["pending", "processing", "unmatched"].includes(status);
+  }
+  if (filter === "failed") {
+    return ["failed", "cancelled", "error", "rejected"].includes(status);
+  }
+  return true;
+}
 
 export function CentrixPaymentsTransactionsScreen() {
-  const { capabilities, hasPermission } = useAuth();
-  const enabled = isCentrixPaymentsEnabled(capabilities);
-  const canView = enabled && hasPermission?.(P.centrix_payments.transactions.view);
+  const { organization } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
 
   const loadData = useCallback(async () => {
-    if (!canView) {
-      setRows([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
       const res = await apiRequest("/centrix-payments/transactions", {
-        searchParams: { limit: 100 },
+        searchParams: { limit: 200 },
       });
       setRows(Array.isArray(res?.data) ? res.data : []);
     } catch (e) {
@@ -41,70 +62,92 @@ export function CentrixPaymentsTransactionsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [canView]);
+  }, []);
 
   useTabAwareDataLoad(loadData);
   useTabTitle(tabSectionTitle("Transactions", "Centrix Payments"));
 
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesFilter(row, filter)).map(formatTransactionRow),
+    [rows, filter],
+  );
+
+  const counts = useMemo(() => {
+    const out = { all: rows.length, success: 0, pending: 0, failed: 0 };
+    for (const row of rows) {
+      if (matchesFilter(row, "success")) out.success += 1;
+      if (matchesFilter(row, "pending")) out.pending += 1;
+      if (matchesFilter(row, "failed")) out.failed += 1;
+    }
+    return out;
+  }, [rows]);
+
   return (
-    <CatalogPageShell
-      title="Transactions"
-      subtitle="STK requests, M-Pesa C2B, and recorded sale payments"
-      action={
-        <button
-          type="button"
-          className={SECONDARY_BTN_CLASS}
-          onClick={() => void loadData()}
-          disabled={loading}
-        >
-          Refresh
-        </button>
-      }
-    >
-      {!enabled ? (
-        <p className="text-sm text-amber-800">Centrix Payments is disabled for this organization.</p>
-      ) : !canView ? (
-        <p className="text-sm text-slate-600">You do not have permission to view transactions.</p>
-      ) : loading ? (
-        <p className="text-sm text-slate-500">Loading transactions…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No transactions yet.</p>
-      ) : (
-        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-sm">
-              <thead>
-                <tr className="theme-table-head-row text-left text-xs font-medium">
-                  <th className="px-3 py-2">Source</th>
-                  <th className="px-3 py-2">Provider</th>
-                  <th className="px-3 py-2">Reference</th>
-                  <th className="px-3 py-2 text-right">Amount</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Date</th>
-                  <th className="px-3 py-2">Receipt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="theme-table-row border-t border-slate-100">
-                    <td className="px-3 py-2">{row.source}</td>
-                    <td className="px-3 py-2 uppercase">{row.provider}</td>
-                    <td className="px-3 py-2 font-mono text-xs">
-                      {row.centrix_reference || row.provider_transaction_id || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {formatKesCompact(row.amount ?? 0)}
-                    </td>
-                    <td className="px-3 py-2">{row.status}</td>
-                    <td className="px-3 py-2">{formatShortDate(row.transaction_date)}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{row.mpesa_receipt || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+    <PaymentsAccessGate permission={P.centrix_payments.transactions.view} title="Transactions">
+      <div className="space-y-8 pb-8">
+        <PaymentsHero
+          organizationName={organization?.org_name}
+          subtitle="Full ledger of STK push requests, M-Pesa C2B notifications, and sale payments recorded in Centrix."
+          action={
+            <DashboardRefreshButton onClick={loadData} loading={loading} className="!border-white/30 !bg-white/15 !text-white hover:!bg-white/25" />
+          }
+        />
+
+        <div className="flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setFilter(item.id)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                filter === item.id
+                  ? "bg-teal-700 text-white shadow-sm"
+                  : "theme-panel border text-slate-600 hover:border-teal-500/40"
+              }`}
+            >
+              {item.label}
+              <span className="ml-1.5 tabular-nums opacity-80">({counts[item.id] ?? 0})</span>
+            </button>
+          ))}
         </div>
-      )}
-    </CatalogPageShell>
+
+        <DashboardSection title="Payment ledger" subtitle="Filter by status to focus on exceptions or confirmed collections">
+          {loading ? (
+            <DashboardLoading label="Loading transactions…" />
+          ) : filteredRows.length === 0 ? (
+            <PaymentsEmptyState
+              title={rows.length === 0 ? "No transactions yet" : "No transactions in this filter"}
+              description={
+                rows.length === 0
+                  ? "Once you start collecting via STK or C2B, payments will appear here in real time."
+                  : "Try another status filter to see more results."
+              }
+              actionHref={rows.length === 0 ? "/centrix-payments/settings/mpesa" : undefined}
+              actionLabel="Configure M-Pesa"
+            />
+          ) : (
+            <DashboardPanel className="!p-0 overflow-hidden">
+              <DashboardSummaryTable
+                columns={[
+                  { key: "source", label: "Source" },
+                  { key: "provider", label: "Provider" },
+                  { key: "reference", label: "Reference", mono: true },
+                  { key: "amount", label: "Amount", align: "right" },
+                  {
+                    key: "status",
+                    label: "Status",
+                    render: (row) => <PaymentStatusBadge status={row.status} />,
+                  },
+                  { key: "date", label: "Date" },
+                  { key: "receipt", label: "Receipt", mono: true },
+                ]}
+                rows={filteredRows}
+                emptyMessage="No transactions"
+              />
+            </DashboardPanel>
+          )}
+        </DashboardSection>
+      </div>
+    </PaymentsAccessGate>
   );
 }

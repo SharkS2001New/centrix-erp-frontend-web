@@ -188,6 +188,8 @@ export function canAccessRoute(pathname, ctx, options = {}) {
   }
 
   if (
+    pathname === "/centrix-payments/settings" ||
+    pathname.startsWith("/centrix-payments/settings/") ||
     pathname === "/centrix-payments/settings/mpesa" ||
     pathname.startsWith("/centrix-payments/settings/mpesa/") ||
     pathname === "/centrix-payments/settings/paybills" ||

@@ -14,12 +14,14 @@ import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
  *   apiPrefix?: string,
  *   embedded?: boolean,
  *   showBreadcrumb?: boolean,
+ *   hidePageHeader?: boolean,
  * }} [props]
  */
 export function AdminMpesaPaybillsScreen({
   apiPrefix = "/erp/settings",
   embedded = false,
   showBreadcrumb = true,
+  hidePageHeader = false,
 } = {}) {
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
@@ -28,8 +30,12 @@ export function AdminMpesaPaybillsScreen({
   const body = (
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
-        title="M-Pesa Paybills"
-        subtitle="Saved paybills appear in the list below. Select one to edit shortcodes, route/till mapping, and optional Daraja keys."
+        title={hidePageHeader ? undefined : "M-Pesa Paybills"}
+        subtitle={
+          hidePageHeader
+            ? undefined
+            : "Saved paybills appear in the list below. Select one to edit shortcodes, route/till mapping, and optional Daraja keys."
+        }
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

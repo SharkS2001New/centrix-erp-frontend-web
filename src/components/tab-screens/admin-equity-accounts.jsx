@@ -14,12 +14,14 @@ import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
  *   apiPrefix?: string,
  *   embedded?: boolean,
  *   showBreadcrumb?: boolean,
+ *   hidePageHeader?: boolean,
  * }} [props]
  */
 export function AdminEquityAccountsScreen({
   apiPrefix = "/erp/settings",
   embedded = false,
   showBreadcrumb = true,
+  hidePageHeader = false,
 } = {}) {
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
@@ -28,8 +30,12 @@ export function AdminEquityAccountsScreen({
   const body = (
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
-        title="Equity Bank accounts"
-        subtitle="Organization Equity defaults and saved accounts. Use the tabs to switch between defaults and the account list."
+        title={hidePageHeader ? undefined : "Equity Bank accounts"}
+        subtitle={
+          hidePageHeader
+            ? undefined
+            : "Organization Equity defaults and saved accounts. Use the tabs to switch between defaults and the account list."
+        }
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

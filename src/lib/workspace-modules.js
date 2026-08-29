@@ -51,7 +51,7 @@ export const PROVISIONABLE_WORKSPACES = [
   {
     id: "centrix_payments",
     label: "Centrix Payments",
-    description: "M-Pesa STK, payment accounts, transactions, and reconciliation — standalone or with ERP.",
+    description: "Collect via M-Pesa STK, manage paybills and bank accounts, and reconcile payments — standalone or with ERP.",
     icon: "payments",
   },
   {

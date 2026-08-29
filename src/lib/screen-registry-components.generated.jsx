@@ -297,6 +297,9 @@ export const SCREEN_COMPONENTS = {
   "centrix-payments-reconciliation": lazy(() =>
     import("@/components/tab-screens/centrix-payments-reconciliation").then((m) => ({ default: m.CentrixPaymentsReconciliationScreen })),
   ),
+  "centrix-payments-settings": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-settings").then((m) => ({ default: m.CentrixPaymentsSettingsScreen })),
+  ),
   "centrix-payments-transactions": lazy(() =>
     import("@/components/tab-screens/centrix-payments-transactions").then((m) => ({ default: m.CentrixPaymentsTransactionsScreen })),
   ),
