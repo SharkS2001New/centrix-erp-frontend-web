@@ -18,6 +18,7 @@ import { useConfirm } from "@/lib/use-confirm";
 import { MpesaPaybillAccountsPanel } from "@/components/admin/mpesa-paybill-accounts-panel";
 import { EquityBankAccountsPanel } from "@/components/admin/equity-bank-accounts-panel";
 import { resolveMpesaSettingsHref } from "@/lib/centrix-payments-routes";
+import { fetchBranchesCached, fetchRoutesCached } from "@/lib/reference-data-cache";
 
 /** @typedef {"all" | "kra" | "mpesa" | "paybills" | "equity"} FinanceSettingsMode */
 
