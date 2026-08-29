@@ -52,6 +52,10 @@ export const NAV_HREF_ICONS = {
   "/admin/mpesa-settings": "wallet",
   "/admin/mpesa-paybills": "wallet",
   "/admin/equity-accounts": "wallet",
+  "/centrix-payments/settings": "settings",
+  "/centrix-payments/settings/mpesa": "wallet",
+  "/centrix-payments/settings/paybills": "wallet",
+  "/centrix-payments/settings/equity": "wallet",
   "/accounting/equity-reconciliation": "link",
 
   // Pricing & tax

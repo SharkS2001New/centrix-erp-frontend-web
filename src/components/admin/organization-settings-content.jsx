@@ -28,7 +28,9 @@ import {
 import {
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
+  isCentrixPaymentsEnabled,
 } from "@/lib/platform-org-features";
+import { resolveFinanceSettingsEntryHref } from "@/lib/centrix-payments-routes";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 import {
   CatalogPageShell,
@@ -98,6 +100,10 @@ export function OrganizationSettingsContent({
     const redirect = TENANT_ORG_SETTINGS_TAB_REDIRECTS[tabFromUrl];
     if (!redirect) return;
     if (tabFromUrl === "finance") {
+      if (isCentrixPaymentsEnabled(capabilities)) {
+        router.replace(resolveFinanceSettingsEntryHref(capabilities));
+        return;
+      }
       if (isPlatformKraIntegrationEnabled(capabilities)) {
         router.replace("/admin/kra-settings");
         return;

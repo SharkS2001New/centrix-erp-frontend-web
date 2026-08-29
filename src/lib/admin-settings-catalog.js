@@ -1,5 +1,6 @@
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { isOrgSettingsTabVisible } from "@/lib/org-settings-tabs";
+import { isCentrixPaymentsEnabled } from "@/lib/platform-org-features";
 import { P } from "@/lib/permission-codes";
 
 /**
@@ -15,6 +16,8 @@ import { P } from "@/lib/permission-codes";
  *   navHref?: string,
  *   permission?: string,
  *   permissionAny?: string[],
+ *   requireCentrixPayments?: boolean,
+ *   hideWhenCentrixPayments?: boolean,
  * }} AdminSettingEntry
  */
 
@@ -112,23 +115,58 @@ export const ADMIN_SETTINGS_CATALOG = [
     label: "M-Pesa settings",
     description: "Daraja credentials, STK push, and C2B reconciliation",
     keywords: ["mpesa", "m-pesa", "daraja", "stk", "c2b", "paybill", "lipa", "account name", "moon", "billref"],
-    group: "Finance",
-    path: "Admin → Finance → M-Pesa settings",
-    href: "/admin/mpesa-settings",
-    navHref: "/admin/mpesa-settings",
+    group: "Payments",
+    path: "Centrix Payments → Settings → M-Pesa settings",
+    href: "/centrix-payments/settings/mpesa",
+    navHref: "/centrix-payments/settings/mpesa",
+    requireCentrixPayments: true,
   },
   {
     id: "page.mpesa-account-name",
     label: "Paybill account name",
     description: "Fixed Safaricom account name (e.g. moon) used with your paybill shortcode",
     keywords: ["account name", "moon", "billref", "account number", "paybill account"],
-    group: "Finance",
-    path: "Admin → Finance → M-Pesa settings → Paybill account name",
-    href: "/admin/mpesa-settings",
-    navHref: "/admin/mpesa-settings",
+    group: "Payments",
+    path: "Centrix Payments → Settings → M-Pesa settings → Paybill account name",
+    href: "/centrix-payments/settings/mpesa",
+    navHref: "/centrix-payments/settings/mpesa",
+    requireCentrixPayments: true,
   },
   {
     id: "page.mpesa-paybills",
+    label: "M-Pesa Paybills",
+    description: "Paybill / till shortcodes for routes and shops",
+    keywords: ["paybill", "shortcode", "till number", "store number", "multi paybill"],
+    group: "Payments",
+    path: "Centrix Payments → Settings → Paybill accounts",
+    href: "/centrix-payments/settings/paybills",
+    navHref: "/centrix-payments/settings/paybills",
+    requireCentrixPayments: true,
+  },
+  {
+    id: "page.equity-accounts",
+    label: "Equity Bank accounts",
+    description: "Equity paybill / collection accounts for routes",
+    keywords: ["equity", "bank", "paybill", "collection", "reconciliation"],
+    group: "Payments",
+    path: "Centrix Payments → Settings → Equity Bank accounts",
+    href: "/centrix-payments/settings/equity",
+    navHref: "/centrix-payments/settings/equity",
+    requireCentrixPayments: true,
+  },
+  {
+    id: "page.mpesa-settings.admin",
+    label: "M-Pesa settings",
+    description: "Daraja credentials, STK push, and C2B reconciliation",
+    keywords: ["mpesa", "m-pesa", "daraja", "stk", "c2b", "paybill", "lipa", "account name", "moon", "billref"],
+    group: "Finance",
+    path: "Admin → Finance → M-Pesa settings",
+    href: "/admin/mpesa-settings",
+    navHref: "/admin/mpesa-settings",
+    hideWhenCentrixPayments: true,
+  },
+  {
+    id: "page.mpesa-paybills.admin",
     label: "M-Pesa Paybills",
     description: "Paybill / till shortcodes for routes and shops",
     keywords: ["paybill", "shortcode", "till number", "store number", "multi paybill"],
@@ -136,9 +174,10 @@ export const ADMIN_SETTINGS_CATALOG = [
     path: "Admin → Finance → M-Pesa Paybills",
     href: "/admin/mpesa-paybills",
     navHref: "/admin/mpesa-paybills",
+    hideWhenCentrixPayments: true,
   },
   {
-    id: "page.equity-accounts",
+    id: "page.equity-accounts.admin",
     label: "Equity Bank accounts",
     description: "Equity paybill / collection accounts for routes",
     keywords: ["equity", "bank", "paybill", "collection", "reconciliation"],
@@ -146,6 +185,7 @@ export const ADMIN_SETTINGS_CATALOG = [
     path: "Admin → Finance → Equity Bank accounts",
     href: "/admin/equity-accounts",
     navHref: "/admin/equity-accounts",
+    hideWhenCentrixPayments: true,
   },
   {
     id: "page.till-printing",
@@ -555,7 +595,6 @@ function getAdminNavByHref() {
   if (!adminNavByHrefCache) {
     adminNavByHrefCache = new Map(
       navSections
-        .filter((section) => String(section.id ?? "").startsWith("admin"))
         .flatMap((section) => section.items ?? [])
         .map((item) => [item.href, item]),
     );
@@ -573,6 +612,10 @@ function getAdminNavByHref() {
  */
 export function isAdminSettingEntryVisible(entry, ctx = {}) {
   const { capabilities, hasPermission, navContext } = ctx;
+  const paymentsEnabled = isCentrixPaymentsEnabled(capabilities);
+
+  if (entry.requireCentrixPayments && !paymentsEnabled) return false;
+  if (entry.hideWhenCentrixPayments && paymentsEnabled) return false;
 
   if (entry.permissionAny?.length) {
     if (typeof hasPermission === "function" && !entry.permissionAny.some((code) => hasPermission(code))) {

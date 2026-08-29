@@ -168,9 +168,6 @@ export const WORKSPACE_PATH_PREFIXES = {
   accounting: ["/accounting", "/expenses", "/finance"],
   centrix_payments: [
     "/centrix-payments",
-    "/admin/mpesa-settings",
-    "/admin/mpesa-paybills",
-    "/admin/equity-accounts",
   ],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment"],
@@ -277,16 +274,6 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
 
   if (workspaceId === "centrix_payments") {
     if (item.href?.startsWith("/centrix-payments")) {
-      return true;
-    }
-    if (
-      item.href === "/admin/mpesa-settings" ||
-      item.href?.startsWith("/admin/mpesa-settings/") ||
-      item.href === "/admin/mpesa-paybills" ||
-      item.href?.startsWith("/admin/mpesa-paybills/") ||
-      item.href === "/admin/equity-accounts" ||
-      item.href?.startsWith("/admin/equity-accounts/")
-    ) {
       return true;
     }
     return pathBelongsToWorkspace(item.href, "centrix_payments");

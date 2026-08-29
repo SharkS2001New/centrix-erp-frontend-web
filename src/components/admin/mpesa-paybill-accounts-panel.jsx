@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { resolveMpesaSettingsHref } from "@/lib/centrix-payments-routes";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { notifySuccess } from "@/lib/notify";
 
@@ -67,6 +69,8 @@ export function MpesaPaybillAccountsPanel({
   refreshKey = 0,
   showCredentialHint = true,
 }) {
+  const { capabilities } = useAuth();
+  const mpesaSettingsHref = resolveMpesaSettingsHref(capabilities);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -189,7 +193,7 @@ export function MpesaPaybillAccountsPanel({
       <p className="theme-subtext mt-1 text-xs">
         Select a paybill to edit its shortcode, route/till mapping, and optional Daraja consumer key / callback
         URLs. Blank credential fields inherit the organization default under{" "}
-        <a href="/admin/mpesa-settings" className="font-medium text-[var(--theme-primary)] underline">
+        <a href={mpesaSettingsHref} className="font-medium text-[var(--theme-primary)] underline">
           M-Pesa settings
         </a>
         .

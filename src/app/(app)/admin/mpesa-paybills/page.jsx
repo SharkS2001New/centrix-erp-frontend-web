@@ -1,11 +1,17 @@
 "use client";
 
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { CentrixPaymentsAdminFinanceRedirect } from "@/components/centrix-payments/centrix-payments-admin-finance-redirect";
 import { AdminMpesaPaybillsScreen } from "@/components/tab-screens/admin-mpesa-paybills";
+import { ADMIN_FINANCE_PATHS } from "@/lib/centrix-payments-routes";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
   const { enabled } = useTabWorkspace();
   if (enabled) return null;
-  return <AdminMpesaPaybillsScreen />;
+  return (
+    <CentrixPaymentsAdminFinanceRedirect adminPath={ADMIN_FINANCE_PATHS.mpesaPaybills}>
+      <AdminMpesaPaybillsScreen />
+    </CentrixPaymentsAdminFinanceRedirect>
+  );
 }

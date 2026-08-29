@@ -56,12 +56,7 @@ const PREFIXES_BY_WORKSPACE = {
   ],
   admin: ["/admin"],
   accounting: ["/accounting", "/expenses", "/finance"],
-  centrix_payments: [
-    "/centrix-payments",
-    "/admin/mpesa-settings",
-    "/admin/mpesa-paybills",
-    "/admin/equity-accounts",
-  ],
+  centrix_payments: ["/centrix-payments"],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment", "/dispatch-trips"],
 };

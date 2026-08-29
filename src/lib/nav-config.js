@@ -49,7 +49,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -493,7 +493,8 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/centrix-payments/settings",
-        label: "Settings",
+        label: "Settings overview",
+        group: "Settings",
         module: "centrix_payments",
         permissionAny: [
           P.centrix_payments.settings.view,
@@ -503,6 +504,36 @@ const NAV_SECTION_DEFINITIONS = [
           P.centrix_payments.bank.view,
           P.centrix_payments.bank.manage,
         ],
+        requireCentrixPayments: true,
+      },
+      {
+        href: "/centrix-payments/settings/mpesa",
+        label: "M-Pesa settings",
+        group: "Settings",
+        module: "centrix_payments",
+        permissionAny: [P.centrix_payments.settings.view, P.centrix_payments.settings.edit],
+        requireCentrixPayments: true,
+        requirePlatformMpesa: true,
+      },
+      {
+        href: "/centrix-payments/settings/paybills",
+        label: "Paybill accounts",
+        group: "Settings",
+        module: "centrix_payments",
+        permissionAny: [
+          P.centrix_payments.mpesa.view,
+          P.centrix_payments.mpesa.manage,
+          P.centrix_payments.accounts.view,
+        ],
+        requireCentrixPayments: true,
+        requirePlatformMpesa: true,
+      },
+      {
+        href: "/centrix-payments/settings/equity",
+        label: "Equity Bank accounts",
+        group: "Settings",
+        module: "centrix_payments",
+        permissionAny: [P.centrix_payments.bank.view, P.centrix_payments.bank.manage],
         requireCentrixPayments: true,
       },
       {
@@ -1371,6 +1402,7 @@ const NAV_SECTION_DEFINITIONS = [
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         requirePlatformMpesa: true,
         orgAdminOnly: true,
+        hideWhenCentrixPayments: true,
       },
       {
         href: "/admin/mpesa-paybills",
@@ -1379,6 +1411,7 @@ const NAV_SECTION_DEFINITIONS = [
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         requirePlatformMpesa: true,
         orgAdminOnly: true,
+        hideWhenCentrixPayments: true,
       },
       {
         href: "/admin/equity-accounts",
@@ -1386,6 +1419,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "payments",
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         orgAdminOnly: true,
+        hideWhenCentrixPayments: true,
       },
     ],
   },
@@ -1502,6 +1536,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
   if (item.requirePlatformInvestors && !isPlatformInvestorsEnabled(capabilities)) return false;
   if (item.requireCentrixPayments && !isCentrixPaymentsEnabled(capabilities)) return false;
+  if (item.hideWhenCentrixPayments && isCentrixPaymentsEnabled(capabilities)) return false;
   if (item.requireShopDebtors && !shouldShowShopDebtors(capabilities)) return false;
   if (item.hideWhenRouteOnlyCustomers && isRouteOnlyCustomers(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;

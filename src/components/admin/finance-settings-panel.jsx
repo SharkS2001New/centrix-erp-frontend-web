@@ -17,7 +17,7 @@ import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { MpesaPaybillAccountsPanel } from "@/components/admin/mpesa-paybill-accounts-panel";
 import { EquityBankAccountsPanel } from "@/components/admin/equity-bank-accounts-panel";
-import { fetchBranchesCached, fetchRoutesCached } from "@/lib/reference-data-cache";
+import { resolveMpesaSettingsHref } from "@/lib/centrix-payments-routes";
 
 /** @typedef {"all" | "kra" | "mpesa" | "paybills" | "equity"} FinanceSettingsMode */
 
@@ -73,6 +73,7 @@ export function FinanceSettingsPanel({
   const confirm = useConfirm();
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
+  const mpesaSettingsHref = resolveMpesaSettingsHref(capabilities);
   const { settingsPath, bumpSettingsSaveGen } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const getSettings = useSettingsGet();
@@ -671,7 +672,7 @@ export function FinanceSettingsPanel({
                 {mode === "paybills" ? (
                   <>
                     organization defaults under{" "}
-                    <a href="/admin/mpesa-settings" className="font-medium text-[var(--theme-primary)] underline">
+                    <a href={mpesaSettingsHref} className="font-medium text-[var(--theme-primary)] underline">
                       M-Pesa settings
                     </a>
                   </>
