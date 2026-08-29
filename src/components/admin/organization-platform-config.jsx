@@ -384,6 +384,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     use_platform_gemini: false,
     enable_whatsapp_orders: false,
     enable_investors: false,
+    enable_centrix_payments: false,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
     stock_deduct_on: {
@@ -462,6 +463,7 @@ export function salesPlatformFromApi(apiPayload) {
     use_platform_gemini: Boolean(apiPayload.use_platform_gemini),
     enable_whatsapp_orders: Boolean(apiPayload.enable_whatsapp_orders ?? false),
     enable_investors: Boolean(apiPayload.enable_investors ?? false),
+    enable_centrix_payments: Boolean(apiPayload.enable_centrix_payments ?? false),
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
@@ -819,6 +821,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, this organization gets an Investors sidebar to track cash and stock capital, link LPO payments, and run investor sales/stock/money-flow reports."
             checked={Boolean(salesPlatform?.enable_investors)}
             onChange={(v) => patch({ enable_investors: v })}
+          />
+          <Toggle
+            label="Enable Centrix Payments"
+            description="When on, this organization gets Centrix Payments for M-Pesa STK, payment accounts, transactions, and reconciliation. Disabling hides payment features but preserves history."
+            checked={Boolean(salesPlatform?.enable_centrix_payments)}
+            onChange={(v) => patch({ enable_centrix_payments: v })}
           />
           <AdvancedDataImportPlatformFields salesPlatform={salesPlatform} onPatch={patch} />
         </div>

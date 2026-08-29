@@ -141,6 +141,9 @@ export const SCREEN_COMPONENTS = {
   "inventory-stock-take-id": lazy(() =>
     import("@/components/tab-screens/inventory-stock-take-id").then((m) => ({ default: m.InventoryStockTakeIdScreen })),
   ),
+  "investors-reports-id": lazy(() =>
+    import("@/components/tab-screens/investors-reports-id").then((m) => ({ default: m.InvestorsReportsIdScreen })),
+  ),
   "lpo-lpoNo-edit": lazy(() =>
     import("@/components/tab-screens/lpo-lpoNo-edit").then((m) => ({ default: m.LpoLpoNoEditScreen })),
   ),
@@ -275,6 +278,18 @@ export const SCREEN_COMPONENTS = {
   ),
   "admin-users": lazy(() =>
     import("@/components/tab-screens/admin-users").then((m) => ({ default: m.AdminUsersScreen })),
+  ),
+  "centrix-payments-accounts": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-accounts").then((m) => ({ default: m.CentrixPaymentsAccountsScreen })),
+  ),
+  "centrix-payments-mpesa": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-mpesa").then((m) => ({ default: m.CentrixPaymentsMpesaScreen })),
+  ),
+  "centrix-payments-reconciliation": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-reconciliation").then((m) => ({ default: m.CentrixPaymentsReconciliationScreen })),
+  ),
+  "centrix-payments-transactions": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-transactions").then((m) => ({ default: m.CentrixPaymentsTransactionsScreen })),
   ),
   "customers-new": lazy(() =>
     import("@/components/tab-screens/customers-new").then((m) => ({ default: m.CustomersNewScreen })),
@@ -426,11 +441,6 @@ export const SCREEN_COMPONENTS = {
   "investors-reports": lazy(() =>
     import("@/components/tab-screens/investors-reports").then((m) => ({ default: m.InvestorsReportsScreen })),
   ),
-  "investors-reports-id": lazy(() =>
-    import("@/components/tab-screens/investors-reports-id").then((m) => ({
-      default: m.InvestorsReportsIdScreen,
-    })),
-  ),
   "lpo-new": lazy(() =>
     import("@/components/tab-screens/lpo-new").then((m) => ({ default: m.LpoNewScreen })),
   ),
@@ -572,6 +582,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "categories": lazy(() =>
     import("@/components/tab-screens/categories").then((m) => ({ default: m.CategoriesScreen })),
+  ),
+  "centrix-payments": lazy(() =>
+    import("@/components/tab-screens/centrix-payments-dashboard").then((m) => ({ default: m.CentrixPaymentsDashboardScreen })),
   ),
   "customers": lazy(() =>
     import("@/components/customers/customers-list-screen").then((m) => ({ default: m.CustomersListScreen })),

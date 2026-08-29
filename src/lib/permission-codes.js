@@ -234,6 +234,44 @@ export const P = {
     },
     reports: { view: "investors.reports.view" },
   },
+  centrix_payments: {
+    dashboard: { view: "centrix_payments.dashboard.view" },
+    receive: {
+      view: "centrix_payments.receive.view",
+      create: "centrix_payments.receive.create",
+    },
+    transactions: { view: "centrix_payments.transactions.view" },
+    accounts: {
+      view: "centrix_payments.accounts.view",
+      create: "centrix_payments.accounts.create",
+      edit: "centrix_payments.accounts.edit",
+      delete: "centrix_payments.accounts.delete",
+    },
+    mpesa: {
+      view: "centrix_payments.mpesa.view",
+      manage: "centrix_payments.mpesa.manage",
+    },
+    bank: {
+      view: "centrix_payments.bank.view",
+      manage: "centrix_payments.bank.manage",
+    },
+    reconcile: {
+      view: "centrix_payments.reconcile.view",
+      manage: "centrix_payments.reconcile.manage",
+    },
+    refunds: {
+      view: "centrix_payments.refunds.view",
+      create: "centrix_payments.refunds.create",
+    },
+    reports: {
+      view: "centrix_payments.reports.view",
+      export: "centrix_payments.reports.export",
+    },
+    settings: {
+      view: "centrix_payments.settings.view",
+      edit: "centrix_payments.settings.edit",
+    },
+  },
   reports: {
     hub: { view: "reports.hub.view" },
     daily_sales: { view: "reports.daily_sales.view" },

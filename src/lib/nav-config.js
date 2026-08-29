@@ -18,6 +18,7 @@ import {
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
   isPlatformInvestorsEnabled,
+  isCentrixPaymentsEnabled,
 } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
@@ -460,6 +461,58 @@ const NAV_SECTION_DEFINITIONS = [
         module: "investors",
         permissionAny: [P.investors.reports.view, P.investors.investors.view],
         requirePlatformInvestors: true,
+      },
+    ],
+  },
+  {
+    id: "centrix_payments",
+    label: "Centrix Payments",
+    icon: "💳",
+    collapsible: true,
+    items: [
+      {
+        href: "/centrix-payments",
+        label: "Dashboard",
+        module: "centrix_payments",
+        permission: P.centrix_payments.dashboard.view,
+        requireCentrixPayments: true,
+      },
+      {
+        href: "/centrix-payments/accounts",
+        label: "Payment Accounts",
+        module: "centrix_payments",
+        permission: P.centrix_payments.accounts.view,
+        requireCentrixPayments: true,
+      },
+      {
+        href: "/centrix-payments/transactions",
+        label: "Transactions",
+        module: "centrix_payments",
+        permission: P.centrix_payments.transactions.view,
+        requireCentrixPayments: true,
+      },
+      {
+        href: "/centrix-payments/mpesa",
+        label: "M-Pesa",
+        module: "centrix_payments",
+        permissionAny: [P.centrix_payments.mpesa.view, P.centrix_payments.accounts.view],
+        requireCentrixPayments: true,
+        requirePlatformMpesa: true,
+      },
+      {
+        href: "/centrix-payments/reconciliation",
+        label: "Reconciliation",
+        module: "centrix_payments",
+        permission: P.centrix_payments.reconcile.view,
+        requireCentrixPayments: true,
+      },
+      {
+        href: "/admin/mpesa-settings",
+        label: "Settings",
+        module: "centrix_payments",
+        permission: P.centrix_payments.settings.view,
+        requireCentrixPayments: true,
+        group: "settings",
       },
     ],
   },
@@ -1448,6 +1501,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   }
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
   if (item.requirePlatformInvestors && !isPlatformInvestorsEnabled(capabilities)) return false;
+  if (item.requireCentrixPayments && !isCentrixPaymentsEnabled(capabilities)) return false;
   if (item.requireShopDebtors && !shouldShowShopDebtors(capabilities)) return false;
   if (item.hideWhenRouteOnlyCustomers && isRouteOnlyCustomers(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;

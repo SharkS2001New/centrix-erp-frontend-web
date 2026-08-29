@@ -5,7 +5,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { PosPaymentPanel } from "@/components/sales/pos-payment-panel";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { getOrderWorkflow } from "@/lib/order-workflow";
-import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
+import { isStkPushEnabled } from "@/lib/finance-settings";
+import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
 import { resolvePaymentMethodByCode } from "@/lib/sales";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 
@@ -35,7 +36,7 @@ export function SalePosPaymentPanel({
       checkoutContext: "order_payment",
       capabilities,
     });
-    const withMpesa = !isPlatformMpesaStkEnabled(capabilities)
+    const withMpesa = !isPosMpesaPaymentsEnabled(capabilities)
       ? { ...base, enableMpesaAmount: false, enableMpesaCode: false }
       : base;
     const paymentStatus = String(sale?.payment_status ?? "").toLowerCase();
@@ -156,6 +157,7 @@ export function SalePosPaymentPanel({
       onComplete={handleComplete}
       onContinueNextOrder={onClose}
       embedded={embedded}
+      enableStkPush={isStkPushEnabled(capabilities?.module_settings, capabilities)}
     />
   );
 }

@@ -112,10 +112,10 @@ import {
 } from "@/components/sales/discount-approval-reason-dialog";
 import {
   isKraDeviceConfigured,
-  isPlatformMpesaStkEnabled,
   isStkPushEnabled,
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
+import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
@@ -1586,10 +1586,7 @@ export function PosScreen({ standalone = false }) {
     6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
-  const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
-    capabilities?.module_settings,
-    capabilities,
-  );
+  const mpesaStkPlatformEnabled = isPosMpesaPaymentsEnabled(capabilities);
   const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
   const checkoutPaymentConfig = useMemo(() => {
     if (mpesaStkPlatformEnabled) return posSalesConfig.payment;

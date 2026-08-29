@@ -1,3 +1,5 @@
+import { isCentrixPaymentsEnabled } from "@/lib/platform-org-features";
+
 const FINANCE_DEFAULTS = {
   enable_kra_device: false,
   kra_device_ip: "",
@@ -116,6 +118,7 @@ function parseBooleanSetting(value, defaultValue = true) {
 }
 
 export function isStkPushEnabled(moduleSettings, capabilities = null) {
+  if (capabilities && !isCentrixPaymentsEnabled(capabilities)) return false;
   if (!isPlatformMpesaStkEnabled(moduleSettings, capabilities)) return false;
   if (moduleSettings == null) return false;
   const finance = mergeFinanceSettings(moduleSettings);

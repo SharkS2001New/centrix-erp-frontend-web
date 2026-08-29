@@ -83,6 +83,19 @@ export function isPlatformInvestorsEnabled(capabilities) {
   );
 }
 
+export function isCentrixPaymentsEnabled(capabilities) {
+  return (
+    capabilities?.platform_centrix_payments_enabled === true ||
+    capabilities?.modules?.centrix_payments === true ||
+    capabilities?.module_settings?.centrix_payments?.enable_centrix_payments === true
+  );
+}
+
+/** POS / checkout M-Pesa (manual + STK infrastructure) requires Centrix Payments + platform M-Pesa. */
+export function isPosMpesaPaymentsEnabled(capabilities) {
+  return isCentrixPaymentsEnabled(capabilities) && isPlatformMpesaStkEnabled(capabilities);
+}
+
 export function isPlatformAdvancedDataImportEnabled(capabilities) {
   return capabilities?.platform_advanced_data_import_enabled === true;
 }

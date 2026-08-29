@@ -248,6 +248,13 @@ function match_inventory_stock_take_id(pathname) {
   return true;
 }
 
+function match_investors_reports_id(pathname) {
+  const m = pathname.match("^/investors/reports/([^/]+)$");
+  if (!m) return false;
+
+  return true;
+}
+
 function match_lpo_lpoNo_edit(pathname) {
   const m = pathname.match("^/lpo/([^/]+)/edit$");
   if (!m) return false;
@@ -458,6 +465,22 @@ function match_admin_users(pathname) {
   return pathname === "/admin/users";
 }
 
+function match_centrix_payments_accounts(pathname) {
+  return pathname === "/centrix-payments/accounts";
+}
+
+function match_centrix_payments_mpesa(pathname) {
+  return pathname === "/centrix-payments/mpesa";
+}
+
+function match_centrix_payments_reconciliation(pathname) {
+  return pathname === "/centrix-payments/reconciliation";
+}
+
+function match_centrix_payments_transactions(pathname) {
+  return pathname === "/centrix-payments/transactions";
+}
+
 function match_customers_new(pathname) {
   return pathname === "/customers/new";
 }
@@ -656,11 +679,6 @@ function match_inventory_transfers(pathname) {
 
 function match_investors_reports(pathname) {
   return pathname === "/investors/reports";
-}
-
-function match_investors_reports_id(pathname) {
-  const m = pathname.match(/^\/investors\/reports\/([^/]+)$/);
-  return Boolean(m);
 }
 
 function match_lpo_new(pathname) {
@@ -874,6 +892,10 @@ function match_admin(pathname) {
 
 function match_categories(pathname) {
   return pathname === "/categories";
+}
+
+function match_centrix_payments(pathname) {
+  return pathname === "/centrix-payments";
 }
 
 function match_customers(pathname) {
@@ -1247,6 +1269,12 @@ export const SCREEN_REGISTRY = [
     match: match_inventory_stock_take_id,
   },
   {
+    id: "investors-reports-id",
+    title: "Reports",
+    route: "/investors/reports/[id]",
+    match: match_investors_reports_id,
+  },
+  {
     id: "lpo-lpoNo-edit",
     title: "Edit",
     route: "/lpo/[lpoNo]/edit",
@@ -1515,6 +1543,30 @@ export const SCREEN_REGISTRY = [
     title: "Users",
     route: "/admin/users",
     match: match_admin_users,
+  },
+  {
+    id: "centrix-payments-accounts",
+    title: "Accounts",
+    route: "/centrix-payments/accounts",
+    match: match_centrix_payments_accounts,
+  },
+  {
+    id: "centrix-payments-mpesa",
+    title: "Mpesa",
+    route: "/centrix-payments/mpesa",
+    match: match_centrix_payments_mpesa,
+  },
+  {
+    id: "centrix-payments-reconciliation",
+    title: "Reconciliation",
+    route: "/centrix-payments/reconciliation",
+    match: match_centrix_payments_reconciliation,
+  },
+  {
+    id: "centrix-payments-transactions",
+    title: "Transactions",
+    route: "/centrix-payments/transactions",
+    match: match_centrix_payments_transactions,
   },
   {
     id: "customers-new",
@@ -1812,15 +1864,9 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "investors-reports",
-    title: "Reports-Investors",
+    title: "Reports",
     route: "/investors/reports",
     match: match_investors_reports,
-  },
-  {
-    id: "investors-reports-id",
-    title: "Reports-Investors",
-    route: "/investors/reports/[id]",
-    match: match_investors_reports_id,
   },
   {
     id: "lpo-new",
@@ -2109,6 +2155,12 @@ export const SCREEN_REGISTRY = [
     title: "Categories",
     route: "/categories",
     match: match_categories,
+  },
+  {
+    id: "centrix-payments",
+    title: "Centrix Payments",
+    route: "/centrix-payments",
+    match: match_centrix_payments,
   },
   {
     id: "customers",

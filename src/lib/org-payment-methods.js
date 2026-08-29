@@ -12,7 +12,7 @@
  */
 
 import { getPaymentMethodKind } from "@/lib/sales";
-import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
+import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
 import { getCheckoutPaymentConfig, mergeSalesSettings } from "@/lib/sales-settings";
 
 const MPESA_CODES = new Set(["MPESA", "M-PESA", "M_PESA"]);
@@ -92,7 +92,7 @@ export function resolveOrgPaymentMethodFlags(moduleSettings, options = {}) {
   // When capabilities are present, respect platform M-Pesa gate (same as POS panels).
   const mpesaOn =
     Boolean(sales.enable_mpesa_amount) &&
-    (capabilities == null || isPlatformMpesaStkEnabled(capabilities));
+    (capabilities == null || isPosMpesaPaymentsEnabled(capabilities));
 
   const equityOn =
     Boolean(sales.enable_equity_bank) ||
