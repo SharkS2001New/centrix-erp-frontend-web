@@ -82,6 +82,14 @@ const nextConfig = {
       { source: "/admin/organizations/:id", destination: "/platform/organizations/:id", permanent: false },
       { source: "/pos-login", destination: "/login", permanent: false },
       { source: "/orders/:id", destination: "/sales/orders/:id", permanent: false },
+      { source: "/centrix-payments/settings/mpesa", destination: "/admin/mpesa-settings", permanent: false },
+      { source: "/centrix-payments/settings/paybills", destination: "/admin/mpesa-paybills", permanent: false },
+      { source: "/centrix-payments/settings/equity", destination: "/admin/equity-accounts", permanent: false },
+      { source: "/centrix-payments/settings", destination: "/admin/mpesa-settings", permanent: false },
+      { source: "/centrix-payments/mpesa", destination: "/admin/mpesa-settings", permanent: false },
+      { source: "/centrix-payments/reconciliation", destination: "/accounting/mpesa-reconciliation", permanent: false },
+      { source: "/centrix-payments/:path*", destination: "/accounting", permanent: false },
+      { source: "/centrix-payments", destination: "/accounting", permanent: false },
     ];
   },
 };

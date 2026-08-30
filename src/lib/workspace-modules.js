@@ -49,12 +49,6 @@ export const PROVISIONABLE_WORKSPACES = [
     icon: "chart",
   },
   {
-    id: "centrix_payments",
-    label: "Centrix Payments",
-    description: "Collect via M-Pesa STK, manage paybills and bank accounts, and reconcile payments — standalone or with ERP.",
-    icon: "payments",
-  },
-  {
     id: "hr",
     label: "Human Resources",
     description: "Employees, attendance, payroll, and HR reports.",
@@ -122,8 +116,6 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
       return Boolean(enabledModules.distribution);
     case "accounting":
       return Boolean(enabledModules.accounting);
-    case "centrix_payments":
-      return Boolean(enabledModules.centrix_payments);
     case "hr":
       return Boolean(enabledModules.hr_payroll);
     case "admin":
@@ -184,11 +176,6 @@ function enableWorkspacePatch(workspaceId) {
         "accounting.dashboard": true,
         "accounting.reports": true,
       };
-    case "centrix_payments":
-      return {
-        centrix_payments: true,
-        "centrix_payments.reports": true,
-      };
     case "hr":
       return {
         hr_payroll: true,
@@ -227,8 +214,6 @@ function disableWorkspacePatch(workspaceId) {
       return { distribution: false };
     case "accounting":
       return { accounting: false };
-    case "centrix_payments":
-      return { centrix_payments: false, "centrix_payments.reports": false };
     case "hr":
       return { hr_payroll: false };
     case "admin":
@@ -287,7 +272,6 @@ export function patchEnabledModulesForWorkspace(
 export function applicationsFromEnabledModules(enabledModules = {}) {
   const out = {};
   for (const ws of PROVISIONABLE_WORKSPACES) {
-    if (ws.id === "centrix_payments") continue;
     out[ws.id] = isProvisionableWorkspaceEnabled(ws, enabledModules);
   }
   return out;

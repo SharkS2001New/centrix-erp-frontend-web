@@ -6,7 +6,6 @@ export const AI_TRAINING_WORKSPACES = [
   { id: "hospitality_backoffice", label: "Hotel Backoffice", pathname: "/hospitality" },
   { id: "hotel_bar_pos", label: "Hotel POS", pathname: "/hotel-bar-pos" },
   { id: "accounting", label: "Accounting", pathname: "/accounting" },
-  { id: "centrix_payments", label: "Centrix Payments", pathname: "/centrix-payments" },
   { id: "hr", label: "Human Resources", pathname: "/hr" },
   { id: "distribution", label: "Distribution", pathname: "/fulfillment" },
   { id: "admin", label: "Administration", pathname: "/admin" },

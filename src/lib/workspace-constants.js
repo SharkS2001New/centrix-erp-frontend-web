@@ -20,7 +20,6 @@ export const WORKSPACE_DISPLAY_ORDER = [
   "hospitality_backoffice",
   "distribution",
   "accounting",
-  "centrix_payments",
   "hr",
   "admin",
 ];

@@ -227,10 +227,7 @@ export function capabilitiesFromOrganizationPayload(payload) {
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
     platform_ai_enabled: ai.enable_ai !== false,
     platform_whatsapp_enabled: Boolean(whatsapp.enable_whatsapp_orders),
-    platform_centrix_payments_enabled: Boolean(
-      modules.centrix_payments ||
-        moduleSettings.centrix_payments?.enable_centrix_payments,
-    ),
+    platform_centrix_payments_enabled: false,
     platform_tab_workspace_enabled: general.enable_tab_workspace !== false,
     ai_assistant: {
       platform_enabled: ai.enable_ai !== false,

@@ -87,28 +87,13 @@ export function isPlatformInvestorsEnabled(capabilities) {
   );
 }
 
-export function isCentrixPaymentsEnabled(capabilities) {
-  return (
-    capabilities?.platform_centrix_payments_enabled === true ||
-    capabilities?.modules?.centrix_payments === true ||
-    capabilities?.module_settings?.centrix_payments?.enable_centrix_payments === true
-  );
+export function isCentrixPaymentsEnabled() {
+  return false;
 }
 
-/** M-Pesa keys, paybills, and Equity accounts inside the Centrix Payments application. */
-export function canAccessCentrixPaymentsConfiguration({ user, capabilities, hasPermission }) {
-  if (!isCentrixPaymentsEnabled(capabilities)) return false;
-  if (user?.is_admin || capabilities?.is_admin) return true;
-  if (typeof hasPermission !== "function") return false;
-  return (
-    hasPermission("centrix_payments.settings.view") ||
-    hasPermission("centrix_payments.settings.edit") ||
-    hasPermission("centrix_payments.mpesa.manage") ||
-    hasPermission("centrix_payments.mpesa.view") ||
-    hasPermission("centrix_payments.bank.manage") ||
-    hasPermission("centrix_payments.bank.view") ||
-    hasPermission("centrix_payments.accounts.edit")
-  );
+/** @deprecated Payment configuration lives under Administration → Finance. */
+export function canAccessCentrixPaymentsConfiguration() {
+  return false;
 }
 
 /** POS / checkout M-Pesa (manual + STK) when platform M-Pesa is enabled for the org. */

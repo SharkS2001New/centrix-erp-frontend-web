@@ -385,7 +385,6 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     use_platform_gemini: false,
     enable_whatsapp_orders: false,
     enable_investors: false,
-    enable_centrix_payments: false,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
     stock_deduct_on: {
@@ -465,7 +464,6 @@ export function salesPlatformFromApi(apiPayload) {
     use_platform_gemini: Boolean(apiPayload.use_platform_gemini),
     enable_whatsapp_orders: Boolean(apiPayload.enable_whatsapp_orders ?? false),
     enable_investors: Boolean(apiPayload.enable_investors ?? false),
-    enable_centrix_payments: Boolean(apiPayload.enable_centrix_payments ?? false),
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
@@ -787,12 +785,6 @@ export function OrganizationPlatformSalesSettings({
             description="When off, this organization cannot configure Equity collection accounts in Administration → Finance, and Equity is hidden on checkout."
             checked={salesPlatform?.enable_equity_bank !== false}
             onChange={(v) => patch({ enable_equity_bank: v })}
-          />
-          <Toggle
-            label="Enable Centrix Payments workspace"
-            description="When on, this organization gets a Centrix Payments workspace for collections, the transaction ledger, and reconciliation. M-Pesa and Equity keys are still configured under Administration → Finance."
-            checked={Boolean(salesPlatform?.enable_centrix_payments)}
-            onChange={(v) => patch({ enable_centrix_payments: v })}
           />
           <Toggle
             label="Enable KRA integration"
@@ -1833,7 +1825,9 @@ export function OrganizationConfigTabs({
 
 export function groupModulesByDomain(moduleOptions) {
   const byKey = new Map((moduleOptions ?? []).map((m) => [m.key, m]));
-  const domains = (moduleOptions ?? []).filter((m) => m.kind === "domain");
+  const domains = (moduleOptions ?? []).filter(
+    (m) => m.kind === "domain" && m.key !== "centrix_payments",
+  );
   domains.sort((a, b) => {
     const ai = DOMAIN_MODULE_ORDER.indexOf(a.key);
     const bi = DOMAIN_MODULE_ORDER.indexOf(b.key);

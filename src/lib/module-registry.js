@@ -137,7 +137,6 @@ export const DOMAIN_MODULE_ORDER = [
   "inventory",
   "customers_suppliers",
   "accounting",
-  "centrix_payments",
   "hr_payroll",
   "distribution",
   "admin",
