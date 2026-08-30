@@ -548,7 +548,7 @@ export function PaymentsSetupGuide({ availability, hasPermission }) {
 
 export const PAYMENTS_SETTINGS_ITEMS = [
   {
-    href: "/centrix-payments/settings/mpesa",
+    href: "/admin/mpesa-settings",
     title: "M-Pesa settings",
     description: "Safaricom Daraja credentials, STK push defaults, and organization-wide M-Pesa behaviour.",
     badge: "Daraja",
@@ -557,7 +557,7 @@ export const PAYMENTS_SETTINGS_ITEMS = [
     permissionAny: [P.centrix_payments.settings.view, P.centrix_payments.settings.edit],
   },
   {
-    href: "/centrix-payments/settings/paybills",
+    href: "/admin/mpesa-paybills",
     title: "Paybill accounts",
     description: "Shortcodes, tills, and branch or route routing for Lipa na M-Pesa collections.",
     badge: "M-Pesa",
@@ -570,7 +570,7 @@ export const PAYMENTS_SETTINGS_ITEMS = [
     ],
   },
   {
-    href: "/centrix-payments/settings/equity",
+    href: "/admin/equity-accounts",
     title: "Equity Bank",
     description: "Collection accounts and paybill reconciliation with Equity Bank.",
     badge: "Bank",

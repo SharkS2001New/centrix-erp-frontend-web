@@ -1,5 +1,7 @@
 /** Platform-controlled Hotel POS Collect payment tenders. */
 
+import { isPlatformMpesaStkEnabled, isPlatformEquityBankEnabled } from "@/lib/platform-org-features";
+
 export const HOTEL_POS_PAYMENT_METHOD_DEFAULTS = {
   cash: true,
   mpesa: true,
@@ -86,5 +88,12 @@ export function resolveHotelPosPaymentMethods(moduleSettingsOrCapabilities = nul
   const sales = moduleSettings?.sales ?? root.sales ?? {};
   const fromPlatform = root.hotel_pos_payment_methods ?? sales.hotel_pos_payment_methods;
   const raw = fromPlatform ?? hospitality.payment_methods ?? null;
-  return normalizeHotelPosPaymentMethods(raw, sales);
+  const methods = normalizeHotelPosPaymentMethods(raw, sales);
+  if (root.platform_mpesa_stk_enabled === false || !isPlatformMpesaStkEnabled(root)) {
+    methods.mpesa = false;
+  }
+  if (root.platform_equity_bank_enabled === false || !isPlatformEquityBankEnabled(root)) {
+    methods.equity = false;
+  }
+  return methods;
 }

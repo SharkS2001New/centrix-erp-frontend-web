@@ -379,6 +379,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
     mobile_enable_driver_attendance: false,
     enable_mpesa_stk: true,
+    enable_equity_bank: true,
     enable_kra_integration: true,
     enable_ai: true,
     use_platform_gemini: false,
@@ -458,6 +459,7 @@ export function salesPlatformFromApi(apiPayload) {
     mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
     mobile_enable_driver_attendance: Boolean(apiPayload.mobile_enable_driver_attendance),
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
+    enable_equity_bank: apiPayload.enable_equity_bank !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
     use_platform_gemini: Boolean(apiPayload.use_platform_gemini),
@@ -775,10 +777,22 @@ export function OrganizationPlatformSalesSettings({
             onChange={(v) => patch({ append_same_day_customer_orders: v })}
           />
           <Toggle
-            label="Enable M-Pesa STK Push"
-            description="When off, this organization cannot configure M-Pesa and STK Push is hidden on POS checkout."
+            label="Enable M-Pesa integrations"
+            description="When off, this organization cannot configure M-Pesa in Administration → Finance, and STK Push is hidden on POS checkout."
             checked={salesPlatform?.enable_mpesa_stk !== false}
             onChange={(v) => patch({ enable_mpesa_stk: v })}
+          />
+          <Toggle
+            label="Enable Equity Bank integrations"
+            description="When off, this organization cannot configure Equity collection accounts in Administration → Finance, and Equity is hidden on checkout."
+            checked={salesPlatform?.enable_equity_bank !== false}
+            onChange={(v) => patch({ enable_equity_bank: v })}
+          />
+          <Toggle
+            label="Enable Centrix Payments workspace"
+            description="When on, this organization gets a Centrix Payments workspace for collections, the transaction ledger, and reconciliation. M-Pesa and Equity keys are still configured under Administration → Finance."
+            checked={Boolean(salesPlatform?.enable_centrix_payments)}
+            onChange={(v) => patch({ enable_centrix_payments: v })}
           />
           <Toggle
             label="Enable KRA integration"
@@ -1861,12 +1875,6 @@ export function OrganizationModuleToggles({
       domainChildrenMap,
       mobileOrdersEnabled,
     );
-    if (workspaceId === "centrix_payments" && typeof onSalesChange === "function") {
-      onSalesChange({
-        ...(salesPlatform ?? {}),
-        enable_centrix_payments: enable,
-      });
-    }
     if (onSetModules) {
       onSetModules(next);
       return;

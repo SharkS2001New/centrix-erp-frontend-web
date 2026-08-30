@@ -15,6 +15,7 @@ import { OrdersListDefaultsFields } from "@/components/admin/orders-list-default
 import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import {
   isPlatformMpesaStkEnabled,
+  isPlatformEquityBankEnabled,
   isPlatformWhatsappEnabled,
   isPlatformCheckoutOnCreateEnabled,
   isPlatformPosCheckoutOnCreateEnabled,
@@ -403,16 +404,18 @@ function PaymentFieldsTab({
         checked={salesForm.enable_bank_select}
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_bank_select: v }))}
       />
-      <Toggle
-        label={salesForm.enable_bank_select ? "Equity Bank (in dropdown)" : "Equity Bank amount"}
-        description={
-          salesForm.enable_bank_select
-            ? "Include Equity Bank in the bank dropdown."
-            : "Separate Equity amount field when recording payment."
-        }
-        checked={salesForm.enable_equity_bank}
-        onChange={(v) => setSalesForm((f) => ({ ...f, enable_equity_bank: v }))}
-      />
+      {equityPlatformEnabled ? (
+        <Toggle
+          label={salesForm.enable_bank_select ? "Equity Bank (in dropdown)" : "Equity Bank amount"}
+          description={
+            salesForm.enable_bank_select
+              ? "Include Equity Bank in the bank dropdown."
+              : "Separate Equity amount field when recording payment."
+          }
+          checked={salesForm.enable_equity_bank}
+          onChange={(v) => setSalesForm((f) => ({ ...f, enable_equity_bank: v }))}
+        />
+      ) : null}
       <Toggle
         label={salesForm.enable_bank_select ? "KCB (in dropdown)" : "KCB amount"}
         description={
@@ -578,6 +581,7 @@ export function SalesSettingsPanel({
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
+  const equityPlatformEnabled = isPlatformEquityBankEnabled(capabilities);
   const posCheckoutEnabled = isPlatformPosCheckoutOnCreateEnabled(capabilities);
   const backofficeCheckoutEnabled = isPlatformCheckoutOnCreateEnabled(capabilities);
 

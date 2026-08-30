@@ -58,6 +58,10 @@ export function isPlatformMpesaStkEnabled(capabilities) {
   return capabilities?.platform_mpesa_stk_enabled !== false;
 }
 
+export function isPlatformEquityBankEnabled(capabilities) {
+  return capabilities?.platform_equity_bank_enabled !== false;
+}
+
 export function isPlatformKraIntegrationEnabled(capabilities) {
   return capabilities?.platform_kra_integration_enabled !== false;
 }
@@ -107,9 +111,9 @@ export function canAccessCentrixPaymentsConfiguration({ user, capabilities, hasP
   );
 }
 
-/** POS / checkout M-Pesa (manual + STK infrastructure) requires Centrix Payments + platform M-Pesa. */
+/** POS / checkout M-Pesa (manual + STK) when platform M-Pesa is enabled for the org. */
 export function isPosMpesaPaymentsEnabled(capabilities) {
-  return isCentrixPaymentsEnabled(capabilities) && isPlatformMpesaStkEnabled(capabilities);
+  return isPlatformMpesaStkEnabled(capabilities);
 }
 
 export function isPlatformAdvancedDataImportEnabled(capabilities) {

@@ -8,6 +8,7 @@ import {
   financePayloadFromForm,
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
+  isPlatformEquityBankEnabled,
   kraDeviceOpsPayloadFromForm,
 } from "@/lib/finance-settings";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
@@ -74,7 +75,7 @@ export function FinanceSettingsPanel({
   const confirm = useConfirm();
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
-  const mpesaSettingsHref = resolveMpesaSettingsHref(capabilities);
+  const mpesaSettingsHref = resolveMpesaSettingsHref();
   const { settingsPath, bumpSettingsSaveGen } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const getSettings = useSettingsGet();
@@ -151,11 +152,12 @@ export function FinanceSettingsPanel({
 
   const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
   const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
+  const equityAllowed = isPlatformEquityBankEnabled({ finance: form }, capabilities);
   const showKra = (mode === "all" || mode === "kra") && kraAllowed;
   const showMpesa = (mode === "all" || mode === "mpesa") && mpesaAllowed;
-  const showEquity = mode === "all" || mode === "equity";
+  const showEquity = (mode === "all" || mode === "equity") && equityAllowed;
   const showPaybills = (mode === "all" || mode === "mpesa" || mode === "paybills") && mpesaAllowed;
-  const showEquityAccounts = mode === "all" || mode === "equity";
+  const showEquityAccounts = (mode === "all" || mode === "equity") && equityAllowed;
   const useSubTabs = mode === "all" || mode === "mpesa" || mode === "equity";
 
   const visibleTabs = useMemo(() => {
@@ -163,10 +165,11 @@ export function FinanceSettingsPanel({
       if (!mpesaAllowed) return [];
       return [
         { id: "mpesa", label: "Daraja defaults" },
-        { id: "paybills", label: "Saved paybills" },
+        { id: "paybills", label: "Saved M-Pesa accounts" },
       ];
     }
     if (mode === "equity") {
+      if (!equityAllowed) return [];
       return [
         { id: "equity", label: "Equity defaults" },
         { id: "equity_accounts", label: "Saved Equity accounts" },
@@ -177,12 +180,14 @@ export function FinanceSettingsPanel({
     if (kraAllowed) tabs.push({ id: "kra", label: "Tax receipts (KRA)" });
     if (mpesaAllowed) {
       tabs.push({ id: "mpesa", label: "M-Pesa defaults" });
-      tabs.push({ id: "paybills", label: "Saved paybills" });
+      tabs.push({ id: "paybills", label: "Saved M-Pesa accounts" });
     }
-    tabs.push({ id: "equity", label: "Equity defaults" });
-    tabs.push({ id: "equity_accounts", label: "Saved Equity accounts" });
+    if (equityAllowed) {
+      tabs.push({ id: "equity", label: "Equity defaults" });
+      tabs.push({ id: "equity_accounts", label: "Saved Equity accounts" });
+    }
     return tabs;
-  }, [kraAllowed, mpesaAllowed, mode]);
+  }, [kraAllowed, mpesaAllowed, equityAllowed, mode]);
 
   const hasFinanceContent =
     mode === "paybills"
@@ -277,7 +282,7 @@ export function FinanceSettingsPanel({
         mode === "kra"
           ? "KRA settings saved."
           : mode === "mpesa"
-            ? "M-Pesa settings saved. Open the Saved paybills tab to set per-paybill Daraja keys."
+            ? "M-Pesa settings saved. Open the Saved M-Pesa accounts tab to set per-paybill Daraja keys."
             : mode === "equity"
               ? "Equity settings saved. Open the Saved Equity accounts tab for per-account callbacks."
               : "Finance settings saved.";
@@ -570,7 +575,7 @@ export function FinanceSettingsPanel({
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
                   <strong>Organization default Daraja app.</strong> These credentials apply to every paybill
-                  that does not set its own keys. Open the <em>Saved paybills</em> tab to attach a different
+                  that does not set its own keys. Open the <em>Saved M-Pesa accounts</em> tab to attach a different
                   Safaricom app to a specific shortcode.
                 </div>
                 <Field label="Environment">
@@ -668,7 +673,7 @@ export function FinanceSettingsPanel({
           {renderPaybillsTab ? (
             <div>
               <p className="theme-subtext text-sm">
-                Saved paybills appear in the list below. Select one to edit shortcodes, route/till mapping, and
+                Saved accounts appear in the table below. Select one to edit shortcodes, route/till mapping, and
                 optional Daraja keys. Blank credential fields inherit{" "}
                 {mode === "paybills" ? (
                   <>

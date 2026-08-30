@@ -1,5 +1,3 @@
-import { isCentrixPaymentsEnabled } from "@/lib/platform-org-features";
-
 const FINANCE_DEFAULTS = {
   enable_kra_device: false,
   kra_device_ip: "",
@@ -10,6 +8,8 @@ const FINANCE_DEFAULTS = {
   kra_plu_register_path: "/api/upload-plu-data",
   default_submit_kra: true,
   kra_bypass_above_amount: null,
+  enable_mpesa_stk: true,
+  enable_equity_bank: true,
   accounting_mode: "native",
   accounting_provider: null,
   accounting_sync_direction: "export",
@@ -72,6 +72,14 @@ export function isPlatformMpesaStkEnabled(moduleSettings, capabilities) {
   return finance.enable_mpesa_stk !== false;
 }
 
+export function isPlatformEquityBankEnabled(moduleSettings, capabilities) {
+  if (capabilities?.platform_equity_bank_enabled === false) return false;
+  const finance = mergeFinanceSettings(moduleSettings);
+  if (finance.enable_equity_bank === false) return false;
+  if (capabilities?.platform_equity_bank_enabled === true) return true;
+  return finance.enable_equity_bank !== false;
+}
+
 export function isPlatformKraIntegrationEnabled(moduleSettings, capabilities) {
   if (capabilities?.platform_kra_integration_enabled === false) return false;
   const finance = mergeFinanceSettings(moduleSettings);
@@ -118,7 +126,6 @@ function parseBooleanSetting(value, defaultValue = true) {
 }
 
 export function isStkPushEnabled(moduleSettings, capabilities = null) {
-  if (capabilities && !isCentrixPaymentsEnabled(capabilities)) return false;
   if (!isPlatformMpesaStkEnabled(moduleSettings, capabilities)) return false;
   if (moduleSettings == null) return false;
   const finance = mergeFinanceSettings(moduleSettings);

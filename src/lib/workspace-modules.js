@@ -287,6 +287,7 @@ export function patchEnabledModulesForWorkspace(
 export function applicationsFromEnabledModules(enabledModules = {}) {
   const out = {};
   for (const ws of PROVISIONABLE_WORKSPACES) {
+    if (ws.id === "centrix_payments") continue;
     out[ws.id] = isProvisionableWorkspaceEnabled(ws, enabledModules);
   }
   return out;
@@ -319,14 +320,13 @@ export function workspaceToggleIcon(iconKey) {
  * @param {Array<{ key: string, application_ids?: string[] | null, industry?: string }>} profilePresets
  */
 /** Application IDs allowed for Retail & Distribution tenants. */
-export const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "centrix_payments", "hr", "admin"];
+export const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "hr", "admin"];
 
 /** Application IDs allowed for Hotel & Hospitality tenants. */
 export const HOSPITALITY_APP_IDS = [
   "hotel_bar_pos",
   "hospitality_backoffice",
   "accounting",
-  "centrix_payments",
   "hr",
   "admin",
 ];
@@ -352,9 +352,6 @@ export function filterWorkspacesByIndustry(workspaces, industryId) {
   return workspaces.filter((ws) => allowed.has(ws.id));
 }
 
-/** Application IDs always shown on the platform Applications tab even if a profile preset omits them. */
-export const PLATFORM_APPLICATION_OVERRIDES = ["centrix_payments"];
-
 export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
   const profile = profilePresets.find((p) => p.key === profileKey);
   let ids = profile?.application_ids;
@@ -379,12 +376,6 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
         : !["hotel_bar_pos", "hospitality_backoffice"].includes(id),
     ),
   );
-
-  for (const id of PLATFORM_APPLICATION_OVERRIDES) {
-    if (appIdsForIndustry(isHospitality ? "hospitality" : "commerce").includes(id)) {
-      allowed.add(id);
-    }
-  }
 
   return sortProvisionableWorkspaces(PROVISIONABLE_WORKSPACES.filter((ws) => allowed.has(ws.id)));
 }

@@ -1686,12 +1686,15 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
 export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
   const sales = mergeSalesSettings(moduleSettings);
   const modules = options.modules ?? options.capabilities?.modules ?? {};
+  const capabilities = options.capabilities ?? null;
+  const equityPlatformOn = capabilities?.platform_equity_bank_enabled !== false;
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
   const checkoutContext = options.checkoutContext ?? "pos";
   const useBankSelect = Boolean(sales.enable_bank_select);
+  const equityEnabled = equityPlatformOn && Boolean(sales.enable_equity_bank);
   const individualBanks = !useBankSelect && (
-    sales.enable_equity_bank || sales.enable_kcb_bank || sales.enable_other_bank
+    equityEnabled || sales.enable_kcb_bank || sales.enable_other_bank
   );
 
   const otherBankLabel =
@@ -1700,7 +1703,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
   const bankOptions = [];
   if (useBankSelect) {
     bankOptions.push({ value: "", label: "— Select bank —" });
-    if (sales.enable_equity_bank) bankOptions.push({ value: "EQUITY", label: "Equity Bank" });
+    if (equityEnabled) bankOptions.push({ value: "EQUITY", label: "Equity Bank" });
     if (sales.enable_kcb_bank) bankOptions.push({ value: "KCB", label: "KCB" });
     if (sales.enable_other_bank) bankOptions.push({ value: "OTHER", label: otherBankLabel });
   }
@@ -1711,7 +1714,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
     useBankSelect,
     showBankAmount: useBankSelect && Boolean(sales.enable_bank_amount),
     requireBankRef: useBankSelect && Boolean(sales.enable_bank_amount),
-    showEquityBank: !useBankSelect && Boolean(sales.enable_equity_bank),
+    showEquityBank: !useBankSelect && equityEnabled,
     showKcbBank: !useBankSelect && Boolean(sales.enable_kcb_bank),
     showOtherBank: !useBankSelect && Boolean(sales.enable_other_bank),
     showCheque: Boolean(sales.enable_cheque),

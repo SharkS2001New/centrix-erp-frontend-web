@@ -12,7 +12,7 @@
  */
 
 import { getPaymentMethodKind } from "@/lib/sales";
-import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
+import { isPosMpesaPaymentsEnabled, isPlatformEquityBankEnabled } from "@/lib/platform-org-features";
 import { getCheckoutPaymentConfig, mergeSalesSettings } from "@/lib/sales-settings";
 
 const MPESA_CODES = new Set(["MPESA", "M-PESA", "M_PESA"]);
@@ -95,8 +95,9 @@ export function resolveOrgPaymentMethodFlags(moduleSettings, options = {}) {
     (capabilities == null || isPosMpesaPaymentsEnabled(capabilities));
 
   const equityOn =
-    Boolean(sales.enable_equity_bank) ||
-    payment.bankOptions.some((row) => row.value === "EQUITY");
+    (capabilities == null || isPlatformEquityBankEnabled(capabilities)) &&
+    (Boolean(sales.enable_equity_bank) ||
+      payment.bankOptions.some((row) => row.value === "EQUITY"));
   const kcbOn =
     Boolean(sales.enable_kcb_bank) ||
     payment.bankOptions.some((row) => row.value === "KCB");

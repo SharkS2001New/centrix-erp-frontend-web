@@ -223,6 +223,7 @@ export function capabilitiesFromOrganizationPayload(payload) {
       ...((sales.enable_mobile_orders !== false && modules["sales.mobile"]) || driverMobileEnabled ? ["mobile"] : []),
     ],
     platform_mpesa_stk_enabled: finance.enable_mpesa_stk !== false,
+    platform_equity_bank_enabled: finance.enable_equity_bank !== false,
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
     platform_ai_enabled: ai.enable_ai !== false,
     platform_whatsapp_enabled: Boolean(whatsapp.enable_whatsapp_orders),

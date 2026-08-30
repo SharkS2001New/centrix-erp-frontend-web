@@ -17,6 +17,7 @@ import {
   isPlatformWhatsappEnabled,
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
+  isPlatformEquityBankEnabled,
   isPlatformInvestorsEnabled,
   isCentrixPaymentsEnabled,
 } from "@/lib/platform-org-features";
@@ -498,41 +499,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Transaction ledger",
         module: "centrix_payments",
         permission: P.centrix_payments.transactions.view,
-        requireCentrixPayments: true,
-      },
-    ],
-  },
-  {
-    id: "centrix_payments_channels",
-    label: "Channel setup",
-    icon: "⚙️",
-    collapsible: true,
-    items: [
-      {
-        href: "/centrix-payments/settings/mpesa",
-        label: "M-Pesa Daraja",
-        module: "centrix_payments",
-        permissionAny: [P.centrix_payments.settings.view, P.centrix_payments.settings.edit],
-        requireCentrixPayments: true,
-        requirePlatformMpesa: true,
-      },
-      {
-        href: "/centrix-payments/settings/paybills",
-        label: "Paybills & tills",
-        module: "centrix_payments",
-        permissionAny: [
-          P.centrix_payments.mpesa.view,
-          P.centrix_payments.mpesa.manage,
-          P.centrix_payments.accounts.view,
-        ],
-        requireCentrixPayments: true,
-        requirePlatformMpesa: true,
-      },
-      {
-        href: "/centrix-payments/settings/equity",
-        label: "Equity Bank",
-        module: "centrix_payments",
-        permissionAny: [P.centrix_payments.bank.view, P.centrix_payments.bank.manage],
         requireCentrixPayments: true,
       },
     ],
@@ -1433,7 +1399,6 @@ const NAV_SECTION_DEFINITIONS = [
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         requirePlatformMpesa: true,
         orgAdminOnly: true,
-        hideWhenCentrixPayments: true,
       },
       {
         href: "/admin/mpesa-paybills",
@@ -1442,7 +1407,6 @@ const NAV_SECTION_DEFINITIONS = [
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         requirePlatformMpesa: true,
         orgAdminOnly: true,
-        hideWhenCentrixPayments: true,
       },
       {
         href: "/admin/equity-accounts",
@@ -1450,7 +1414,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "payments",
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         orgAdminOnly: true,
-        hideWhenCentrixPayments: true,
+        requirePlatformEquity: true,
       },
     ],
   },
@@ -1557,6 +1521,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
   if (item.requirePlatformKra && !isPlatformKraIntegrationEnabled(capabilities)) return false;
   if (item.requirePlatformMpesa && !isPlatformMpesaStkEnabled(capabilities)) return false;
+  if (item.requirePlatformEquity && !isPlatformEquityBankEnabled(capabilities)) return false;
   if (item.requireMpesaC2bReconciliation && !isMpesaC2bReconciliationEnabled(capabilities?.module_settings)) return false;
   if (
     item.requireEquityPaybillReconciliation &&
