@@ -12,7 +12,7 @@ import {
   kraDeviceOpsPayloadFromForm,
 } from "@/lib/finance-settings";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSubTab, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -201,6 +201,7 @@ export function FinanceSettingsPanel({
             : visibleTabs.length > 0;
 
   useSettingsSubTab(activeTab, setActiveTab, useSubTabs ? visibleTabs : []);
+  const onSubTabChange = useSettingsSectionUrl(activeTab, setActiveTab, useSubTabs ? visibleTabs : []);
 
   async function runKraDeviceAction(path, setBusy) {
     setBusy(true);
@@ -298,9 +299,11 @@ export function FinanceSettingsPanel({
   const mpesaStatus = form.mpesa_status;
   const mpesa = form.mpesa ?? {};
   const equity = form.equity ?? {};
-  const renderKra = showKra && (!useSubTabs || activeTab === "kra");
-  const renderMpesa = showMpesa && (!useSubTabs || activeTab === "mpesa");
-  const renderEquity = showEquity && (!useSubTabs || activeTab === "equity");
+  const renderKra = showKra && (mode === "all" || mode === "kra") && (!useSubTabs || activeTab === "kra");
+  const renderMpesa =
+    showMpesa && (mode === "all" || mode === "mpesa") && (!useSubTabs || activeTab === "mpesa");
+  const renderEquity =
+    showEquity && (mode === "all" || mode === "equity") && (!useSubTabs || activeTab === "equity");
   const renderPaybillsTab =
     showPaybills && (mode === "paybills" || (useSubTabs && activeTab === "paybills"));
   const renderEquityAccountsTab =
@@ -327,7 +330,7 @@ export function FinanceSettingsPanel({
             <SettingsSubTabBar
               tabs={visibleTabs}
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={onSubTabChange}
               ariaLabel={
                 mode === "mpesa"
                   ? "M-Pesa sections"

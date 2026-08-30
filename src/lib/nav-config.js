@@ -1324,8 +1324,8 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
       },
       {
-        href: "/admin/mpesa-paybills",
-        label: "M-Pesa Paybills",
+        href: "/admin/mpesa-settings?section=paybills",
+        label: "Saved M-Pesa accounts",
         module: "payments",
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         requirePlatformMpesa: true,

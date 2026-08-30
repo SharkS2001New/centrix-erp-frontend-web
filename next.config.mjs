@@ -90,6 +90,8 @@ const nextConfig = {
       { source: "/centrix-payments/reconciliation", destination: "/accounting/mpesa-reconciliation", permanent: false },
       { source: "/centrix-payments/:path*", destination: "/accounting", permanent: false },
       { source: "/centrix-payments", destination: "/accounting", permanent: false },
+      { source: "/admin/mpesa-paybills", destination: "/admin/mpesa-settings?section=paybills", permanent: false },
+      { source: "/admin/mpesa-paybills/:path*", destination: "/admin/mpesa-settings?section=paybills", permanent: false },
     ];
   },
 };
