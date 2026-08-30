@@ -352,6 +352,9 @@ export function filterWorkspacesByIndustry(workspaces, industryId) {
   return workspaces.filter((ws) => allowed.has(ws.id));
 }
 
+/** Application IDs always shown on the platform Applications tab even if a profile preset omits them. */
+export const PLATFORM_APPLICATION_OVERRIDES = ["centrix_payments"];
+
 export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
   const profile = profilePresets.find((p) => p.key === profileKey);
   let ids = profile?.application_ids;
@@ -376,6 +379,13 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
         : !["hotel_bar_pos", "hospitality_backoffice"].includes(id),
     ),
   );
+
+  for (const id of PLATFORM_APPLICATION_OVERRIDES) {
+    if (appIdsForIndustry(isHospitality ? "hospitality" : "commerce").includes(id)) {
+      allowed.add(id);
+    }
+  }
+
   return sortProvisionableWorkspaces(PROVISIONABLE_WORKSPACES.filter((ws) => allowed.has(ws.id)));
 }
 
