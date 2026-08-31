@@ -93,6 +93,55 @@ export function findCartLineIndexByRef(lines, editingRef) {
   return idx;
 }
 
+/**
+ * Resolve a cart row for qty/swap even when TemporaryCart remints ids after restore.
+ * Prefer id/client_line_id matches; fall back to product_code (+ retail flag / qty).
+ */
+export function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
+  const list = Array.isArray(lines) ? lines : [];
+  if (!list.length || needle == null) return null;
+
+  const needleCode =
+    preferProductCode ??
+    (needle && typeof needle === "object" ? needle.product_code : null);
+  const needleRetail =
+    needle && typeof needle === "object" ? Number(needle.on_wholesale_retail ?? 0) : null;
+  const needleQty =
+    needle && typeof needle === "object" ? Number(needle.quantity) : NaN;
+
+  const byRef = list.find((row) => cartLineMatchesRef(row, needle));
+  if (byRef) return byRef;
+
+  if (needleCode == null || String(needleCode).trim() === "") return null;
+
+  const byCodeAndRetail = list.filter(
+    (row) =>
+      String(row.product_code) === String(needleCode) &&
+      (needleRetail == null || Number(row.on_wholesale_retail ?? 0) === needleRetail),
+  );
+  if (byCodeAndRetail.length === 1) return byCodeAndRetail[0];
+  if (byCodeAndRetail.length > 1) {
+    if (Number.isFinite(needleQty)) {
+      const byQty = byCodeAndRetail.find((row) => Number(row.quantity ?? 0) === needleQty);
+      if (byQty) return byQty;
+    }
+    return byCodeAndRetail[0];
+  }
+
+  // Retail flag may have drifted after remint — still prefer the SKU being replaced.
+  const byCodeOnly = list.filter((row) => String(row.product_code) === String(needleCode));
+  if (byCodeOnly.length === 1) return byCodeOnly[0];
+  if (byCodeOnly.length > 1) {
+    if (Number.isFinite(needleQty)) {
+      const byQty = byCodeOnly.find((row) => Number(row.quantity ?? 0) === needleQty);
+      if (byQty) return byQty;
+    }
+    return byCodeOnly[0];
+  }
+
+  return null;
+}
+
 /** SKU / barcode shaped queries skip search debounce. */
 export function looksLikeProductCodeQuery(query) {
   const q = String(query ?? "").trim();

@@ -159,6 +159,7 @@ import {
   cartHasOptimisticLines,
   cartLineMatchesRef,
   cartLineRef,
+  findCartLineForEdit,
   findCartLineIndexByRef,
   findMergeableCartLine,
   looksLikeProductCodeQuery,
@@ -223,6 +224,7 @@ import {
   clearPreviousOrderEditDraft,
   clearPosSessionLocalCache,
   completeOfflineCashSale,
+  assertOutboxSalePersisted,
   detachPreviousOrderEditCartId,
   resolvePreviousOrderEditServerCartId,
   isLocalFirstCashCheckout,
@@ -827,36 +829,6 @@ function buildOptimisticPreviousOrderCart(saleId, sourceSale, existingCart) {
 function sameLineId(a, b) {
   if (a == null || b == null) return false;
   return String(a) === String(b);
-}
-
-/** Resolve a cart row for swap/qty even when TemporaryCart remints ids after restore. */
-function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
-  const list = Array.isArray(lines) ? lines : [];
-  if (!list.length || needle == null) return null;
-
-  const needleCode =
-    preferProductCode ??
-    (needle && typeof needle === "object" ? needle.product_code : null);
-  const needleRetail =
-    needle && typeof needle === "object"
-      ? Number(needle.on_wholesale_retail ?? 0)
-      : null;
-
-  // Match id / update_code / client_line_id — including after TemporaryCart remints
-  // where optimistic `pending-*` ids are replaced but client_line_id may survive.
-  const byRef = list.find((row) => cartLineMatchesRef(row, needle));
-  if (byRef) return byRef;
-
-  if (needleCode != null && String(needleCode).trim() !== "") {
-    const matches = list.filter(
-      (row) =>
-        String(row.product_code) === String(needleCode) &&
-        (needleRetail == null ||
-          Number(row.on_wholesale_retail ?? 0) === needleRetail),
-    );
-    if (matches.length === 1) return matches[0];
-  }
-  return null;
 }
 
 function posProductDisplayName(record) {
@@ -5366,9 +5338,15 @@ export function PosScreen({ standalone = false }) {
 
       let committedNonEmpty = false;
 
-      const commitSearchResults = (list) => {
-        if (list.length > 0) committedNonEmpty = true;
-        setSearchResults((prev) => (sameSearchResultList(prev, list) ? prev : list));
+      /** Paint hits without blanking prior results (fast typing used to wipe the list). */
+      const commitSearchResults = (list, { allowEmpty = false } = {}) => {
+        if (list.length > 0) {
+          committedNonEmpty = true;
+          setSearchResults((prev) => (sameSearchResultList(prev, list) ? prev : list));
+          return;
+        }
+        if (!allowEmpty) return;
+        setSearchResults([]);
       };
 
       if (!trimmed) {
@@ -5378,7 +5356,7 @@ export function PosScreen({ standalone = false }) {
       }
       // Name searches need at least 2 chars; code/barcode can be 1+ (handled by looksLike).
       if (!looksLikeProductCodeQuery(trimmed) && trimmed.length < 2) {
-        setSearchResults([]);
+        // Keep prior hits while the cashier is still forming a name query.
         setSearching(false);
         return;
       }
@@ -5417,7 +5395,8 @@ export function PosScreen({ standalone = false }) {
           if (!code || retailByCodeRef.current[code] != null) continue;
           if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
         }
-        commitSearchResults(list);
+        // Confirmed empty only after local+remote merge for this query.
+        commitSearchResults(list, { allowEmpty: true });
         finishRetailPackages(list);
       };
 
@@ -5498,7 +5477,7 @@ export function PosScreen({ standalone = false }) {
         } catch {
           /* ignore */
         }
-        setSearchResults([]);
+        // Keep prior hits — do not blank the dropdown on a transient network drop.
         if (err instanceof ApiError && err.status === 403) {
           setStatusMessage("You do not have permission to search products.");
         } else if (standalone) {
@@ -5510,7 +5489,7 @@ export function PosScreen({ standalone = false }) {
           // Do not clear mid-search when the remote returned empty — keep whatever
           // was already painted (local catalog) so the dropdown never blinks shut.
           if (!committedNonEmpty && trimmed) {
-            setSearchResults((prev) => (prev.length > 0 ? prev : []));
+            setSearchResults((prev) => prev);
           }
         }
       }
@@ -5531,16 +5510,16 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
-    // Product already selected and Scan shows its code — don't reopen search results.
+    const trimmed = String(searchQuery ?? "").trim();
+    const parked = selectedProductRef.current;
+    // After Find/select the scan field shows the parked product code — skip re-search.
     if (
-      selectedProductCode &&
-      String(searchQuery ?? "").trim() === String(selectedProductCode).trim()
+      parked?.product_code &&
+      trimmed.toLowerCase() === String(parked.product_code).trim().toLowerCase()
     ) {
       setSearching(false);
-      setSearchResults([]);
       return;
     }
-    const trimmed = searchQuery.trim();
     const codeLike = looksLikeProductCodeQuery(searchQuery);
     // Debounce typing so we don't thrash index/API on every keystroke.
     // Local catalog paints first inside searchProducts; Enter / barcode still resolve immediately.
@@ -5553,7 +5532,7 @@ export function PosScreen({ standalone = false }) {
           : 200;
     const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
-  }, [searchQuery, searchProducts, classicLayout, selectedProductCode]);
+  }, [searchQuery, searchProducts, classicLayout]);
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
@@ -6966,6 +6945,7 @@ export function PosScreen({ standalone = false }) {
         client_line_id: replaceLine.client_line_id ?? null,
         product_code: replaceLine.product_code,
         on_wholesale_retail: replaceLine.on_wholesale_retail,
+        quantity: replaceLine.quantity,
       };
       swapDraftRef.current = nextSwapDraft;
       setSwapDraft(nextSwapDraft);
@@ -7086,6 +7066,7 @@ export function PosScreen({ standalone = false }) {
       client_line_id: line.client_line_id ?? null,
       product_code: line.product_code,
       on_wholesale_retail: line.on_wholesale_retail,
+      quantity: line.quantity,
     };
     replacingLineIdRef.current = stableLineId;
     setReplacingLineId(stableLineId);
@@ -7184,7 +7165,8 @@ export function PosScreen({ standalone = false }) {
         allowNegativeStock,
         stockAsRetail,
         productByCode: productByCodeRef.current,
-        excludeLineId: liveLine.id ?? liveLine.update_code,
+        // Pass the full line so client_line_id / reminted ids still exclude this row.
+        excludeLineId: liveLine,
       });
       if (!stockCheck.ok) {
         setStatusMessage(
@@ -7242,6 +7224,9 @@ export function PosScreen({ standalone = false }) {
         idx = lines.findIndex((row) => cartLineMatchesRef(row, liveLine));
       }
       if (idx < 0) {
+        idx = lines.findIndex((row) => cartLineMatchesRef(row, replaceNeedle));
+      }
+      if (idx < 0) {
         idx = lines.findIndex(
           (row) =>
             String(row.product_code) === String(liveLine.product_code) &&
@@ -7250,7 +7235,12 @@ export function PosScreen({ standalone = false }) {
         );
       }
       if (idx < 0) {
-        setStatusMessage("Could not resolve the line to replace.");
+        idx = lines.findIndex(
+          (row) => String(row.product_code) === String(liveLine.product_code),
+        );
+      }
+      if (idx < 0) {
+        setStatusMessage("Could not resolve the line to replace. Try selecting the line again.");
         return false;
       }
       lines[idx] = nextLine;
@@ -7480,6 +7470,7 @@ export function PosScreen({ standalone = false }) {
       client_line_id: live.client_line_id ?? null,
       product_code: live.product_code,
       on_wholesale_retail: live.on_wholesale_retail,
+      quantity: live.quantity ?? snap?.quantity,
     };
     if (String(stable) !== String(activeId)) {
       replacingLineIdRef.current = stable;
@@ -10770,6 +10761,7 @@ export function PosScreen({ standalone = false }) {
           floatSessionId,
           cashRound: enablePosCashRounding,
         });
+        await assertOutboxSalePersisted(offlineSale.client_sale_uuid);
         const sale = annotateSaleWithReceiptTenders(
           offlineCashTendered > 0
             ? mergeSaleWithCheckoutPosTicket(
@@ -10894,6 +10886,7 @@ export function PosScreen({ standalone = false }) {
             floatSessionId,
             cashRound: enablePosCashRounding,
           });
+          await assertOutboxSalePersisted(localSale.client_sale_uuid);
           const sale = annotateSaleWithReceiptTenders(
             mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields),
             isPreviousOrderCashEdit ? null : body?.__receipt_tenders,
@@ -10933,7 +10926,17 @@ export function PosScreen({ standalone = false }) {
             );
             return null;
           }
-          // Fall through to normal online checkout if local-first fails.
+          // External POS: never print without a local outbox row — the cashier must
+          // always find the sale under Pending sync even when upload is delayed.
+          if (standalone) {
+            setPaymentError(
+              e instanceof Error
+                ? e.message
+                : "Could not save this sale locally for sync. Try checkout again.",
+            );
+            return null;
+          }
+          // Backoffice may still fall through to online checkout if local-first fails.
           console.warn("Local-first cash checkout failed; using online checkout", e);
         } finally {
           setBusy(false);
@@ -11737,6 +11740,19 @@ export function PosScreen({ standalone = false }) {
             })
           : null;
     const sale = editSnapshot ?? saleLike;
+    if (standalone && sale?.client_sale_uuid) {
+      try {
+        await assertOutboxSalePersisted(sale.client_sale_uuid);
+      } catch (e) {
+        skipEditAutosaveRef.current = false;
+        notifyError(
+          e instanceof Error
+            ? e.message
+            : "Could not verify this order was saved locally. Receipt was not printed.",
+        );
+        return;
+      }
+    }
     const cashSalesLabel = formatCashSalesNumber(sale);
     const orderLabel = cashSalesLabel !== "—" ? cashSalesLabel : "";
 

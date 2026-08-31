@@ -51,4 +51,30 @@ describe("pos-stock basic availability", () => {
     const result = posCartHasInsufficientStock(lines, productByCode, true, posSalesConfig, false);
     expect(result).toBe(true);
   });
+
+  it("excludes reminted line via client_line_id when checking stock", () => {
+    const check = posStockAvailability({
+      product,
+      baseQty: 5,
+      cartLines: [
+        {
+          id: 99,
+          update_code: "CLU-99",
+          client_line_id: "cli-old",
+          product_code: "P1",
+          quantity: 5,
+          on_wholesale_retail: 0,
+        },
+      ],
+      sellFromShop: true,
+      posSalesConfig,
+      allowNegativeStock: false,
+      excludeLineId: {
+        id: "pending-old",
+        client_line_id: "cli-old",
+        product_code: "P1",
+      },
+    });
+    expect(check.ok).toBe(true);
+  });
 });

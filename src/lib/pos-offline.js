@@ -1470,9 +1470,34 @@ export async function resolvePreviousOrderEditServerCartId(cart) {
 }
 
 export async function clearLocalPosCart() {
+  invalidateStaleLocalCartWrites();
   return enqueueLocalCartWrite(async () => {
     await idbClearLocalCart("active");
   });
+}
+
+/**
+ * Confirm an offline sale row exists in IndexedDB before printing or clearing the till.
+ * Throws if the cashier would get a receipt without a recoverable pending-sync copy.
+ */
+export async function assertOutboxSalePersisted(clientSaleUuid) {
+  const key = String(clientSaleUuid ?? "").trim();
+  if (!key) {
+    throw new Error("Sale was not saved locally — missing offline identity.");
+  }
+  const row = await idbGetOutboxSale(key);
+  if (!row?.client_sale_uuid) {
+    throw new Error(
+      "Sale could not be saved on this device. Checkout again — do not reprint until it succeeds.",
+    );
+  }
+  const status = String(row.sync_status ?? "");
+  if (!["pending", "syncing", "error", "editing", "synced"].includes(status)) {
+    throw new Error(
+      "Sale was not queued for sync. Checkout again before giving the customer a receipt.",
+    );
+  }
+  return row;
 }
 
 /** Normalize server (or mixed) cart lines into local offline line shape. */
@@ -2780,9 +2805,12 @@ export async function completeOfflineCashSale({
   };
 
   await withPosOfflineExclusiveLock(async () => {
+    invalidateStaleLocalCartWrites();
     await idbPutOutboxSale(outbox);
+    await assertOutboxSalePersisted(clientSaleUuid);
   });
   if (!keepCart) {
+    invalidateStaleLocalCartWrites();
     await clearLocalPosCart();
   }
   if (!skipClearDraft && !keepCart) {
@@ -5105,6 +5133,40 @@ function outboxSyncErrorMessage(err) {
   return err?.message ?? "Sync failed";
 }
 
+/** Transient server/network faults — keep the sale pending and auto-retry upload. */
+export function isHealableOutboxSyncError(err) {
+  const message = String(outboxSyncErrorMessage(err) ?? err?.message ?? err ?? "").toLowerCase();
+  if (
+    /deadlock|1213|serialization failure|lock wait timeout|try restarting transaction/.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  if (/network|connection|timeout|timed out|offline|fetch failed|failed to fetch/.test(message)) {
+    return true;
+  }
+  if (err instanceof ApiError) {
+    if (!err.status || err.status === 408 || err.status === 429) return true;
+    if (err.status >= 502 && err.status <= 504) return true;
+    if (err.status >= 500 && /deadlock|1213|serialization failure/.test(message)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Failed outbox rows caused by transient network/server faults (deadlock, timeout, …). */
+export function outboxRowHasHealableSyncError(row) {
+  if (String(row?.sync_status ?? "") !== "error") return false;
+  return isHealableOutboxSyncError({ message: row?.sync_error });
+}
+
+function outboxRowIsAutoRetryable(row) {
+  return (
+    outboxRowHasHealablePaymentSplitsError(row) || outboxRowHasHealableSyncError(row)
+  );
+}
 
 function outboxRowPosTicket(row) {
   const posNumRaw =
@@ -5460,7 +5522,7 @@ async function collectOutboxRowsForSync({
     }
     if (
       existing.sync_status === "error" &&
-      (includeErrors || outboxRowHasHealablePaymentSplitsError(existing))
+      (includeErrors || outboxRowIsAutoRetryable(existing))
     ) {
       return { rows: [existing], skippedActiveEdit: false };
     }
@@ -5486,7 +5548,7 @@ async function collectOutboxRowsForSync({
       byUuid.set(uuid, promoted);
       continue;
     }
-    if (outboxRowHasHealablePaymentSplitsError(row)) {
+    if (outboxRowIsAutoRetryable(row)) {
       byUuid.set(uuid, row);
     }
   }
@@ -5893,6 +5955,43 @@ export async function syncPosOfflineOutbox({
       }
 
       const message = outboxSyncErrorMessage(err);
+      if (isHealableOutboxSyncError(err)) {
+        await withPosOfflineExclusiveLock(async () => {
+          await idbPutOutboxSale({
+            ...row,
+            sync_status: "pending",
+            sync_error: message,
+            sync_started_at_ms: null,
+            revision_at_sync: null,
+            updated_at_ms: Date.now(),
+          });
+        });
+        results.push({
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          printed_pos_order_num: listedPosTicket,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          error: message,
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          message: cashSalesProgressLabel
+            ? `Retrying ${cashSalesProgressLabel} — ${message}`
+            : `Retrying sync — ${message}`,
+        });
+        continue;
+      }
       await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxError(row.client_sale_uuid, message);
       });

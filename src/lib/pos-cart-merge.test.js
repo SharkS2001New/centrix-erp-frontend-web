@@ -6,6 +6,7 @@ import {
   cartLineMatchesRef,
   cartLineRef,
   collapseCombineableCartLines,
+  findCartLineForEdit,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
   revertOptimisticCartMutation,
@@ -51,6 +52,46 @@ describe("cartLineMatchesRef", () => {
         "CLU-1",
       ),
     ).toBe(true);
+  });
+});
+
+describe("findCartLineForEdit", () => {
+  it("resolves by client_line_id after remint", () => {
+    const lines = [
+      {
+        id: 88,
+        update_code: "CLU-88",
+        client_line_id: "cli-kamande",
+        product_code: "KAM-25",
+        on_wholesale_retail: 0,
+        quantity: 50,
+      },
+    ];
+    const found = findCartLineForEdit(lines, {
+      id: "pending-1",
+      client_line_id: "cli-kamande",
+      product_code: "KAM-25",
+      on_wholesale_retail: 0,
+    });
+    expect(found?.id).toBe(88);
+  });
+
+  it("falls back to product_code when ids diverge", () => {
+    const lines = [
+      {
+        id: 10,
+        product_code: "KAM-25",
+        on_wholesale_retail: 0,
+        quantity: 50,
+      },
+    ];
+    const found = findCartLineForEdit(lines, {
+      id: "stale",
+      product_code: "KAM-25",
+      on_wholesale_retail: 0,
+      quantity: 50,
+    });
+    expect(found?.id).toBe(10);
   });
 });
 

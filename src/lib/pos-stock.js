@@ -10,6 +10,7 @@ import {
   smallPackagingLabel,
 } from "./uom-packaging";
 import { posEntryQtyFromBaseQty, productSellsRetail, usesPosRetailPricing } from "./pos-line";
+import { cartLineMatchesRef } from "./pos-cart-merge";
 
 export { productSellsRetail };
 
@@ -35,18 +36,11 @@ export function cartLineRetailStockFlag(line) {
 
 function cartLineByRef(cartLines, lineRef) {
   if (lineRef == null || !cartLines?.length) return null;
-  const ref = String(lineRef);
-  return (
-    cartLines.find(
-      (line) => String(line.id) === ref || String(line.update_code ?? "") === ref,
-    ) ?? null
-  );
+  return cartLines.find((line) => cartLineMatchesRef(line, lineRef)) ?? null;
 }
 
 function lineMatchesRef(line, lineRef) {
-  if (lineRef == null) return false;
-  const ref = String(lineRef);
-  return String(line.id) === ref || String(line.update_code ?? "") === ref;
+  return cartLineMatchesRef(line, lineRef);
 }
 
 /** Qty already reserved server-side for the line being edited (skip optimistic/pending lines). */
