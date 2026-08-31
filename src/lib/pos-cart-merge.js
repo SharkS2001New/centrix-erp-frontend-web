@@ -332,11 +332,6 @@ function restorePrevCartLineFields(line, prev) {
 }
 
 /**
- * After a single-line add/PATCH, keep every other cart row as the cashier left it.
- * TemporaryCart returns the full cart; F12 retail/wholesale on one line must not
- * rewrite sibling prices, qty, or on_wholesale_retail flags.
- */
-/**
  * After a swap PATCH, TemporaryCart may still return the old SKU on the target row
  * (update_no race, merge quirk). Keep the cashier's painted SKU when we already
  * committed the swap locally.
@@ -357,17 +352,15 @@ export function preserveClientLineSkuAfterMutation(
   if (!ref) return nextCart;
 
   const needle = { id: ref, update_code: ref, client_line_id: ref };
-  const prevLine = findCartLineForEdit(prevCart.lines, needle, {
-    preferProductCode: expected,
-  });
+  const prevLine = findCartLineForEdit(prevCart.lines, needle);
   if (!prevLine || String(prevLine.product_code) !== expected) return nextCart;
 
-  const serverLine = findCartLineForEdit(nextCart.lines, {
-    id: prevLine.id,
-    update_code: prevLine.update_code,
-    client_line_id: prevLine.client_line_id,
-    ...needle,
-  });
+  const serverLine =
+    findCartLineForEdit(nextCart.lines, {
+      id: prevLine.id,
+      update_code: prevLine.update_code,
+      client_line_id: prevLine.client_line_id,
+    }) ?? findCartLineForEdit(nextCart.lines, needle);
   if (!serverLine || String(serverLine.product_code) === expected) return nextCart;
 
   const lines = (nextCart.lines ?? []).map((row) => {
@@ -382,6 +375,11 @@ export function preserveClientLineSkuAfterMutation(
   return { ...nextCart, lines };
 }
 
+/**
+ * After a single-line add/PATCH, keep every other cart row as the cashier left it.
+ * TemporaryCart returns the full cart; F12 retail/wholesale on one line must not
+ * rewrite sibling prices, qty, or on_wholesale_retail flags.
+ */
 export function preserveUntouchedCartLines(
   prevCart,
   nextCart,

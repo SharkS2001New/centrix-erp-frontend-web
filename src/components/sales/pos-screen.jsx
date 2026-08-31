@@ -5166,7 +5166,6 @@ export function PosScreen({ standalone = false }) {
     replaceTargetSnapshotRef.current = null;
     setReplacingLineId(null);
     replacingLineIdRef.current = null;
-    swapCommitInFlightRef.current = false;
   }
 
   useEffect(() => {
@@ -5844,6 +5843,8 @@ export function PosScreen({ standalone = false }) {
     lineRetailStockFlagOverride = null,
     /** When true, a failed TemporaryCart PATCH keeps the painted edit (classic qty). */
     keepOptimisticOnFailure = false,
+    /** Frozen cart from an in-place swap — used to keep the new SKU if the server lags. */
+    clientSkuSnapshot = null,
   }) {
     // Background previous-order edit owns TemporaryCart — sell on a local workspace
     // so scans never merge into the edit being uploaded.
@@ -6182,9 +6183,18 @@ export function PosScreen({ standalone = false }) {
         : null;
     const serverUpdateNo = liveCart?.update_no;
     const preservePosTickets = [editOrderNo, offlineNextPosOrderNum];
+    const lineAlreadyMatchesEdit =
+      intendedEdit &&
+      targetLineRef != null &&
+      (liveCart?.lines ?? []).some(
+        (line) =>
+          cartLineMatchesRef(line, targetLineRef) &&
+          String(line.product_code) === String(product.product_code) &&
+          Math.abs(Number(line.quantity ?? 0) - Number(finalComputed.baseQty)) < 0.0001,
+      );
 
     const paintOptimisticOn = (baseCart) => {
-      if (!baseCart?.id || needsLineDiscountApproval) return null;
+      if (!baseCart?.id || needsLineDiscountApproval || lineAlreadyMatchesEdit) return null;
       const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
       const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
         mergeTarget: resolvedMergeTarget,
@@ -6460,11 +6470,15 @@ export function PosScreen({ standalone = false }) {
           onWholesaleRetailFlag,
           override,
         });
-        if (keepOptimisticOnFailure && intendedEdit) {
-          nextCart = preserveClientLineSkuAfterMutation(prevCartState, nextCart, {
-            targetLineRef,
-            expectedProductCode: product.product_code,
-          });
+        if (intendedEdit && product?.product_code) {
+          nextCart = preserveClientLineSkuAfterMutation(
+            clientSkuSnapshot ?? prevCartState,
+            nextCart,
+            {
+              targetLineRef,
+              expectedProductCode: product.product_code,
+            },
+          );
         }
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
@@ -6539,11 +6553,15 @@ export function PosScreen({ standalone = false }) {
                 onWholesaleRetailFlag,
                 override,
               });
-              if (keepOptimisticOnFailure && intendedEdit) {
-                nextCart = preserveClientLineSkuAfterMutation(prevCartState, nextCart, {
-                  targetLineRef,
-                  expectedProductCode: product.product_code,
-                });
+              if (intendedEdit && product?.product_code) {
+                nextCart = preserveClientLineSkuAfterMutation(
+                  clientSkuSnapshot ?? prevCartState,
+                  nextCart,
+                  {
+                    targetLineRef,
+                    expectedProductCode: product.product_code,
+                  },
+                );
               }
               if (shouldApplyServerCartMutation(fresh.id)) {
                 cartRef.current = nextCart;
@@ -6857,9 +6875,8 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    if (usesPosLocalDraftLineEdits(cartRef.current) || classicLayout) {
-      void enqueueCartCommit(finishSwap);
-      return true;
+    if (standalone) {
+      return enqueueCartCommit(finishSwap);
     }
 
     setLineBusy(true);
@@ -7119,6 +7136,7 @@ export function PosScreen({ standalone = false }) {
     if (!replacingLineId && !swapDraftRef.current && !replaceTargetSnapshotRef.current) {
       return;
     }
+    swapCommitInFlightRef.current = false;
     clearSwapChrome();
     setSelectedProduct(null);
     setSelectedProductCode(null);
@@ -7167,239 +7185,210 @@ export function PosScreen({ standalone = false }) {
     }
     const isRetailLine = Boolean(computed.isRetail);
 
-    // Classic + previous-order / offline: swap in place on the cart first so the
-    // UI never depends on TemporaryCart PATCH timing (that left the old SKU).
-    if (usesPosLocalDraftLineEdits(activeCart) || classicLayout) {
-      const stockAsRetail = Boolean(isRetailLine);
-      const stockCheck = posStockAvailability({
-        product,
-        baseQty: computed.baseQty,
-        cartLines: activeCart.lines,
-        sellFromShop,
-        posSalesConfig,
-        allowNegativeStock,
-        stockAsRetail,
-        productByCode: productByCodeRef.current,
-        // Pass the full line so client_line_id / reminted ids still exclude this row.
-        excludeLineId: liveLine,
-      });
-      if (!stockCheck.ok) {
-        setStatusMessage(
-          posStockInsufficientMessage(stockCheck, {
-            product,
-            sellWholesale,
-            retailPackage: getRetailPackage(product.product_code),
-            posSalesConfig,
-          }),
-        );
-        return false;
-      }
-
-      const onWholesaleRetailFlag = posLineWholesaleRetailFlag(
-        product,
-        sellWholesale,
-        computed.isRetail,
-        posSalesConfig,
-      );
-      const preservedId = liveLine.id;
-      const preservedRef =
-        liveLine.update_code ?? liveLine.client_line_id ?? liveLine.id;
-      const nextLine = {
-        ...liveLine,
-        id: preservedId,
-        update_code: preservedRef,
-        client_line_id: liveLine.client_line_id ?? preservedRef,
-        product_code: product.product_code,
-        product_name:
-          product.product_name ?? product.description ?? product.product_code,
-        quantity: computed.baseQty,
-        unit_price: computed.unitPricePerBase,
-        display_unit_price: computed.displayUnitPrice,
-        amount: computed.lineAmount,
-        uom: computed.uomLabel || product.package_name,
-        unit_id: product.unit_id ?? product.uom?.id ?? null,
-        unit: snapshotUomForPrint(product.uom ?? product.unit),
-        on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
-        discount_given:
-          allowDiscounts || discountApprovalActive ? computed.discountApplied : 0,
-        vat_rate: vatRateFromProduct(product),
-        product_vat: lineProductVat(product, computed.lineAmount),
-        _draftEdit: true,
-      };
-
-      const { lines: swappedLines, idx: swapIdx } = applyInPlaceLineSwap(
-        activeCart.lines,
-        {
-          targetLine: liveLine,
-          nextLine,
-          combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-        },
-      );
-      if (swapIdx < 0 || !swappedLines?.length) {
-        setStatusMessage("Could not resolve the line to replace. Try selecting the line again.");
-        return false;
-      }
-      const nextCart = isPreviousOrderEditSession(activeCart)
-        ? withEditDraftDirty({ ...activeCart, lines: swappedLines })
-        : { ...activeCart, lines: swappedLines };
-      cartRef.current = nextCart;
-      setCart(nextCart);
-
-      if (isPreviousOrderEditSession(nextCart)) {
-        // Clear swap chrome here — callers may also clear, but previous-order
-        // must not leave replacingLineId stuck after a successful SKU change.
-        clearSwapChrome();
-        await notePreviousOrderEditSuccess("swap", itemChangedMsg);
-        clearClassicEntryFields();
-        const collapsed = finalizeCartLineList(cartRef.current?.lines ?? nextCart.lines, {
-          combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-        });
-        if (collapsed.length !== (nextCart.lines ?? []).length) {
-          const repaired = { ...nextCart, lines: collapsed };
-          cartRef.current = repaired;
-          setCart(repaired);
-          await persistPreviousOrderLocalDraft(repaired);
-        }
-        return true;
-      }
-
-      // Offline / local workspace — cart is already the source of truth.
-      if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
-        if (usesLocalPosCartWorkspace(nextCart)) {
-          try {
-            const saved = await saveLocalPosCart({
-              ...nextCart,
-              lines: (nextCart.lines ?? []).map((l) => ({
-                ...l,
-                client_line_id: l.client_line_id ?? l.update_code ?? l.id,
-              })),
-            });
-            const presented = presentLocalOfflineCart(saved);
-            cartRef.current = presented;
-            setCart(presented);
-          } catch {
-            /* keep in-memory swap */
-          }
-        }
-        clearSwapChrome();
-        announceItemChanged(fromItemName, toItemName);
-        clearClassicEntryFields();
-        return true;
-      }
-
-      // Classic live TemporaryCart: paint the swap immediately, clear swap chrome so
-      // a second Enter is a normal qty edit (not a re-swap with stale draft.line),
-      // then sync PATCH in the background — never revert the cashier's swap on failure.
-      clearSwapChrome();
-      announceItemChanged(fromItemName, toItemName);
-      clearClassicEntryFields();
-      const lineRef = cartLineRef(nextLine);
-      try {
-        const ok = await commitCartLine({
+    // Swap in place on the cart first so the UI never depends on TemporaryCart PATCH
+    // timing (that left the old SKU or reverted when the server response lagged).
+    const stockAsRetail = Boolean(isRetailLine);
+    const stockCheck = posStockAvailability({
+      product,
+      baseQty: computed.baseQty,
+      cartLines: activeCart.lines,
+      sellFromShop,
+      posSalesConfig,
+      allowNegativeStock,
+      stockAsRetail,
+      productByCode: productByCodeRef.current,
+      // Pass the full line so client_line_id / reminted ids still exclude this row.
+      excludeLineId: liveLine,
+    });
+    if (!stockCheck.ok) {
+      setStatusMessage(
+        posStockInsufficientMessage(stockCheck, {
           product,
-          computed,
-          incrementBaseQty: computed.baseQty,
-          editingId: nextLine.id,
-          editingRef: lineRef,
-          discount,
-          override,
-          clearEntry: false,
-          successMessage: null,
-          unlockUiEarly: true,
-          keepOptimisticOnFailure: true,
-          lineRetailStockFlagOverride: isRetailLine,
-        });
-        let live = cartRef.current ?? nextCart;
-        const after =
-          findCartLineForEdit(live.lines, {
-            id: nextLine.id,
-            update_code: lineRef,
-            client_line_id: nextLine.client_line_id,
-          }) ??
-          findCartLineForEdit(live.lines, replaceNeedle, {
-            preferProductCode: product.product_code,
-          });
-        if (
-          after &&
-          String(after.product_code) !== String(product.product_code)
-        ) {
-          // Re-apply local swap — TemporaryCart response lost the new SKU.
-          const repairedLines = finalizeCartLineList(
-            applyInPlaceLineSwap(live.lines, {
-              targetLine: after,
-              nextLine,
-              combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-            }).lines ?? live.lines,
-            { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-          );
-          const repaired = { ...live, lines: repairedLines };
-          cartRef.current = repaired;
-          setCart(repaired);
-          setStatusMessage(
-            `${itemChangedMsg} — server sync lagged. Line kept on screen.`,
-          );
-        } else {
-          const collapsed = finalizeCartLineList(live.lines, {
-            combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-          });
-          if (collapsed.length !== (live.lines ?? []).length) {
-            live = { ...live, lines: collapsed };
-            cartRef.current = live;
-            setCart(live);
-          }
-          if (!ok) {
-            setStatusMessage(
-              `${itemChangedMsg} — could not reach server. Line kept on screen.`,
-            );
-          }
-        }
-      } catch (e) {
-        setStatusMessage(
-          e instanceof ApiError
-            ? `${itemChangedMsg} — ${e.message}`
-            : `${itemChangedMsg} — could not sync. Line kept on screen.`,
-        );
+          sellWholesale,
+          retailPackage: getRetailPackage(product.product_code),
+          posSalesConfig,
+        }),
+      );
+      return false;
+    }
+
+    const onWholesaleRetailFlag = posLineWholesaleRetailFlag(
+      product,
+      sellWholesale,
+      computed.isRetail,
+      posSalesConfig,
+    );
+    const preservedId = liveLine.id;
+    const preservedRef =
+      liveLine.update_code ?? liveLine.client_line_id ?? liveLine.id;
+    const nextLine = {
+      ...liveLine,
+      id: preservedId,
+      update_code: preservedRef,
+      client_line_id: liveLine.client_line_id ?? preservedRef,
+      product_code: product.product_code,
+      product_name:
+        product.product_name ?? product.description ?? product.product_code,
+      quantity: computed.baseQty,
+      unit_price: computed.unitPricePerBase,
+      display_unit_price: computed.displayUnitPrice,
+      amount: computed.lineAmount,
+      uom: computed.uomLabel || product.package_name,
+      unit_id: product.unit_id ?? product.uom?.id ?? null,
+      unit: snapshotUomForPrint(product.uom ?? product.unit),
+      on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
+      discount_given:
+        allowDiscounts || discountApprovalActive ? computed.discountApplied : 0,
+      vat_rate: vatRateFromProduct(product),
+      product_vat: lineProductVat(product, computed.lineAmount),
+      ...(isPreviousOrderEditSession(activeCart) ? { _draftEdit: true } : {}),
+    };
+
+    const { lines: swappedLines, idx: swapIdx } = applyInPlaceLineSwap(
+      activeCart.lines,
+      {
+        targetLine: liveLine,
+        nextLine,
+        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+      },
+    );
+    if (swapIdx < 0 || !swappedLines?.length) {
+      setStatusMessage("Could not resolve the line to replace. Try selecting the line again.");
+      return false;
+    }
+    const nextCart = isPreviousOrderEditSession(activeCart)
+      ? withEditDraftDirty({ ...activeCart, lines: swappedLines })
+      : { ...activeCart, lines: swappedLines };
+    const swapSyncSnapshot = {
+      ...nextCart,
+      lines: swappedLines.map((line) => ({ ...line })),
+    };
+    cartRef.current = nextCart;
+    setCart(nextCart);
+
+    if (isPreviousOrderEditSession(nextCart)) {
+      clearSwapChrome();
+      await notePreviousOrderEditSuccess("swap", itemChangedMsg);
+      clearClassicEntryFields();
+      const collapsed = finalizeCartLineList(cartRef.current?.lines ?? nextCart.lines, {
+        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+      });
+      if (collapsed.length !== (nextCart.lines ?? []).length) {
+        const repaired = { ...nextCart, lines: collapsed };
+        cartRef.current = repaired;
+        setCart(repaired);
+        await persistPreviousOrderLocalDraft(repaired);
       }
       return true;
     }
 
-    const lineRef = cartLineRef(liveLine);
+    // Offline / local workspace — cart is already the source of truth.
+    if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
+      if (usesLocalPosCartWorkspace(nextCart)) {
+        try {
+          const saved = await saveLocalPosCart({
+            ...nextCart,
+            lines: (nextCart.lines ?? []).map((l) => ({
+              ...l,
+              client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+            })),
+          });
+          const presented = presentLocalOfflineCart(saved);
+          cartRef.current = presented;
+          setCart(presented);
+        } catch {
+          /* keep in-memory swap */
+        }
+      }
+      clearSwapChrome();
+      announceItemChanged(fromItemName, toItemName);
+      clearClassicEntryFields();
+      return true;
+    }
+
+    // Live TemporaryCart: swap is already painted — sync PATCH in the background.
+    clearSwapChrome();
+    announceItemChanged(fromItemName, toItemName);
+    clearClassicEntryFields();
+    const lineRef = cartLineRef(nextLine);
     if (!lineRef) {
       setStatusMessage("Could not resolve the line to replace.");
-      return false;
+      return true;
     }
-
-    // Non-classic modern layout: PATCH / local edit in place.
-    const ok = await commitCartLine({
-      product,
-      computed,
-      incrementBaseQty: computed.baseQty,
-      editingId: liveLine.id,
-      editingRef: lineRef,
-      discount,
-      override,
-      clearEntry: true,
-      successMessage: null,
-      lineRetailStockFlagOverride: isRetailLine,
-    });
-    if (!ok) return false;
-
-    // Guard: silent no-op mutations left the old SKU on previous-order drafts.
-    const after = (cartRef.current?.lines ?? []).find(
-      (row) =>
-        sameLineId(row.id, liveLine.id) ||
-        String(cartLineRef(row)) === String(lineRef),
-    );
-    if (after && String(after.product_code) !== String(product.product_code)) {
-      setStatusMessage("Could not swap this line — try again.");
-      return false;
+    try {
+      const ok = await commitCartLine({
+        product,
+        computed,
+        incrementBaseQty: computed.baseQty,
+        editingId: nextLine.id,
+        editingRef: lineRef,
+        discount,
+        override,
+        clearEntry: false,
+        successMessage: null,
+        unlockUiEarly: true,
+        keepOptimisticOnFailure: true,
+        lineRetailStockFlagOverride: isRetailLine,
+        clientSkuSnapshot: swapSyncSnapshot,
+      });
+      let live = cartRef.current ?? nextCart;
+      const after =
+        findCartLineForEdit(live.lines, {
+          id: nextLine.id,
+          update_code: lineRef,
+          client_line_id: nextLine.client_line_id,
+        }) ??
+        findCartLineForEdit(live.lines, replaceNeedle, {
+          preferProductCode: product.product_code,
+        });
+      if (after && String(after.product_code) !== String(product.product_code)) {
+        const repairedLines = finalizeCartLineList(
+          applyInPlaceLineSwap(live.lines, {
+            targetLine: after,
+            nextLine,
+            combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+          }).lines ?? live.lines,
+          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
+        );
+        const repaired = { ...live, lines: repairedLines };
+        cartRef.current = repaired;
+        setCart(repaired);
+        setStatusMessage(
+          `${itemChangedMsg} — server sync lagged. Line kept on screen.`,
+        );
+      } else if (
+        !(live.lines ?? []).some(
+          (row) => String(row.product_code) === String(product.product_code),
+        )
+      ) {
+        const repaired = { ...live, lines: swapSyncSnapshot.lines };
+        cartRef.current = repaired;
+        setCart(repaired);
+        setStatusMessage(
+          `${itemChangedMsg} — server sync lagged. Line kept on screen.`,
+        );
+      } else {
+        const collapsed = finalizeCartLineList(live.lines, {
+          combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        });
+        if (collapsed.length !== (live.lines ?? []).length) {
+          live = { ...live, lines: collapsed };
+          cartRef.current = live;
+          setCart(live);
+        }
+        if (!ok) {
+          setStatusMessage(
+            `${itemChangedMsg} — could not reach server. Line kept on screen.`,
+          );
+        }
+      }
+    } catch (e) {
+      setStatusMessage(
+        e instanceof ApiError
+          ? `${itemChangedMsg} — ${e.message}`
+          : `${itemChangedMsg} — could not sync. Line kept on screen.`,
+      );
     }
-    if (isPreviousOrderEditSession(cartRef.current ?? activeCart)) {
-      notePreviousOrderEditSuccess("swap", itemChangedMsg);
-    } else {
-      announceItemChanged(fromItemName, toItemName);
-    }
-    clearSwapChrome();
     return true;
   }
 

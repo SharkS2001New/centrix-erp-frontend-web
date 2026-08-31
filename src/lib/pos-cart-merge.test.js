@@ -592,6 +592,48 @@ describe("preserveClientLineSkuAfterMutation", () => {
     });
     expect(next).toBe(serverCart);
   });
+
+  it("restores swapped SKU after a full TemporaryCart PATCH payload", () => {
+    const swapSyncSnapshot = {
+      id: 1,
+      lines: [
+        {
+          id: 10,
+          update_code: "CLU-A",
+          product_code: "NEW-SKU",
+          product_name: "New item",
+          quantity: 2,
+          amount: 200,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const serverCart = {
+      id: 1,
+      update_no: 4,
+      lines: [
+        {
+          id: 10,
+          update_code: "CLU-A",
+          product_code: "OLD-SKU",
+          product_name: "Old item",
+          quantity: 2,
+          amount: 100,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    let next = applyCartMutationResponse(swapSyncSnapshot, serverCart, {
+      targetLineRef: "CLU-A",
+    });
+    next = preserveClientLineSkuAfterMutation(swapSyncSnapshot, next, {
+      targetLineRef: "CLU-A",
+      expectedProductCode: "NEW-SKU",
+    });
+    expect(next.lines[0].product_code).toBe("NEW-SKU");
+    expect(next.lines[0].product_name).toBe("New item");
+    expect(next.lines[0].amount).toBe(200);
+  });
 });
 
 describe("preserveUntouchedCartLines", () => {
