@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCartMutationResponse,
+  applyInPlaceLineSwap,
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartLineMatchesRef,
@@ -9,6 +10,7 @@ import {
   findCartLineForEdit,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
+  preserveClientLineSkuAfterMutation,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 
@@ -139,6 +141,48 @@ describe("mergePreservedOptimisticLines", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].quantity).toBe(4);
     expect(merged[0].amount).toBe(14000);
+  });
+});
+
+describe("applyInPlaceLineSwap", () => {
+  it("replaces the target row and removes an exact duplicate SKU", () => {
+    const lines = [
+      {
+        id: 1,
+        update_code: "L1",
+        product_code: "OLD",
+        on_wholesale_retail: 0,
+        quantity: 2,
+        unit_price: 10,
+        amount: 20,
+      },
+      {
+        id: 2,
+        update_code: "L2",
+        product_code: "NEW",
+        on_wholesale_retail: 0,
+        quantity: 3,
+        unit_price: 15,
+        amount: 45,
+      },
+    ];
+    const nextLine = {
+      id: 1,
+      update_code: "L1",
+      product_code: "NEW",
+      on_wholesale_retail: 0,
+      quantity: 2,
+      unit_price: 15,
+      amount: 30,
+    };
+    const { lines: result, idx } = applyInPlaceLineSwap(lines, {
+      targetLine: lines[0],
+      nextLine,
+    });
+    expect(idx).toBe(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].product_code).toBe("NEW");
+    expect(Number(result[0].quantity)).toBe(2);
   });
 });
 
@@ -488,6 +532,65 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(reverted.update_no).toBe(4);
     expect(reverted.lines[0].product_code).toBe("ITEM1");
     expect(reverted.lines[0]._optimistic).toBeUndefined();
+  });
+});
+
+describe("preserveClientLineSkuAfterMutation", () => {
+  it("keeps the swapped SKU when TemporaryCart PATCH returns the old product", () => {
+    const prevCart = {
+      id: 1,
+      lines: [
+        {
+          id: 10,
+          update_code: "CLU-A",
+          product_code: "NEW-SKU",
+          product_name: "New item",
+          quantity: 2,
+          unit_price: 100,
+          amount: 200,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const serverCart = {
+      id: 1,
+      update_no: 3,
+      lines: [
+        {
+          id: 10,
+          update_code: "CLU-A",
+          product_code: "OLD-SKU",
+          product_name: "Old item",
+          quantity: 2,
+          unit_price: 50,
+          amount: 100,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const next = preserveClientLineSkuAfterMutation(prevCart, serverCart, {
+      targetLineRef: "CLU-A",
+      expectedProductCode: "NEW-SKU",
+    });
+    expect(next.lines[0].product_code).toBe("NEW-SKU");
+    expect(next.lines[0].product_name).toBe("New item");
+    expect(next.lines[0].amount).toBe(200);
+  });
+
+  it("does nothing when the server already has the new SKU", () => {
+    const prevCart = {
+      id: 1,
+      lines: [{ id: 10, update_code: "CLU-A", product_code: "NEW-SKU", amount: 200 }],
+    };
+    const serverCart = {
+      id: 1,
+      lines: [{ id: 10, update_code: "CLU-A", product_code: "NEW-SKU", amount: 200 }],
+    };
+    const next = preserveClientLineSkuAfterMutation(prevCart, serverCart, {
+      targetLineRef: "CLU-A",
+      expectedProductCode: "NEW-SKU",
+    });
+    expect(next).toBe(serverCart);
   });
 });
 

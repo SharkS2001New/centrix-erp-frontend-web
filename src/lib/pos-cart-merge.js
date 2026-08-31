@@ -208,6 +208,56 @@ export function collapseCombineableCartLines(lines, { combineIdenticalLines = tr
   return [...byKey.values()];
 }
 
+/**
+ * Replace one cart row in place and drop any other row with the same SKU + retail flag.
+ * Prevents failed/mistaken swaps from leaving an exact duplicate line.
+ */
+export function applyInPlaceLineSwap(
+  lines,
+  { targetLine, nextLine, combineIdenticalLines = true } = {},
+) {
+  const list = Array.isArray(lines) ? [...lines] : [];
+  if (!targetLine || !nextLine || !list.length) {
+    return { lines: list, idx: -1 };
+  }
+
+  const replaceNeedle = targetLine;
+  let idx = list.findIndex((row) => cartLineMatchesRef(row, replaceNeedle));
+  if (idx < 0) {
+    idx = findCartLineIndexByRef(list, cartLineRef(targetLine));
+  }
+  if (idx < 0 && targetLine.product_code) {
+    idx = list.findIndex(
+      (row) =>
+        String(row.product_code) === String(targetLine.product_code) &&
+        Number(row.on_wholesale_retail ?? 0) ===
+          Number(targetLine.on_wholesale_retail ?? 0),
+    );
+  }
+  if (idx < 0) return { lines: list, idx: -1 };
+
+  list[idx] = nextLine;
+  const mergeKey = cartLineMergeKey(nextLine);
+  const keptRef = cartLineRef(nextLine);
+  const filtered = list.filter((row, i) => {
+    if (i === idx) return true;
+    if (cartLineMergeKey(row) !== mergeKey) return true;
+    // Drop duplicate SKU rows — keep the swapped target row only.
+    if (keptRef != null && cartLineMatchesRef(row, keptRef)) return false;
+    return false;
+  });
+
+  return {
+    idx,
+    lines: collapseCombineableCartLines(filtered, { combineIdenticalLines }),
+  };
+}
+
+/** Always collapse duplicate SKU rows on a cart snapshot. */
+export function finalizeCartLineList(lines, { combineIdenticalLines = true } = {}) {
+  return collapseCombineableCartLines(lines, { combineIdenticalLines });
+}
+
 function replaceCartLineInPlace(lines, idx, optimisticLine) {
   const existing = lines[idx];
   const preservedCode =
@@ -286,6 +336,52 @@ function restorePrevCartLineFields(line, prev) {
  * TemporaryCart returns the full cart; F12 retail/wholesale on one line must not
  * rewrite sibling prices, qty, or on_wholesale_retail flags.
  */
+/**
+ * After a swap PATCH, TemporaryCart may still return the old SKU on the target row
+ * (update_no race, merge quirk). Keep the cashier's painted SKU when we already
+ * committed the swap locally.
+ */
+export function preserveClientLineSkuAfterMutation(
+  prevCart,
+  nextCart,
+  { targetLineRef = null, expectedProductCode = null } = {},
+) {
+  const expected = String(expectedProductCode ?? "").trim();
+  if (!expected || !prevCart?.lines?.length || !nextCart?.lines?.length) {
+    return nextCart;
+  }
+  const ref =
+    targetLineRef != null && String(targetLineRef).trim() !== ""
+      ? String(targetLineRef)
+      : null;
+  if (!ref) return nextCart;
+
+  const needle = { id: ref, update_code: ref, client_line_id: ref };
+  const prevLine = findCartLineForEdit(prevCart.lines, needle, {
+    preferProductCode: expected,
+  });
+  if (!prevLine || String(prevLine.product_code) !== expected) return nextCart;
+
+  const serverLine = findCartLineForEdit(nextCart.lines, {
+    id: prevLine.id,
+    update_code: prevLine.update_code,
+    client_line_id: prevLine.client_line_id,
+    ...needle,
+  });
+  if (!serverLine || String(serverLine.product_code) === expected) return nextCart;
+
+  const lines = (nextCart.lines ?? []).map((row) => {
+    if (!cartLineMatchesRef(row, serverLine)) return row;
+    return {
+      ...prevLine,
+      id: row.id,
+      update_code: row.update_code ?? prevLine.update_code,
+      client_line_id: row.client_line_id ?? prevLine.client_line_id,
+    };
+  });
+  return { ...nextCart, lines };
+}
+
 export function preserveUntouchedCartLines(
   prevCart,
   nextCart,
