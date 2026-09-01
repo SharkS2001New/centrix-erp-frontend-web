@@ -1616,9 +1616,12 @@ export function PosScreen({ standalone = false }) {
     if (!el) return;
     const alreadyFocused =
       typeof document !== "undefined" && document.activeElement === el;
+    const activeQuery = String(el.value ?? "").trim();
     el.focus({ preventScroll: true });
     if (!selectAll && !forceSelectAll) return;
     if (alreadyFocused && !forceSelectAll) return;
+    // Never select-all over an in-progress search — next keystroke would replace it.
+    if (activeQuery && !forceSelectAll) return;
     el.select?.();
   }
   const appliedRouteMarkupRef = useRef(0);
@@ -2522,6 +2525,8 @@ export function PosScreen({ standalone = false }) {
   const cartCommitChainRef = useRef(Promise.resolve());
   /** >0 while enqueueCartCommit tasks are still running — F10 uses this for a fast idle check. */
   const cartCommitPendingRef = useRef(0);
+  /** Drop duplicate qty Enter / blur commits for the same parked SKU within one beat. */
+  const lastEntryQtyCommitRef = useRef({ key: null, at: 0 });
   /** Drop queued line commits after hold / fresh workspace so they cannot restore parked lines. */
   const cartCommitGenerationRef = useRef(0);
   const editAutosaveTimerRef = useRef(null);
@@ -5201,6 +5206,7 @@ export function PosScreen({ standalone = false }) {
     setSelectedProductCode(null);
     setSelectedProduct(null);
     selectedProductRef.current = null;
+    lastEntryQtyCommitRef.current = { key: null, at: 0 };
     setSearchQuery("");
     setSearchResults([]);
     setUnitPriceTouched(false);
@@ -6299,16 +6305,28 @@ export function PosScreen({ standalone = false }) {
     // Server cart may exist now — merge into a persisted row, not a second POST.
     if (!intendedEdit && posSalesConfig.combineIdenticalLines !== false) {
       const postEnsureLines = (cartRef.current ?? activeCart)?.lines ?? [];
-      const serverMergeTarget = findMergeableCartLine(
-        postEnsureLines.filter((line) => !line?._optimistic),
-        product.product_code,
-        computed,
-        posSalesConfig,
-        sellWholesaleRef.current,
-        null,
-        product,
-        { combineIdenticalLines: combineIdenticalLinesRef.current },
-      );
+      // Prefer an already-synced TemporaryCart row over an in-flight optimistic twin.
+      const serverMergeTarget =
+        findMergeableCartLine(
+          postEnsureLines.filter((line) => isServerPersistedCartLine(line)),
+          product.product_code,
+          computed,
+          posSalesConfig,
+          sellWholesaleRef.current,
+          null,
+          product,
+          { combineIdenticalLines: combineIdenticalLinesRef.current },
+        ) ??
+        findMergeableCartLine(
+          postEnsureLines,
+          product.product_code,
+          computed,
+          posSalesConfig,
+          sellWholesaleRef.current,
+          null,
+          product,
+          { combineIdenticalLines: combineIdenticalLinesRef.current },
+        );
       if (serverMergeTarget && !editingId) {
         resolvedMergeTarget = serverMergeTarget;
         targetLineRef = cartLineRef(serverMergeTarget);
@@ -6341,9 +6359,14 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
+    const persistedPatchRef =
+      resolvedMergeTarget && isServerPersistedCartLine(resolvedMergeTarget)
+        ? cartLineRef(resolvedMergeTarget)
+        : null;
+
     if (needsLineDiscountApproval) {
       try {
-        let lineRef = targetLineRef;
+        let lineRef = persistedPatchRef;
         let cartState = activeCart;
         const grossPerBase =
           finalComputed.baseQty > 0
@@ -6502,8 +6525,8 @@ export function PosScreen({ standalone = false }) {
     }
 
     try {
-      if (targetLineRef) {
-        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
+      if (persistedPatchRef) {
+        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${persistedPatchRef}`, {
           method: "PATCH",
           body: {
             ...lineBody,
@@ -6518,15 +6541,15 @@ export function PosScreen({ standalone = false }) {
         let nextCart = applyCartMutationResponse(
           prevCartState,
           updated,
-          cartMergeOptions({ targetLineRef, extraPosTickets: preservePosTickets }),
+          cartMergeOptions({ targetLineRef: persistedPatchRef, extraPosTickets: preservePosTickets }),
         );
         nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
-          targetLineRef,
+          targetLineRef: persistedPatchRef,
           targetProductCode: product.product_code,
           targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
         });
         nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
-          targetLineRef,
+          targetLineRef: persistedPatchRef,
           onWholesaleRetailFlag,
           override,
         });
@@ -6535,7 +6558,7 @@ export function PosScreen({ standalone = false }) {
             clientSkuSnapshot ?? prevCartState,
             nextCart,
             {
-              targetLineRef,
+              targetLineRef: persistedPatchRef,
               expectedProductCode: product.product_code,
             },
           );
@@ -6588,8 +6611,8 @@ export function PosScreen({ standalone = false }) {
         try {
           const fresh = await recoverMissingServerCart();
           if (fresh?.id && !isServerCartConsumed(fresh.id)) {
-            if (targetLineRef) {
-              const updated = await apiRequest(`/sales/carts/${fresh.id}/lines/${targetLineRef}`, {
+            if (persistedPatchRef) {
+              const updated = await apiRequest(`/sales/carts/${fresh.id}/lines/${persistedPatchRef}`, {
                 method: "PATCH",
                 body: {
                   ...lineBody,
@@ -6601,15 +6624,15 @@ export function PosScreen({ standalone = false }) {
               let nextCart = applyCartMutationResponse(
                 prevCartState,
                 updated,
-                cartMergeOptions({ targetLineRef, extraPosTickets: preservePosTickets }),
+                cartMergeOptions({ targetLineRef: persistedPatchRef, extraPosTickets: preservePosTickets }),
               );
               nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
-                targetLineRef,
+                targetLineRef: persistedPatchRef,
                 targetProductCode: product.product_code,
                 targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
               });
               nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
-                targetLineRef,
+                targetLineRef: persistedPatchRef,
                 onWholesaleRetailFlag,
                 override,
               });
@@ -6618,7 +6641,7 @@ export function PosScreen({ standalone = false }) {
                   clientSkuSnapshot ?? prevCartState,
                   nextCart,
                   {
-                    targetLineRef,
+                    targetLineRef: persistedPatchRef,
                     expectedProductCode: product.product_code,
                   },
                 );
@@ -6885,6 +6908,12 @@ export function PosScreen({ standalone = false }) {
     // Swap in progress — always park replacement on the target line (never quick-add).
     if (swapActive) {
       void pickProduct(product);
+      return true;
+    }
+    // Classic search+add: park on qty and let Enter on qty be the single add path.
+    // Quick-add here plus a second qty Enter duplicated rows (e.g. ZULLY HB 2KG ×2).
+    if (classicLayout) {
+      await pickProduct(product);
       return true;
     }
     await quickAddOrIncrementProduct(product);
@@ -8266,6 +8295,19 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Select a product first, then press Enter on qty.");
       return;
     }
+    const qtySnapshot =
+      lineFormQtyCommitRef.current != null
+        ? String(lineFormQtyCommitRef.current)
+        : String(lineForm.quantity ?? "");
+    const dedupeKey = `${parkedProduct.product_code}|${qtySnapshot}`;
+    const now = Date.now();
+    if (
+      lastEntryQtyCommitRef.current.key === dedupeKey &&
+      now - lastEntryQtyCommitRef.current.at < 400
+    ) {
+      return;
+    }
+    lastEntryQtyCommitRef.current = { key: dedupeKey, at: now };
     // Keep React state aligned if a draft/search race cleared selectedProduct.
     if (!selectedProduct || selectedProduct.product_code !== parkedProduct.product_code) {
       setSelectedProduct(parkedProduct);
@@ -16180,7 +16222,7 @@ export function PosScreen({ standalone = false }) {
                   barcodeEnabled={enableBarcodeScanner}
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
-                  disabled={posSearchSuspended}
+                  picksDisabled={posSearchSuspended}
                 />
               )}
               <div className="space-y-1">
@@ -16772,7 +16814,7 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
-                    disabled={posSearchSuspended}
+                    picksDisabled={posSearchSuspended}
                   />
                 }
                 qtyRef={qtyInputRef}

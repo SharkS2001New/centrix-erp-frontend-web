@@ -74,6 +74,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   posSalesConfig = null,
   sellFromShop = true,
   disabled = false,
+  /** Blocks pick / Enter / barcode only — typing stays enabled (avoids mid-search wipe). */
+  picksDisabled = false,
   placeholder = "Search by product name or code…",
   inputRef = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
@@ -96,7 +98,11 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const { capabilities } = useAuth();
   const touchSearchKeypad = isPosTouchSearchKeypadEnabled(capabilities);
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
-  const idleQuery = !String(query ?? "").trim();
+  const inputLocked = Boolean(disabled);
+  const picksLocked = Boolean(picksDisabled || disabled);
+  const [draftQuery, setDraftQuery] = useState(() => String(query ?? ""));
+  const draftQueryRef = useRef(draftQuery);
+  const idleQuery = !String(draftQuery ?? "").trim();
 
   useImperativeHandle(ref, () => ({
     closeDropdown() {
@@ -106,29 +112,67 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     },
   }));
 
+  function commitDraft(next) {
+    const value = String(next ?? "");
+    draftQueryRef.current = value;
+    setDraftQuery(value);
+    onQueryChange?.(value);
+  }
+
+  // Parent `query` can lag behind fast typing or briefly regress when busy flags
+  // flicker — never overwrite a longer in-progress draft while the field is focused.
   useEffect(() => {
-    // Only close when disabled AND there is no active query — prevents a brief
-    // `busy` flag (e.g. route markup loading) from dismissing the dropdown while
+    const parent = String(query ?? "");
+    const local = draftQueryRef.current;
+    if (parent === local) return;
+
+    const inputEl = localInputRef.current;
+    const focused =
+      typeof document !== "undefined" && inputEl != null && document.activeElement === inputEl;
+
+    if (!focused) {
+      draftQueryRef.current = parent;
+      setDraftQuery(parent);
+      return;
+    }
+
+    if (parent === "") {
+      draftQueryRef.current = "";
+      setDraftQuery("");
+      return;
+    }
+
+    // Stale parent prefix (e.g. parent "Sug" while cashier already typed "Sugar").
+    if (local.startsWith(parent) && local.length > parent.length) return;
+
+    // External park / swap / barcode overwrite — accept parent even while focused.
+    draftQueryRef.current = parent;
+    setDraftQuery(parent);
+  }, [query]);
+
+  useEffect(() => {
+    // Only close when input is hard-locked AND there is no active query — prevents a
+    // brief `busy` flag (e.g. route markup loading) from dismissing the dropdown while
     // the cashier is mid-search.
-    if (disabled && !String(query ?? "").trim()) {
+    if (inputLocked && !String(draftQuery ?? "").trim()) {
       setOpen(false);
       setHighlight(-1);
     }
-  }, [disabled, query]);
+  }, [inputLocked, draftQuery]);
 
   useEffect(() => {
     if (!classic) return undefined;
     function onFunctionKey(e) {
       if (!isPosFunctionKeyEvent(e)) return;
       // Keep search results open mid-query — only Esc or picking a row may dismiss.
-      if (String(query ?? "").trim()) return;
+      if (String(draftQuery ?? "").trim()) return;
       setUserDismissed(true);
       setOpen(false);
       setHighlight(-1);
     }
     window.addEventListener("keydown", onFunctionKey, { capture: true, passive: true });
     return () => window.removeEventListener("keydown", onFunctionKey, { capture: true, passive: true });
-  }, [classic, query]);
+  }, [classic, draftQuery]);
 
   // Keep parent searchInputRef in sync without mutating props during render.
   useLayoutEffect(() => {
@@ -136,7 +180,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return () => assignRef(inputRef, null);
   }, [inputRef]);
 
-  const hasActiveQuery = Boolean(String(query ?? "").trim());
+  const hasActiveQuery = Boolean(String(draftQuery ?? "").trim());
   // Keep results visible while typing: do not hide the list on exact SKU match
   // (that made the menu vanish before a click) or on a brief busy disable.
 
@@ -151,7 +195,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       setUserDismissed(false);
       setOpen(false);
     }
-  }, [hasActiveQuery, query]);
+  }, [hasActiveQuery, draftQuery]);
 
   useEffect(() => {
     if (results.length === 0) {
@@ -175,7 +219,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   useEffect(() => {
     if (!hasActiveQuery || userDismissed) return;
     setOpen(true);
-  }, [hasActiveQuery, results, searching, query, userDismissed]);
+  }, [hasActiveQuery, results, searching, draftQuery, userDismissed]);
 
   useEffect(() => {
     if (!open || highlight < 0 || !results.length) return;
@@ -196,7 +240,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   useLayoutEffect(() => {
     // Position the classic portal even while briefly disabled mid-search so the
     // dropdown does not collapse when busy flags flicker.
-    if (!classic || !open || (disabled && !hasActiveQuery)) {
+    if (!classic || !open || (inputLocked && !hasActiveQuery)) {
       setMenuBox(null);
       return undefined;
     }
@@ -230,12 +274,12 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       window.removeEventListener("resize", updateBox);
       window.removeEventListener("scroll", updateBox, true);
     };
-  }, [classic, open, disabled, hasActiveQuery, results.length, searching]);
+  }, [classic, open, inputLocked, hasActiveQuery, results.length, searching]);
 
   useEffect(() => {
     function onDocClick(e) {
       // Mid-search: only Esc or picking a row may close the list.
-      if (String(query ?? "").trim()) return;
+      if (String(draftQuery ?? "").trim()) return;
       const inRoot = rootRef.current?.contains(e.target);
       const inList = listRef.current?.contains(e.target);
       if (!inRoot && !inList) {
@@ -245,7 +289,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [query]);
+  }, [draftQuery]);
 
   // Do not hide on exact SKU match — that closed the list the moment a typed code
   // matched a product, before the cashier could click a row. Enter still handles
@@ -256,9 +300,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   // results briefly lag empty between keystrokes.
   const showDropdown = hasActiveQuery
     ? open && !userDismissed
-    : open && !disabled;
+    : open && !inputLocked;
 
   function pick(product) {
+    if (picksLocked) return;
     onSelect?.(product);
     setUserDismissed(true);
     // Classic scan: parent sets the input to product_code and moves focus to qty.
@@ -268,7 +313,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       highlightCodeRef.current = null;
       return;
     }
-    onQueryChange(product.product_code ?? product.product_name ?? "");
+    commitDraft(product.product_code ?? product.product_name ?? "");
     setOpen(false);
   }
 
@@ -306,6 +351,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
+      if (picksLocked) return;
       // Find/select: any visible result → park on qty (Enter on qty adds).
       // Barcode quick-add only when there is no pickable row yet (true scan before
       // search results land), so typing a name never skips qty / double-adds.
@@ -316,14 +362,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         return;
       }
       if (barcodeEnabled && onBarcodeEnter) {
-        const handled = await onBarcodeEnter(query.trim());
+        const handled = await onBarcodeEnter(String(draftQuery ?? "").trim());
         if (handled) {
           setUserDismissed(true);
           setOpen(false);
           return;
         }
       }
-      if (query.trim()) setOpen(true);
+      if (String(draftQuery ?? "").trim()) setOpen(true);
       return;
     }
     if (e.key === "Escape") {
@@ -399,7 +445,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 ) : results.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
-                      {emptySearchGuidance(query, barcodeEnabled)}
+                      {emptySearchGuidance(draftQuery, barcodeEnabled)}
                     </td>
                   </tr>
                 ) : (
@@ -469,8 +515,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         inputRef={localInputRef}
         enabled={touchSearchKeypad}
         title="Search product"
-        value={query}
-        disabled={disabled}
+        value={draftQuery}
+        disabled={inputLocked}
         placeholder={searchPlaceholder}
         className={classic ? "classic-pos-cart-scan-input" : fieldInput}
         role="combobox"
@@ -481,15 +527,15 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         autoCapitalize="off"
         spellCheck={false}
         onChange={(next) => {
-          if (disabled) return;
+          if (inputLocked) return;
           setUserDismissed(false);
-          onQueryChange(next);
+          commitDraft(next);
           setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
         onFocus={() => {
-          if (disabled) return;
-          if (String(query ?? "").trim()) setUserDismissed(false);
+          if (inputLocked) return;
+          if (String(draftQuery ?? "").trim()) setUserDismissed(false);
           setOpen(true);
         }}
       />
@@ -532,7 +578,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               ) : results.length === 0 ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
-                    {emptySearchGuidance(query, barcodeEnabled)}
+                    {emptySearchGuidance(draftQuery, barcodeEnabled)}
                   </td>
                 </tr>
               ) : (

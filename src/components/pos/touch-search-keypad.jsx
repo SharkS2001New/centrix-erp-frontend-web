@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const ROW_1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
@@ -36,9 +36,13 @@ export function TouchSearchKeypad({
   onDone,
 }) {
   const [draft, setDraft] = useState(String(value ?? ""));
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) setDraft(String(value ?? ""));
+    if (open && !wasOpenRef.current) {
+      setDraft(String(value ?? ""));
+    }
+    wasOpenRef.current = open;
   }, [open, value]);
 
   const display = useMemo(() => String(draft ?? ""), [draft]);
