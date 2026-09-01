@@ -477,7 +477,7 @@ export function AdminUsersScreen() {
   }
 
   async function deactivateUser(row) {
-    if (isProtectedUserAccount(row, user?.id)) {
+    if (isProtectedUserAccount(row, user?.id, { allowDeleteOrgAdmin })) {
       notifyError(
         row.id === user?.id
           ? "You cannot disable your own login."
@@ -500,6 +500,24 @@ export function AdminUsersScreen() {
       notifySuccess(`Login disabled for "${row.full_name}"`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to disable user login");
+    }
+  }
+
+  async function activateUser(row) {
+    if (row.is_active !== false) return;
+    const ok = await confirm({
+      title: "Enable login",
+      message: `Allow "${row.full_name}" to sign in again?`,
+      confirmLabel: "Enable login",
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(adminPath(`/users/${row.id}`), { method: "PUT", body: { is_active: true } });
+      await reloadAll();
+      if (viewUser?.id === row.id) setViewUser((u) => ({ ...u, is_active: true }));
+      notifySuccess(`Login enabled for "${row.full_name}"`);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to enable user login");
     }
   }
 
@@ -924,11 +942,20 @@ export function AdminUsersScreen() {
                         <IconButton label="Edit" onClick={() => openEdit(row)}>
                           <PencilIcon />
                         </IconButton>
+                        {row.is_active === false ? (
+                          <button
+                            type="button"
+                            onClick={() => void activateUser(row)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50"
+                          >
+                            Enable login
+                          </button>
+                        ) : null}
                         {row.is_active !== false &&
                         !isProtectedUserAccount(row, user?.id, { allowDeleteOrgAdmin }) ? (
                           <button
                             type="button"
-                            onClick={() => deactivateUser(row)}
+                            onClick={() => void deactivateUser(row)}
                             className="rounded-md px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
                           >
                             Disable login

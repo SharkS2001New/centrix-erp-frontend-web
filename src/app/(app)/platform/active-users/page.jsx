@@ -8,6 +8,7 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { formatAppDateTime } from "@/lib/datetime";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { platformAdminHref } from "@/lib/platform-admin-nav";
 
 function formatTime(iso) {
   return formatAppDateTime(iso);
@@ -73,7 +74,9 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
     try {
       await apiRequest(`/admin/active-sessions/${sessionId}/disable-user`, { method: "POST" });
       await onRefresh?.(undefined);
-      notifySuccess("User login disabled");
+      notifySuccess(
+        `User login disabled. Re-enable from Platform admin → Users for ${org.org_name}.`,
+      );
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not disable user.");
     } finally {
@@ -150,10 +153,16 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
         </table>
       </div>
 
-      <div className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-right">
+      <div className="flex flex-wrap items-center justify-end gap-4 border-t border-slate-100 bg-slate-50 px-4 py-2 text-xs">
+        <Link
+          href={platformAdminHref(org.id, "users")}
+          className="font-medium text-[#185FA5] hover:underline"
+        >
+          Manage users
+        </Link>
         <Link
           href={`/platform/organizations/${org.id}`}
-          className="text-xs font-medium text-[#185FA5] hover:underline"
+          className="font-medium text-[#185FA5] hover:underline"
         >
           Manage organization
         </Link>

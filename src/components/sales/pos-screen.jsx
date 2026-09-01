@@ -3895,6 +3895,30 @@ export function PosScreen({ standalone = false }) {
     (previousOrderLoading && !previousOrderLoadingSoft) ||
     Boolean(autoHeldBusy);
 
+  /** Block switching to Accounts / other applications while outbox sales are uploading. */
+  const blocksWorkspaceSwitch = useMemo(() => {
+    if (!standalone) return false;
+    return pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0;
+  }, [standalone, pendingSync, offlineSyncing, failedSyncOrders.length]);
+
+  const workspaceSwitchBlockedMessage = useMemo(() => {
+    if (offlineSyncing && pendingSync > 0) {
+      return `Uploading ${pendingSync} sale${pendingSync === 1 ? "" : "s"} — wait for sync to finish before switching applications.`;
+    }
+    if (offlineSyncing) {
+      return "Sale upload in progress — wait for sync to finish before switching applications.";
+    }
+    if (failedSyncOrders.length > 0) {
+      return `Unsynced sale${failedSyncOrders.length === 1 ? "" : "s"} on this till — open Pending sync to retry or delete before switching applications.`;
+    }
+    if (pendingSync > 0) {
+      return `Pending sync has ${pendingSync} sale${pendingSync === 1 ? "" : "s"} to upload — wait for sync to finish before switching applications.`;
+    }
+    return "Sync in progress. Wait for sync to finish before switching workspace.";
+  }, [offlineSyncing, pendingSync, failedSyncOrders.length]);
+
+  const posPendingOutboxUploadActive = blocksWorkspaceSwitch;
+
   posOverlayBlocksScanRef.current = posOverlayBlocksScan;
 
   const posSearchSuspended =
@@ -9607,15 +9631,16 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     // Backoffice POS lives inside AppShell — never block sidebar, topbar, or workspace switching.
     if (!standalone) return undefined;
-    // Warn on leave when there are reserved lines, or whenever offline/slow
+    // Warn on leave when there are reserved lines, pending outbox uploads, or offline/slow
     // (toolbar reload / close would risk losing sell capability).
     const networkDown =
       offlineMode || networkStatus === "offline" || networkStatus === "slow";
     const blockUnload =
-      (cartHasReservedItems || networkDown) && !leaveGuardOpen;
-    if (!blockUnload) return undefined;
+      (cartHasReservedItems || networkDown || posPendingOutboxUploadActive) && !leaveGuardOpen;
+    if (!blockUnload && !posPendingOutboxUploadActive) return undefined;
 
     function onBeforeUnload(e) {
+      if (!cartHasReservedItems && !networkDown && !posPendingOutboxUploadActive) return;
       e.preventDefault();
       e.returnValue = "";
     }
@@ -9663,6 +9688,16 @@ export function PosScreen({ standalone = false }) {
       }
       if (isPosRoute(pathname)) return;
 
+      if (posPendingOutboxUploadActive) {
+        e.preventDefault();
+        e.stopPropagation();
+        notifyError(workspaceSwitchBlockedMessage);
+        setPendingSyncOpen(true);
+        return;
+      }
+
+      if (!cartHasReservedItems && !networkDown) return;
+
       e.preventDefault();
       e.stopPropagation();
       pendingLeaveHrefRef.current = href.startsWith("/") ? href : pathname;
@@ -9674,7 +9709,15 @@ export function PosScreen({ standalone = false }) {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onDocumentClick, true);
     };
-  }, [standalone, cartHasReservedItems, leaveGuardOpen, offlineMode, networkStatus]);
+  }, [
+    standalone,
+    cartHasReservedItems,
+    leaveGuardOpen,
+    offlineMode,
+    networkStatus,
+    posPendingOutboxUploadActive,
+    workspaceSwitchBlockedMessage,
+  ]);
 
   async function handleEditSelectedLine(lineId = selectedLineId) {
     if (!lineId || !cart?.lines?.length || busy) return;
@@ -15731,8 +15774,8 @@ export function PosScreen({ standalone = false }) {
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher
-                  switchBlocked={false}
-                  switchBlockedMessage="Offline sync continues in the background — you can switch workspaces."
+                  switchBlocked={blocksWorkspaceSwitch}
+                  switchBlockedMessage={workspaceSwitchBlockedMessage}
                 />
                 {classicLayout ? null : (
                   <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
