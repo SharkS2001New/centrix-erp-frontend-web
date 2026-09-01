@@ -5034,6 +5034,12 @@ export function PosScreen({ standalone = false }) {
     productSearchRef.current?.closeDropdown?.();
   }
 
+  function resetProductSearchField() {
+    productSearchRef.current?.clearDraft?.();
+    setSearchQuery("");
+    setSearchResults([]);
+  }
+
   /** Close Scan search and stop it from reclaiming focus while a modal is opening. */
   function parkScanForOverlay() {
     posOverlayBlocksScanRef.current = true;
@@ -5138,7 +5144,7 @@ export function PosScreen({ standalone = false }) {
     setSelectedProduct(null);
     selectedProductRef.current = null;
     setSelectedProductCode(null);
-    setSearchQuery("");
+    resetProductSearchField();
     setUnitPriceTouched(false);
     setReceiptPrintStatus(null);
     setPaymentError(null);
@@ -5208,8 +5214,7 @@ export function PosScreen({ standalone = false }) {
     setSelectedProduct(null);
     selectedProductRef.current = null;
     lastEntryQtyCommitRef.current = { key: null, at: 0 };
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
     setEditingLineRef(null);
@@ -6954,7 +6959,7 @@ export function PosScreen({ standalone = false }) {
           clearSwapChrome();
           setSelectedProduct(null);
           setSelectedProductCode(null);
-          setSearchQuery("");
+          resetProductSearchField();
           setLineForm(EMPTY_LINE);
           // replaceCartLineWithProduct already notifies / sets status.
           // After swap qty Enter, focus Scan code for the next new line.
@@ -7202,7 +7207,7 @@ export function PosScreen({ standalone = false }) {
     setSelectedProduct(null);
     selectedProductRef.current = null;
     setSelectedProductCode(null);
-    setSearchQuery("");
+    resetProductSearchField();
     setLineForm({
       product_code: "",
       description: "",
@@ -7234,8 +7239,7 @@ export function PosScreen({ standalone = false }) {
     clearSwapChrome();
     setSelectedProduct(null);
     setSelectedProductCode(null);
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setLineForm(EMPTY_LINE);
     setStatusMessage("Swap cancelled.");
     focusProductSearch();
@@ -9395,8 +9399,7 @@ export function PosScreen({ standalone = false }) {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
     setEditingLineRef(null);

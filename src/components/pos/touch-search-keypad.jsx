@@ -166,6 +166,7 @@ export function TouchSearchField({
   const [open, setOpen] = useState(false);
   const {
     onFocus: extraOnFocus,
+    onBlur: extraOnBlur,
     onClick: extraOnClick,
     ...restInputProps
   } = inputProps;
@@ -191,6 +192,9 @@ export function TouchSearchField({
           if (disabled) return;
           if (enabled) setOpen(true);
           extraOnFocus?.(e);
+        }}
+        onBlur={(e) => {
+          extraOnBlur?.(e);
         }}
         onClick={(e) => {
           if (disabled) return;
