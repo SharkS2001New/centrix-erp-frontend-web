@@ -370,6 +370,36 @@ function candidateEntryIndexes(query) {
 }
 
 /**
+ * @param {object[]} candidates
+ * @param {string} query
+ * @param {{ limit?: number, getAvailableQty?: Function }} options
+ * @param {{ pruned?: boolean }} [meta]
+ */
+function rankCatalogWithFallback(candidates, query, options, meta = {}) {
+  const limit = options.limit ?? 40;
+  const getQty = options.getAvailableQty;
+  let results = rankPosProductSearchResults(candidates, query, {
+    limit,
+    getAvailableQty: getQty,
+  });
+  const trimmed = String(query ?? "").trim();
+  const pruned = Boolean(meta.pruned);
+  if (
+    pruned &&
+    indexedEntries?.length &&
+    trimmed.length >= 2 &&
+    !results.length
+  ) {
+    const full = rankPosProductSearchResults(indexedEntries, query, {
+      limit,
+      getAvailableQty: getQty,
+    });
+    if (full.length) results = full;
+  }
+  return results;
+}
+
+/**
  * @param {string} query
  * @param {{ limit?: number, getAvailableQty?: Function }} [options]
  */
@@ -379,7 +409,7 @@ function resolveCandidates(query, options = {}) {
     indexes == null
       ? indexedEntries ?? []
       : indexes.map((i) => indexedEntries[i]).filter(Boolean);
-  return candidates;
+  return { candidates, pruned: indexes != null };
 }
 
 /**
@@ -392,14 +422,8 @@ function resolveCandidates(query, options = {}) {
  */
 export function searchPosCatalogIndex(query, options = {}) {
   if (!indexedEntries?.length) return [];
-  const limit = options.limit ?? 40;
-  const getQty = options.getAvailableQty;
-  const candidates = resolveCandidates(query, options);
-
-  return rankPosProductSearchResults(candidates, query, {
-    limit,
-    getAvailableQty: getQty,
-  });
+  const { candidates, pruned } = resolveCandidates(query, options);
+  return rankCatalogWithFallback(candidates, query, options, { pruned });
 }
 
 /** @type {Worker|null} */
@@ -454,23 +478,40 @@ export async function searchPosCatalogIndexAsync(query, options = {}) {
 
   const candidates = resolveCandidates(query, options);
   const limit = options.limit ?? 40;
-  if (candidates.length < POS_SEARCH_WORKER_MIN_CANDIDATES) {
-    return rankPosProductSearchResults(candidates, query, { limit });
+  if (candidates.candidates.length < POS_SEARCH_WORKER_MIN_CANDIDATES) {
+    return rankCatalogWithFallback(candidates.candidates, query, options, {
+      pruned: candidates.pruned,
+    });
   }
 
   const worker = getSearchWorker();
   if (!worker) {
-    return rankPosProductSearchResults(candidates, query, { limit });
+    return rankCatalogWithFallback(candidates.candidates, query, options, {
+      pruned: candidates.pruned,
+    });
   }
 
   const id = ++searchWorkerReqId;
   // Detach nested product refs for structured clone; worker returns product_codes order.
-  const payloadEntries = candidates.map(serializeEntry);
+  const payloadEntries = candidates.candidates.map(serializeEntry);
+  const pruned = candidates.pruned;
   return new Promise((resolve, reject) => {
     searchWorkerPending.set(id, {
       resolve: (codes) => {
-        const byCode = new Map(candidates.map((e) => [String(e.product_code), e.product ?? e]));
-        resolve((codes ?? []).map((code) => byCode.get(String(code))).filter(Boolean));
+        const byCode = new Map(
+          candidates.candidates.map((e) => [String(e.product_code), e.product ?? e]),
+        );
+        const ranked = (codes ?? [])
+          .map((code) => byCode.get(String(code)))
+          .filter(Boolean);
+        const fromWorker = rankPosProductSearchResults(ranked, query, { limit });
+        if (pruned && !fromWorker.length && indexedEntries?.length) {
+          resolve(
+            rankCatalogWithFallback(indexedEntries, query, options, { pruned: false }),
+          );
+          return;
+        }
+        resolve(fromWorker);
       },
       reject,
     });
@@ -478,7 +519,11 @@ export async function searchPosCatalogIndexAsync(query, options = {}) {
       worker.postMessage({ id, query, limit, entries: payloadEntries });
     } catch (err) {
       searchWorkerPending.delete(id);
-      resolve(rankPosProductSearchResults(candidates, query, { limit }));
+      resolve(
+        rankCatalogWithFallback(candidates.candidates, query, options, {
+          pruned: candidates.pruned,
+        }),
+      );
     }
   });
 }

@@ -76,9 +76,11 @@ describe("pos-product-search-rank", () => {
     const postman = { product_code: "P1", product_name: "Postman Envelope" };
     const marai = { product_code: "M1", product_name: "Marai Rice" };
     const spaghetti = { product_code: "S1", product_name: "Spaghetti 500g" };
+    const safa = { product_code: "F1", product_name: "SAFA SOAP" };
     expect(productMatchesPosSearch(postman, "postmn")).toBe(true);
     expect(productMatchesPosSearch(marai, "maraii")).toBe(true);
     expect(productMatchesPosSearch(spaghetti, "spageti")).toBe(true);
+    expect(productMatchesPosSearch(safa, "saha")).toBe(true);
   });
 
   it("still matches when the cashier types one letter past a name token", () => {
@@ -172,6 +174,18 @@ describe("pos-product-search-index", () => {
     expect(searchPosCatalogIndex("postmn").map((p) => p.product_code)).toEqual(["P1"]);
     expect(searchPosCatalogIndex("maraii").map((p) => p.product_code)).toEqual(["M1"]);
     expect(searchPosCatalogIndex("spageti").map((p) => p.product_code)).toEqual(["S1"]);
+  });
+
+  it("finds mid-string and typo queries after prefix fallback", () => {
+    setPosSearchCatalog([
+      { product_code: "SUG", product_name: "SUGAR 50 KG" },
+      { product_code: "SAF", product_name: "SAFA SOAP" },
+      { product_code: "G1", product_name: "Gunia 90kg" },
+    ]);
+    expect(searchPosCatalogIndex("sug").map((p) => p.product_code)).toEqual(["SUG"]);
+    expect(searchPosCatalogIndex("ugar").map((p) => p.product_code)).toEqual(["SUG"]);
+    expect(searchPosCatalogIndex("unia").map((p) => p.product_code)).toEqual(["G1"]);
+    expect(searchPosCatalogIndex("saha").map((p) => p.product_code)).toEqual(["SAF"]);
   });
 
   it("exact barcode lookup returns the product", () => {

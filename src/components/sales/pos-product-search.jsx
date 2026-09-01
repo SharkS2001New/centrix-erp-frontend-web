@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { isPosFunctionKeyEvent, isPosClassicAltShortcut } from "@/lib/pos-keyboard-shortcuts";
@@ -11,6 +11,7 @@ import {
   productStockAtLocation,
 } from "@/lib/pos-stock";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
+import { productMatchesPosSearch } from "@/lib/pos-product-search-rank";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -181,6 +182,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }, [inputRef]);
 
   const hasActiveQuery = Boolean(String(draftQuery ?? "").trim());
+  const visibleResults = useMemo(() => {
+    const q = String(draftQuery ?? "").trim();
+    if (!q) return [];
+    const list = Array.isArray(results) ? results : [];
+    if (!list.length) return [];
+    return list.filter((product) => productMatchesPosSearch(product, q));
+  }, [results, draftQuery]);
   // Keep results visible while typing: do not hide the list on exact SKU match
   // (that made the menu vanish before a click) or on a brief busy disable.
 
@@ -198,13 +206,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }, [hasActiveQuery, draftQuery]);
 
   useEffect(() => {
-    if (results.length === 0) {
+    if (visibleResults.length === 0) {
       setHighlight(-1);
       return;
     }
     const sticky = highlightCodeRef.current;
     if (sticky) {
-      const idx = results.findIndex((p) => String(p.product_code) === String(sticky));
+      const idx = visibleResults.findIndex((p) => String(p.product_code) === String(sticky));
       if (idx >= 0) {
         setHighlight(idx);
         return;
@@ -212,29 +220,29 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     }
     // Auto-highlight the top-ranked row when results first appear / sticky lost.
     setHighlight(0);
-    highlightCodeRef.current = results[0]?.product_code ?? null;
-  }, [results]);
+    highlightCodeRef.current = visibleResults[0]?.product_code ?? null;
+  }, [visibleResults]);
 
   // While the cashier is mid-search, keep the menu open until Esc or a row pick.
   useEffect(() => {
     if (!hasActiveQuery || userDismissed) return;
     setOpen(true);
-  }, [hasActiveQuery, results, searching, draftQuery, userDismissed]);
+  }, [hasActiveQuery, visibleResults, searching, draftQuery, userDismissed]);
 
   useEffect(() => {
-    if (!open || highlight < 0 || !results.length) return;
+    if (!open || highlight < 0 || !visibleResults.length) return;
     optionRefs.current.get(highlight)?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [highlight, open, results.length]);
+  }, [highlight, open, visibleResults.length]);
 
   function setHighlightAt(index) {
-    if (!results.length) {
+    if (!visibleResults.length) {
       setHighlight(-1);
       highlightCodeRef.current = null;
       return;
     }
-    const next = Math.max(0, Math.min(index, results.length - 1));
+    const next = Math.max(0, Math.min(index, visibleResults.length - 1));
     setHighlight(next);
-    highlightCodeRef.current = results[next]?.product_code ?? null;
+    highlightCodeRef.current = visibleResults[next]?.product_code ?? null;
   }
 
   useLayoutEffect(() => {
@@ -274,7 +282,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       window.removeEventListener("resize", updateBox);
       window.removeEventListener("scroll", updateBox, true);
     };
-  }, [classic, open, inputLocked, hasActiveQuery, results.length, searching]);
+  }, [classic, open, inputLocked, hasActiveQuery, visibleResults.length, searching]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -318,14 +326,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   function pickHighlighted() {
-    if (!results.length) return;
+    if (!visibleResults.length) return;
     const index = highlight >= 0 ? highlight : 0;
-    const product = results[index];
+    const product = visibleResults[index];
     if (product) pick(product);
   }
 
   function moveHighlight(delta) {
-    if (!results.length) return;
+    if (!visibleResults.length) return;
     const base = highlight < 0 ? -1 : highlight;
     setHighlightAt(base + delta);
   }
@@ -355,7 +363,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       // Find/select: any visible result → park on qty (Enter on qty adds).
       // Barcode quick-add only when there is no pickable row yet (true scan before
       // search results land), so typing a name never skips qty / double-adds.
-      if (results.length) {
+      if (visibleResults.length) {
         setUserDismissed(true);
         setOpen(false);
         pickHighlighted();
@@ -430,7 +438,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 </tr>
               </thead>
               <tbody>
-                {searching && !results.length ? (
+                {searching && !visibleResults.length ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
                       Searching…
@@ -442,14 +450,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       Type a code or name
                     </td>
                   </tr>
-                ) : results.length === 0 ? (
+                ) : visibleResults.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
                       {emptySearchGuidance(draftQuery, barcodeEnabled)}
                     </td>
                   </tr>
                 ) : (
-                  results.map((product, index) => {
+                  visibleResults.map((product, index) => {
                     const keyboardActive = highlight === index;
                     const price = posListUnitPrice(
                       product,
@@ -563,7 +571,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               </tr>
             </thead>
             <tbody>
-              {searching && !results.length ? (
+              {searching && !visibleResults.length ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     Searching…
@@ -575,14 +583,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     {emptySearchGuidance("", barcodeEnabled)}
                   </td>
                 </tr>
-              ) : results.length === 0 ? (
+              ) : visibleResults.length === 0 ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     {emptySearchGuidance(draftQuery, barcodeEnabled)}
                   </td>
                 </tr>
               ) : (
-                results.map((product, index) => {
+                visibleResults.map((product, index) => {
                   const keyboardActive = highlight === index;
                   const selected = selectedCode === product.product_code;
                   const price = posListUnitPrice(

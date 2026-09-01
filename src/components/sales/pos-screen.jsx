@@ -145,6 +145,7 @@ import {
 } from "@/lib/pos-stock";
 import {
   mergePosSearchResults,
+  productMatchesPosSearch,
 } from "@/lib/pos-product-search-rank";
 import {
   sameSearchResultList,
@@ -5448,15 +5449,19 @@ export function PosScreen({ standalone = false }) {
         const remote = sellableSearchResults(
           (remoteRaw ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
         );
-        const list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
+        let list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
+        // Remote can return empty or unrelated rows while local index already matched.
+        if (!list.length && localPaint.length) {
+          list = localPaint.filter((p) => productMatchesPosSearch(p, trimmed));
+        }
         seedRetailAndIndex(list);
         for (const p of list) {
           const code = p?.product_code;
           if (!code || retailByCodeRef.current[code] != null) continue;
           if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
         }
-        // Confirmed empty only after local+remote merge for this query.
-        commitSearchResults(list, { allowEmpty: true });
+        // Keep local hits when the API merge is empty — avoids dropdown blink.
+        commitSearchResults(list, { allowEmpty: !localPaint.length });
         finishRetailPackages(list);
       };
 
