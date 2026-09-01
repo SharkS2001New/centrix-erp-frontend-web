@@ -352,7 +352,7 @@ export function isPosAltLetterShortcut(e, letter, { altHeld = false } = {}) {
 }
 
 /**
- * POS Alt shortcuts: Alt+H hold, Alt+F float, Alt+P reprint.
+ * POS Alt shortcuts: Alt+H hold, Alt+F float, Alt+P reprint (previous-order edit only).
  * Name kept for callers; applies to classic and modern POS layouts.
  */
 export function isPosClassicAltShortcut(e, { altHeld = false } = {}) {

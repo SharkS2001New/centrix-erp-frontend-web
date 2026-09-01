@@ -15348,6 +15348,12 @@ export function PosScreen({ standalone = false }) {
           return;
         }
         if (altLetter === "p") {
+          if (!state.isCartEditSession) {
+            actions.flashPosShortcutMessage?.(
+              "Alt+P is only for revising a previous receipt. Complete this order with F10 first.",
+            );
+            return;
+          }
           void actions.handlePrintReceipt();
         }
         return;
