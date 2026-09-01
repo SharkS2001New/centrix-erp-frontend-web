@@ -279,9 +279,9 @@ function replaceCartLineInPlace(lines, idx, optimisticLine) {
 export function mergePreservedOptimisticLines(
   serverLines,
   prevLines,
-  { combineIdenticalLines = true } = {},
+  { combineIdenticalLines = true, excludedLineRefs = null } = {},
 ) {
-  const lines = Array.isArray(serverLines) ? [...serverLines] : [];
+  const lines = filterCartLinesExcludedRefs(serverLines, excludedLineRefs);
   for (const line of prevLines ?? []) {
     if (!line?._optimistic) continue;
     const already =
@@ -310,9 +310,38 @@ export function raisePosNextTicketNumber(...candidates) {
 }
 
 function lineIdentityKeys(line) {
+  return cartLineIdentityKeys(line);
+}
+
+/** Stable keys for a cart row (id, update_code, client_line_id, cartLineRef). */
+export function cartLineIdentityKeys(line) {
   return [cartLineRef(line), line?.id, line?.update_code, line?.client_line_id]
     .filter((key) => key != null && String(key).trim() !== "")
     .map((key) => String(key));
+}
+
+/** Drop server rows the cashier already removed locally (DELETE still in flight). */
+export function filterCartLinesExcludedRefs(lines, excludedRefSet) {
+  if (!excludedRefSet?.size) return Array.isArray(lines) ? lines : [];
+  return (Array.isArray(lines) ? lines : []).filter((line) => {
+    const keys = cartLineIdentityKeys(line);
+    return !keys.some((key) => excludedRefSet.has(key));
+  });
+}
+
+function pruneConfirmedLineDeleteRefs(excludedRefSet, serverLines) {
+  if (!excludedRefSet?.size) return;
+  const stillOnServer = new Set();
+  for (const line of serverLines ?? []) {
+    for (const key of cartLineIdentityKeys(line)) {
+      stillOnServer.add(key);
+    }
+  }
+  for (const key of [...excludedRefSet]) {
+    if (!stillOnServer.has(key)) {
+      excludedRefSet.delete(key);
+    }
+  }
 }
 
 function restorePrevCartLineFields(line, prev) {
@@ -426,10 +455,17 @@ export function preserveUntouchedCartLines(
 export function applyCartMutationResponse(
   prevCart,
   res,
-  { targetLineRef = null, extraPosTickets = [], combineIdenticalLines = true } = {},
+  {
+    targetLineRef = null,
+    extraPosTickets = [],
+    combineIdenticalLines = true,
+    excludedLineRefs = null,
+  } = {},
 ) {
   const normalized = normalizeCartResponse(res);
   if (normalized) {
+    const serverLines = filterCartLinesExcludedRefs(normalized.lines, excludedLineRefs);
+    pruneConfirmedLineDeleteRefs(excludedLineRefs, normalized.lines);
     const nextPos = raisePosNextTicketNumber(
       normalized.next_pos_order_num,
       prevCart?.next_pos_order_num,
@@ -438,7 +474,7 @@ export function applyCartMutationResponse(
     const merged = {
       ...prevCart,
       ...normalized,
-      lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines, {
+      lines: mergePreservedOptimisticLines(serverLines, prevCart?.lines, {
         combineIdenticalLines,
       }),
       // Line mutations used to omit next_order_num → caption became "New Order - —".

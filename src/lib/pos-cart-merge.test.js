@@ -7,6 +7,7 @@ import {
   cartLineMatchesRef,
   cartLineRef,
   collapseCombineableCartLines,
+  filterCartLinesExcludedRefs,
   findCartLineForEdit,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
@@ -142,6 +143,17 @@ describe("mergePreservedOptimisticLines", () => {
     expect(merged[0].quantity).toBe(4);
     expect(merged[0].amount).toBe(14000);
   });
+
+  it("drops server rows excluded while DELETE is still in flight", () => {
+    const excluded = new Set(["CLU-B"]);
+    const server = [
+      { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+      { id: 2, update_code: "CLU-B", product_code: "B", on_wholesale_retail: 0, amount: 50 },
+    ];
+    const prev = [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }];
+    const merged = mergePreservedOptimisticLines(server, prev, { excludedLineRefs: excluded });
+    expect(merged.map((line) => line.product_code)).toEqual(["A"]);
+  });
 });
 
 describe("applyInPlaceLineSwap", () => {
@@ -183,6 +195,21 @@ describe("applyInPlaceLineSwap", () => {
     expect(result).toHaveLength(1);
     expect(result[0].product_code).toBe("NEW");
     expect(Number(result[0].quantity)).toBe(2);
+  });
+});
+
+describe("filterCartLinesExcludedRefs", () => {
+  it("removes lines matching any identity key in the exclusion set", () => {
+    const excluded = new Set(["CLU-B", "cli-9"]);
+    const lines = [
+      { id: 1, update_code: "CLU-A", product_code: "A" },
+      { id: 2, update_code: "CLU-B", client_line_id: "cli-9", product_code: "B" },
+      { id: 3, update_code: "CLU-C", product_code: "C" },
+    ];
+    expect(filterCartLinesExcludedRefs(lines, excluded).map((line) => line.product_code)).toEqual([
+      "A",
+      "C",
+    ]);
   });
 });
 
@@ -258,6 +285,39 @@ describe("applyCartMutationResponse", () => {
     expect(next.held_order_num).toBe(120);
     expect(next.superseded_sale_id).toBe(55);
     expect(next.lines[0].quantity).toBe(1);
+  });
+
+  it("never resurrects lines excluded by an in-flight DELETE", () => {
+    const excluded = new Set(["CLU-B", "2"]);
+    const prev = {
+      id: 10,
+      lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
+    };
+    const res = {
+      id: 10,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        { id: 2, update_code: "CLU-B", product_code: "B", on_wholesale_retail: 0, amount: 50 },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, res, { excludedLineRefs: excluded });
+    expect(next.lines.map((line) => line.product_code)).toEqual(["A"]);
+    // Server still lists B — keep exclusion until DELETE confirms.
+    expect(excluded.size).toBe(2);
+  });
+
+  it("clears exclusion refs once the server cart no longer has the deleted line", () => {
+    const excluded = new Set(["CLU-B", "2"]);
+    const prev = {
+      id: 10,
+      lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
+    };
+    const res = {
+      id: 10,
+      lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
+    };
+    applyCartMutationResponse(prev, res, { excludedLineRefs: excluded });
+    expect(excluded.size).toBe(0);
   });
 
   it("keeps separate lines for the same SKU when combine is off (Sugar 2kg vs 10kg)", () => {

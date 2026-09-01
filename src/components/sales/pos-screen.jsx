@@ -158,8 +158,10 @@ import {
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartHasOptimisticLines,
+  cartLineIdentityKeys,
   cartLineMatchesRef,
   cartLineRef,
+  filterCartLinesExcludedRefs,
   finalizeCartLineList,
   findCartLineForEdit,
   preserveClientLineSkuAfterMutation,
@@ -2387,6 +2389,8 @@ export function PosScreen({ standalone = false }) {
   const vatByIdRef = useRef(vatById);
   const offlineModeRef = useRef(offlineMode);
   const combineIdenticalLinesRef = useRef(true);
+  /** Line refs removed locally while TemporaryCart DELETE is still in flight. */
+  const pendingLineDeleteRefsRef = useRef(new Set());
   uomByIdRef.current = uomById;
   vatByIdRef.current = vatById;
   offlineModeRef.current = offlineMode;
@@ -2408,8 +2412,27 @@ export function PosScreen({ standalone = false }) {
   function cartMergeOptions(extra = {}) {
     return {
       combineIdenticalLines: combineIdenticalLinesRef.current,
+      excludedLineRefs: pendingLineDeleteRefsRef.current,
       ...extra,
     };
+  }
+
+  function registerPendingLineDeletes(lines) {
+    for (const line of lines ?? []) {
+      for (const key of cartLineIdentityKeys(line)) {
+        pendingLineDeleteRefsRef.current.add(key);
+      }
+    }
+  }
+
+  function clearPendingLineDeleteKeysForLine(line) {
+    for (const key of cartLineIdentityKeys(line)) {
+      pendingLineDeleteRefsRef.current.delete(key);
+    }
+  }
+
+  function filterServerCartLines(lines) {
+    return filterCartLinesExcludedRefs(lines, pendingLineDeleteRefsRef.current);
   }
   function markServerCartConsumed(cartId) {
     if (!isServerPosCartId(cartId)) return;
@@ -2445,6 +2468,7 @@ export function PosScreen({ standalone = false }) {
     };
     cartRef.current = placeholder;
     setCart(placeholder);
+    pendingLineDeleteRefsRef.current.clear();
     setEditOrderNo(peekNextPos != null ? String(peekNextPos) : "");
     return placeholder;
   }
@@ -4225,11 +4249,12 @@ export function PosScreen({ standalone = false }) {
       // Never blank an in-flight scan: TemporaryCart create/wipe can finish after
       // paintOptimisticOn. Merge is O(lines) — no extra network.
       const live = cartRef.current;
+      const filteredFullLines = filterServerCartLines(full?.lines);
       const toApply =
         cartHasOptimisticLines(live)
           ? {
               ...full,
-              lines: mergePreservedOptimisticLines(full?.lines, live.lines, cartMergeOptions()),
+              lines: mergePreservedOptimisticLines(filteredFullLines, live.lines, cartMergeOptions()),
               next_pos_order_num: raisePosNextTicketNumber(
                 full?.next_pos_order_num,
                 live?.next_pos_order_num,
@@ -4240,6 +4265,7 @@ export function PosScreen({ standalone = false }) {
             }
           : {
               ...full,
+              lines: filteredFullLines,
               next_pos_order_num: raisePosNextTicketNumber(
                 full?.next_pos_order_num,
                 live?.next_pos_order_num,
@@ -4283,9 +4309,11 @@ export function PosScreen({ standalone = false }) {
   const refreshCart = useCallback(async (cartId) => {
     try {
       const updated = await apiRequest(`/sales/carts/${cartId}`, POS_CART_REQUEST);
-      cartRef.current = updated;
-      setCart(updated);
-      return updated;
+      const lines = filterServerCartLines(updated?.lines);
+      const next = { ...updated, lines };
+      cartRef.current = next;
+      setCart(next);
+      return next;
     } catch (e) {
       if (
         isMissingTemporaryCartError(e) &&
@@ -6357,7 +6385,15 @@ export function PosScreen({ standalone = false }) {
           },
           ...POS_CART_REQUEST,
         });
-        if (res.cart) setCart(res.cart);
+        if (res.cart) {
+          const next = applyCartMutationResponse(
+            cartRef.current ?? cartState,
+            res.cart,
+            cartMergeOptions(),
+          );
+          cartRef.current = next;
+          setCart(next);
+        }
         setStatusMessage(
           "Discount saved on this line. Manager approval is requested when you save the order.",
         );
@@ -7760,8 +7796,10 @@ export function PosScreen({ standalone = false }) {
       method: "PATCH",
       body: { route_id: routeId ?? null },
     });
-    setCart(updated);
-    return updated;
+    const next = applyCartMutationResponse(cartRef.current ?? cart, updated, cartMergeOptions());
+    cartRef.current = next;
+    setCart(next);
+    return next;
   }
 
   async function commitOrderDiscount(rawValue = orderDiscountDraft) {
@@ -7812,7 +7850,15 @@ export function PosScreen({ standalone = false }) {
           body: { scope: "order", discount_amount: next, defer_approval: true },
           ...POS_CART_REQUEST,
         });
-        if (res.cart) setCart(res.cart);
+        if (res.cart) {
+          const next = applyCartMutationResponse(
+            cartRef.current ?? cart,
+            res.cart,
+            cartMergeOptions(),
+          );
+          cartRef.current = next;
+          setCart(next);
+        }
         setStatusMessage(
           "Order discount saved. Manager approval is requested when you save the order.",
         );
@@ -7824,7 +7870,13 @@ export function PosScreen({ standalone = false }) {
         method: "PATCH",
         body: { order_discount: next },
       });
-      setCart(updated);
+      const patched = applyCartMutationResponse(
+        cartRef.current ?? cart,
+        updated,
+        cartMergeOptions(),
+      );
+      cartRef.current = patched;
+      setCart(patched);
       setOrderDiscountDraft(next > 0 ? String(next) : "");
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to update order discount");
@@ -8995,6 +9047,8 @@ export function PosScreen({ standalone = false }) {
       if (!ok) return;
     }
 
+    registerPendingLineDeletes(targets);
+
     setStatusMessage(null);
     const clearsEditing = targets.some((line) => sameLineId(editingLineId, line.id));
     const serverCartId = isServerPosCartId(liveCart.id) ? liveCart.id : null;
@@ -9094,8 +9148,18 @@ export function PosScreen({ standalone = false }) {
                 ...POS_CART_REQUEST,
               },
             );
+            const removedLine = targets.find((line) =>
+              cartLineIdentityKeys(line).includes(String(lineRef)),
+            );
+            if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
+            else pendingLineDeleteRefsRef.current.delete(String(lineRef));
           } catch (e) {
             if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
+              const removedLine = targets.find((line) =>
+                cartLineIdentityKeys(line).includes(String(lineRef)),
+              );
+              if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
+              else pendingLineDeleteRefsRef.current.delete(String(lineRef));
               continue;
             }
             if (isPosNetworkDropError(e) || isMissingTemporaryCartError(e)) {
@@ -10207,6 +10271,10 @@ export function PosScreen({ standalone = false }) {
             stripOfflineSaleMarkers(stripPreviousOrderEditSession(next)),
             peekNextPos,
           );
+          merged = {
+            ...merged,
+            lines: filterServerCartLines(merged.lines),
+          };
           // First scan often lands on pending-fresh before TemporaryCart id exists —
           // adopt the server cart id without dropping the optimistic row.
           if (
