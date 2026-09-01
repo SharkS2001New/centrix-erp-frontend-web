@@ -2207,6 +2207,12 @@ export function PosScreen({ standalone = false }) {
   const [productByCode, setProductByCode] = useState({});
 
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryRef = useRef("");
+  const updateSearchQuery = useCallback((next) => {
+    const value = String(next ?? "");
+    searchQueryRef.current = value;
+    setSearchQuery(value);
+  }, []);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedProductCode, setSelectedProductCode] = useState(null);
@@ -3942,7 +3948,9 @@ export function PosScreen({ standalone = false }) {
     focusSearchAfterAdd.current = false;
     // Never wipe search results while the cashier has an active query — overlays /
     // preparingNext / autoHeldBusy can flicker and previously cleared the list mid-type.
-    const activeQuery = String(searchQuery ?? "").trim();
+    const activeQuery = String(
+      searchInputRef.current?.value ?? searchQueryRef.current ?? searchQuery ?? "",
+    ).trim();
     if (!activeQuery) {
       closeProductSearchDropdown();
       setSearchResults([]);
@@ -5036,7 +5044,7 @@ export function PosScreen({ standalone = false }) {
 
   function resetProductSearchField() {
     productSearchRef.current?.clearDraft?.();
-    setSearchQuery("");
+    updateSearchQuery("");
     setSearchResults([]);
   }
 
@@ -5600,7 +5608,7 @@ export function PosScreen({ standalone = false }) {
         : classicLayout
           ? 120
           : 200;
-    const t = setTimeout(() => searchProducts(searchQuery), delay);
+    const t = setTimeout(() => searchProducts(searchQueryRef.current), delay);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts, classicLayout]);
 
@@ -7082,7 +7090,7 @@ export function PosScreen({ standalone = false }) {
       setSwapDraft(nextSwapDraft);
       setReplacingLineId(stableLineId);
       replacingLineIdRef.current = stableLineId;
-      setSearchQuery(product.product_code ?? "");
+      updateSearchQuery(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
@@ -7127,7 +7135,7 @@ export function PosScreen({ standalone = false }) {
       discount: "0",
       unit_price: "",
     });
-    setSearchQuery(parkCode ?? "");
+    updateSearchQuery(parkCode ?? "");
     searchAbortRef.current?.abort();
     searchSeq.current += 1;
     setSearching(false);
@@ -9791,7 +9799,7 @@ export function PosScreen({ standalone = false }) {
       setSellWholesaleMode(!isRetailLine);
       setSelectedProductCode(line.product_code);
       setSelectedProduct(product);
-      setSearchQuery(product.product_name ?? line.product_code);
+      updateSearchQuery(product.product_name ?? line.product_code);
       setUnitPriceTouched(true);
       const entryQty = posEntryQtyFromCartLine(line, product, retailPackage);
       const perUnitDiscount = cartLineEnteredDiscountPerUnit(line, product, retailPackage);
@@ -16218,7 +16226,7 @@ export function PosScreen({ standalone = false }) {
                   ref={productSearchRef}
                   inputRef={searchInputRef}
                   query={searchQuery}
-                  onQueryChange={setSearchQuery}
+                  onQueryChange={updateSearchQuery}
                   results={searchResults}
                   searching={searching}
                   selectedCode={selectedProductCode}
@@ -16807,7 +16815,7 @@ export function PosScreen({ standalone = false }) {
                           unit_price: "",
                         }));
                       }
-                      setSearchQuery(next);
+                      updateSearchQuery(next);
                     }}
                     results={searchResults}
                     searching={searching}

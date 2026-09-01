@@ -12,6 +12,7 @@ import {
 } from "@/lib/pos-stock";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { productMatchesPosSearch } from "@/lib/pos-product-search-rank";
+import { shouldSyncParentSearchQuery } from "@/lib/pos-search-draft-sync";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -103,7 +104,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const picksLocked = Boolean(picksDisabled || disabled);
   const [draftQuery, setDraftQuery] = useState(() => String(query ?? ""));
   const draftQueryRef = useRef(draftQuery);
+  const lastEmittedRef = useRef(draftQuery);
+  const allowParentClearRef = useRef(false);
   /** While true, draftQuery is authoritative — parent query must not overwrite keystrokes. */
+  const inputFocusedRef = useRef(false);
   const [inputFocused, setInputFocused] = useState(false);
   const idleQuery = !String(draftQuery ?? "").trim();
 
@@ -115,7 +119,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     },
     /** Parent cleared the query (after add / swap / payment) — bypass focused guard. */
     clearDraft() {
+      allowParentClearRef.current = true;
       draftQueryRef.current = "";
+      lastEmittedRef.current = "";
       setDraftQuery("");
       setHighlight(-1);
       highlightCodeRef.current = null;
@@ -125,30 +131,32 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   function commitDraft(next) {
     const value = String(next ?? "");
     draftQueryRef.current = value;
+    lastEmittedRef.current = value;
     setDraftQuery(value);
     onQueryChange?.(value);
   }
 
-  // Mirror parent query only when the field is not focused. While the cashier is
-  // typing, parent state lags behind draftQuery and must never clobber it.
+  // Mirror parent query only when safe. While typing, parent state lags behind
+  // draftQuery and must never clobber or shorten it.
   useEffect(() => {
     const parent = String(query ?? "");
     const local = draftQueryRef.current;
-    if (parent === local) return;
 
-    if (inputFocused) {
-      // Find/select parks the product code while focus may still be on Scan.
-      const parked = String(selectedCode ?? "");
-      if (parked && parent === parked) {
-        draftQueryRef.current = parent;
-        setDraftQuery(parent);
-      }
+    if (!shouldSyncParentSearchQuery(parent, local, {
+      inputFocused: inputFocusedRef.current,
+      allowParentClear: allowParentClearRef.current,
+    })) {
       return;
     }
 
+    if (parent === "") {
+      allowParentClearRef.current = false;
+    }
+
     draftQueryRef.current = parent;
+    lastEmittedRef.current = parent;
     setDraftQuery(parent);
-  }, [query, inputFocused, selectedCode]);
+  }, [query, inputFocused]);
 
   useEffect(() => {
     // Only close when input is hard-locked AND there is no active query — prevents a
@@ -538,12 +546,22 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         onKeyDown={handleInputKeyDown}
         onFocus={() => {
           if (inputLocked) return;
+          inputFocusedRef.current = true;
           setInputFocused(true);
           if (String(draftQuery ?? "").trim()) setUserDismissed(false);
           setOpen(true);
         }}
         onBlur={() => {
-          setInputFocused(false);
+          // Defer so mousedown on the portal row does not look like "left search".
+          window.requestAnimationFrame(() => {
+            const input = localInputRef.current;
+            const active =
+              typeof document !== "undefined" ? document.activeElement : null;
+            if (input && active === input) return;
+            if (listRef.current?.contains(active)) return;
+            inputFocusedRef.current = false;
+            setInputFocused(false);
+          });
         }}
       />
 
