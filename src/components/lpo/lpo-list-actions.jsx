@@ -3,7 +3,8 @@
 import { OrderContextMenu } from "@/components/sales/sales-orders-shared";
 import { P } from "@/lib/permission-codes";
 import { useAuth } from "@/contexts/auth-context";
-import { lpoCanDelete, lpoCanEdit } from "./lpo-shared";
+import { isOrgAdministrator } from "@/lib/admin-scope";
+import { lpoCanDelete, lpoCanEdit, lpoCanForceMarkSent } from "./lpo-shared";
 
 function ViewIcon() {
   return (
@@ -38,12 +39,14 @@ export function buildLpoListMenuItems({
   canView,
   canEdit,
   canDelete,
+  canForceMarkSent = false,
   busy,
   onView,
   onPrintLpo,
   onPrintDeliveryNote,
   onEdit,
   onDelete,
+  onMarkSent,
 }) {
   const items = [];
 
@@ -55,6 +58,17 @@ export function buildLpoListMenuItems({
       label: "Print delivery note",
       icon: "print",
       onClick: onPrintDeliveryNote,
+    });
+  }
+
+  if (canForceMarkSent && lpoCanForceMarkSent(row, true)) {
+    if (items.length) items.push({ type: "separator" });
+    items.push({
+      key: "mark-sent",
+      label: busy ? "Marking as sent…" : "Mark as sent",
+      icon: "advance",
+      disabled: busy,
+      onClick: onMarkSent,
     });
   }
 
@@ -127,7 +141,7 @@ export function LpoListRowActions({
 }
 
 export function useLpoListPermissions() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, capabilities } = useAuth();
 
   return {
     canView: hasPermission(P.purchasing.lpo.view),
@@ -137,6 +151,7 @@ export function useLpoListPermissions() {
     canDelete:
       hasPermission(P.purchasing.lpo.delete) || hasPermission(P.purchasing.lpo.edit),
     canApprove: hasPermission(P.purchasing.lpo.approve),
+    isAdmin: isOrgAdministrator(user, capabilities),
   };
 }
 

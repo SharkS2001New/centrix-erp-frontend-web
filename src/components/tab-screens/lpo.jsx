@@ -28,6 +28,7 @@ import {
   useLpoListPermissions,
 } from "@/components/lpo/lpo-list-actions";
 import { LpoApprovalStripRow } from "@/components/lpo/lpo-workflow";
+import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge, LPO_STATUS } from "@/components/lpo/lpo-shared";
@@ -49,7 +50,7 @@ export function LpoScreen() {
   const router = useAppRouter();
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission } = useAuth();
-  const { canView, canCreate, canEdit, canDelete, canApprove } = useLpoListPermissions();
+  const { canView, canCreate, canEdit, canDelete, canApprove, isAdmin } = useLpoListPermissions();
   const canApproveLpos = canApproveLpoRequests({ hasPermission });
 
   const [dashboard, setDashboard] = useState(null);
@@ -62,6 +63,7 @@ export function LpoScreen() {
   const [listLoading, setListLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [printingLpoNo, setPrintingLpoNo] = useState(null);
+  const [markingSentLpoNo, setMarkingSentLpoNo] = useState(null);
   const [deletingLpoNo, setDeletingLpoNo] = useState(null);
   const [approvalBusyId, setApprovalBusyId] = useState(null);
   const [rejectRequestId, setRejectRequestId] = useState(null);
@@ -250,6 +252,30 @@ export function LpoScreen() {
     }
   }
 
+  async function markLpoSent(row) {
+    if (!row?.lpo_no || !isAdmin) return;
+    const ok = await confirm({
+      title: "Mark LPO as sent",
+      message:
+        "Skip check and approval and mark this purchase order as sent to the supplier? It will be ready for goods receiving.",
+      confirmLabel: "Mark as sent",
+    });
+    if (!ok) return;
+    setMarkingSentLpoNo(row.lpo_no);
+    try {
+      await apiRequest(`/lpo-mst/${row.lpo_no}/workflow`, {
+        method: "POST",
+        body: { action: "force_mark_sent" },
+      });
+      notifySuccess("LPO marked as sent. You can now receive goods.");
+      await loadRows();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not mark LPO as sent");
+    } finally {
+      setMarkingSentLpoNo(null);
+    }
+  }
+
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.row) return [];
     const row = contextMenu.row;
@@ -258,7 +284,8 @@ export function LpoScreen() {
       canView,
       canEdit,
       canDelete,
-      busy: deletingLpoNo === row.lpo_no,
+      canForceMarkSent: isAdmin,
+      busy: deletingLpoNo === row.lpo_no || markingSentLpoNo === row.lpo_no,
       onView: () => {
         setContextMenu(null);
         viewLpo(row);
@@ -279,8 +306,24 @@ export function LpoScreen() {
         setContextMenu(null);
         deleteLpo(row);
       },
+      onMarkSent: () => {
+        setContextMenu(null);
+        void markLpoSent(row);
+      },
     });
-  }, [contextMenu, canView, canEdit, canDelete, deletingLpoNo, router, user, capabilities, organization]);
+  }, [
+    contextMenu,
+    canView,
+    canEdit,
+    canDelete,
+    isAdmin,
+    deletingLpoNo,
+    markingSentLpoNo,
+    router,
+    user,
+    capabilities,
+    organization,
+  ]);
 
   return (
     <CatalogPageShell

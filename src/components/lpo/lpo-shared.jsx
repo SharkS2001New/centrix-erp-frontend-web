@@ -111,6 +111,13 @@ export function lpoCanEdit(lpo) {
   return Boolean(lpo?.can_edit ?? (Number(lpo?.lpo_status_code) < LPO_STATUS.AWAITING_RECEIVE));
 }
 
+/** Admins may skip check/approval/send and mark an LPO ready for receiving. */
+export function lpoCanForceMarkSent(lpo, isAdmin = false) {
+  if (!isAdmin || lpoIsCancelledReturned(lpo)) return false;
+  const code = Number(lpo?.lpo_status_code ?? -1);
+  return code >= LPO_STATUS.AWAITING_CHECK && code < LPO_STATUS.AWAITING_RECEIVE;
+}
+
 /** LPO lines that still have quantity available to return (ordered minus prior returns). */
 export function lpoHasSupplierReturns(lines = [], supplierReturns = []) {
   if (supplierReturns.length > 0) return true;

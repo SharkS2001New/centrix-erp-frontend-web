@@ -12,7 +12,8 @@ import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { printGrnForLpoSummary } from "@/components/lpo/grn-print";
 import { lpoHasReceivedStock } from "@/lib/grn-document";
 import { mergeGeneralSettings } from "@/lib/general-settings";
-import { formatLpoKes, lpoCanDelete, lpoCanEdit, lpoDisplayNumber } from "./lpo-shared";
+import { isOrgAdministrator } from "@/lib/admin-scope";
+import { formatLpoKes, lpoCanDelete, lpoCanEdit, lpoCanForceMarkSent, lpoDisplayNumber } from "./lpo-shared";
 import { notifySuccess } from "@/lib/notify";
 
 function normalizePhone(phone) {
@@ -181,7 +182,8 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
   const [error, setError] = useState(null);
   const [awaitingMarkSent, setAwaitingMarkSent] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, capabilities } = useAuth();
+  const isAdmin = isOrgAdministrator(user, capabilities);
   const canApprove = canApproveLpoRequests({ hasPermission });
   const canSubmit =
     hasPermission(P.purchasing.lpo.edit) ||
@@ -191,6 +193,9 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
   const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
 
   const actions = (lpo.workflow_actions ?? []).filter((action) => {
+    if (action === "force_mark_sent") {
+      return isAdmin;
+    }
     if (action === "approve" || action === "mark_checked") {
       return canApprove;
     }
@@ -199,6 +204,7 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
     }
     return canView;
   });
+  const showForceMarkSent = actions.includes("force_mark_sent") || lpoCanForceMarkSent(lpo, isAdmin);
 
   async function runAction(action) {
     setBusy(action);
@@ -215,6 +221,8 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
             ? "Approval request sent again to managers."
             : "LPO submitted for manager approval.",
         );
+      } else if (action === "force_mark_sent") {
+        notifySuccess("LPO marked as sent. You can now receive goods.");
       }
       await onUpdated?.();
     } catch (e) {
@@ -286,7 +294,7 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
     setAwaitingMarkSent(true);
   }
 
-  if (!actions.length && !awaitingMarkSent) {
+  if (!actions.length && !awaitingMarkSent && !showForceMarkSent) {
     return null;
   }
 
@@ -321,6 +329,14 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
       ) : null}
 
       <div className="flex flex-wrap gap-2">
+        {showForceMarkSent ? (
+          <ActionButton
+            label={busy === "force_mark_sent" ? "Saving…" : "Mark as sent"}
+            onClick={() => runAction("force_mark_sent")}
+            disabled={Boolean(busy) || Boolean(printing)}
+            primary={actions.length <= 1}
+          />
+        ) : null}
         {actions.includes("submit_for_approval") && !lpo.approval_pending ? (
           <ActionButton
             label={busy === "submit_for_approval" ? "Sending…" : "Submit for approval"}
