@@ -93,7 +93,7 @@ export function HrPayrollScreen() {
   const loadData = useCallback(async () => {
     try {
       const [runsRes, periodsRes, summaryRes, deptRes, scheduleRes] = await Promise.all([
-        apiRequest("/payroll-runs", { searchParams: { per_page: 25 } }),
+        apiRequest("/payroll-runs", { searchParams: { per_page: 200 } }),
         apiRequest("/pay-periods", { searchParams: { per_page: 50 } }),
         apiRequest("/employees/summary").catch(() => null),
         apiRequest("/departments", { searchParams: { per_page: 100 } }),
