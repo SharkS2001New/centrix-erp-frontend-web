@@ -41,6 +41,19 @@ function formatDate(value) {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
+function invoiceMetaBlockHtml(invoice) {
+  const invoiceNo = invoice.invoice_number || "DRAFT";
+  const dueRow = invoice.due_date
+    ? `<div class="meta-row"><span class="meta-label">Due date:</span><span>${escapeHtml(formatDate(invoice.due_date))}</span></div>`
+    : "";
+
+  return `<div class="meta">
+    <div class="meta-row"><span class="meta-label">Invoice No:</span><strong>#${escapeHtml(invoiceNo)}</strong></div>
+    <div class="meta-row"><span class="meta-label">Invoice date:</span><span>${escapeHtml(formatDate(invoice.issue_date))}</span></div>
+    ${dueRow}
+  </div>`;
+}
+
 function activeLines(lineItems) {
   return activeInvoiceLineItems(lineItems);
 }
@@ -240,7 +253,9 @@ function baseStyles(templateId, options = {}) {
     .brand-logo { max-height: ${space.brandLogoMax}; max-width: 180px; object-fit: contain; }
     .brand-name { margin: 0; font-size: ${brandNameSize}; font-weight: 700; letter-spacing: 0.02em; }
     .header h1 { margin: 0; font-size: ${h1Size}; font-weight: 700; letter-spacing: ${templateId === "elegant" || templateId === "gold" ? "0.02em" : "0"}; line-height: 1.15; }
-    .header .meta { margin-top: ${space.metaMarginTop}; opacity: ${solidHeader ? "0.92" : "1"}; font-size: ${metaSize}; line-height: ${space.partyLineHeight}; }
+    .header .meta { margin-top: ${space.metaMarginTop}; opacity: ${solidHeader ? "0.92" : "1"}; font-size: ${metaSize}; line-height: ${space.partyLineHeight}; display: flex; flex-direction: column; gap: 4px; }
+    .meta-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35em; }
+    .meta-label { color: #64748b; font-weight: 600; min-width: 6.75rem; }
     .body { padding: ${bodyInnerPad}; }
     .parties { display: grid; grid-template-columns: 1fr 1fr; gap: ${space.partiesGap}; margin-bottom: ${space.partiesMarginBottom}; }
     .party-label { margin: 0 0 ${space.partyLabelMargin}; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 700; }
@@ -313,7 +328,6 @@ export function buildPlatformInvoiceHtml(invoice) {
     company_code: invoice.bill_to_company_code,
   };
   const invoiceNo = invoice.invoice_number || "DRAFT";
-  const status = (invoice.status ?? "draft").toUpperCase();
   const showQuantity = options.show_quantity !== false;
   const showLineNumbers = invoiceShowsLineNumbers(invoice.line_items);
   const qtyHeader = showQuantity
@@ -355,12 +369,7 @@ export function buildPlatformInvoiceHtml(invoice) {
       <div class="header">
         ${brandHeaderHtml(options)}
         <h1>INVOICE</h1>
-        <div class="meta">
-          Invoice No: <strong>#${escapeHtml(invoiceNo)}</strong>
-          · ${escapeHtml(formatDate(invoice.issue_date))}
-          ${invoice.due_date ? ` · Due ${escapeHtml(formatDate(invoice.due_date))}` : ""}
-          · <span class="status">${escapeHtml(status)}</span>
-        </div>
+        ${invoiceMetaBlockHtml(invoice)}
       </div>
       <div class="body">
         <div class="parties">

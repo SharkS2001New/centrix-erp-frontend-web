@@ -14,6 +14,7 @@ import {
   IconButton,
   PrimaryButton,
   SearchableSelect,
+  SecondaryButton,
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -68,6 +69,7 @@ export function HrPayrollScreen() {
   const [runEmployees, setRunEmployees] = useState([]);
   const [runEmpSearch, setRunEmpSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [runForm, setRunForm] = useState(EMPTY_PAYROLL_RUN_FORM);
   const [runSaving, setRunSaving] = useState(false);
@@ -114,6 +116,15 @@ export function HrPayrollScreen() {
   }, []);
 
   useTabAwareDataLoad(loadData);
+
+  const refreshData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadData]);
 
   const orgPeriods = useMemo(() => {
     if (!organizationId) return periods;
@@ -460,6 +471,9 @@ export function HrPayrollScreen() {
       subtitle="Monthly payrolls and payments — open a run to review, approve, or pay"
       action={
         <HrPageActions>
+          <SecondaryButton onClick={() => void refreshData()} disabled={loading || refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </SecondaryButton>
           {tab === "runs" ? (
             <CatalogListExport
               title="Payroll runs"
@@ -913,7 +927,7 @@ export function HrPayrollScreen() {
             className="rounded border-slate-300"
           />
           <span>
-            Prorate payable from scheduled shift days through yesterday (PAYE, NSSF, SHA still use full monthly gross)
+            Prorate payable from scheduled shift days (PAYE, NSSF, SHA still use full monthly gross)
             {hrSettings.require_attendance_for_payroll ? (
               <span className="text-xs text-slate-500"> — required by organization settings</span>
             ) : null}

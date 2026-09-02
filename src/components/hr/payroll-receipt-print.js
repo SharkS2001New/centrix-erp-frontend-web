@@ -90,7 +90,7 @@ function buildReceiptHtml(line, employee, options) {
     documentFooterText = "",
   } = options;
 
-  const sections = payrollBreakdownSections(line, employee);
+  const sections = payrollBreakdownSections(line, employee, { forReceipt: true });
   const name = composeEmployeeDisplayName(employee) || employee?.full_name || "Employee";
   const subtitle = employeeSubtitle(employee);
 
@@ -131,6 +131,7 @@ function buildReceiptHtml(line, employee, options) {
       <section>
         <h3>Pay</h3>
         <table class="amt-table">${payRows}</table>
+        ${sections.attendanceNote ? `<p class="note attendance">${escapeHtml(sections.attendanceNote)}</p>` : ""}
       </section>
       <section>
         <h3>Deductions</h3>

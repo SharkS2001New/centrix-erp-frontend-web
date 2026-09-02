@@ -131,7 +131,7 @@ export function PlatformInvoiceViewer({
             <p className="theme-subtext mt-1 text-xs">
               Invoice · {(record?.status || invoice.status || "draft").toString()} ·{" "}
               {formatBillingMoney(record?.total ?? invoice.total, record?.currency ?? invoice.currency)} ·{" "}
-              {formatBillingDate(record?.issue_date || invoice.issue_date)}
+              Invoice date {formatBillingDate(record?.issue_date || invoice.issue_date)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { buildEmployeeBody, employeeToForm, EMPTY_EMPLOYEE_FORM } from "@/components/hr/hr-shared";
+import {
+  buildEmployeeBody,
+  buildPayrollAttendanceNote,
+  employeeToForm,
+  EMPTY_EMPLOYEE_FORM,
+  payableAmountDaysHint,
+  payrollBreakdownSections,
+} from "@/components/hr/hr-shared";
 
 describe("hr-shared pays_sha", () => {
   it("includes pays_sha in API body when true", () => {
@@ -24,5 +31,52 @@ describe("hr-shared pays_sha", () => {
     const employee = { first_name: "A", last_name: "B", pays_sha: false };
     const form = employeeToForm(employee);
     expect(form.pays_sha).toBe(false);
+  });
+});
+
+describe("payroll attendance breakdown copy", () => {
+  const payroll = {
+    use_attendance_proration: true,
+    paid_work_days: 26,
+    expected_work_days: 30,
+    late_minutes_total: 312,
+    attendance: {
+      paid_days: 26,
+      expected_days: 30,
+      rest_days_off: 5,
+      absent_days: 4,
+      clock_in_late_minutes_total: 312,
+      late_minutes_total: 312,
+    },
+  };
+
+  it("uses full scheduled workday hint for HR payment breakdown", () => {
+    const sections = payrollBreakdownSections(
+      {
+        gross_pay: 50000,
+        statutory_meta: { payroll },
+      },
+      null,
+    );
+    expect(sections.earnings[1].label).toBe("Payable amount (26 of 30 scheduled workdays)");
+    expect(buildPayrollAttendanceNote(payroll)).toBe(
+      "26 of 30 scheduled workdays · 5 off days (not scheduled — not absent) · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
+    );
+  });
+
+  it("uses compact copy on payslip receipts only", () => {
+    expect(payableAmountDaysHint(payroll, { forReceipt: true })).toBe("26 workdays");
+    expect(buildPayrollAttendanceNote(payroll, { forReceipt: true })).toBe(
+      "26 Payable workdays · 5 off days (not scheduled — not absent) · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
+    );
+    const sections = payrollBreakdownSections(
+      {
+        gross_pay: 50000,
+        statutory_meta: { payroll },
+      },
+      null,
+      { forReceipt: true },
+    );
+    expect(sections.earnings[1].label).toBe("Payable amount (26 workdays)");
   });
 });

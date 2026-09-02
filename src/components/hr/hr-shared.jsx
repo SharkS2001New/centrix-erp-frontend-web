@@ -795,12 +795,98 @@ export function payPeriodStatusLabel(status) {
   return status === "closed" ? "Closed" : "Open";
 }
 
+function formatPayrollDays(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+/** Short hint for Payable amount label — full schedule detail for HR; compact on receipts. */
+export function payableAmountDaysHint(payroll, { forReceipt = false } = {}) {
+  if (!payroll?.use_attendance_proration) return null;
+  const paidDays = Number(payroll.paid_work_days ?? payroll.attendance?.paid_days ?? 0);
+  const expectedDays = Number(
+    payroll.expected_work_days ?? payroll.attendance?.expected_days ?? 0,
+  );
+  if (forReceipt) {
+    if (paidDays <= 0) return null;
+    return `${formatPayrollDays(paidDays)} workdays`;
+  }
+  if (expectedDays > 0) {
+    return `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays`;
+  }
+  if (paidDays <= 0) return null;
+  return `${formatPayrollDays(paidDays)} workdays`;
+}
+
+/** Attendance summary — HR sees scheduled-day context; receipts use employee-friendly wording. */
+export function buildPayrollAttendanceNote(payroll, { forReceipt = false } = {}) {
+  if (!payroll?.use_attendance_proration) return null;
+  const attendance = payroll.attendance;
+  if (!attendance) return null;
+
+  const paidDays = Number(payroll.paid_work_days ?? attendance.paid_days ?? 0);
+  const expectedDays = Number(payroll.expected_work_days ?? attendance.expected_days ?? 0);
+  const remainingDays = Number(payroll.remaining_days ?? attendance.remaining_days ?? 0);
+  const restDaysOff = Number(attendance.rest_days_off ?? 0);
+  const absentDays = Number(attendance.absent_days ?? 0);
+  const unpaidLeave = Number(attendance.unpaid_leave_days ?? 0);
+  const nonDeductibleOff = Number(attendance.non_deductible_off_days ?? 0);
+  const lateMinutes = Number(payroll.late_minutes_total ?? attendance.late_minutes_total ?? 0);
+
+  const parts = [];
+  if (forReceipt) {
+    if (paidDays > 0) {
+      parts.push(`${formatPayrollDays(paidDays)} Payable workdays`);
+    }
+  } else if (expectedDays > 0) {
+    parts.push(
+      `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays`,
+    );
+  } else if (paidDays > 0) {
+    parts.push(`${formatPayrollDays(paidDays)} Payable workdays`);
+  }
+  if (restDaysOff > 0) {
+    parts.push(`${formatPayrollDays(restDaysOff)} off days (not scheduled — not absent)`);
+  }
+  if (absentDays > 0) {
+    parts.push(
+      `${formatPayrollDays(absentDays)} absent day${absentDays === 1 ? "" : "s"} deducted`,
+    );
+  }
+  if (unpaidLeave > 0) {
+    parts.push(`${formatPayrollDays(unpaidLeave)} unpaid / deductible off`);
+  }
+  if (nonDeductibleOff > 0) {
+    parts.push(`${formatPayrollDays(nonDeductibleOff)} non-deductible off`);
+  }
+  if (remainingDays > 0) {
+    parts.push(
+      `${formatPayrollDays(remainingDays)} remaining scheduled days not paid (today incomplete)`,
+    );
+  }
+  if (lateMinutes > 0) {
+    const lateParts = [];
+    if (Number(attendance.clock_in_late_minutes_total ?? 0) > 0) {
+      lateParts.push(`${attendance.clock_in_late_minutes_total} min late clock-in`);
+    }
+    if (Number(attendance.lunch_late_minutes_total ?? 0) > 0) {
+      lateParts.push(`${attendance.lunch_late_minutes_total} min late from lunch`);
+    }
+    lateParts.push(`${lateMinutes} min late overall`);
+    parts.push(lateParts.join(" · "));
+  }
+
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function statutoryAmount(line, meta, id) {
   return Number(line?.[id] ?? meta[id] ?? 0);
 }
 
 /** Earnings + locked statutory sections for payroll line detail panels and receipts. */
-export function payrollBreakdownSections(line, employee) {
+export function payrollBreakdownSections(line, employee, options = {}) {
+  const forReceipt = Boolean(options.forReceipt);
   const meta = line?.statutory_meta ?? {};
   const payroll = meta.payroll ?? {};
   const contractBasic = Number(
@@ -850,11 +936,7 @@ export function payrollBreakdownSections(line, employee) {
         ? Math.round(((contractBasic + monthlyAllowance) * (lateMinutes / 60) / expectedHours) * 100)
           / 100
         : 0;
-  const restDaysOff = Number(payroll.attendance?.rest_days_off ?? 0);
-  const daysHint =
-    useProration && expectedDays > 0
-      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays through yesterday`
-      : null;
+  const daysHint = payableAmountDaysHint(payroll, { forReceipt });
   // When lateness is listed under deductions, show payable before that cut so the slip balances:
   // (payable + lateness) − (statutory + other + lateness) = net.
   const payableBeforeLateness = Math.round((payable + latenessAmount) * 100) / 100;
@@ -872,13 +954,14 @@ export function payrollBreakdownSections(line, employee) {
       emphasis: true,
       hint: useProration
         ? latenessAmount > 0
-          ? "Completed scheduled days through yesterday, before lateness deduction"
-          : "Completed scheduled shift days through yesterday (today not included)"
+          ? "Completed scheduled days, before lateness deduction"
+          : "Completed scheduled shift days (today not included)"
         : "Amount before deductions",
     },
   ];
 
   const attendance = payroll.attendance;
+  const attendanceNote = buildPayrollAttendanceNote(payroll, { forReceipt });
 
   // Compact payable composition when useful (non-zero components differ from a single lump).
   const payableDetail = [];
@@ -904,41 +987,6 @@ export function payrollBreakdownSections(line, employee) {
       });
     }
   }
-
-  const attendanceNote =
-    attendance && useProration
-      ? [
-          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays through yesterday`,
-          restDaysOff > 0
-            ? `${formatPayrollDays(restDaysOff)} off days (not scheduled — not absent)`
-            : null,
-          remainingDays > 0
-            ? `${formatPayrollDays(remainingDays)} remaining scheduled days not paid (today incomplete)`
-            : null,
-          Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
-          Number(attendance.unpaid_leave_days ?? 0) > 0
-            ? `${attendance.unpaid_leave_days} unpaid / deductible off`
-            : null,
-          Number(attendance.non_deductible_off_days ?? 0) > 0
-            ? `${attendance.non_deductible_off_days} non-deductible off`
-            : null,
-          lateMinutes > 0
-            ? [
-                Number(attendance.clock_in_late_minutes_total ?? 0) > 0
-                  ? `${attendance.clock_in_late_minutes_total} min late clock-in`
-                  : null,
-                Number(attendance.lunch_late_minutes_total ?? 0) > 0
-                  ? `${attendance.lunch_late_minutes_total} min late from lunch`
-                  : null,
-                `${lateMinutes} min late overall`,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")
-      : null;
 
   const statutory = KENYA_STATUTORY_DEDUCTIONS.map((d) => ({
     id: d.id,
@@ -980,12 +1028,6 @@ export function payrollBreakdownSections(line, employee) {
     paidDays,
     expectedDays,
   };
-}
-
-function formatPayrollDays(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "0";
-  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
 function payrollDeductionRows(payroll, otherTotal) {
