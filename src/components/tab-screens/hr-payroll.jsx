@@ -59,7 +59,7 @@ export function HrPayrollScreen() {
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const admin = isAdminUser(user);
   const canDeletePayrollRuns =
-    admin || hasPermission(P.hr.manage) || hasPermission(P.hr.payroll.create);
+    admin || hasPermission(P.hr.manage) || hasPermission(P.hr.payroll.delete);
   const { runBlockingTask, overlayNode: deleteWaitOverlay, busy: deleteBusy } = useBlockingWait(
     "Deleting payroll…",
   );

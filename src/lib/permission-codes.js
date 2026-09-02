@@ -356,7 +356,12 @@ export const P = {
     absents: { view: "hr.absents.view" },
     lateness: { view: "hr.lateness.view" },
     leave: { view: "hr.leave.view", approve: "hr.leave.approve" },
-    payroll: { view: "hr.payroll.view", create: "hr.payroll.create", approve: "hr.payroll.approve" },
+    payroll: {
+      view: "hr.payroll.view",
+      create: "hr.payroll.create",
+      approve: "hr.payroll.approve",
+      delete: "hr.payroll.delete",
+    },
   },
   admin: {
     overview: { view: "admin.overview.view" },

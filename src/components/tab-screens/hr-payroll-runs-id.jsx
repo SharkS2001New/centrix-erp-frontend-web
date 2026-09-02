@@ -87,7 +87,8 @@ export function HrPayrollRunsIdScreen() {
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
   const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
-  const canDeletePayrollRuns = admin || canProcess;
+  const canDeletePayrollRuns =
+    admin || hasPermission(P.hr.manage) || hasPermission(P.hr.payroll.delete);
   const runId = Number(params.id);
 
   const hrSettings = useMemo(

@@ -189,6 +189,7 @@
     "hr.overtime.view",
     "hr.payroll.approve",
     "hr.payroll.create",
+    "hr.payroll.delete",
     "hr.payroll.view",
     "hr.pending_overtime.approve",
     "hr.pending_overtime.view",
