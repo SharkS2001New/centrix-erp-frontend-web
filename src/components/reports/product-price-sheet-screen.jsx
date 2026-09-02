@@ -512,8 +512,8 @@ export function ProductPriceSheetScreen() {
                         type="button"
                         onClick={() => setPrintColumns(DEFAULT_PRINT_COLUMNS)}
                         className="text-xs font-medium text-blue-600 hover:text-blue-500"
-                      >
-                        Reset
+          >
+            Reset
           </button>
         </div>
                     <ul className="max-h-72 space-y-1 overflow-y-auto">

@@ -117,7 +117,7 @@ export function fetchBranchesCached(organizationId) {
         searchParams: { per_page: 200 },
         loading: false,
       });
-      return (res.data ?? []).filter(
+    return (res.data ?? []).filter(
         (branch) => !orgId || branch.organization_id === orgId,
       );
     } catch (error) {
@@ -142,7 +142,7 @@ export function fetchRoutesCached(organizationId) {
         loading: false,
         reportIssues: false,
       });
-      return (res.data ?? []).filter(
+    return (res.data ?? []).filter(
         (route) => !orgId || route.organization_id === orgId,
       );
     } catch (error) {
@@ -201,7 +201,7 @@ export function fetchUsersCached(organizationId, { path = "/reference/users", se
         loading: false,
         reportIssues: false,
       });
-      return res.data ?? [];
+    return res.data ?? [];
     } catch (error) {
       if (error instanceof ApiError && error.status === 403) {
         return [];

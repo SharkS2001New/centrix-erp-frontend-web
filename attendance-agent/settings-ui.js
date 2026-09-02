@@ -104,7 +104,7 @@ function htmlPage() {
         <dt>Centrix</dt><dd id="api">—</dd>
       </dl>
       <button type="button" id="testBtn">Test connection</button>
-      <div id="status"></div>
+        <div id="status"></div>
       <p class="hint">To change IP, password, or token, update the device in Centrix HR → Attendance clock-in and download the agent again.</p>
     </div>
   </div>

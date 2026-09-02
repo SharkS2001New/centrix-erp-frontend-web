@@ -38,7 +38,6 @@ function ClassicLineQtyCell({
   const pendingCommitRef = useRef(null);
   const inputElRef = useRef(null);
   void lineBusy;
-  void forceSameQtyCommit;
 
   // Keep parent swapLineQtyRef in sync without mutating props during a ref callback
   // (react-hooks/immutability).
@@ -102,7 +101,16 @@ function ClassicLineQtyCell({
     if (trimmed !== draft) setDraft(trimmed);
     // F12 retail/wholesale applies only on Enter for this focused line.
     // Blur must not reprice when the number is unchanged (even after F12).
-    if (!applySessionMode && !swapQtyCommit && trimmed === committed) return;
+    // forceSameQtyCommit covers Enter when applySessionMode was lost but session
+    // still differs from the line (parent sets this while the qty cell is focused).
+    if (
+      !applySessionMode &&
+      !swapQtyCommit &&
+      !forceSameQtyCommit &&
+      trimmed === committed
+    ) {
+      return;
+    }
     pendingCommitRef.current = trimmed;
     onSetQty?.(line, trimmed);
   }
@@ -588,13 +596,13 @@ export function ClassicPosCartTable({
                   tabIndex={replacing || busy ? -1 : 0}
                 >
                   {replacing ? (
-                    swapPreviewActive ? (
-                      <span className="classic-pos-scan-code">{swapLinePreview.productCode}</span>
-                    ) : (
-                      <span className="classic-pos-cart-entry-muted text-xs" title="Type in the entry row below">
-                        ↓ scan
-                      </span>
-                    )
+                    <div
+                      className="classic-pos-cart-swap-search"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {scanSearch}
+                    </div>
                   ) : (
                     <span className="classic-pos-scan-code">{line.product_code}</span>
                   )}
@@ -670,7 +678,13 @@ export function ClassicPosCartTable({
           <tr className="classic-pos-cart-entry-row">
             <td className="classic-pos-col-num classic-pos-cart-rownum">{lines.length + 1}</td>
             <td className="classic-pos-cart-scan-cell classic-pos-col-scan">
-              {scanSearch}
+              {replacingLineId ? (
+                <span className="classic-pos-cart-entry-muted text-xs" title="Search on the line being swapped">
+                  swap ↑
+                </span>
+              ) : (
+                scanSearch
+              )}
             </td>
             <td className="classic-pos-col-desc classic-pos-cart-entry-muted">
               {entryReady ? entryDescription : ""}

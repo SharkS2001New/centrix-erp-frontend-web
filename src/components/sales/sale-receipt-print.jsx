@@ -194,10 +194,10 @@ export function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false 
     rows.push({ label: "Equity", value: equityAmount });
     rows.push({ label: "KCB", value: kcbAmount });
   } else {
-    if (cashAmount > 0) rows.push({ label: "Cash", value: cashAmount });
-    if (mpesaAmount > 0) rows.push({ label: "M-Pesa", value: mpesaAmount });
-    if (kcbAmount > 0) rows.push({ label: "KCB", value: kcbAmount });
-    if (equityAmount > 0) rows.push({ label: "Equity", value: equityAmount });
+  if (cashAmount > 0) rows.push({ label: "Cash", value: cashAmount });
+  if (mpesaAmount > 0) rows.push({ label: "M-Pesa", value: mpesaAmount });
+  if (kcbAmount > 0) rows.push({ label: "KCB", value: kcbAmount });
+  if (equityAmount > 0) rows.push({ label: "Equity", value: equityAmount });
   }
 
   if (voucherAmount > 0) rows.push({ label: "Voucher", value: voucherAmount });

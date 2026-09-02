@@ -482,9 +482,9 @@ export default function PlatformSubscriptionsPage() {
                             {sub.organization?.org_name ?? "—"}
                           </Link>
                         ) : (
-                          <p className="font-medium text-slate-900">
-                            {sub.organization?.org_name ?? "—"}
-                          </p>
+                        <p className="font-medium text-slate-900">
+                          {sub.organization?.org_name ?? "—"}
+                        </p>
                         )}
                         {sub.organization?.company_code ? (
                           <p className="font-mono text-xs text-slate-500">{sub.organization.company_code}</p>
@@ -512,24 +512,24 @@ export default function PlatformSubscriptionsPage() {
                           title="Edit start and end dates"
                           onClick={() => setPeriodTarget(sub)}
                         >
-                          {formatBillingDate(sub.current_period_start)} → {formatBillingDate(sub.current_period_end)}
-                          {license?.days_remaining != null ? (
-                            <span
-                              className={`mt-1 block text-xs ${
-                                expired
-                                  ? "font-medium text-red-700"
-                                  : soon
-                                    ? "font-medium text-amber-700"
-                                    : "text-slate-500"
-                              }`}
-                            >
-                              {expired
-                                ? "Expired — org locked"
-                                : license.days_remaining === 0
-                                  ? "Expires today"
-                                  : `${license.days_remaining} day${license.days_remaining === 1 ? "" : "s"} left`}
-                            </span>
-                          ) : null}
+                        {formatBillingDate(sub.current_period_start)} → {formatBillingDate(sub.current_period_end)}
+                        {license?.days_remaining != null ? (
+                          <span
+                            className={`mt-1 block text-xs ${
+                              expired
+                                ? "font-medium text-red-700"
+                                : soon
+                                  ? "font-medium text-amber-700"
+                                  : "text-slate-500"
+                            }`}
+                          >
+                            {expired
+                              ? "Expired — org locked"
+                              : license.days_remaining === 0
+                                ? "Expires today"
+                                : `${license.days_remaining} day${license.days_remaining === 1 ? "" : "s"} left`}
+                          </span>
+                        ) : null}
                         </button>
                       </td>
                       <td className="px-5 py-3 text-slate-600">
@@ -561,13 +561,13 @@ export default function PlatformSubscriptionsPage() {
                       <td className="px-5 py-3 text-right">
                         <div className="flex flex-col items-end gap-1">
                           {showExtend ? (
-                            <button
-                              type="button"
-                              className="text-sm font-medium text-[#185FA5] hover:underline"
-                              onClick={() => openExtend(sub)}
-                            >
-                              Extend licence
-                            </button>
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-[#185FA5] hover:underline"
+                            onClick={() => openExtend(sub)}
+                          >
+                            Extend licence
+                          </button>
                           ) : null}
                           <button
                             type="button"

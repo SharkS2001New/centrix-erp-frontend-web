@@ -214,22 +214,22 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   }
 
   // Wholesale session: entry is pack count when conversion_factor > 1.
-  const packQty = qty;
-  const fullOnly = uomIsFullPackageOnly(uom);
-  const baseQty = fullOnly || factor <= 1 ? qty : displayToBaseQty(qty, factor);
-  const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
-  const tier = tierForQuantity(wholesaleTiers, baseQty);
-  const measureLevel =
-    tier?.measure_level || (fullOnly || factor > 1 ? "full" : "small");
-  return {
-    baseQty,
-    packQty,
-    measureLevel,
-    packagingLabel: measureLevelLabel(uom, measureLevel),
-    tier,
-    isRetail: false,
-    pricingRetail: false,
-    retailSession: false,
+    const packQty = qty;
+    const fullOnly = uomIsFullPackageOnly(uom);
+    const baseQty = fullOnly || factor <= 1 ? qty : displayToBaseQty(qty, factor);
+    const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
+    const tier = tierForQuantity(wholesaleTiers, baseQty);
+    const measureLevel =
+      tier?.measure_level || (fullOnly || factor > 1 ? "full" : "small");
+    return {
+      baseQty,
+      packQty,
+      measureLevel,
+      packagingLabel: measureLevelLabel(uom, measureLevel),
+      tier,
+      isRetail: false,
+      pricingRetail: false,
+      retailSession: false,
   };
 }
 
@@ -484,15 +484,15 @@ export function computePosLine({
   // It already includes route markup when taken from amount÷qty or list display —
   // never add route again or merge/qty edits inflate the saved sale.
   if (override == null) {
-    lineAmount = applyRouteMarkupToLine({
-      lineAmount,
-      routeMarkupPerUnit,
-      sellWholesale,
-      retailLine,
-      packQty,
-      baseQty,
+  lineAmount = applyRouteMarkupToLine({
+    lineAmount,
+    routeMarkupPerUnit,
+    sellWholesale,
+    retailLine,
+    packQty,
+    baseQty,
       formulas: pricingFormulas,
-    });
+  });
   }
 
   const lineAmountBeforeDiscount = lineAmount;

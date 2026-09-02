@@ -32,6 +32,28 @@ export function findMergeableCartLine(
   );
 }
 
+/**
+ * After F12 flips retail/wholesale, re-adding the same SKU must convert the
+ * existing opposite-mode row in place — never spawn "1 bag" + "1 kg".
+ * Only when that SKU appears once on the cart (otherwise same-mode merge applies).
+ */
+export function findModeConvertibleCartLine(
+  cartLines,
+  productCode,
+  nextOnWholesaleRetail,
+) {
+  if (!cartLines?.length || !productCode) return null;
+  const sameSku = cartLines.filter(
+    (line) => String(line.product_code) === String(productCode),
+  );
+  if (sameSku.length !== 1) return null;
+  const line = sameSku[0];
+  const lineRetail = Number(line.on_wholesale_retail) === 1;
+  const nextRetail = Boolean(nextOnWholesaleRetail);
+  if (lineRetail === nextRetail) return null;
+  return line;
+}
+
 /** True when search query exactly matches a product barcode / SKU (product_code). */
 export function isExactProductCodeQuery(query, productCode) {
   const q = String(query ?? "").trim();

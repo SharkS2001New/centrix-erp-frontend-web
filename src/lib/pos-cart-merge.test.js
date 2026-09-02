@@ -9,6 +9,7 @@ import {
   collapseCombineableCartLines,
   filterCartLinesExcludedRefs,
   findCartLineForEdit,
+  findModeConvertibleCartLine,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
   preserveClientLineSkuAfterMutation,
@@ -804,5 +805,28 @@ describe("preserveUntouchedCartLines", () => {
     expect(next.lines[1].on_wholesale_retail).toBe(0);
     expect(next.lines[3].on_wholesale_retail).toBe(1);
     expect(next.lines[3].amount).toBe(150);
+  });
+});
+
+describe("findModeConvertibleCartLine", () => {
+  it("returns the sole opposite-mode row for F12 convert", () => {
+    const lines = [
+      {
+        id: 1,
+        product_code: "SUGAR",
+        quantity: 50,
+        on_wholesale_retail: 0,
+      },
+    ];
+    expect(findModeConvertibleCartLine(lines, "SUGAR", true)?.id).toBe(1);
+    expect(findModeConvertibleCartLine(lines, "SUGAR", false)).toBeNull();
+  });
+
+  it("does not convert when the SKU already has two modes on the cart", () => {
+    const lines = [
+      { id: 1, product_code: "SUGAR", quantity: 50, on_wholesale_retail: 0 },
+      { id: 2, product_code: "SUGAR", quantity: 1, on_wholesale_retail: 1 },
+    ];
+    expect(findModeConvertibleCartLine(lines, "SUGAR", true)).toBeNull();
   });
 });

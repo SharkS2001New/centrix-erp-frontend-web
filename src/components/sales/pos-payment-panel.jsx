@@ -869,8 +869,8 @@ export function PosPaymentPanel({
         adjustmentMode,
       });
       if (creditSale) {
-        return validateCustomerCreditSale({
-          customer: creditCustomer,
+      return validateCustomerCreditSale({
+        customer: creditCustomer,
           creditAmount: checkoutTotal,
         });
       }
@@ -1689,16 +1689,16 @@ export function PosPaymentPanel({
   }, [open, step, autoContinueAfterPrint, receiptPrintStatus]);
 
   useEffect(() => {
-    enterActionRef.current = (e) => {
-      if (e.key !== "Enter" || saving || step === "saving") return;
-      if (step === "complete") {
+  enterActionRef.current = (e) => {
+    if (e.key !== "Enter" || saving || step === "saving") return;
+    if (step === "complete") {
         if (receiptPrintStatus === "pending") return;
         if (autoContinueAfterPrint && receiptPrintStatus !== "failed") return;
-        e.preventDefault();
+      e.preventDefault();
         void handleOrderCompleteOk();
-        return;
-      }
-      if (step === "customerName") {
+      return;
+    }
+    if (step === "customerName") {
         // Let PosSearchableSelect handle Enter while picking from search results.
         const active = document.activeElement;
         if (
@@ -1707,31 +1707,31 @@ export function PosPaymentPanel({
         ) {
           return;
         }
-        e.preventDefault();
-        handleCustomerNameContinue();
-        return;
-      }
-      if (step === "confirm") {
-        e.preventDefault();
-        handleConfirmYes();
-        return;
-      }
+      e.preventDefault();
+      handleCustomerNameContinue();
+      return;
+    }
+    if (step === "confirm") {
+      e.preventDefault();
+      handleConfirmYes();
+      return;
+    }
       // Payment step: Enter only prefills amounts in field handlers — Page Down completes.
-    };
+  };
   });
 
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
       if (e.key === "PageDown" && !saving && step !== "saving" && step !== "complete") {
-        e.preventDefault();
+          e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === "function") {
           e.stopImmediatePropagation();
         }
         handlePageDownShortcut();
-        return;
-      }
+          return;
+        }
       if (step === "payment" && !saving) {
         if (handlePaymentNavigationKey(e)) return;
       }
@@ -1827,7 +1827,7 @@ export function PosPaymentPanel({
             Balance due: {formatSaleKes(confirmSummary.balanceDue)}
             {confirmSummary.isCredit
               ? " — recorded as debtor for the selected customer."
-              : ""}
+                : ""}
           </p>
         ) : null}
         {confirmSummary && confirmSummary.changeDue > 0 ? (
@@ -1904,26 +1904,26 @@ export function PosPaymentPanel({
 
         {customerNameMode === "walkin" ? (
           <>
-            <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
-            <PosField label="Customer name">
-              <input
-                ref={walkInNameRef}
-                type="text"
-                className={inputCls}
-                value={walkInCustomerName}
-                onChange={(e) => {
-                  setWalkInCustomerName(e.target.value);
-                  setLocalError(null);
-                }}
-                placeholder="Walk-in customer name"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleCustomerNameContinue();
-                  }
-                }}
-              />
-            </PosField>
+        <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
+        <PosField label="Customer name">
+          <input
+            ref={walkInNameRef}
+            type="text"
+            className={inputCls}
+            value={walkInCustomerName}
+            onChange={(e) => {
+              setWalkInCustomerName(e.target.value);
+              setLocalError(null);
+            }}
+            placeholder="Walk-in customer name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCustomerNameContinue();
+              }
+            }}
+          />
+        </PosField>
           </>
         ) : (
           <>
@@ -2387,7 +2387,7 @@ export function PosPaymentPanel({
             <dd className="text-[1.1025rem] font-semibold tabular-nums tracking-tight">
               {formatSaleKes(parseDecimalInput(mpesaAmount))}
             </dd>
-          </div>
+        </div>
         ) : null}
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Amount Paid</dt>
@@ -2435,7 +2435,7 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
           <PosField label="Cash amount (C)">
-              <input
+            <input
               ref={cashAmountRef}
               type="text"
               inputMode="decimal"

@@ -349,7 +349,7 @@ function buildDistributionPickingLineRows(lines, includeShelfLocation = true, sh
       <div class="pick-line-wrap">
         <div class="pick-line${shortageClass}" role="row">
           <div class="col-no">${line.line_no}</div>
-          ${shelfCell}
+        ${shelfCell}
           <div class="col-product">
             <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
           </div>
@@ -378,7 +378,7 @@ function buildSalesPickingLineRows(lines, showTonnage = true) {
         <div class="pick-line" role="row">
           <div class="col-no">${line.line_no}</div>
           <div class="col-product">
-            <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
+          <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
           </div>
           <div class="col-qty">
             <div class="main">${escapeHtml(line.quantity_label)}</div>
@@ -755,9 +755,9 @@ export function buildPickingListHtml({
         }
       </div>`;
   } else {
-    const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
-    const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
-    const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
+  const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
+  const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
+  const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
     const tonnage = summarizePickingTonnage(pickingList, lines);
     tableHead = buildDistributionPickingHead(includeShelfLocation, showTonnage);
     summaryHtml = `

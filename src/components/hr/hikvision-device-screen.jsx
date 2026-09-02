@@ -440,11 +440,11 @@ export function HikvisionDeviceScreen() {
       subtitle="Full ISAPI device management — persons, cards, biometrics, and attendance events"
       banner={
         <AdminBreadcrumb
-            items={[
-              { label: "Administration", href: "/admin" },
+          items={[
+            { label: "Administration", href: "/admin" },
               { label: "Attendance clock-in", href: listHref },
-              { label: device?.device_no ?? "Device" },
-            ]}
+            { label: device?.device_no ?? "Device" },
+          ]}
         />
       }
       action={
@@ -511,7 +511,7 @@ export function HikvisionDeviceScreen() {
               {busy ? "Refreshing…" : "Refresh live counts"}
             </button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <InfoCard
             label="Agent"
             value={

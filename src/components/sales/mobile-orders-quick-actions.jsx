@@ -346,9 +346,9 @@ function ReturnsModal({
         >
           View returns performed
           {!loading ? ` (${performed.length})` : ""}
-        </button>
-        <button
-          type="button"
+          </button>
+          <button
+            type="button"
           onClick={() => setTab("pending")}
           className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
             tab === "pending"
@@ -358,7 +358,7 @@ function ReturnsModal({
         >
           Pending
           {!loading ? ` (${pending.length})` : ""}
-        </button>
+          </button>
       </div>
 
       {tab === "performed" ? (
@@ -788,35 +788,35 @@ function PaymentsChoiceModal({ open, onClose, unpaidCount, loading, onMarkAll, o
         <p className="text-slate-500">Loading unpaid orders for this filter…</p>
       ) : (
         <>
-          <p className="mb-4 text-slate-600">
-            {unpaidCount === 0
+      <p className="mb-4 text-slate-600">
+        {unpaidCount === 0
               ? "There are no unpaid orders matching the current dates and filters."
-              : unpaidCount === 1
+          : unpaidCount === 1
                 ? "1 unpaid order matching the current dates and filters."
                 : `${unpaidCount} unpaid orders matching the current dates and filters.`}
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              disabled={unpaidCount === 0}
-              onClick={onMarkAll}
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          disabled={unpaidCount === 0}
+          onClick={onMarkAll}
               className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
-            >
+        >
               <span className="text-sm font-semibold text-slate-900">Mark all as paid</span>
               <span className="text-xs text-slate-500">
                 Convert every unpaid order in this filter (all pages)
               </span>
-            </button>
-            <button
-              type="button"
-              disabled={unpaidCount === 0}
-              onClick={onSelectOrders}
+        </button>
+        <button
+          type="button"
+          disabled={unpaidCount === 0}
+          onClick={onSelectOrders}
               className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
-            >
+        >
               <span className="text-sm font-semibold text-slate-900">Select orders</span>
               <span className="text-xs text-slate-500">Choose which unpaid orders to mark paid</span>
-            </button>
-          </div>
+        </button>
+      </div>
         </>
       )}
     </ModalShell>

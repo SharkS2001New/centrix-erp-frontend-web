@@ -137,11 +137,11 @@ function StandardReportScreen({ definition }) {
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
       : {
-          fromDate: defaultRange.from,
-          toDate: defaultRange.to,
+    fromDate: defaultRange.from,
+    toDate: defaultRange.to,
           branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
           extraFilters: defaultExtraFilters,
-          queryFilters: {},
+    queryFilters: {},
         },
   );
   const filterOptions = useReportFilterOptions(definition.key);
@@ -542,10 +542,10 @@ function StandardReportScreen({ definition }) {
                 <p className="text-xs text-slate-500">
                   Switch views to compare the same filtered results as charts or a table.
                 </p>
-              </div>
+                </div>
               <ReportViewModeToggle value={viewMode} onChange={setViewMode} disabled={loading} />
-            </div>
-          ) : null}
+        </div>
+      ) : null}
 
           {showCharts ? (
             <>
@@ -571,16 +571,16 @@ function StandardReportScreen({ definition }) {
                 footerTotals={footerTotals}
                 groupBy={definition.groupBy ?? null}
               />
-              <PaginationBar
-                page={page}
-                totalPages={totalPages}
-                total={reportMeta?.total ?? rows.length}
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            total={reportMeta?.total ?? rows.length}
                 pageSize={pageSize}
-                onChange={setPage}
+            onChange={setPage}
                 onPageSizeChange={handlePageSizeChange}
                 pageSizeOptions={[10, 20, 25, 50, 100]}
-              />
-            </>
+          />
+        </>
           ) : null}
         </div>
       ) : null}

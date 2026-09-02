@@ -805,13 +805,13 @@ export function PlatformAiTrainingScreen() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="theme-heading text-base font-semibold">Train Centrix AI (Q&A notes)</h2>
-                <p className="theme-subtext mt-2 max-w-4xl text-sm">
+            <p className="theme-subtext mt-2 max-w-4xl text-sm">
                   Teach the assistant once for every tenant with a sample question and a sample of how to respond
                   (approach, facts pattern, and screen path). Notes are matched by relevance — the AI uses them as
                   style guides and writes a fresh answer for each user; it does not paste the saved answer verbatim.
                   Live numbers (sales, stock, attendance) still come from tools. Centrix AI accepts questions in English only.
-                </p>
-                <p className="theme-text-muted mt-2 text-xs">
+            </p>
+            <p className="theme-text-muted mt-2 text-xs">
                   {noteCount} platform note{noteCount === 1 ? "" : "s"} active · Import Excel below or use{" "}
                   <button
                     type="button"
@@ -881,75 +881,75 @@ export function PlatformAiTrainingScreen() {
 
           <div className="mt-6 grid gap-8 xl:grid-cols-2 xl:items-start">
             <div className="space-y-6">
-              <div className="theme-inset-panel min-h-0 rounded-xl border p-5 shadow-sm">
-                <h3 className="theme-heading text-sm font-semibold">
+            <div className="theme-inset-panel min-h-0 rounded-xl border p-5 shadow-sm">
+              <h3 className="theme-heading text-sm font-semibold">
                   {form.id ? "Edit Q&A note" : "Add Q&A note"}
-                </h3>
-                <p className="theme-subtext mt-1 text-sm">
+              </h3>
+              <p className="theme-subtext mt-1 text-sm">
                   Topic = a sample question users ask. Content = a sample of how Centrix should think and reply
                   (include the path). The assistant adapts this style — it does not quote the answer word-for-word.
-                </p>
+              </p>
 
                 <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(52vh,480px)] flex-col gap-3">
-                  <label className="block text-sm">
+                <label className="block text-sm">
                     <span className="theme-heading mb-1 block font-medium">Sample question</span>
+                  <input
+                    className={inputClassName()}
+                    value={form.topic}
+                    onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                      placeholder="e.g. Is stock counted in kg or bags?"
+                    required
+                  />
+                </label>
+                <label className="block min-h-0 flex-1 text-sm">
+                    <span className="theme-heading mb-1 block font-medium">Sample answer style</span>
+                  <textarea
+                      className={`${inputClassName()} min-h-[min(28vh,240px)] flex-1`}
+                    value={form.content}
+                    onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+                      placeholder="Show the approach and screen path, e.g. Explain UoM base units… then open /uoms — AI will adapt this, not quote it"
+                    required
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="theme-heading mb-1 block font-medium">Related path (optional)</span>
                     <input
                       className={inputClassName()}
-                      value={form.topic}
-                      onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                      placeholder="e.g. Is stock counted in kg or bags?"
-                      required
-                    />
-                  </label>
-                  <label className="block min-h-0 flex-1 text-sm">
-                    <span className="theme-heading mb-1 block font-medium">Sample answer style</span>
-                    <textarea
-                      className={`${inputClassName()} min-h-[min(28vh,240px)] flex-1`}
-                      value={form.content}
-                      onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                      placeholder="Show the approach and screen path, e.g. Explain UoM base units… then open /uoms — AI will adapt this, not quote it"
-                      required
-                    />
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-sm">
-                      <span className="theme-heading mb-1 block font-medium">Related path (optional)</span>
-                      <input
-                        className={inputClassName()}
-                        value={form.path}
-                        onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
+                      value={form.path}
+                      onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
                         placeholder="/uoms"
-                      />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="theme-heading mb-1 block font-medium">Module scope</span>
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="theme-heading mb-1 block font-medium">Module scope</span>
                       <SearchableSelect
-                        className={inputClassName()}
-                        value={form.workspace_id}
+                      className={inputClassName()}
+                      value={form.workspace_id}
                         nativeEvent
-                        onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
+                      onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
                         options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
                           value: opt.value,
                           label: opt.label,
                         }))}
                       />
-                    </label>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
-                      {form.id ? "Update note" : "Save platform note"}
-                    </PrimaryButton>
-                    {form.id ? (
-                      <button
-                        type="button"
-                        onClick={resetKnowledgeForm}
-                        className="theme-secondary-btn rounded-lg px-4 py-2 text-sm"
-                      >
-                        Cancel edit
-                      </button>
-                    ) : null}
-                  </div>
-                </form>
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
+                    {form.id ? "Update note" : "Save platform note"}
+                  </PrimaryButton>
+                  {form.id ? (
+                    <button
+                      type="button"
+                      onClick={resetKnowledgeForm}
+                      className="theme-secondary-btn rounded-lg px-4 py-2 text-sm"
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+              </form>
               </div>
 
               <div id="qa-file-import" className="theme-inset-panel scroll-mt-24 rounded-xl border p-5 shadow-sm">
@@ -1224,15 +1224,15 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                             checked={selectedNoteIds.has(entry.id)}
                             onChange={() => toggleNoteSelection(entry.id)}
                           />
-                          <div className="min-w-0">
-                            <p className="theme-heading font-medium">{entry.topic}</p>
-                            <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
-                            <p className="theme-subtext mt-2 text-xs">
-                              Platform-wide
-                              {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
-                              {entry.path ? ` · ${entry.path}` : ""}
-                            </p>
-                          </div>
+                        <div className="min-w-0">
+                          <p className="theme-heading font-medium">{entry.topic}</p>
+                          <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
+                          <p className="theme-subtext mt-2 text-xs">
+                            Platform-wide
+                            {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
+                            {entry.path ? ` · ${entry.path}` : ""}
+                          </p>
+                        </div>
                         </label>
                         <div className="flex shrink-0 gap-1">
                           <button
@@ -1274,8 +1274,8 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
               <label className="mt-3 block max-w-md text-sm">
                 <span className="theme-heading mb-1 block font-medium">Sample data organization</span>
                 <SearchableSelect
-  className={inputClassName()}
-  value={previewOrgId}
+                  className={inputClassName()}
+                  value={previewOrgId}
   nativeEvent
   onChange={((e) => setPreviewOrgId(e.target.value))}
   options={tenantOrgs.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}

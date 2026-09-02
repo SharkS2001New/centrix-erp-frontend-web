@@ -491,8 +491,8 @@ export function PlatformEmailDeliveryPanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
             <SearchableSelect
-  className={inputClass}
-  value={form.smtp_encryption}
+              className={inputClass}
+              value={form.smtp_encryption}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value })))}
   options={[{ value: 'tls', label: 'TLS' }, { value: 'ssl', label: 'SSL' }, { value: 'none', label: 'None' }]}
@@ -710,7 +710,7 @@ export function PlatformEmailDeliveryPanel() {
       {activeEmailTab === "imap" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">IMAP inbox sync (optional)</h2>
-          <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500">
             Use IMAP only if you want Platform → Mailbox to pull inbound replies. Many custom domains and
             some hosts disable IMAP — in that case keep this off and use <strong>SMTP-only</strong> for
             sending. When IMAP matches SMTP login, use “Copy from SMTP” and leave the IMAP password blank
@@ -750,12 +750,12 @@ export function PlatformEmailDeliveryPanel() {
               </li>
             </ul>
           </div>
-          {!form.imap_extension_available ? (
-            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        {!form.imap_extension_available ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               PHP IMAP extension is not available on the API server yet. Outbound SMTP still works; rebuild
               the API image (imap enabled) only if you need inbox sync.
-            </p>
-          ) : null}
+          </p>
+        ) : null}
           <label className="mt-4 block max-w-sm text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Mail mode</span>
             <SearchableSelect
@@ -836,8 +836,8 @@ export function PlatformEmailDeliveryPanel() {
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
             <SearchableSelect
-  className={inputClass}
-  value={form.imap_encryption}
+              className={inputClass}
+              value={form.imap_encryption}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, imap_encryption: e.target.value })))}
   options={[{ value: 'ssl', label: 'SSL' }, { value: 'tls', label: 'TLS' }, { value: 'none', label: 'None' }]}

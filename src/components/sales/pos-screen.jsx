@@ -168,6 +168,7 @@ import {
   preserveClientLineSkuAfterMutation,
   findCartLineIndexByRef,
   findMergeableCartLine,
+  findModeConvertibleCartLine,
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
   normalizeCartResponse,
@@ -6266,7 +6267,8 @@ export function PosScreen({ standalone = false }) {
         (line) =>
           cartLineMatchesRef(line, targetLineRef) &&
           String(line.product_code) === String(product.product_code) &&
-          Math.abs(Number(line.quantity ?? 0) - Number(finalComputed.baseQty)) < 0.0001,
+          Math.abs(Number(line.quantity ?? 0) - Number(finalComputed.baseQty)) < 0.0001 &&
+          Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
       );
 
     const paintOptimisticOn = (baseCart) => {
@@ -6377,10 +6379,27 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
-    const persistedPatchRef =
-      resolvedMergeTarget && isServerPersistedCartLine(resolvedMergeTarget)
-        ? cartLineRef(resolvedMergeTarget)
-        : null;
+    const persistedPatchRef = (() => {
+      if (resolvedMergeTarget && isServerPersistedCartLine(resolvedMergeTarget)) {
+        return cartLineRef(resolvedMergeTarget);
+      }
+      // Classic F12 mode convert / qty edit: mergeTarget is null, but editingRef
+      // still points at the TemporaryCart row that must be PATCHed (not POSTed).
+      if (intendedEdit && targetLineRef != null) {
+        const liveEditLine =
+          (liveCart?.lines ?? []).find((line) => cartLineMatchesRef(line, targetLineRef)) ??
+          (cartRef.current?.lines ?? []).find((line) =>
+            cartLineMatchesRef(line, targetLineRef),
+          );
+        if (liveEditLine && isServerPersistedCartLine(liveEditLine)) {
+          return cartLineRef(liveEditLine) ?? String(targetLineRef);
+        }
+        if (editingId != null && !String(editingId).startsWith("pending-") && !String(editingId).startsWith("opt-")) {
+          return cartLineRef({ update_code: editingRef, id: editingId }) ?? String(targetLineRef);
+        }
+      }
+      return null;
+    })();
 
     if (needsLineDiscountApproval) {
       try {
@@ -6804,6 +6823,21 @@ export function PosScreen({ standalone = false }) {
 
     // Always serialize adds — rapid scan/click must merge qty, never duplicate lines.
     void enqueueCartCommit(async () => {
+      const nextRetailFlag = posLineWholesaleRetailFlag(
+        product,
+        sellWholesaleRef.current,
+        computed.isRetail,
+        posSalesConfig,
+      );
+      const convertTarget = findModeConvertibleCartLine(
+        cartRef.current?.lines,
+        product.product_code,
+        nextRetailFlag,
+      );
+      if (convertTarget) {
+        await setCartLineEntryQuantity(convertTarget, "1");
+        return;
+      }
       const mergeTarget = findMergeableCartLine(
         cartRef.current?.lines,
         product.product_code,
@@ -8181,6 +8215,28 @@ export function PosScreen({ standalone = false }) {
 
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
+
+    // F12 flipped retail↔wholesale: same SKU already on cart as the other mode —
+    // convert that single row in place (1 bag → 1 kg) instead of appending a twin.
+    if (!editingLineId) {
+      const nextRetailFlag = posLineWholesaleRetailFlag(
+        productForAdd,
+        sellWholesale,
+        computed.isRetail,
+        posSalesConfig,
+      );
+      const convertTarget = findModeConvertibleCartLine(
+        cartRef.current?.lines ?? cart?.lines,
+        lineForm.product_code,
+        nextRetailFlag,
+      );
+      if (convertTarget) {
+        clearClassicEntryFields();
+        void setCartLineEntryQuantity(convertTarget, entryQtyRaw);
+        return;
+      }
+    }
+
     const run = async () => {
     try {
       const liveLines = cartRef.current?.lines;

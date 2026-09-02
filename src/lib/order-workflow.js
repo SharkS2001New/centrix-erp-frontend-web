@@ -404,7 +404,7 @@ export function workflowStatusLabel(workflow, status) {
 export function workflowPipelineSteps(workflow) {
   if (workflow?.pipeline?.length) return dedupePipelineSteps(workflow.pipeline);
   if (workflow?.steps?.length) {
-    return dedupePipelineSteps(
+  return dedupePipelineSteps(
       workflow.steps
         .filter((s) => s.enabled !== false)
         .map((s) => ({
@@ -524,8 +524,8 @@ export function canCancelOrderStatus(statusOrSale, workflow, capabilities = null
   if (typeof statusOrSale === "object" && statusOrSale) {
     const status = String(statusOrSale.status ?? "").toLowerCase();
     if (!status || status === "cancelled" || status === "expired" || status === "held" || status === "draft") {
-      return false;
-    }
+    return false;
+  }
     const allowed = resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities));
     if (saleMatchesConfiguredActionStages(statusOrSale, allowed, workflow)) {
       return true;

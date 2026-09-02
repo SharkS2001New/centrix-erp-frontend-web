@@ -3512,6 +3512,17 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   overflow: visible;
 }
 
+.classic-pos-cart-swap-search {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.classic-pos-cart-swap-search .classic-pos-scan-lookup,
+.classic-pos-cart-swap-search .classic-pos-cart-scan-input {
+  width: 100%;
+}
+
 .classic-pos-cart-rownum {
   width: 2.25rem;
   text-align: center !important;

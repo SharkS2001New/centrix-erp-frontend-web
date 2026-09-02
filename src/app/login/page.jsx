@@ -661,54 +661,54 @@ function LoginForm() {
             onSubmit={onSubmit}
             className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
           >
-          {showOrgField ? (
-            <AuthField label="Organization code">
-              <input
-                className={authInputClass("uppercase")}
-                value={companyCode}
-                onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
-                placeholder="e.g. DEMO (optional for platform admin)"
-                autoComplete="organization"
-                disabled={submitting}
-              />
-            </AuthField>
-          ) : (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
-              <p className="text-slate-600 dark:text-slate-400">
-                Organization{" "}
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {companyCode}
-                </span>
-              </p>
-              <button
-                type="button"
-                onClick={useDifferentOrganization}
-                className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                disabled={submitting}
-              >
-                Use a different organization
-              </button>
-            </div>
-          )}
-          <AuthField label="Username or email">
+        {showOrgField ? (
+          <AuthField label="Organization code">
             <input
-              className={authInputClass()}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-              disabled={submitting}
+              className={authInputClass("uppercase")}
+              value={companyCode}
+              onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
+              placeholder="e.g. DEMO (optional for platform admin)"
+              autoComplete="organization"
+                disabled={submitting}
             />
           </AuthField>
-          <AuthField label="Password">
-            <PasswordInput
-              className={authInputClass()}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
+            <p className="text-slate-600 dark:text-slate-400">
+              Organization{" "}
+              <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                {companyCode}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={useDifferentOrganization}
+              className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                disabled={submitting}
+            >
+              Use a different organization
+            </button>
+          </div>
+        )}
+          <AuthField label="Username or email">
+          <input
+            className={authInputClass()}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
               disabled={submitting}
-            />
+          />
+        </AuthField>
+        <AuthField label="Password">
+          <PasswordInput
+            className={authInputClass()}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+              disabled={submitting}
+          />
           </AuthField>
           {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
           {error ? <AuthError>{error}</AuthError> : null}
@@ -730,7 +730,7 @@ function LoginForm() {
               <div className="relative py-1 text-center text-xs text-slate-400">
                 <span className="relative z-10 bg-white px-2 dark:bg-slate-950">or</span>
                 <span className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-800" />
-              </div>
+          </div>
               <button
                 type="button"
                 className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
@@ -754,7 +754,7 @@ function LoginForm() {
             >
               Use PIN instead
             </button>
-          ) : null}
+        ) : null}
           <button
             type="button"
             className="w-full text-sm text-slate-500 hover:underline"
@@ -763,11 +763,11 @@ function LoginForm() {
           >
             Forgot password?
           </button>
-          </form>
+      </form>
           )}
         </div>
         <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
-      </AuthShell>
+    </AuthShell>
     </>
   );
 }
