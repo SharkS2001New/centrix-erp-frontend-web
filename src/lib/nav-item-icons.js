@@ -47,6 +47,7 @@ export const NAV_HREF_ICONS = {
   "/sales/till-management": "wallet",
   "/sales/payments-breakdown": "wallet",
   "/hospitality/payments-breakdown": "wallet",
+  "/hospitality/end-of-day": "clock",
   "/admin/till-printing": "receipt",
   "/admin/kra-settings": "receipt",
   "/admin/mpesa-settings": "wallet",

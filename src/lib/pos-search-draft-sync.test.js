@@ -15,13 +15,16 @@ describe("shouldSyncParentSearchQuery", () => {
     ).toBe(false);
   });
 
-  it("blocks parent clear while the field is focused unless explicitly allowed", () => {
+  it("blocks parent clear unless explicitly allowed (even when blurred)", () => {
     expect(
       shouldSyncParentSearchQuery("", "Sugar", { inputFocused: true }),
     ).toBe(false);
     expect(
+      shouldSyncParentSearchQuery("", "Sugar", { inputFocused: false }),
+    ).toBe(false);
+    expect(
       shouldSyncParentSearchQuery("", "Sugar", {
-        inputFocused: true,
+        inputFocused: false,
         allowParentClear: true,
       }),
     ).toBe(true);

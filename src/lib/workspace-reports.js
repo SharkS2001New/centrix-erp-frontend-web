@@ -94,7 +94,7 @@ export const WORKSPACE_REPORTS_LABEL = {
   accounting: "Accounting reports",
   hr: "Leave, payroll, and workforce reporting",
   distribution: "Route sales and logistics reporting",
-  hospitality_backoffice: "Occupancy, F&B, and hotel operations reporting",
+  hospitality_backoffice: "Occupancy, food & drink, and hotel operations reporting",
 };
 
 export const WORKSPACE_REPORT_OVERVIEW_LABEL = "Report overview";
@@ -133,7 +133,7 @@ export const WORKSPACE_BUILDER_EXAMPLE_PROMPTS = {
   ],
   hospitality_backoffice: [
     "Occupancy by room type",
-    "F&B sales this week",
+    "Food & drink sales this week",
     "Purchases by supplier last 7 days",
   ],
   admin: [
@@ -214,7 +214,7 @@ export function workspaceBuilderPlaceholder(workspaceId) {
     case "distribution":
       return "e.g. Orders by route this week\nDeliveries for @branch yesterday";
     case "hospitality_backoffice":
-      return "e.g. Occupancy by room type\nF&B sales this week";
+      return "e.g. Occupancy by room type\nFood & drink sales this week";
     default:
       return "e.g. Yesterday's sales for @Sugar\nDaily purchases by @supplier";
   }

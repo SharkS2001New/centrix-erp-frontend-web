@@ -62,6 +62,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   {
   query,
   onQueryChange,
+  /** Survives remounts when the cart table re-renders — same ref as parent searchQueryRef. */
+  persistedDraftRef = null,
   results,
   searching,
   selectedCode,
@@ -102,14 +104,33 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
   const inputLocked = Boolean(disabled);
   const picksLocked = Boolean(picksDisabled || disabled);
-  const [draftQuery, setDraftQuery] = useState(() => String(query ?? ""));
-  const draftQueryRef = useRef(draftQuery);
-  const lastEmittedRef = useRef(draftQuery);
+  const draftQueryRef = useRef(String(persistedDraftRef?.current ?? query ?? ""));
+  const lastEmittedRef = useRef(draftQueryRef.current);
   const allowParentClearRef = useRef(false);
-  /** While true, draftQuery is authoritative — parent query must not overwrite keystrokes. */
   const inputFocusedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const [draftQuery, setDraftQuery] = useState(() => draftQueryRef.current);
   const [inputFocused, setInputFocused] = useState(false);
   const idleQuery = !String(draftQuery ?? "").trim();
+
+  function writeDraft(next, { notifyParent = true, touchDom = true } = {}) {
+    const value = String(next ?? "");
+    draftQueryRef.current = value;
+    lastEmittedRef.current = value;
+    if (persistedDraftRef) {
+      persistedDraftRef.current = value;
+    }
+    setDraftQuery(value);
+    if (touchDom) {
+      const el = localInputRef.current;
+      if (el && el.value !== value) {
+        el.value = value;
+      }
+    }
+    if (notifyParent) {
+      onQueryChange?.(value);
+    }
+  }
 
   useImperativeHandle(ref, () => ({
     closeDropdown() {
@@ -120,27 +141,36 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     /** Parent cleared the query (after add / swap / payment) — bypass focused guard. */
     clearDraft() {
       allowParentClearRef.current = true;
-      draftQueryRef.current = "";
-      lastEmittedRef.current = "";
-      setDraftQuery("");
+      writeDraft("", { notifyParent: false });
       setHighlight(-1);
       highlightCodeRef.current = null;
+    },
+    /** Park product code / swap target without notifying parent again. */
+    setDraftValue(next) {
+      writeDraft(next, { notifyParent: false });
+    },
+    getDraftValue() {
+      return String(localInputRef.current?.value ?? draftQueryRef.current ?? "");
     },
   }));
 
   function commitDraft(next) {
-    const value = String(next ?? "");
-    draftQueryRef.current = value;
-    lastEmittedRef.current = value;
-    setDraftQuery(value);
-    onQueryChange?.(value);
+    writeDraft(next, { notifyParent: true });
   }
 
-  // Mirror parent query only when safe. While typing, parent state lags behind
-  // draftQuery and must never clobber or shorten it.
+  // Restore after remount (cart re-render moves the search slot in classic layout).
+  useLayoutEffect(() => {
+    const saved = String(persistedDraftRef?.current ?? draftQueryRef.current ?? "");
+    writeDraft(saved, { notifyParent: false });
+    mountedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount restore only
+  }, []);
+
+  // Parent may push park / swap codes. Never mirror parent "" or stale prefixes.
   useEffect(() => {
+    if (!mountedRef.current) return;
     const parent = String(query ?? "");
-    const local = draftQueryRef.current;
+    const local = String(localInputRef.current?.value ?? draftQueryRef.current ?? "");
 
     if (!shouldSyncParentSearchQuery(parent, local, {
       inputFocused: inputFocusedRef.current,
@@ -153,15 +183,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       allowParentClearRef.current = false;
     }
 
-    draftQueryRef.current = parent;
-    lastEmittedRef.current = parent;
-    setDraftQuery(parent);
+    writeDraft(parent, { notifyParent: false });
   }, [query, inputFocused]);
 
   useEffect(() => {
-    // Only close when input is hard-locked AND there is no active query — prevents a
-    // brief `busy` flag (e.g. route markup loading) from dismissing the dropdown while
-    // the cashier is mid-search.
     if (inputLocked && !String(draftQuery ?? "").trim()) {
       setOpen(false);
       setHighlight(-1);
@@ -172,7 +197,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (!classic) return undefined;
     function onFunctionKey(e) {
       if (!isPosFunctionKeyEvent(e)) return;
-      // Keep search results open mid-query — only Esc or picking a row may dismiss.
       if (String(draftQuery ?? "").trim()) return;
       setUserDismissed(true);
       setOpen(false);
@@ -182,7 +206,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return () => window.removeEventListener("keydown", onFunctionKey, { capture: true, passive: true });
   }, [classic, draftQuery]);
 
-  // Keep parent searchInputRef in sync without mutating props during render.
   useLayoutEffect(() => {
     assignRef(inputRef, localInputRef.current);
     return () => assignRef(inputRef, null);
@@ -195,22 +218,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     const list = Array.isArray(results) ? results : [];
     if (!list.length) return [];
     const filtered = list.filter((product) => productMatchesPosSearch(product, q));
-    // Search debounce lags behind fast typing — keep prior hits visible until refresh.
     if (!filtered.length && searching && list.length) return list;
     return filtered;
   }, [results, draftQuery, searching]);
-  // Mid-search: stay open until Esc or a row pick — do not tie visibility to `open`
-  // state alone (it can flicker false when parent query briefly lags behind typing).
   const dropdownActive = hasActiveQuery ? !userDismissed : open && !inputLocked;
   const showDropdown = dropdownActive;
-  // Keep results visible while typing: do not hide the list on exact SKU match
-  // (that made the menu vanish before a click) or on a brief busy disable.
-
-  // (userDismissed resets in onChange when the cashier types — not on parent query sync)
 
   useEffect(() => {
-    // Keep sticky highlight across typing when the product is still in the list.
-    // Only clear when the query is emptied.
     if (!hasActiveQuery) {
       highlightCodeRef.current = null;
       setHighlight(-1);
@@ -232,12 +246,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         return;
       }
     }
-    // Auto-highlight the top-ranked row when results first appear / sticky lost.
     setHighlight(0);
     highlightCodeRef.current = visibleResults[0]?.product_code ?? null;
   }, [visibleResults]);
 
-  // While the cashier is mid-search, keep the menu open until Esc or a row pick.
   useEffect(() => {
     if (!hasActiveQuery || userDismissed) return;
     setOpen(true);
@@ -260,8 +272,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   useLayoutEffect(() => {
-    // Position the classic portal even while briefly disabled mid-search so the
-    // dropdown does not collapse when busy flags flicker.
     if (!classic || !dropdownActive || (inputLocked && !hasActiveQuery)) {
       setMenuBox(null);
       return undefined;
@@ -270,7 +280,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       const el = localInputRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      // Much wider than the scan input so name / stock columns stay readable.
       const preferred = Math.max(rect.width * 2.6, rect.width + 280);
       const width = Math.min(Math.max(preferred, 520), window.innerWidth - 24);
       const spaceBelow = window.innerHeight - rect.bottom - 16;
@@ -300,7 +309,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   useEffect(() => {
     function onDocClick(e) {
-      // Mid-search: only Esc or picking a row may close the list.
       if (String(draftQuery ?? "").trim()) return;
       const inRoot = rootRef.current?.contains(e.target);
       const inList = listRef.current?.contains(e.target);
@@ -317,7 +325,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (picksLocked) return;
     onSelect?.(product);
     setUserDismissed(true);
-    // Classic scan: parent sets the input to product_code and moves focus to qty.
     if (classic) {
       setOpen(false);
       setHighlight(-1);
@@ -342,7 +349,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   async function handleInputKeyDown(e) {
-    // Let POS shortcuts (F2/F8/F10/F12, Alt+H/F/P, …) reach the window capture listener.
     if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
 
     if (e.key === "ArrowDown") {
@@ -363,9 +369,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       e.preventDefault();
       e.stopPropagation();
       if (picksLocked) return;
-      // Find/select: any visible result → park on qty (Enter on qty adds).
-      // Barcode quick-add only when there is no pickable row yet (true scan before
-      // search results land), so typing a name never skips qty / double-adds.
       if (visibleResults.length) {
         setUserDismissed(true);
         setOpen(false);
@@ -394,7 +397,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       } else if (onEscapeKey) {
         onEscapeKey();
       }
-      // Keep focus on Scan code and select text for the next scan.
       window.requestAnimationFrame(() => {
         const el = localInputRef.current;
         el?.focus({ preventScroll: true });
@@ -482,7 +484,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         aria-selected={keyboardActive}
                         onMouseEnter={() => setHighlightAt(index)}
                         onMouseDown={(e) => {
-                          // Prevent input blur before click so the list cannot close mid-pick.
                           e.preventDefault();
                         }}
                         onClick={() => pick(product)}
@@ -525,6 +526,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       <TouchSearchField
         inputRef={localInputRef}
         enabled={touchSearchKeypad}
+        uncontrolled={!touchSearchKeypad}
+        defaultValue={draftQueryRef.current}
         title="Search product"
         value={draftQuery}
         disabled={inputLocked}
@@ -552,7 +555,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           setOpen(true);
         }}
         onBlur={() => {
-          // Defer so mousedown on the portal row does not look like "left search".
           window.requestAnimationFrame(() => {
             const input = localInputRef.current;
             const active =
@@ -628,7 +630,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       aria-selected={keyboardActive || selected}
                       onMouseEnter={() => setHighlightAt(index)}
                       onMouseDown={(e) => {
-                        // Prevent input blur before click so the list cannot close mid-pick.
                         e.preventDefault();
                       }}
                       onClick={() => pick(product)}

@@ -94,6 +94,10 @@ export const HOSPITALITY_ROUTE_RULES = [
     altPermissions: [P.hospitality.reports.view],
   },
   {
+    prefix: "/hospitality/end-of-day",
+    permission: P.hospitality.reports.view,
+  },
+  {
     prefix: "/hospitality/orders",
     permission: P.hospitality.orders.view,
     altPermissions: [

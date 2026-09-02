@@ -130,7 +130,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
         <h2 className="text-lg font-medium text-slate-900">Inventory settings</h2>
         <p className="mt-1 text-sm text-slate-500">
           {hospitality
-            ? "Stock alerts and receive location. Hotel POS deducts from the location set under Hotel F&B settings."
+            ? "Stock alerts and receive location. Hotel POS deducts from the location set under Hotel food & drink settings."
             : "Stock sources, locations, and low-stock alerts."}
         </p>
         {loading ? (
@@ -239,7 +239,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               <div className="space-y-3">
                 <Toggle
                   label="Allow negative stock"
-                  description="Allow Hotel POS settle even if stock would go below zero (also controlled by Hotel F&B → Block settle if insufficient)."
+                  description="Allow Hotel POS settle even if stock would go below zero (also controlled by Hotel food & drink → Block settle if insufficient)."
                   checked={form.allow_negative_stock}
                   onChange={(v) => setForm((f) => ({ ...f, allow_negative_stock: v }))}
                 />

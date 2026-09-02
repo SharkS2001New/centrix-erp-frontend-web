@@ -1366,7 +1366,7 @@ function OrganizationHotelServicesPanel({
 
       <PlatformFormSection
         title="Hotel POS checkout"
-        description="How cashiers settle F&B checks. Collect payment vs save unpaid are mutually exclusive."
+        description="How cashiers settle food & drink checks. Collect payment vs save unpaid are mutually exclusive."
       >
         <div className="space-y-4">
           <OrgRegisterField label="Checkout mode">

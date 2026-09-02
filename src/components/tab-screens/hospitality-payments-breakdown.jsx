@@ -7,7 +7,7 @@ export function HospitalityPaymentsBreakdownScreen() {
     <PaymentsBreakdownScreen
       apiPath="/reports/hospitality-payments-breakdown"
       title="Payments breakdown"
-      subtitle="F&B check payments by tender — Cash, M-Pesa, bank, room charge, and mixed payments"
+      subtitle="Restaurant and bar check payments by tender — Cash, M-Pesa, bank, charge to room, and mixed payments"
       orderColumnLabel="Check"
       hideSessionFilter
     />

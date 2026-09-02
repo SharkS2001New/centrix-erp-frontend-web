@@ -23,6 +23,7 @@ export const REPORT_UI_ROUTES = {
   "stock-on-hand": "/inventory/stock",
   "eod-report": "/sales/end-of-day",
   "eod-cashier": "/sales/end-of-day",
+  "hospitality-eod-cashier": "/hospitality/end-of-day",
   "customer-statement": "/reports/customer-statement",
   "subledger-reconciliation": "/reports/subledger-reconciliation",
   "legacy-archive": "/reports/legacy-archive",
@@ -194,7 +195,7 @@ export const REPORT_CATEGORY_DEFS = [
   {
     id: "hospitality",
     title: "Hospitality",
-    description: "Rooms, folios, arrivals, and Hotel POS F&B",
+    description: "Rooms, folios, arrivals, and Hotel POS food & drink",
     icon: "hotel",
     keys: [
       "hospitality-kpi-occupancy",

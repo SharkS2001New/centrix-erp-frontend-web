@@ -14,8 +14,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
-import { PrintAgentSettingsPanel } from "@/components/pos/print-agent-settings-panel";
-import { LOCAL_PRINTING_ADMIN_PATH } from "@/lib/local-printing";
+import { LOCAL_PRINTING_ADMIN_LABEL, LOCAL_PRINTING_ADMIN_PATH } from "@/lib/local-printing";
 import {
   DEDUCT_MODE_OPTIONS,
   emptyRecipeDraft,
@@ -321,7 +320,7 @@ export function HospitalitySettingsScreen() {
   if (loading) {
     return (
       <CatalogPageShell
-        title="Hotel F&B settings"
+        title="Hotel food & drink settings"
         subtitle="Stock balancing, recipes, and Hotel POS configuration — separate from retail Sales/POS."
       >
         <p className="theme-subtext text-sm">Loading…</p>
@@ -331,7 +330,7 @@ export function HospitalitySettingsScreen() {
 
   return (
     <CatalogPageShell
-      title="Hotel F&B settings"
+      title="Hotel food & drink settings"
       subtitle="Configure restaurant-style stock balancing for Hotel POS. Check receipt layout (including guest name) lives under Organization settings → Printouts → Hotel checks."
     >
       <div className="space-y-8">
@@ -345,35 +344,26 @@ export function HospitalitySettingsScreen() {
           <p className="theme-subtext mt-1 text-sm leading-relaxed">
             Copies, outlet/org name, guest name on receipt, phones, and footer are managed with other
             printouts — same place as retail receipt settings, under a dedicated Hotel checks tab.
-            Pay-now and reprint on Hotel POS send the receipt to Centrix Print Agent when Local printing
-            is set to the agent (silent, no browser dialog).
+            Pay-now and reprint on Hotel POS use{" "}
+            <Link href={LOCAL_PRINTING_ADMIN_PATH} className="font-semibold underline">
+              Administration → {LOCAL_PRINTING_ADMIN_LABEL}
+            </Link>{" "}
+            (Centrix Print Agent or browser — configure printers there, not in Hotel Backoffice).
           </p>
-          <Link
-            href="/admin/settings"
-            className="mt-3 inline-block text-xs font-semibold uppercase tracking-wide text-[var(--theme-accent)]"
-          >
-            Organization settings → Printouts → Hotel checks →
-          </Link>
-        </section>
-
-        <section
-          id="silent-printing"
-          className="space-y-3"
-        >
-          <div>
-            <h2 className="theme-heading text-base font-semibold">Silent Hotel POS receipts</h2>
-            <p className="theme-subtext mt-1 text-sm leading-relaxed">
-              Install Centrix Print Agent on the till PC and choose it below. Hotel POS then prints
-              guest checks without the browser print dialog. Tick <strong>Print a second copy</strong> and
-              pick a second copy printer if the kitchen (or office) needs a duplicate. Layout still comes
-              from Printouts → Hotel checks. You can also open{" "}
-              <Link href={LOCAL_PRINTING_ADMIN_PATH} className="font-semibold underline">
-                Administration → Local printing
-              </Link>
-              .
-            </p>
+          <div className="mt-3 flex flex-wrap gap-4">
+            <Link
+              href={LOCAL_PRINTING_ADMIN_PATH}
+              className="text-xs font-semibold uppercase tracking-wide text-[var(--theme-accent)]"
+            >
+              {LOCAL_PRINTING_ADMIN_LABEL} →
+            </Link>
+            <Link
+              href="/admin/settings"
+              className="text-xs font-semibold uppercase tracking-wide text-[var(--theme-accent)]"
+            >
+              Organization settings → Printouts → Hotel checks →
+            </Link>
           </div>
-          <PrintAgentSettingsPanel compact />
         </section>
 
         <section id="setup-guide" className="space-y-3">

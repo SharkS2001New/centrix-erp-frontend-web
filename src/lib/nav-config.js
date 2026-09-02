@@ -1059,6 +1059,12 @@ const NAV_SECTION_DEFINITIONS = [
           P.hospitality.reports.view,
         ],
       },
+      {
+        href: "/hospitality/end-of-day",
+        label: "End of day",
+        module: "hospitality.backend",
+        permission: P.hospitality.reports.view,
+      },
     ],
   },
   {
@@ -1089,7 +1095,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/admin/hotel-settings",
-        label: "Hotel F&B settings",
+        label: "Hotel food & drink settings",
         module: "hospitality.backend",
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,
@@ -1251,7 +1257,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/admin/hotel-settings",
-        label: "Hotel F&B settings",
+        label: "Hotel food & drink settings",
         module: "hospitality.backend",
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,

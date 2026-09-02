@@ -113,7 +113,7 @@ const LINK_GROUPS = [
       },
       {
         href: "/admin/hotel-settings",
-        title: "Hotel F&B settings",
+        title: "Hotel food & drink settings",
         desc: "Recipes, VAT, and deduct-on-settle",
         permission: P.hospitality.settings.view,
       },
@@ -341,8 +341,8 @@ export function HospitalityDashboardContent() {
   ];
 
   const subtitle = summary?.as_of
-    ? `Rooms, arrivals, and F&B for today · Updated ${fmt.dateTime(summary.as_of)}`
-    : "Rooms, arrivals, guest folios, and F&B for today";
+    ? `Rooms, arrivals, and food & drink for today · Updated ${fmt.dateTime(summary.as_of)}`
+    : "Rooms, arrivals, guest folios, and food & drink for today";
 
   return (
     <CatalogPageShell
@@ -394,7 +394,7 @@ export function HospitalityDashboardContent() {
             </DashboardPanel>
 
             <DashboardPanel
-              title="F&B today"
+              title="Food & drink today"
               subtitle="Paid checks closed today"
               headerAction={
                 canOpenOrders ? (

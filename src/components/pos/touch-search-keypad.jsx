@@ -29,6 +29,7 @@ export function TouchSearchKeypad({
   open,
   title = "Search",
   value = "",
+  readValue = null,
   placeholder = "Type to search…",
   maxLength = 48,
   onChange,
@@ -40,10 +41,14 @@ export function TouchSearchKeypad({
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
-      setDraft(String(value ?? ""));
+      const seed =
+        typeof readValue === "function"
+          ? String(readValue() ?? "")
+          : String(value ?? "");
+      setDraft(seed);
     }
     wasOpenRef.current = open;
-  }, [open, value]);
+  }, [open, value, readValue]);
 
   const display = useMemo(() => String(draft ?? ""), [draft]);
 
@@ -150,6 +155,8 @@ export function TouchSearchKeypad({
 export function TouchSearchField({
   id,
   value,
+  defaultValue,
+  uncontrolled = false,
   onChange,
   placeholder,
   enabled,
@@ -175,18 +182,27 @@ export function TouchSearchField({
     if (enabled && autoOpen && !disabled) setOpen(true);
   }, [enabled, autoOpen, disabled]);
 
+  const inputChangeHandler = (e) => onChange?.(e.target.value);
+
   return (
     <>
       <input
         ref={inputRef}
         id={id}
         type="search"
-        value={value}
+        {...(uncontrolled
+          ? {
+              defaultValue: defaultValue ?? "",
+              onInput: enabled ? undefined : inputChangeHandler,
+            }
+          : {
+              value: value ?? "",
+              onChange: enabled ? undefined : inputChangeHandler,
+            })}
         disabled={disabled}
         readOnly={Boolean(enabled)}
         autoFocus={autoFocus}
         inputMode={enabled ? "none" : "search"}
-        onChange={enabled ? undefined : (e) => onChange?.(e.target.value)}
         onKeyDown={enabled ? undefined : onKeyDown}
         onFocus={(e) => {
           if (disabled) return;
@@ -210,7 +226,8 @@ export function TouchSearchField({
         <TouchSearchKeypad
           open={open}
           title={title}
-          value={value}
+          value={uncontrolled ? undefined : value}
+          readValue={() => inputRef?.current?.value ?? ""}
           placeholder={placeholder}
           onChange={onChange}
           onClose={() => setOpen(false)}

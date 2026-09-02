@@ -165,6 +165,20 @@ const REPORT_COLUMN_LABELS = {
   net_pay: "Net Pay",
   employer_nssf: "Employer NSSF",
   employer_housing: "Employer Housing",
+  room_checks: "Checks with rooms",
+  room_stays: "Room stays sold",
+  room_nights: "Room nights",
+  room_sales: "Room sales",
+  fnb_sales: "Food & drink sales",
+  fnb_revenue: "Food & drink revenue",
+  fnb_gross: "Food & drink gross",
+  fnb_collected: "Food & drink collected",
+  open_fnb_checks: "Open food & drink checks",
+  room_charge: "Charge to room",
+  gross_sales: "Gross sales",
+  amount_paid: "Collected",
+  card_bank: "Card/Bank",
+  cashier_name: "Cashier",
   late_minutes: "Late clock-in (min)",
   lunch_late_minutes: "Late from lunch (min)",
   total_late_minutes: "Overall late (min)",
@@ -232,7 +246,7 @@ export function isRedundantReportColumn(
   }
   if (
     HIDDEN_CASHIER_ID_COLUMNS.has(key)
-    && rowKeys.includes("salesperson")
+    && (rowKeys.includes("salesperson") || rowKeys.includes("cashier_name"))
   ) {
     return true;
   }

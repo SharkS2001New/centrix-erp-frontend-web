@@ -12,9 +12,8 @@ export function shouldSyncParentSearchQuery(parent, local, { inputFocused, allow
 
   if (p === "") {
     if (l === "") return false;
-    if (allowParentClear) return true;
-    if (inputFocused) return false;
-    return true;
+    // Parent "" during a cart re-render must never wipe an in-progress query.
+    return Boolean(allowParentClear);
   }
 
   return true;

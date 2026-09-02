@@ -1156,6 +1156,71 @@ export function payPeriodRunnableToday(period, date = new Date(), graceDays = 7)
   return false;
 }
 
+function payPeriodIsPastOrCurrentMonth(period, date = new Date()) {
+  if (!period?.period_end && !period?.period_start) return false;
+  const today = new Date(date);
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(period.period_end ?? period.period_start);
+  end.setHours(0, 0, 0, 0);
+  const periodYm = end.getFullYear() * 100 + (end.getMonth() + 1);
+  const todayYm = today.getFullYear() * 100 + (today.getMonth() + 1);
+  return periodYm <= todayYm;
+}
+
+function payPeriodHasPayrollRun(period, runPeriodIds) {
+  if (!period) return false;
+  if (runPeriodIds?.has?.(period.id)) return true;
+  return Number(period.payroll_runs_count ?? 0) > 0;
+}
+
+/**
+ * Next pay period that may be run: earliest unpaid period in order.
+ * Later months stay hidden until earlier gaps are processed (no skipping).
+ */
+export function nextEligiblePayPeriodForRun(
+  periods,
+  {
+    runs = [],
+    date = new Date(),
+    graceDays = 7,
+    scheduleEnforced = true,
+    runnablePeriodCodes = [],
+  } = {},
+) {
+  const runPeriodIds = new Set(
+    (runs ?? []).map((run) => run.pay_period_id).filter((id) => id != null),
+  );
+  const sorted = [...(periods ?? [])].sort(
+    (a, b) => new Date(a.period_start).getTime() - new Date(b.period_start).getTime(),
+  );
+  const codes = new Set(runnablePeriodCodes ?? []);
+
+  for (const period of sorted) {
+    if (payPeriodHasPayrollRun(period, runPeriodIds)) {
+      continue;
+    }
+
+    const scheduleAllowed = scheduleEnforced
+      ? codes.size > 0
+        ? codes.has(period.period_code)
+        : payPeriodRunnableToday(period, date, graceDays)
+      : payPeriodIsPastOrCurrentMonth(period, date);
+
+    if (!scheduleAllowed) {
+      return null;
+    }
+
+    return period;
+  }
+
+  return null;
+}
+
+export function eligiblePayPeriodsForRun(periods, options = {}) {
+  const next = nextEligiblePayPeriodForRun(periods, options);
+  return next ? [next] : [];
+}
+
 /** Matches payroll auto-process eligibility (active, salary, work shift). */
 export function isPayrollEligible(employee) {
   if (!employee) return false;

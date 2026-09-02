@@ -21,7 +21,7 @@ export const HOSPITALITY_SERVICE_CATALOG = [
     key: "folios",
     label: "Guest folios (pay later)",
     description:
-      "Running guest bill for room + extras. Leave off for pay-at-check-in hotels — guests pay before keys; F&B is pay-at-till.",
+      "Running guest bill for room + extras. Leave off for pay-at-check-in hotels — guests pay before keys; food & drink is pay-at-till.",
   },
   { key: "housekeeping", label: "Housekeeping", description: "Room status board (clean / dirty / OOO)." },
   {
@@ -35,7 +35,7 @@ export const HOSPITALITY_SERVICE_CATALOG = [
   {
     key: "room_charge",
     label: "Room charge from POS",
-    description: "Post bar/restaurant checks to an open guest folio. Requires Guest folios. Leave off if F&B is collect-payment only.",
+    description: "Post bar/restaurant checks to an open guest folio. Requires Guest folios. Leave off if food & drink is collect-payment only.",
   },
 ];
 

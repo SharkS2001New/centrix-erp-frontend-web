@@ -7091,6 +7091,7 @@ export function PosScreen({ standalone = false }) {
       setReplacingLineId(stableLineId);
       replacingLineIdRef.current = stableLineId;
       updateSearchQuery(product.product_code ?? "");
+      productSearchRef.current?.setDraftValue?.(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
@@ -7136,6 +7137,7 @@ export function PosScreen({ standalone = false }) {
       unit_price: "",
     });
     updateSearchQuery(parkCode ?? "");
+    productSearchRef.current?.setDraftValue?.(parkCode ?? "");
     searchAbortRef.current?.abort();
     searchSeq.current += 1;
     setSearching(false);
@@ -9800,6 +9802,9 @@ export function PosScreen({ standalone = false }) {
       setSelectedProductCode(line.product_code);
       setSelectedProduct(product);
       updateSearchQuery(product.product_name ?? line.product_code);
+      productSearchRef.current?.setDraftValue?.(
+        product.product_name ?? line.product_code,
+      );
       setUnitPriceTouched(true);
       const entryQty = posEntryQtyFromCartLine(line, product, retailPackage);
       const perUnitDiscount = cartLineEnteredDiscountPerUnit(line, product, retailPackage);
@@ -16226,6 +16231,7 @@ export function PosScreen({ standalone = false }) {
                   ref={productSearchRef}
                   inputRef={searchInputRef}
                   query={searchQuery}
+                  persistedDraftRef={searchQueryRef}
                   onQueryChange={updateSearchQuery}
                   results={searchResults}
                   searching={searching}
@@ -16793,6 +16799,7 @@ export function PosScreen({ standalone = false }) {
                     variant="classic"
                     inputRef={searchInputRef}
                     query={searchQuery}
+                    persistedDraftRef={searchQueryRef}
                     onQueryChange={(value) => {
                       const next = String(value ?? "");
                       const parked = selectedProductRef.current;

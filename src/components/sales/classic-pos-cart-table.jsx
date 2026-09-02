@@ -591,7 +591,9 @@ export function ClassicPosCartTable({
                     swapPreviewActive ? (
                       <span className="classic-pos-scan-code">{swapLinePreview.productCode}</span>
                     ) : (
-                      scanSearch
+                      <span className="classic-pos-cart-entry-muted text-xs" title="Type in the entry row below">
+                        ↓ scan
+                      </span>
                     )
                   ) : (
                     <span className="classic-pos-scan-code">{line.product_code}</span>
@@ -668,13 +670,7 @@ export function ClassicPosCartTable({
           <tr className="classic-pos-cart-entry-row">
             <td className="classic-pos-col-num classic-pos-cart-rownum">{lines.length + 1}</td>
             <td className="classic-pos-cart-scan-cell classic-pos-col-scan">
-              {replacingLineId ? (
-                <span className="classic-pos-cart-entry-muted text-xs" aria-hidden="true">
-                  —
-                </span>
-              ) : (
-                scanSearch
-              )}
+              {scanSearch}
             </td>
             <td className="classic-pos-col-desc classic-pos-cart-entry-muted">
               {entryReady ? entryDescription : ""}

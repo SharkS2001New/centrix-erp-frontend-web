@@ -342,6 +342,9 @@ export const SCREEN_COMPONENTS = {
   "fulfillment-vehicles": lazy(() =>
     import("@/components/tab-screens/fulfillment-vehicles").then((m) => ({ default: m.FulfillmentVehiclesScreen })),
   ),
+  "hospitality-end-of-day": lazy(() =>
+    import("@/components/tab-screens/hospitality-end-of-day").then((m) => ({ default: m.HospitalityEndOfDayScreen })),
+  ),
   "hospitality-folios": lazy(() =>
     import("@/components/tab-screens/hospitality-folios").then((m) => ({ default: m.HospitalityFoliosScreen })),
   ),

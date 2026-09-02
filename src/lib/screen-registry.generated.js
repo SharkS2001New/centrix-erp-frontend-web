@@ -549,6 +549,10 @@ function match_fulfillment_vehicles(pathname) {
   return pathname === "/fulfillment/vehicles";
 }
 
+function match_hospitality_end_of_day(pathname) {
+  return pathname === "/hospitality/end-of-day";
+}
+
 function match_hospitality_folios(pathname) {
   return pathname === "/hospitality/folios";
 }
@@ -1685,6 +1689,12 @@ export const SCREEN_REGISTRY = [
     title: "Vehicles",
     route: "/fulfillment/vehicles",
     match: match_fulfillment_vehicles,
+  },
+  {
+    id: "hospitality-end-of-day",
+    title: "End Of Day",
+    route: "/hospitality/end-of-day",
+    match: match_hospitality_end_of_day,
   },
   {
     id: "hospitality-folios",

@@ -31,6 +31,7 @@ import {
   formatPeriodRange,
   isAdminUser,
   payPeriodRunnableToday,
+  eligiblePayPeriodsForRun,
   payrollRunCanDelete,
   payrollRunDeleteLockHint,
   payrollRunIsCompleted,
@@ -185,21 +186,20 @@ export function HrPayrollScreen() {
       : hrSettings.enforce_month_end_run_schedule !== false;
 
   const runnablePeriods = useMemo(() => {
-    if (!scheduleEnforced) {
-      const today = new Date();
-      const todayYm = today.getFullYear() * 100 + (today.getMonth() + 1);
-      return sortedPeriods.filter((p) => {
-        const end = new Date(p.period_end ?? p.period_start);
-        const ym = end.getFullYear() * 100 + (end.getMonth() + 1);
-        return ym <= todayYm;
-      });
+    const eligibleId = runSchedule?.next_eligible_period_id;
+    if (eligibleId != null) {
+      const match = orgPeriods.find((p) => Number(p.id) === Number(eligibleId));
+      if (match) return [match];
     }
-    const codes = new Set(runSchedule?.runnable_period_codes ?? []);
-    if (codes.size > 0) {
-      return sortedPeriods.filter((p) => codes.has(p.period_code));
-    }
-    return sortedPeriods.filter((p) => payPeriodRunnableToday(p, new Date(), graceDays));
-  }, [sortedPeriods, runSchedule, graceDays, scheduleEnforced]);
+
+    return eligiblePayPeriodsForRun(orgPeriods, {
+      runs,
+      date: new Date(),
+      graceDays,
+      scheduleEnforced,
+      runnablePeriodCodes: runSchedule?.runnable_period_codes ?? [],
+    });
+  }, [orgPeriods, runs, runSchedule, graceDays, scheduleEnforced]);
 
   const ensurePayPeriodForRun = useCallback(async () => {
     if (!organizationId) {
@@ -214,47 +214,34 @@ export function HrPayrollScreen() {
       for (const p of ensured) byId.set(p.id, p);
       return [...byId.values()];
     });
-    const enforce =
-      typeof schedule?.enforce_month_end_run_schedule === "boolean"
-        ? schedule.enforce_month_end_run_schedule
-        : hrSettings.enforce_month_end_run_schedule !== false;
-    if (!enforce) {
-      const all = await apiRequest("/pay-periods", { searchParams: { per_page: 50 } });
-      const list = all.data ?? [];
-      setPeriods(list);
-      const today = new Date();
-      const todayYm = today.getFullYear() * 100 + (today.getMonth() + 1);
-      const runnable = list
-        .filter((p) => Number(p.organization_id) === Number(organizationId))
-        .filter((p) => {
-          const end = new Date(p.period_end ?? p.period_start);
-          const ym = end.getFullYear() * 100 + (end.getMonth() + 1);
-          return ym <= todayYm;
-        })
-        .sort(
-          (a, b) => new Date(b.period_start).getTime() - new Date(a.period_start).getTime(),
-        );
-      if (runnable.length === 0 && ensured.length > 0) {
-        return ensured;
-      }
-      if (runnable.length === 0) {
-        return [];
-      }
-      return runnable;
+
+    if (ensured.length > 0) {
+      return ensured;
     }
-    const effectiveGrace = payrollGraceDays(capabilities?.module_settings, schedule);
-    const codes = new Set(schedule?.runnable_period_codes ?? []);
-    const runnable =
-      codes.size > 0
-        ? ensured.filter((p) => codes.has(p.period_code))
-        : ensured.filter((p) => payPeriodRunnableToday(p, new Date(), effectiveGrace));
-    if (runnable.length === 0) {
-      // Schedule + next_window are already set; return empty so the drawer can
-      // show the period picker empty state instead of failing the prepare call.
-      return [];
-    }
-    return runnable;
-  }, [capabilities?.module_settings, hrSettings.enforce_month_end_run_schedule, organizationId, runSchedule]);
+
+    const all = await apiRequest("/pay-periods", { searchParams: { per_page: 50 } });
+    const list = (all.data ?? []).filter(
+      (p) => Number(p.organization_id) === Number(organizationId),
+    );
+    setPeriods(list);
+
+    return eligiblePayPeriodsForRun(list, {
+      runs,
+      date: new Date(),
+      graceDays: payrollGraceDays(capabilities?.module_settings, schedule),
+      scheduleEnforced:
+        typeof schedule?.enforce_month_end_run_schedule === "boolean"
+          ? schedule.enforce_month_end_run_schedule
+          : hrSettings.enforce_month_end_run_schedule !== false,
+      runnablePeriodCodes: schedule?.runnable_period_codes ?? [],
+    });
+  }, [
+    capabilities?.module_settings,
+    hrSettings.enforce_month_end_run_schedule,
+    organizationId,
+    runSchedule,
+    runs,
+  ]);
 
   async function openGenerateDrawer() {
     setRunError(null);
@@ -750,7 +737,8 @@ export function HrPayrollScreen() {
                 }))}
               />
               <p className="mt-1.5 text-xs text-slate-500">
-                Choose which month to process. Only periods allowed for today are listed.
+                Only the next unpaid pay period is shown. Run each month in order — periods
+                cannot be skipped.
               </p>
             </>
           )}

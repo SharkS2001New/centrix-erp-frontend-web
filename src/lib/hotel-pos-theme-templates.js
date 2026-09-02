@@ -129,7 +129,7 @@ export const HOTEL_POS_THEME_TEMPLATES = [
   },
   {
     id: "sunset",
-    label: "Sunset F&B",
+    label: "Sunset food & drink",
     description: "Energetic coral — restaurant rush hour.",
     preview: ["#ea580c", "#ffedd5", "#fff7ed"],
     vars: {
