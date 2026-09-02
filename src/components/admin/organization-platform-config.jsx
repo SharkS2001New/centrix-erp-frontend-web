@@ -839,24 +839,46 @@ export function OrganizationOrdersListSettings({
   salesPlatform,
   onChange,
   enabledModules = {},
+  industry = "commerce",
 }) {
+  const isHospitality = industry === "hospitality";
   const salesEnabled = Boolean(enabledModules.sales);
+  const hospitalityEnabled = Boolean(
+    enabledModules.hospitality ||
+      enabledModules["hospitality.backend"] ||
+      enabledModules["hospitality.bar_pos"],
+  );
+  const sectionEnabled = isHospitality ? hospitalityEnabled || salesEnabled : salesEnabled;
 
   return (
     <PlatformFormSection
-      title="Orders list & reports"
-      description="Platform defaults for Sales → Orders date filter, Shop Debtors date filter, search scope, visible columns, and the default From/To window for all reports."
+      title={isHospitality ? "Sales & orders and reports" : "Orders list & reports"}
+      description={
+        isHospitality
+          ? "Platform defaults for Hotel Backoffice → Sales & orders date filter and the default From/To window for all reports."
+          : "Platform defaults for Sales → Orders date filter, Shop Debtors date filter, search scope, visible columns, and the default From/To window for all reports."
+      }
     >
-      {!salesEnabled ? (
+      {!sectionEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          Enable the <strong>Sales</strong> module to configure orders list defaults for this
-          organization.
+          {isHospitality ? (
+            <>
+              Enable a <strong>Hospitality</strong> application to configure Sales &amp; orders and
+              reports date filters for this organization.
+            </>
+          ) : (
+            <>
+              Enable the <strong>Sales</strong> module to configure orders list defaults for this
+              organization.
+            </>
+          )}
         </p>
       ) : (
         <OrdersListDefaultsFields
           value={salesPlatform}
           onChange={onChange}
           idPrefix="platform-orders-list"
+          industry={isHospitality ? "hospitality" : "commerce"}
         />
       )}
     </PlatformFormSection>
@@ -1679,29 +1701,29 @@ export function OrganizationConfigTabs({
   const [activeTab, setActiveTab] = useState("profile");
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
   const resolvedOrgId = organizationId ?? organization?.id;
-  const visibleTabs = tabs.filter((tab) => {
-    if (tab.id === "hotel") return isHospitality;
-    if (
-      isHospitality &&
-      (tab.id === "sales" || tab.id === "orders_list" || tab.id === "workflow")
-    ) {
-      return false;
-    }
-    if (tab.id === "payroll") {
-      return Boolean(enabledModules.hr_payroll) && typeof onPayrollChange === "function";
-    }
-    return true;
-  });
+  const visibleTabs = tabs
+    .filter((tab) => {
+      if (tab.id === "hotel") return isHospitality;
+      if (isHospitality && (tab.id === "sales" || tab.id === "workflow")) {
+        return false;
+      }
+      if (tab.id === "payroll") {
+        return Boolean(enabledModules.hr_payroll) && typeof onPayrollChange === "function";
+      }
+      return true;
+    })
+    .map((tab) =>
+      tab.id === "orders_list" && isHospitality
+        ? { ...tab, label: "Orders & reports" }
+        : tab,
+    );
 
   useEffect(() => {
     if (!isHospitality && activeTab === "hotel") {
       setActiveTab("profile");
       return;
     }
-    if (
-      isHospitality &&
-      (activeTab === "sales" || activeTab === "orders_list" || activeTab === "workflow")
-    ) {
+    if (isHospitality && (activeTab === "sales" || activeTab === "workflow")) {
       setActiveTab("hotel");
       return;
     }
@@ -1756,6 +1778,7 @@ export function OrganizationConfigTabs({
           salesPlatform={salesPlatform}
           onChange={onSalesChange}
           enabledModules={enabledModules}
+          industry={isHospitality ? "hospitality" : industry}
         />
       ) : null}
 

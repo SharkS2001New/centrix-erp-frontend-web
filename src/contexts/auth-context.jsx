@@ -476,11 +476,7 @@ export function AuthProvider({ children }) {
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
         const only = workspaces[0];
-        if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL) {
-          void switchWorkspace(only.id);
-        } else {
-          setStoredWorkspace(only.id);
-        }
+        void switchWorkspace(only.id);
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
@@ -511,11 +507,7 @@ export function AuthProvider({ children }) {
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
         const only = workspaces[0];
-        if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL) {
-          void switchWorkspace(only.id);
-        } else {
-          setStoredWorkspace(only.id);
-        }
+        void switchWorkspace(only.id);
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }

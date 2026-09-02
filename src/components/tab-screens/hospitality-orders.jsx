@@ -32,6 +32,7 @@ import {
   buildHospitalityCheckPrintOptions,
   normalizeHospitalityCheckPrintSettings,
 } from "@/lib/hospitality-check-print-options";
+import { getOrdersListDefaultDateRange } from "@/lib/sales-settings";
 
 function formatMoney(value) {
   return Number(value ?? 0).toLocaleString(undefined, {
@@ -47,23 +48,6 @@ function formatWhen(iso) {
   } catch {
     return iso;
   }
-}
-
-function todayIso() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function daysAgoIso(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function sourceLabel(row) {
@@ -168,15 +152,19 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
   const { capabilities, organization, user } = useAuth();
   const confirm = useConfirm();
   const copy = ORDER_CHANNELS[channel] ?? ORDER_CHANNELS.all;
+  const defaultRange = useMemo(
+    () => getOrdersListDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [rows, setRows] = useState([]);
   const [outlets, setOutlets] = useState([]);
   // Default All so settled Hotel POS tickets appear like backoffice completed orders.
   const [status, setStatus] = useState("");
   const [outletId, setOutletId] = useState("");
-  const [fromDate, setFromDate] = useState(() => daysAgoIso(30));
-  const [toDate, setToDate] = useState(() => todayIso());
-  const [appliedFrom, setAppliedFrom] = useState(() => daysAgoIso(30));
-  const [appliedTo, setAppliedTo] = useState(() => todayIso());
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -193,6 +181,13 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
       isHospitalityServiceEnabled(capabilities, "table_pos") ||
       isHospitalityServiceEnabled(capabilities, "floor_tables"),
   );
+
+  useEffect(() => {
+    setFromDate(defaultRange.from);
+    setToDate(defaultRange.to);
+    setAppliedFrom(defaultRange.from);
+    setAppliedTo(defaultRange.to);
+  }, [defaultRange.from, defaultRange.to]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 280);

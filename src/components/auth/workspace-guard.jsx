@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { recallWorkspaceLandingPath, defaultWorkspaceId, needsWorkspaceSelection } from "@/lib/workspace-navigation";
@@ -22,6 +22,7 @@ export function WorkspaceGuard({ children }) {
   const { user, organization, capabilities, loading, isSuperAdmin, loginChannel, switchWorkspace } =
     useAuth();
   const [channelReady, setChannelReady] = useState(true);
+  const workspaceSyncedKeyRef = useRef(null);
 
   const storedWorkspace = getStoredWorkspace();
   const requireTillFloat = resolveTillFloatNavFlag(capabilities);
@@ -94,6 +95,8 @@ export function WorkspaceGuard({ children }) {
   // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
   // returning to backoffice/platform so Applications and other admin APIs work.
   // Hold the shell until the channel matches — otherwise screens race ahead and 403.
+  // Also persist the active workspace id on the token (Hotel POS / Hotel Backoffice)
+  // so Platform → Active users shows the correct application, not retail "Backoffice".
   const [channelRestoreError, setChannelRestoreError] = useState(null);
   const [channelRetryToken, setChannelRetryToken] = useState(0);
 
@@ -103,11 +106,7 @@ export function WorkspaceGuard({ children }) {
       setChannelRestoreError(null);
       return;
     }
-    if (loginChannel !== POS_LOGIN_CHANNEL) {
-      setChannelReady(true);
-      setChannelRestoreError(null);
-      return;
-    }
+
     const ctx = buildAccessContext({
       user,
       organization,
@@ -116,33 +115,50 @@ export function WorkspaceGuard({ children }) {
       isSuperAdmin,
     });
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
-    if (!workspaceId || isPosWorkspace(workspaceId)) {
+    if (!workspaceId) {
+      setChannelReady(true);
+      setChannelRestoreError(null);
+      return;
+    }
+
+    const syncKey = `${organization?.id ?? ""}:${workspaceId}:${loginChannel ?? ""}`;
+    const needsPosChannelRestore =
+      loginChannel === POS_LOGIN_CHANNEL && !isPosWorkspace(workspaceId);
+    const needsWorkspacePersist =
+      loginChannel !== POS_LOGIN_CHANNEL && workspaceSyncedKeyRef.current !== syncKey;
+
+    if (!needsPosChannelRestore && !needsWorkspacePersist) {
       setChannelReady(true);
       setChannelRestoreError(null);
       return;
     }
 
     let cancelled = false;
-    setChannelReady(false);
+    if (needsPosChannelRestore) {
+      setChannelReady(false);
+    }
     setChannelRestoreError(null);
     switchWorkspace(workspaceId)
       .then(() => {
         if (!cancelled) {
+          workspaceSyncedKeyRef.current = syncKey;
           setChannelReady(true);
           setChannelRestoreError(null);
         }
       })
       .catch((err) => {
-        console.error("Failed to restore backoffice session channel", err);
-        // Fail closed — do not unlock the shell with a POS-channel token on
-        // backoffice routes (wrong order_source / 403 storms).
-        if (!cancelled) {
+        console.error("Failed to restore session workspace/channel", err);
+        if (cancelled) return;
+        if (needsPosChannelRestore) {
           setChannelReady(false);
           setChannelRestoreError(
             err instanceof Error && err.message
               ? err.message
               : "Could not restore the backoffice session. Try again.",
           );
+        } else {
+          // Soft-fail workspace label sync — do not block the shell.
+          setChannelReady(true);
         }
       });
 

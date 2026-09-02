@@ -1,15 +1,11 @@
 import { getStoredWorkspace, setStoredWorkspace } from "@/lib/auth-storage";
 import { resolveHomePath } from "@/lib/access-control";
-import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import {
   needsWorkspaceSelection,
   resolveAccessibleWorkspaces,
   resolvePostLoginPath,
 } from "@/lib/workspace-navigation";
-import {
-  resolveActiveWorkspace,
-  workspaceLoginChannel,
-} from "@/lib/workspaces";
+import { resolveActiveWorkspace } from "@/lib/workspaces";
 
 /**
  * Best route off the profile screen when the user is not password-locked.
@@ -65,7 +61,7 @@ export async function navigateAfterAuthSessionReady(
 
   if (workspaces.length === 1) {
     const only = workspaces[0];
-    if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL && switchWorkspace) {
+    if (switchWorkspace) {
       await switchWorkspace(only.id);
     } else {
       setStoredWorkspace(only.id);

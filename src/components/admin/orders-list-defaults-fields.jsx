@@ -49,9 +49,15 @@ export function OrdersListDefaultsFields({
   workflow = null,
   includeMobile = null,
   includeWhatsapp = null,
+  /** `"hospitality"` hides retail-only fields (Shop Debtors, columns) and uses hotel copy. */
+  industry = "commerce",
 }) {
+  const isHospitality = industry === "hospitality";
+  const subTabs = isHospitality
+    ? ORDERS_LIST_SUB_TABS.filter((tab) => tab.id === "defaults")
+    : ORDERS_LIST_SUB_TABS;
   const [activeTab, setActiveTab] = useState("defaults");
-  useSettingsSubTab(activeTab, setActiveTab, ORDERS_LIST_SUB_TABS);
+  useSettingsSubTab(activeTab, setActiveTab, subTabs);
 
   const days = value?.orders_list_default_days ?? "14";
   const shopDebtorsDays = String(
@@ -113,16 +119,24 @@ export function OrdersListDefaultsFields({
 
   return (
     <div className="space-y-4">
-      <SettingsSubTabBar
-        tabs={ORDERS_LIST_SUB_TABS}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        ariaLabel="Orders list settings"
-      />
+      {!isHospitality ? (
+        <SettingsSubTabBar
+          tabs={subTabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          ariaLabel="Orders list settings"
+        />
+      ) : null}
 
       {activeTab === "defaults" ? (
         <div className="space-y-3">
-          <Field label="Default date filter (days)">
+          <Field
+            label={
+              isHospitality
+                ? "Sales & orders default date filter (days)"
+                : "Default date filter (days)"
+            }
+          >
             <input
               id={`${idPrefix}-days`}
               type="number"
@@ -133,27 +147,29 @@ export function OrdersListDefaultsFields({
               onChange={(e) => patch({ orders_list_default_days: e.target.value })}
             />
             <p className="mt-1 text-xs text-slate-500">
-              How many calendar days of orders to show when staff open Sales → Orders (including today).
-              Default for wholesale/retail is 14 (2 weeks). Distribution orgs often use 30+. Staff can
-              still narrow or widen the range with the date filters.
+              {isHospitality
+                ? "How many calendar days of checks/orders to show when staff open Hotel Backoffice → Sales & orders (including today). Default is 14 (2 weeks). Staff can still narrow or widen the range with the date filters."
+                : "How many calendar days of orders to show when staff open Sales → Orders (including today). Default for wholesale/retail is 14 (2 weeks). Distribution orgs often use 30+. Staff can still narrow or widen the range with the date filters."}
             </p>
           </Field>
-          <Field label="Shop Debtors default date filter (days)">
-            <input
-              id={`${idPrefix}-shop-debtors-days`}
-              type="number"
-              min={1}
-              max={90}
-              className={`${inputClassName()} w-32`}
-              value={shopDebtorsDays}
-              onChange={(e) => patch({ shop_debtors_default_days: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Default From/To for Sales → Shop Debtors (Unpaid, Partially paid, and Paid), including
-              today. Separate from Orders above — some orgs want 30 days (1 month), others 60 (2
-              months). Staff can still change the range on each page.
-            </p>
-          </Field>
+          {!isHospitality ? (
+            <Field label="Shop Debtors default date filter (days)">
+              <input
+                id={`${idPrefix}-shop-debtors-days`}
+                type="number"
+                min={1}
+                max={90}
+                className={`${inputClassName()} w-32`}
+                value={shopDebtorsDays}
+                onChange={(e) => patch({ shop_debtors_default_days: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Default From/To for Sales → Shop Debtors (Unpaid, Partially paid, and Paid), including
+                today. Separate from Orders above — some orgs want 30 days (1 month), others 60 (2
+                months). Staff can still change the range on each page.
+              </p>
+            </Field>
+          ) : null}
           <Field label="Reports default date filter (days)">
             <input
               id={`${idPrefix}-reports-days`}
@@ -165,39 +181,43 @@ export function OrdersListDefaultsFields({
               onChange={(e) => patch({ reports_default_date_range_days: e.target.value })}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Default From/To window for reports (KRA invoices, compliance, sales reports, and others),
-              including today. Example: 2 = yesterday + today. Staff can still change the range on each
-              report.
+              {isHospitality
+                ? "Default From/To window for hotel reports (sales, F&B, occupancy, and others), including today. Example: 2 = yesterday + today. Staff can still change the range on each report."
+                : "Default From/To window for reports (KRA invoices, compliance, sales reports, and others), including today. Example: 2 = yesterday + today. Staff can still change the range on each report."}
             </p>
           </Field>
-          <Field label="Search window (days)">
-            <input
-              id={`${idPrefix}-search-days`}
-              type="number"
-              min={1}
-              max={90}
-              className={`${inputClassName()} w-32`}
-              value={searchDays}
-              onChange={(e) => patch({ orders_list_search_days: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Fallback when search is used without From/To dates (default 30 / 1 month). When staff set
-              date filters on Sales → Orders, search stays inside those filters. Must be at least as
-              wide as the default date filter.
-            </p>
-          </Field>
-          <Field label="Default sort order">
-            <SearchableSelect
-              className={inputClassName()}
-              value={sort}
-              onChange={(next) => patch({ orders_list_sort: next })}
-              options={ORDERS_LIST_SORT_OPTIONS}
-            />
-          </Field>
+          {!isHospitality ? (
+            <>
+              <Field label="Search window (days)">
+                <input
+                  id={`${idPrefix}-search-days`}
+                  type="number"
+                  min={1}
+                  max={90}
+                  className={`${inputClassName()} w-32`}
+                  value={searchDays}
+                  onChange={(e) => patch({ orders_list_search_days: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Fallback when search is used without From/To dates (default 30 / 1 month). When staff set
+                  date filters on Sales → Orders, search stays inside those filters. Must be at least as
+                  wide as the default date filter.
+                </p>
+              </Field>
+              <Field label="Default sort order">
+                <SearchableSelect
+                  className={inputClassName()}
+                  value={sort}
+                  onChange={(next) => patch({ orders_list_sort: next })}
+                  options={ORDERS_LIST_SORT_OPTIONS}
+                />
+              </Field>
+            </>
+          ) : null}
         </div>
       ) : null}
 
-      {activeTab === "columns" ? (
+      {!isHospitality && activeTab === "columns" ? (
         <div className="space-y-4">
           <Field label="Columns shown by default">
             <div className="mt-1 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
