@@ -38,6 +38,8 @@ import {
   payrollRunIsProcessed,
   payrollRunAwaitingApproval,
   periodLabel,
+  payPeriodStatusLabel,
+  resolvePayPeriodStatus,
   StatutoryDeductionsPanel,
   suggestCurrentPayPeriodForm,
 } from "@/components/hr/hr-shared";
@@ -639,6 +641,7 @@ export function HrPayrollScreen() {
                   sortedPeriods.map((period) => {
                     const runsCount = Number(period.payroll_runs_count ?? 0);
                     const canDeletePeriod = admin && runsCount === 0;
+                    const periodStatus = resolvePayPeriodStatus(period, runs);
                     return (
                       <tr
                         key={period.id}
@@ -656,13 +659,13 @@ export function HrPayrollScreen() {
                         </td>
                         <td className="px-4 py-3">
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${
-                              period.status === "open"
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+                              periodStatus === "open"
                                 ? "bg-[#EAF3DE] text-[#27500A]"
                                 : "bg-slate-100 text-slate-600"
                             }`}
                           >
-                            {period.status}
+                            {payPeriodStatusLabel(periodStatus)}
                           </span>
                         </td>
                         {admin ? (

@@ -780,6 +780,21 @@ export function periodLabel(period) {
   return code.replace(/-/g, " ") || formatPeriodRange(period);
 }
 
+/** Pay period row status — closed once any payroll run for the period is paid. */
+export function resolvePayPeriodStatus(period, runs = []) {
+  if (!period) return "open";
+  if (period.status === "closed") return "closed";
+  const periodId = Number(period.id);
+  const hasPaidRun = (runs ?? []).some(
+    (run) => Number(run.pay_period_id) === periodId && run.status === "paid",
+  );
+  return hasPaidRun ? "closed" : "open";
+}
+
+export function payPeriodStatusLabel(status) {
+  return status === "closed" ? "Closed" : "Open";
+}
+
 function statutoryAmount(line, meta, id) {
   return Number(line?.[id] ?? meta[id] ?? 0);
 }

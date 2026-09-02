@@ -24,6 +24,7 @@ import {
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
@@ -50,9 +51,9 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean, requireHospitalityService?: string }} NavItem */
 
-/** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
+/** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, requireHospitalityIndustry?: boolean, items: NavItem[] }} NavSection */
 
 /** @type {NavSection[]} */
 const NAV_SECTION_DEFINITIONS = [
@@ -1072,6 +1073,7 @@ const NAV_SECTION_DEFINITIONS = [
     label: "Operations",
     icon: "🧹",
     collapsible: true,
+    requireHospitalityIndustry: true,
     items: [
       {
         href: "/hospitality/housekeeping",
@@ -1092,13 +1094,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "hospitality.backend",
         permission: P.hospitality.night_audit.view,
         requireHospitalityService: "night_audit",
-      },
-      {
-        href: "/admin/hotel-settings",
-        label: "Hotel food & drink settings",
-        module: "hospitality.backend",
-        permission: P.hospitality.settings.view,
-        orgAdminOnly: true,
       },
     ],
   },
@@ -1394,6 +1389,9 @@ export function isNavSectionVisible(section, navContext) {
     return false;
   }
   if (section.requireLegacyArchive && !isLegacyArchiveEnabled(navContext.capabilities)) {
+    return false;
+  }
+  if (section.requireHospitalityIndustry && !isHospitalityIndustry(navContext.capabilities)) {
     return false;
   }
   return true;

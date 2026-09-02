@@ -120,8 +120,21 @@ function conicGradientStops(segments, total) {
   return ranges.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
 }
 
-function PaymentDonut({ payments }) {
-  const segments = resolvePaymentDonutSegments(payments);
+function PaymentDonut({ payments, paymentLines }) {
+  const segments = useMemo(() => {
+    if (Array.isArray(paymentLines) && paymentLines.length > 0) {
+      const palette = ["#185FA5", "#059669", "#7c3aed", "#d97706", "#64748b", "#0d9488"];
+      return paymentLines
+        .filter((row) => Number(row.total ?? 0) > 0)
+        .map((row, index) => ({
+          key: row.key ?? row.label ?? index,
+          label: row.label ?? "Payment",
+          value: Number(row.total ?? 0),
+          color: row.color ?? palette[index % palette.length],
+        }));
+    }
+    return resolvePaymentDonutSegments(payments);
+  }, [paymentLines, payments]);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total <= 0) {
     return (
@@ -741,10 +754,23 @@ ${closingHtml}
   });
 }
 
-export function EndOfDayReportScreen() {
+export function EndOfDayReportScreen({
+  apiPath = "/reports/eod-report",
+  breadcrumbLabel = "End of Day Sales",
+  dailyTitle = "End of Day Sales Report",
+  monthlyTitle = "Monthly Sales Report",
+  hideTillPanels = false,
+  hideExpensesPanel = false,
+  hideDebtorsPanel = false,
+  hideExpensesStat = false,
+  transactionsLabel = "Total transactions",
+  transactionsHint = "All transactions",
+  showHospitalityMetrics = false,
+}) {
   const { user, capabilities, organization } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
+  const showTillPanels = !hideTillPanels && requireTillFloat;
   const discountsEnabled = areSalesDiscountsEnabled(capabilities?.module_settings);
 
   const [branches, setBranches] = useState([]);
@@ -813,7 +839,7 @@ export function EndOfDayReportScreen() {
       if (branchId) params.branch_id = branchId;
       if (cashierId) params.cashier_id = cashierId;
       if (floatSessionId) params.float_session_id = floatSessionId;
-      const data = await apiRequest("/reports/eod-report", { searchParams: params });
+      const data = await apiRequest(apiPath, { searchParams: params });
       setReport(data);
     } catch (e) {
       setReport(null);
@@ -821,7 +847,7 @@ export function EndOfDayReportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [saleDate, saleMonth, reportMode, branchId, cashierId, floatSessionId]);
+  }, [apiPath, saleDate, saleMonth, reportMode, branchId, cashierId, floatSessionId]);
 
   useEffect(() => {
     if (reportMode === "monthly" ? saleMonth : saleDate) load();
@@ -896,12 +922,12 @@ export function EndOfDayReportScreen() {
   const paymentTotal = useMemo(() => paymentDonutTotal(payments), [payments]);
 
   const showCashVariance = useMemo(() => {
-    if (!requireTillFloat) return false;
+    if (!showTillPanels) return false;
     if (reportMode === "monthly") return false;
     const sessions = report?.sessions ?? report?.tills ?? [];
     // Show Actual / Variance for any closed till — including today.
     return sessions.some((row) => sessionHasClosedCashMaths(row));
-  }, [requireTillFloat, reportMode, report?.sessions, report?.tills]);
+  }, [showTillPanels, reportMode, report?.sessions, report?.tills]);
 
   const cashReconciliation = useMemo(() => {
     if (!showCashVariance) return null;
@@ -927,6 +953,14 @@ export function EndOfDayReportScreen() {
   }, [showCashVariance, report?.sessions, report?.tills, floatSessionId]);
 
   const paymentLines = useMemo(() => {
+    if (Array.isArray(report?.payment_lines) && report.payment_lines.length > 0) {
+      return report.payment_lines.map((row) => ({
+        label: row.label ?? row.method_name ?? "Payment",
+        total: Number(row.total ?? row.total_amount ?? 0),
+        color: row.color,
+        key: row.key,
+      }));
+    }
     const sessions = report?.sessions ?? report?.tills ?? [];
     const selected = floatSessionId
       ? sessions.find((row) => String(row.float_session_id) === String(floatSessionId))
@@ -959,7 +993,7 @@ export function EndOfDayReportScreen() {
       { label: "Equity payment", total: Number(payments.equity ?? 0) },
       { label: "K.C.B payment", total: Number(payments.kcb ?? 0) },
     ];
-  }, [report?.sessions, report?.tills, floatSessionId, payments]);
+  }, [report?.payment_lines, report?.sessions, report?.tills, floatSessionId, payments]);
 
   const cashierSalesRows = useMemo(() => {
     const rows = report?.cashiers ?? [];
@@ -1008,7 +1042,7 @@ export function EndOfDayReportScreen() {
       sessionLabel: selectedSessionLabel,
       periodLabel,
       isMonthly,
-      showFloat: requireTillFloat,
+      showFloat: showTillPanels,
       showDiscounts: discountsEnabled,
       showCashVariance,
       actualCash: cashReconciliation?.actualCash,
@@ -1038,7 +1072,7 @@ export function EndOfDayReportScreen() {
     periodEnd,
     periodStart,
     report,
-    requireTillFloat,
+    showTillPanels,
     saleDate,
     selectedSessionLabel,
     showCashVariance,
@@ -1053,10 +1087,10 @@ export function EndOfDayReportScreen() {
           <p className="theme-subtext text-xs">
             <Link href="/reports" className="theme-link hover:underline">Reports</Link>
             {" / "}
-            <span className="text-[var(--theme-text-muted)]">End of Day Sales</span>
+            <span className="text-[var(--theme-text-muted)]">{breadcrumbLabel}</span>
           </p>
           <h1 className="theme-heading mt-1 text-2xl font-semibold">
-            {isMonthly ? "Monthly Sales Report" : "End of Day Sales Report"}
+            {isMonthly ? monthlyTitle : dailyTitle}
           </h1>
           <p className="theme-subtext mt-1 text-sm">
             {branchName} ·{" "}
@@ -1109,7 +1143,7 @@ export function EndOfDayReportScreen() {
             options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
           />
         </div>
-        {requireTillFloat ? (
+        {showTillPanels ? (
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
             <FilterSelect
@@ -1175,7 +1209,7 @@ export function EndOfDayReportScreen() {
             <StatCard label="Gross sales (ex VAT)" value={formatTillKes(grossSalesExVat)} hint="Before VAT" />
             <StatCard label="VAT collected" value={formatTillKes(summary.total_vat)} hint="Tax on sales" />
             <StatCard label="Gross sales (incl VAT)" value={formatTillKes(summary.gross_sales)} hint="Order total including VAT" />
-            <StatCard label="Total transactions" value={summary.transactions ?? 0} hint="All transactions" />
+            <StatCard label={transactionsLabel} value={summary.transactions ?? 0} hint={transactionsHint} />
             {discountsEnabled ? (
               <StatCard label="Total discounts" value={formatTillKes(summary.total_discounts)} hint="Discounts given" />
             ) : null}
@@ -1186,14 +1220,16 @@ export function EndOfDayReportScreen() {
               hint="Order total (incl VAT)"
             />
             <StatCard label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} hint="Net after VAT" />
-            {requireTillFloat ? (
+            {showTillPanels ? (
               <StatCard
                 label="Expected net sales"
                 value={formatTillKes(expectedNetSales)}
                 hint="Paid sales + paid debtors + float − expenses"
               />
             ) : null}
-            <StatCard label="Total expenses" value={formatTillKes(report?.total_expenses ?? 0)} hint="Till session expenses" />
+            {!hideExpensesStat ? (
+              <StatCard label="Total expenses" value={formatTillKes(report?.total_expenses ?? 0)} hint="Till session expenses" />
+            ) : null}
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -1208,7 +1244,7 @@ export function EndOfDayReportScreen() {
               <div className="my-2 border-t border-[var(--theme-border)]" />
               <SummaryRow label="Net sales (incl VAT)" value={formatTillKes(summary.net_sales)} tone="success" bold />
               <SummaryRow label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} />
-              {requireTillFloat ? (
+              {showTillPanels ? (
                 <SummaryRow label="Opening float" value={formatTillKes(summary.opening_float)} />
               ) : null}
               {Number(summary.cash_movements_out) > 0 ? (
@@ -1217,18 +1253,20 @@ export function EndOfDayReportScreen() {
               {Number(summary.cash_movements_in) > 0 ? (
                 <SummaryRow label="Cash in" value={formatTillKes(summary.cash_movements_in)} tone="success" />
               ) : null}
-              {requireTillFloat ? (
+              {showTillPanels ? (
                 <SummaryRow
                   label="Invoice sales (paid debtors)"
                   value={formatTillKes(summary.paid_debtors ?? 0)}
                 />
               ) : null}
+              {!hideExpensesPanel ? (
               <SummaryRow
                 label="Expenses"
                 value={`-${formatTillKes(report?.total_expenses ?? summary.session_expenses ?? 0)}`}
                 tone="danger"
               />
-              {requireTillFloat ? (
+              ) : null}
+              {showTillPanels ? (
                 <div className="mt-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-primary-subtle)] px-3 py-2">
                   <SummaryRow
                     label="Expected net sales"
@@ -1258,7 +1296,7 @@ export function EndOfDayReportScreen() {
             </Panel>
 
             <Panel title="Payment summary">
-              <PaymentDonut payments={payments} />
+              <PaymentDonut payments={payments} paymentLines={report?.payment_lines} />
               <div className="mt-3 border-t border-[var(--theme-border)] pt-1">
                 {paymentLines.map((row) => (
                   <SummaryRow key={row.label} label={row.label} value={formatTillKes(row.total)} />
@@ -1270,6 +1308,14 @@ export function EndOfDayReportScreen() {
             </Panel>
 
             <Panel title="Key metrics">
+              {showHospitalityMetrics ? (
+                <>
+                  <SummaryRow label="Room sales" value={formatTillKes(summary.room_sales ?? 0)} />
+                  <SummaryRow label="Food & drink sales" value={formatTillKes(summary.fnb_sales ?? 0)} />
+                  <SummaryRow label="Room nights sold" value={summary.room_nights ?? 0} />
+                  <div className="my-2 border-t border-[var(--theme-border)]" />
+                </>
+              ) : null}
               <SummaryRow label="Average sale value" value={formatTillKesExact(summary.average_sale_value)} />
               <SummaryRow label="Items sold" value={summary.items_sold ?? 0} />
               <SummaryRow label="Voided transactions" value={summary.voided_transactions ?? 0} />
@@ -1303,6 +1349,9 @@ export function EndOfDayReportScreen() {
                         <SummaryRow label="Transactions" value={row.transactions ?? 0} />
                         <SummaryRow label="Cash" value={formatTillKes(row.cash_collected)} />
                         <SummaryRow label="M-Pesa" value={formatTillKes(row.mpesa_collected)} />
+                        {row.room_charge != null && Number(row.room_charge) > 0 ? (
+                          <SummaryRow label="Charge to room" value={formatTillKes(row.room_charge)} />
+                        ) : null}
                         <SummaryRow
                           label="Equity"
                           value={formatTillKes(row.equity_collected ?? 0)}
@@ -1311,7 +1360,7 @@ export function EndOfDayReportScreen() {
                           label="KCB"
                           value={formatTillKes(row.kcb_collected ?? 0)}
                         />
-                          {requireTillFloat ? (
+                          {showTillPanels ? (
                           <SummaryRow label="Float" value={formatTillKes(row.opening_float)} />
                           ) : null}
                       </div>
@@ -1330,7 +1379,7 @@ export function EndOfDayReportScreen() {
               ) : null}
             </Panel>
 
-            {requireTillFloat ? (
+            {showTillPanels ? (
             <Panel title="Till sessions" className="lg:col-span-2">
               <p className="theme-subtext mb-3 text-xs">
                 Actual cash and variance appear once the cashier closes till maths — including for today.
@@ -1446,8 +1495,9 @@ export function EndOfDayReportScreen() {
             ) : null}
           </div>
 
-          <div className={`mt-6 grid gap-4 ${requireTillFloat ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
-            {requireTillFloat ? (
+          {(showTillPanels || !hideExpensesPanel || !hideDebtorsPanel) ? (
+          <div className={`mt-6 grid gap-4 ${showTillPanels ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+            {showTillPanels ? (
               <Panel title="Float breakdown">
                 {floatBreakdownRows.length === 0 ? (
                   <p className="theme-subtext text-sm">No float entries for this date.</p>
@@ -1476,6 +1526,7 @@ export function EndOfDayReportScreen() {
             </Panel>
             ) : null}
 
+            {!hideExpensesPanel ? (
             <Panel
               title="Expenses summary"
               action={
@@ -1504,7 +1555,9 @@ export function EndOfDayReportScreen() {
                 </>
               )}
             </Panel>
+            ) : null}
 
+            {!hideDebtorsPanel ? (
             <Panel title="Debtor summary">
               <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales ?? 0)} />
               <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received ?? 0)} tone="success" />
@@ -1512,7 +1565,9 @@ export function EndOfDayReportScreen() {
                 <SummaryRow label="Credit outstanding" value={formatTillKes(report.debtors?.closing ?? 0)} tone="danger" bold />
               </div>
             </Panel>
+            ) : null}
           </div>
+          ) : null}
 
           {isMonthly && (report?.daily_breakdown ?? []).length > 0 ? (
             <Panel title="Daily breakdown" className="mt-6">
@@ -1541,7 +1596,7 @@ export function EndOfDayReportScreen() {
             </Panel>
           ) : null}
 
-          {requireTillFloat ? (
+          {showTillPanels ? (
           <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-3 text-center text-sm">
               <HighlightMetric

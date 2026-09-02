@@ -1948,7 +1948,7 @@ export function HotelBarPosScreen() {
             />
             {showTableField && !floorTables.length ? (
               <p className="theme-subtext text-[11px]">
-                No tables yet — enable Floor tables and add them under Operations → Outlets.
+                No tables yet — enable Floor tables and add them under Admin → Operations → Outlets.
               </p>
             ) : null}
             {stockDeductOnSettle ? (

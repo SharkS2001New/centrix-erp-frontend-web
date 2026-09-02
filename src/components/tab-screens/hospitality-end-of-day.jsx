@@ -1,14 +1,21 @@
 "use client";
 
-import { GenericReportScreen } from "@/components/reports/generic-report-screen";
+import { EndOfDayReportScreen } from "@/components/pos/end-of-day-report-screen";
 
 export function HospitalityEndOfDayScreen() {
   return (
-    <GenericReportScreen
-      reportKey="hospitality-eod-cashier"
-      label="End of day — cashier"
-      subtitle="Daily totals by cashier. Room sales = vacant rooms sold from Hotel POS (nights × rate). Food & drink sales = restaurant and bar items only (not rooms). Charge to room = payment posted to a guest folio."
-      apiPath="/reports/hospitality-eod-cashier"
+    <EndOfDayReportScreen
+      apiPath="/reports/hospitality-eod-report"
+      breadcrumbLabel="End of day — cashier"
+      dailyTitle="End of Day — Cashier"
+      monthlyTitle="Monthly cashier report"
+      hideTillPanels
+      hideExpensesPanel
+      hideDebtorsPanel
+      hideExpensesStat
+      transactionsLabel="Total checks"
+      transactionsHint="Paid / settled checks"
+      showHospitalityMetrics
     />
   );
 }

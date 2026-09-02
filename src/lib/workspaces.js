@@ -15,6 +15,13 @@ import { filterWorkspacesByIndustry } from "@/lib/workspace-modules";
 
 export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/workspace-constants";
 
+/** Hotel operations screens under Admin → Operations (hospitality industry only). */
+export const ADMIN_HOSPITALITY_OPS_PATH_PREFIXES = [
+  "/hospitality/housekeeping",
+  "/hospitality/outlets",
+  "/hospitality/night-audit",
+];
+
 /** Nav sections shown per workspace (reports filtered further by report module). */
 export const WORKSPACE_SECTION_IDS = {
   pos: [],
@@ -41,14 +48,20 @@ export const WORKSPACE_SECTION_IDS = {
   hospitality_backoffice: [
     "hospitality_dashboard",
     "hospitality_rooms",
-    "hospitality_ops",
-    "hospitality_sales",
     "hospitality_catalogue",
+    "hospitality_sales",
     "hospitality_stock",
     "hospitality_purchasing",
     "reports",
   ],
-  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance", "admin_tax"],
+  admin: [
+    "admin_dashboard",
+    "admin_organization",
+    "admin_users",
+    "admin_finance",
+    "admin_tax",
+    "hospitality_ops",
+  ],
   accounting: ["accounting", "expenses", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
@@ -74,9 +87,8 @@ export const WORKSPACE_NAV_ZONES = {
       sectionIds: [
         "hospitality_dashboard",
         "hospitality_rooms",
-        "hospitality_ops",
-        "hospitality_sales",
         "hospitality_catalogue",
+        "hospitality_sales",
         "hospitality_stock",
         "hospitality_purchasing",
         "reports",
@@ -92,6 +104,7 @@ export const WORKSPACE_NAV_ZONES = {
         "admin_users",
         "admin_finance",
         "admin_tax",
+        "hospitality_ops",
       ],
     },
   ],
@@ -162,7 +175,7 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/till-management",
     "/platform",
   ],
-  admin: ["/admin"],
+  admin: ["/admin", ...ADMIN_HOSPITALITY_OPS_PATH_PREFIXES],
   accounting: ["/accounting", "/expenses", "/finance"],
   hr: ["/hr", "/employees"],
   distribution: ["/fulfillment"],
@@ -238,7 +251,15 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (workspaceId === "admin") {
-    return item.href?.startsWith("/admin");
+    if (item.href?.startsWith("/admin")) return true;
+    if (
+      ADMIN_HOSPITALITY_OPS_PATH_PREFIXES.some(
+        (p) => item.href === p || item.href?.startsWith(`${p}/`),
+      )
+    ) {
+      return true;
+    }
+    return false;
   }
 
   if (item.href?.startsWith("/reports") || item.reportKey) {
@@ -351,6 +372,13 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
   if (workspaceId === "admin") {
     const prefixes = WORKSPACE_PATH_PREFIXES.admin ?? [];
     if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      return true;
+    }
+    if (
+      ADMIN_HOSPITALITY_OPS_PATH_PREFIXES.some(
+        (p) => pathname === p || pathname.startsWith(`${p}/`),
+      )
+    ) {
       return true;
     }
     return false;
