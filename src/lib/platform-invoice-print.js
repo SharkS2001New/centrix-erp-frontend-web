@@ -1,11 +1,15 @@
 import { escapeHtml } from "@/lib/sale-document-print-shared";
 import {
+  activeInvoiceLineItems,
   calculateInvoiceTotals,
   invoiceFontFamilyCss,
   invoiceFontScale,
+  invoiceLineAmountColumnLabel,
+  invoiceShowsLineNumbers,
   invoiceSpacing,
   normalizeInvoiceOptions,
   normalizeSeller,
+  resolveInvoiceVatMode,
 } from "@/lib/platform-invoices";
 import { printHtmlDocument } from "@/lib/print-dispatch";
 import { printWindowFeatures } from "@/lib/open-print-window";
@@ -38,13 +42,13 @@ function formatDate(value) {
 }
 
 function activeLines(lineItems) {
-  return (lineItems ?? []).filter((row) => row.included !== false);
+  return activeInvoiceLineItems(lineItems);
 }
 
-function lineRowsHtml(lineItems, currency, { compact = false, showQuantity = true } = {}) {
+function lineRowsHtml(lineItems, currency, { compact = false, showQuantity = true, showLineNumbers = true } = {}) {
   const rows = activeLines(lineItems);
   if (!rows.length) {
-    const colspan = showQuantity ? 4 : 3;
+    const colspan = (showLineNumbers ? 1 : 0) + 1 + (showQuantity ? 1 : 0) + 1;
     return `<tr><td colspan="${colspan}" class="empty">No line items</td></tr>`;
   }
   return rows
@@ -55,8 +59,11 @@ function lineRowsHtml(lineItems, currency, { compact = false, showQuantity = tru
       const qtyCell = showQuantity
         ? `<td class="qty">${escapeHtml(String(qty))}</td>`
         : "";
+      const numCell = showLineNumbers
+        ? `<td class="num">${index + 1}</td>`
+        : "";
       return `<tr>
-        <td class="num">${index + 1}</td>
+        ${numCell}
         <td class="desc">${escapeHtml(row.description ?? "")}</td>
         ${qtyCell}
         <td class="amt">${escapeHtml(formatMoney(amount, currency))}</td>
@@ -81,7 +88,13 @@ function partyBlock(title, party) {
   </div>`;
 }
 
-function totalsBlock(totals, currency, taxRate, { pricesIncludeVat = false } = {}) {
+function totalsBlock(totals, currency, taxRate, { vatMode = "inclusive" } = {}) {
+  if (vatMode === "none") {
+    return `<div class="totals">
+    <div class="total-row grand"><span>Total due</span><span>${escapeHtml(formatMoney(totals.total, currency))}</span></div>
+  </div>`;
+  }
+  const pricesIncludeVat = vatMode === "inclusive";
   const vatLabel = pricesIncludeVat
     ? `VAT (${taxRate}% included)`
     : `VAT (${taxRate}%)`;
@@ -302,12 +315,12 @@ export function buildPlatformInvoiceHtml(invoice) {
   const invoiceNo = invoice.invoice_number || "DRAFT";
   const status = (invoice.status ?? "draft").toUpperCase();
   const showQuantity = options.show_quantity !== false;
+  const showLineNumbers = invoiceShowsLineNumbers(invoice.line_items);
   const qtyHeader = showQuantity
     ? `<th style="text-align:right">Qty</th>`
     : "";
-  const amountHeader = options.prices_include_vat
-    ? `<th style="text-align:right">Amount (inc. VAT)</th>`
-    : `<th style="text-align:right">Amount (ex. VAT)</th>`;
+  const numHeader = showLineNumbers ? `<th>#</th>` : "";
+  const amountHeader = `<th style="text-align:right">${escapeHtml(invoiceLineAmountColumnLabel(options))}</th>`;
 
   const etimsBlock = options.show_etims_invoice_no && options.etims_invoice_no
     ? `<div class="etims"><strong>eTIMS KRA invoice no.</strong> ${escapeHtml(options.etims_invoice_no)}</div>`
@@ -358,18 +371,18 @@ export function buildPlatformInvoiceHtml(invoice) {
         <table class="lines">
           <thead>
             <tr>
-              <th>#</th>
+              ${numHeader}
               <th>Description</th>
               ${qtyHeader}
               ${amountHeader}
             </tr>
           </thead>
           <tbody>
-            ${lineRowsHtml(invoice.line_items, currency, { showQuantity })}
+            ${lineRowsHtml(invoice.line_items, currency, { showQuantity, showLineNumbers })}
           </tbody>
         </table>
         ${totalsBlock(totals, currency, taxRate, {
-          pricesIncludeVat: Boolean(options.prices_include_vat),
+          vatMode: resolveInvoiceVatMode(options),
         })}
         ${footerBlock}
       </div>

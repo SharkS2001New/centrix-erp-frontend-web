@@ -361,8 +361,11 @@ export const DEFAULT_INVOICE_OPTIONS = {
   print_font_family: "template",
   print_font_scale: "standard",
   print_spacing: "comfortable",
-  // Module package prices are customer-facing all-in amounts (VAT included).
+  /** none | exclusive | inclusive — how line amounts and VAT appear on the invoice. */
+  vat_mode: "inclusive",
+  // Legacy flags — kept in sync when saving; prefer vat_mode in UI.
   prices_include_vat: true,
+  vat_enabled: true,
   /** centrix_tenant = linked ERP org; external = hosting / websites / other. */
   customer_kind: "centrix_tenant",
 };
@@ -662,6 +665,70 @@ export function normalizeInvoiceOptions(options) {
   return { ...DEFAULT_INVOICE_OPTIONS, ...(options ?? {}) };
 }
 
+export const PLATFORM_INVOICE_VAT_MODES = [
+  {
+    id: "none",
+    label: "Amount only",
+    description: "No VAT on the invoice — column shows Amount and total due equals line sums.",
+  },
+  {
+    id: "exclusive",
+    label: "Amount (ex. VAT)",
+    description: "Line amounts exclude VAT — tax is calculated and added on top.",
+  },
+  {
+    id: "inclusive",
+    label: "Amount (inc. VAT)",
+    description: "Line amounts include VAT — tax is shown as a breakdown of the total due.",
+  },
+];
+
+/** @returns {'none'|'exclusive'|'inclusive'} */
+export function resolveInvoiceVatMode(options) {
+  const raw = options ?? {};
+  if (raw.vat_mode === "none" || raw.vat_mode === "exclusive" || raw.vat_mode === "inclusive") {
+    return raw.vat_mode;
+  }
+  if (raw.vat_enabled === false) {
+    return "none";
+  }
+  if (raw.prices_include_vat === false) {
+    return "exclusive";
+  }
+  return "inclusive";
+}
+
+export function invoiceVatEnabled(options) {
+  return resolveInvoiceVatMode(options) !== "none";
+}
+
+export function invoicePricesIncludeVat(options) {
+  return resolveInvoiceVatMode(options) === "inclusive";
+}
+
+export function invoiceLineAmountColumnLabel(options) {
+  const mode = resolveInvoiceVatMode(options);
+  if (mode === "none") return "Amount";
+  if (mode === "inclusive") return "Amount (inc. VAT)";
+  return "Amount (ex. VAT)";
+}
+
+/** Sync vat_mode to legacy boolean flags for API backward compatibility. */
+export function vatModeToLegacyOptions(vatMode) {
+  const mode = vatMode === "none" || vatMode === "exclusive" || vatMode === "inclusive"
+    ? vatMode
+    : "inclusive";
+  return {
+    vat_mode: mode,
+    vat_enabled: mode !== "none",
+    prices_include_vat: mode === "inclusive",
+  };
+}
+
+export function effectiveInvoiceTaxRate(taxRate, options) {
+  return invoiceVatEnabled(options) ? Number(taxRate ?? 0) : 0;
+}
+
 export const PLATFORM_INVOICE_CUSTOMER_KINDS = [
   {
     id: "centrix_tenant",
@@ -739,9 +806,7 @@ export function lineItemFromModuleSummary(summary, included = true) {
 }
 
 export function calculateInvoiceTotals(lineItems, taxRate = 0, options = {}) {
-  const pricesIncludeVat = Boolean(
-    options?.prices_include_vat ?? options?.pricesIncludeVat ?? false,
-  );
+  const pricesIncludeVat = invoicePricesIncludeVat(options);
   let gross = 0;
   for (const item of lineItems ?? []) {
     if (item.included === false) continue;
@@ -751,7 +816,7 @@ export function calculateInvoiceTotals(lineItems, taxRate = 0, options = {}) {
     gross += Number.isFinite(amount) ? amount : 0;
   }
   gross = Math.round(gross * 100) / 100;
-  const rate = Number(taxRate);
+  const rate = effectiveInvoiceTaxRate(taxRate, options);
   if (!Number.isFinite(rate) || rate <= 0) {
     return { subtotal: gross, tax_amount: 0, total: gross };
   }
@@ -770,6 +835,15 @@ export function calculateInvoiceTotals(lineItems, taxRate = 0, options = {}) {
   return { subtotal, tax_amount: taxAmount, total };
 }
 
+export function activeInvoiceLineItems(lineItems) {
+  return (lineItems ?? []).filter((row) => row.included !== false);
+}
+
+/** Single-line invoices skip the # column — description and amount only. */
+export function invoiceShowsLineNumbers(lineItems) {
+  return activeInvoiceLineItems(lineItems).length !== 1;
+}
+
 export function recalcLineItemAmount(item) {
   const qty = Number(item.quantity ?? 1);
   const unit = Number(item.unit_price ?? 0);
@@ -778,7 +852,10 @@ export function recalcLineItemAmount(item) {
 
 export function invoiceFormToPayload(form) {
   const lineItems = (form.line_items ?? []).map(recalcLineItemAmount);
-  const invoiceOptions = normalizeInvoiceOptions(form.invoice_options);
+  const invoiceOptions = normalizeInvoiceOptions({
+    ...form.invoice_options,
+    ...vatModeToLegacyOptions(resolveInvoiceVatMode(form.invoice_options)),
+  });
   const totals = calculateInvoiceTotals(lineItems, form.tax_rate, invoiceOptions);
   const payload = {
     ...form,

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateInvoiceTotals,
   invoiceFormToPayload,
+  invoiceVatEnabled,
+  invoiceShowsLineNumbers,
   isKnownPlatformInvoiceCurrency,
   normalizeInvoiceCurrency,
   platformInvoiceCurrencySelectValue,
+  resolveInvoiceVatMode,
 } from "./platform-invoices";
 
 describe("platform invoice currency", () => {
@@ -31,5 +35,51 @@ describe("platform invoice currency", () => {
       invoice_options: {},
     });
     expect(payload.currency).toBe("EUR");
+  });
+
+  it("skips VAT when vat_enabled is false", () => {
+    expect(invoiceVatEnabled({ vat_enabled: false })).toBe(false);
+    expect(invoiceVatEnabled({})).toBe(true);
+
+    const totals = calculateInvoiceTotals(
+      [{ description: "Hosting", quantity: 1, unit_price: 100, included: true }],
+      16,
+      { vat_enabled: false, prices_include_vat: true },
+    );
+    expect(totals).toEqual({ subtotal: 100, tax_amount: 0, total: 100 });
+  });
+
+  it("supports vat_mode none, exclusive, and inclusive", () => {
+    const lines = [{ description: "Campaign", quantity: 1, unit_price: 100, included: true }];
+
+    expect(calculateInvoiceTotals(lines, 16, { vat_mode: "none" })).toEqual({
+      subtotal: 100,
+      tax_amount: 0,
+      total: 100,
+    });
+
+    expect(calculateInvoiceTotals(lines, 16, { vat_mode: "exclusive" })).toEqual({
+      subtotal: 100,
+      tax_amount: 16,
+      total: 116,
+    });
+
+    expect(calculateInvoiceTotals(lines, 16, { vat_mode: "inclusive" })).toEqual({
+      subtotal: 86.21,
+      tax_amount: 13.79,
+      total: 100,
+    });
+
+    expect(resolveInvoiceVatMode({ prices_include_vat: false })).toBe("exclusive");
+  });
+
+  it("hides line numbers for a single active line item", () => {
+    const one = [{ description: "Hosting", quantity: 1, unit_price: 100, included: true }];
+    const two = [
+      { description: "Hosting", quantity: 1, unit_price: 100, included: true },
+      { description: "Support", quantity: 1, unit_price: 50, included: true },
+    ];
+    expect(invoiceShowsLineNumbers(one)).toBe(false);
+    expect(invoiceShowsLineNumbers(two)).toBe(true);
   });
 });

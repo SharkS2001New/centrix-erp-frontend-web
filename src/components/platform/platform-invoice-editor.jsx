@@ -14,22 +14,25 @@ import {
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
   PLATFORM_INVOICE_SPACING,
-  isKnownPlatformInvoiceCurrency,
-  normalizeInvoiceCurrency,
-  platformInvoiceCurrencySelectValue,
+  PLATFORM_INVOICE_VAT_MODES,
   buildPlatformBillingSummaries,
   calculateInvoiceTotals,
   emptyPlatformInvoiceForm,
   inferPlatformInvoiceCustomerKind,
   invoiceFormToPayload,
   invoiceRecordToForm,
+  isKnownPlatformInvoiceCurrency,
   lineItemFromModuleSummary,
   lineItemsFromBillingKeys,
+  normalizeInvoiceCurrency,
   normalizeInvoiceOptions,
   normalizeSeller,
   organizationBillingLabel,
+  platformInvoiceCurrencySelectValue,
   recalcLineItemAmount,
   resolveEnabledBillingModuleKeys,
+  resolveInvoiceVatMode,
+  vatModeToLegacyOptions,
 } from "@/lib/platform-invoices";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
@@ -255,6 +258,16 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     setForm((prev) => ({
       ...prev,
       invoice_options: normalizeInvoiceOptions({ ...prev.invoice_options, ...patch }),
+    }));
+  }
+
+  function handleVatModeChange(mode) {
+    setForm((prev) => ({
+      ...prev,
+      invoice_options: normalizeInvoiceOptions({
+        ...prev.invoice_options,
+        ...vatModeToLegacyOptions(mode),
+      }),
     }));
   }
 
@@ -562,6 +575,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const activeLines = (form.line_items ?? []).filter((row) => row.included !== false);
   const seller = normalizeSeller(form.seller);
   const invoiceOptions = normalizeInvoiceOptions(form.invoice_options);
+  const vatMode = resolveInvoiceVatMode(invoiceOptions);
+  const vatEnabled = vatMode !== "none";
   const currencySelectValue = platformInvoiceCurrencySelectValue(form.currency);
   const currencyUsesCustomInput = currencySelectValue === PLATFORM_INVOICE_CURRENCY_OTHER;
 
@@ -712,17 +727,6 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   onChange={(e) => updateForm({ due_date: e.target.value })}
                 />
               </Field>
-              <Field label="VAT rate (%)">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  className={inputClass}
-                  value={form.tax_rate}
-                  onChange={(e) => updateForm({ tax_rate: e.target.value })}
-                />
-              </Field>
               <Field label="Currency">
                 <SearchableSelect
                   className={inputClass}
@@ -764,21 +768,6 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 </p>
               </Field>
             </div>
-            <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="mt-0.5 rounded border-slate-300"
-                checked={Boolean(invoiceOptions.prices_include_vat)}
-                onChange={(e) => updateInvoiceOptions({ prices_include_vat: e.target.checked })}
-              />
-              <span>
-                <span className="font-medium">Line amounts include VAT</span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  On: Total due equals the sum of line amounts (VAT is extracted). Off: VAT is added on
-                  top of the line amounts.
-                </span>
-              </span>
-            </label>
             <p className="mt-2 text-xs text-slate-500">
               {PLATFORM_INVOICE_DESIGN_TEMPLATES.find((t) => t.id === form.template_id)?.description}
               {" · "}
@@ -846,7 +835,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               <div>
             <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Optional — show or hide branding, quantity, payment details, eTIMS, and watermark per invoice.
+                  Optional — show or hide branding, quantity, VAT, payment details, eTIMS, and watermark per invoice.
                 </p>
               </div>
               <button
@@ -916,6 +905,47 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 />
                 Watermark
               </label>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Line amounts &amp; VAT
+              </p>
+              <div className="mt-2 grid gap-2">
+                {PLATFORM_INVOICE_VAT_MODES.map((mode) => {
+                  const selected = vatMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => handleVatModeChange(mode.id)}
+                      className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                        selected
+                          ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold text-slate-900">{mode.label}</span>
+                      <span className="mt-0.5 block text-xs text-slate-500">{mode.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {vatEnabled ? (
+                <div className="mt-3">
+                  <Field label="VAT rate (%)">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      className={inputClass}
+                      value={form.tax_rate}
+                      onChange={(e) => updateForm({ tax_rate: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-3">
@@ -1169,39 +1199,41 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               ) : null}
             </div>
             <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
-              <div className="flex justify-between">
-                <span>Subtotal (ex. VAT)</span>
-                <span>
-                  {form.currency}{" "}
-                  {totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>
-                  VAT ({form.tax_rate}%
-                  {invoiceOptions.prices_include_vat ? " included" : ""})
-                </span>
-                <span>
-                  {form.currency}{" "}
-                  {totals.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="mt-1 flex justify-between font-semibold text-slate-900">
+              {vatEnabled ? (
+                <>
+                  <div className="flex justify-between">
+                    <span>Subtotal (ex. VAT)</span>
+                    <span>
+                      {form.currency}{" "}
+                      {totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>
+                      VAT ({form.tax_rate}%
+                      {vatMode === "inclusive" ? " included" : ""})
+                    </span>
+                    <span>
+                      {form.currency}{" "}
+                      {totals.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              <div className={`flex justify-between font-semibold text-slate-900 ${vatEnabled ? "mt-1" : ""}`}>
                 <span>Total due</span>
                 <span>
                   {form.currency}{" "}
                   {totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              {invoiceOptions.prices_include_vat ? (
-                <p className="mt-2 text-xs text-slate-500">
-                  Total due matches the sum of your line amounts.
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-slate-500">
-                  Total due = subtotal + VAT (line amounts are exclusive of VAT).
-                </p>
-              )}
+              <p className="mt-2 text-xs text-slate-500">
+                {vatMode === "none"
+                  ? "No VAT on this invoice — total due equals the sum of line amounts."
+                  : vatMode === "inclusive"
+                    ? "Total due matches the sum of your line amounts (VAT included)."
+                    : "Total due = subtotal + VAT (line amounts are exclusive of VAT)."}
+              </p>
             </div>
           </section>
 
