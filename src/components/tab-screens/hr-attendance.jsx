@@ -40,6 +40,7 @@ import { canApproveLatenessWaivers } from "@/lib/approval-permissions";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
+  classifyTodayAttendanceSessions,
   elapsedAttendanceHours,
   formatHoursWorked,
   formatTimeForApi,
@@ -455,53 +456,33 @@ export function HrAttendanceScreen({ mode = "today" }) {
       const dayDate = calendarDateInTimezone(new Date(sessionTimestamp(sorted[0]?.clock_in_at)))
         ?? todayCalendarDate();
       const lunch = source === "field_rep" ? false : shiftLunchRequired(employee?.shift, dayDate);
-      const first = sorted[0];
-      const second = sorted[1];
-      const last = sorted[sorted.length - 1];
-      let lunchOut = null;
-      let lunchIn = null;
-      let clockOut = last?.clock_out_at ?? null;
-      if (lunch) {
-        if (second && first?.clock_out_at) {
-          lunchOut = first.clock_out_at;
-          lunchIn = second?.clock_in_at ?? null;
-          clockOut = last?.clock_out_at ?? null;
-        } else if (first?.clock_out_at) {
-          if (isEndOfDayClockOut(first.clock_out_at, employee?.shift, dayDate)) {
-            clockOut = first.clock_out_at;
-          } else {
-            lunchOut = first.clock_out_at;
-            clockOut = null;
-          }
-        } else {
-          clockOut = null;
-        }
-      }
-      let status = "on_shift";
-      if (clockOut) status = "clocked_out";
-      else if (lunchOut && !lunchIn) status = "at_lunch";
+      const shiftEndMinutes = shiftHoursForDate(employee?.shift, dayDate).end_minutes;
+      const punches = classifyTodayAttendanceSessions(sorted, {
+        lunchRequired: lunch,
+        shiftEndMinutes,
+      });
       const hoursWorked = elapsedAttendanceHours({
-        clockIn: first?.clock_in_at ?? null,
-        clockOut,
-        lunchOut,
-        lunchIn,
+        clockIn: punches.clockIn,
+        clockOut: punches.clockOut,
+        lunchOut: punches.lunchOut,
+        lunchIn: punches.lunchIn,
         lunchRequired: lunch,
         nowMs,
       });
       return {
-        rowKey: `${first?.employee_id}:${source}`,
-        employeeId: first?.employee_id,
+        rowKey: `${sorted[0]?.employee_id}:${source}`,
+        employeeId: sorted[0]?.employee_id,
         employee,
         sessions: sorted,
-        lastSession: last,
-        clockIn: first?.clock_in_at ?? null,
-        lunchOut,
-        lunchIn,
-        clockOut,
+        lastSession: sorted[sorted.length - 1],
+        clockIn: punches.clockIn,
+        lunchOut: punches.lunchOut,
+        lunchIn: punches.lunchIn,
+        clockOut: punches.clockOut,
         lunchRequired: lunch,
-        status,
+        status: punches.status,
         hoursWorked,
-        device: last?.device_identifier || first?.device_identifier,
+        device: sorted[sorted.length - 1]?.device_identifier || sorted[0]?.device_identifier,
         source,
         attendanceRecord: null,
       };
@@ -658,22 +639,6 @@ export function HrAttendanceScreen({ mode = "today" }) {
     return Number(match[1]) * 60 + Number(match[2]);
   }
 
-  function sessionMinutes(value) {
-    if (!value) return null;
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-KE", {
-      timeZone: "Africa/Nairobi",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(parsed);
-    const hour = Number(parts.find((p) => p.type === "hour")?.value);
-    const minute = Number(parts.find((p) => p.type === "minute")?.value);
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-    return hour * 60 + minute;
-  }
-
   function shiftHoursForDate(shift, dateStr) {
     if (!shift) {
       return { lunch_required: true, end_minutes: 17 * 60 };
@@ -709,14 +674,6 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
   function shiftLunchRequired(shift, dateStr) {
     return shiftHoursForDate(shift, dateStr).lunch_required;
-  }
-
-  function isEndOfDayClockOut(clockOutAt, shift, dateStr) {
-    const punch = sessionMinutes(clockOutAt);
-    if (punch == null) return false;
-    const end = shiftHoursForDate(shift, dateStr).end_minutes;
-    if (punch >= end - 60) return true;
-    return Math.floor(punch / 60) >= 16;
   }
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);

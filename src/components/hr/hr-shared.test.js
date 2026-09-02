@@ -2,11 +2,57 @@ import { describe, it, expect } from "vitest";
 import {
   buildEmployeeBody,
   buildPayrollAttendanceNote,
+  classifyTodayAttendanceSessions,
   employeeToForm,
   EMPTY_EMPLOYEE_FORM,
   payableAmountDaysHint,
   payrollBreakdownSections,
 } from "@/components/hr/hr-shared";
+
+describe("classifyTodayAttendanceSessions", () => {
+  it("maps a 17:02 home punch to clock out, not lunch, even with a duplicate morning open", () => {
+    const punches = classifyTodayAttendanceSessions(
+      [
+        {
+          clock_in_at: "2026-09-02T08:04:00+03:00",
+          clock_out_at: "2026-09-02T17:02:00+03:00",
+        },
+        {
+          clock_in_at: "2026-09-02T08:04:20+03:00",
+          clock_out_at: null,
+        },
+      ],
+      { lunchRequired: true, shiftEndMinutes: 17 * 60 },
+    );
+
+    expect(punches.clockIn).toBe("2026-09-02T08:04:00+03:00");
+    expect(punches.lunchOut).toBeNull();
+    expect(punches.lunchIn).toBeNull();
+    expect(punches.clockOut).toBe("2026-09-02T17:02:00+03:00");
+    expect(punches.status).toBe("clocked_out");
+  });
+
+  it("still maps a real lunch break across two sessions", () => {
+    const punches = classifyTodayAttendanceSessions(
+      [
+        {
+          clock_in_at: "2026-09-02T08:05:00+03:00",
+          clock_out_at: "2026-09-02T13:02:00+03:00",
+        },
+        {
+          clock_in_at: "2026-09-02T14:01:00+03:00",
+          clock_out_at: "2026-09-02T17:10:00+03:00",
+        },
+      ],
+      { lunchRequired: true, shiftEndMinutes: 17 * 60 },
+    );
+
+    expect(punches.lunchOut).toBe("2026-09-02T13:02:00+03:00");
+    expect(punches.lunchIn).toBe("2026-09-02T14:01:00+03:00");
+    expect(punches.clockOut).toBe("2026-09-02T17:10:00+03:00");
+    expect(punches.status).toBe("clocked_out");
+  });
+});
 
 describe("hr-shared pays_sha", () => {
   it("includes pays_sha in API body when true", () => {

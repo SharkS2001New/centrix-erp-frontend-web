@@ -1524,6 +1524,136 @@ function timestampMs(value) {
   return parsed.getTime();
 }
 
+function attendanceSessionMs(value) {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function attendanceSessionMinutesNairobi(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(parsed);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
+}
+
+/**
+ * End-of-day clock-out: within 60 minutes of shift end, or at/after 16:00.
+ * Used so a 17:02 home punch is not shown as lunch out.
+ */
+export function isEndOfDayAttendanceClockOut(clockOutAt, shiftEndMinutes = 17 * 60) {
+  const punch = attendanceSessionMinutesNairobi(clockOutAt);
+  if (punch == null) return false;
+  const end = Number.isFinite(shiftEndMinutes) ? shiftEndMinutes : 17 * 60;
+  if (punch >= end - 60) return true;
+  return Math.floor(punch / 60) >= 16;
+}
+
+/**
+ * Map one employee's clock sessions for a day onto Clock in / Lunch out / Lunch in / Clock out.
+ * Ignores duplicate morning opens that would otherwise paint a 17:02 home punch as lunch.
+ *
+ * @param {Array<{ clock_in_at?: mixed, clock_out_at?: mixed }>} sessions
+ * @param {{ lunchRequired?: boolean, shiftEndMinutes?: number }} [options]
+ */
+export function classifyTodayAttendanceSessions(sessions = [], options = {}) {
+  const lunchRequired = options.lunchRequired !== false;
+  const shiftEndMinutes = options.shiftEndMinutes ?? 17 * 60;
+  const sorted = [...(sessions ?? [])].sort(
+    (a, b) => (attendanceSessionMs(a?.clock_in_at) ?? 0) - (attendanceSessionMs(b?.clock_in_at) ?? 0),
+  );
+  const empty = {
+    clockIn: null,
+    lunchOut: null,
+    lunchIn: null,
+    clockOut: null,
+    status: "on_shift",
+  };
+  if (!sorted.length) return empty;
+
+  const first = sorted[0];
+  const clockIn = first?.clock_in_at ?? null;
+  const closed = sorted.filter((s) => s?.clock_out_at);
+  const eodClosed = [...closed]
+    .reverse()
+    .find((s) => isEndOfDayAttendanceClockOut(s.clock_out_at, shiftEndMinutes));
+
+  if (!lunchRequired) {
+    const clockOut = eodClosed?.clock_out_at ?? closed[closed.length - 1]?.clock_out_at ?? null;
+    return {
+      clockIn,
+      lunchOut: null,
+      lunchIn: null,
+      clockOut,
+      status: clockOut ? "clocked_out" : "on_shift",
+    };
+  }
+
+  const second = sorted[1];
+  const firstOutMs = attendanceSessionMs(first?.clock_out_at);
+  const secondInMs = attendanceSessionMs(second?.clock_in_at);
+  const looksLikeLunch =
+    first?.clock_out_at &&
+    second?.clock_in_at &&
+    !isEndOfDayAttendanceClockOut(first.clock_out_at, shiftEndMinutes) &&
+    secondInMs != null &&
+    firstOutMs != null &&
+    secondInMs > firstOutMs &&
+    secondInMs - firstOutMs <= 4 * 60 * 60 * 1000;
+
+  if (looksLikeLunch) {
+    const last = sorted[sorted.length - 1];
+    const clockOut = last?.clock_out_at ?? null;
+    return {
+      clockIn,
+      lunchOut: first.clock_out_at,
+      lunchIn: second.clock_in_at,
+      clockOut,
+      status: clockOut ? "clocked_out" : "on_shift",
+    };
+  }
+
+  if (eodClosed) {
+    return {
+      clockIn,
+      lunchOut: null,
+      lunchIn: null,
+      clockOut: eodClosed.clock_out_at,
+      status: "clocked_out",
+    };
+  }
+
+  if (first?.clock_out_at) {
+    if (isEndOfDayAttendanceClockOut(first.clock_out_at, shiftEndMinutes)) {
+      return {
+        clockIn,
+        lunchOut: null,
+        lunchIn: null,
+        clockOut: first.clock_out_at,
+        status: "clocked_out",
+      };
+    }
+    return {
+      clockIn,
+      lunchOut: first.clock_out_at,
+      lunchIn: null,
+      clockOut: null,
+      status: "at_lunch",
+    };
+  }
+
+  return { ...empty, clockIn };
+}
+
 /**
  * Elapsed hours on premises: clock-in → clock-out (or now), minus lunch when both
  * lunch-out and lunch-in exist. While at lunch, counts only up to lunch-out.
