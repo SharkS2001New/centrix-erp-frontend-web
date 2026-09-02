@@ -35,6 +35,47 @@ export const PLATFORM_INVOICE_STATUSES = [
   { id: "void", label: "Void" },
 ];
 
+/** Common invoice currencies — external customers may use any ISO-style code via “Other”. */
+export const PLATFORM_INVOICE_CURRENCIES = [
+  { code: "KES", label: "KES — Kenyan Shilling" },
+  { code: "USD", label: "USD — US Dollar" },
+  { code: "EUR", label: "EUR — Euro" },
+  { code: "GBP", label: "GBP — British Pound" },
+  { code: "UGX", label: "UGX — Ugandan Shilling" },
+  { code: "TZS", label: "TZS — Tanzanian Shilling" },
+  { code: "RWF", label: "RWF — Rwandan Franc" },
+  { code: "ZAR", label: "ZAR — South African Rand" },
+  { code: "AUD", label: "AUD — Australian Dollar" },
+  { code: "CAD", label: "CAD — Canadian Dollar" },
+  { code: "CHF", label: "CHF — Swiss Franc" },
+  { code: "INR", label: "INR — Indian Rupee" },
+  { code: "AED", label: "AED — UAE Dirham" },
+  { code: "SAR", label: "SAR — Saudi Riyal" },
+];
+
+export const PLATFORM_INVOICE_CURRENCY_OTHER = "__other__";
+
+export function normalizeInvoiceCurrency(currency, fallback = "KES") {
+  const code = String(currency ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+  return code || fallback;
+}
+
+export function isKnownPlatformInvoiceCurrency(currency) {
+  const code = normalizeInvoiceCurrency(currency, "");
+  if (!code) return false;
+  return PLATFORM_INVOICE_CURRENCIES.some((row) => row.code === code);
+}
+
+export function platformInvoiceCurrencySelectValue(currency) {
+  return isKnownPlatformInvoiceCurrency(currency)
+    ? normalizeInvoiceCurrency(currency)
+    : PLATFORM_INVOICE_CURRENCY_OTHER;
+}
+
 /** Print font presets — super admin can override template typography. */
 export const PLATFORM_INVOICE_FONT_FAMILIES = [
   { id: "template", label: "Match design template" },
@@ -742,6 +783,7 @@ export function invoiceFormToPayload(form) {
   const payload = {
     ...form,
     organization_id: form.organization_id ? Number(form.organization_id) : null,
+    currency: normalizeInvoiceCurrency(form.currency),
     seller: normalizeSeller(form.seller),
     invoice_options: invoiceOptions,
     line_items: lineItems,
@@ -763,7 +805,7 @@ export function invoiceRecordToForm(record) {
     organization_id: record.organization_id ? String(record.organization_id) : "",
     status: record.status ?? "draft",
     template_id: record.template_id ?? "modern",
-    currency: record.currency ?? "KES",
+    currency: normalizeInvoiceCurrency(record.currency),
     issue_date: record.issue_date?.slice?.(0, 10) ?? record.issue_date ?? todayIsoDate(),
     due_date: record.due_date?.slice?.(0, 10) ?? record.due_date ?? "",
     bill_to_name: record.bill_to_name ?? "",

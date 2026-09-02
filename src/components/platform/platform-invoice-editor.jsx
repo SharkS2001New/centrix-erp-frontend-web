@@ -8,10 +8,15 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   PLATFORM_BILLING_MODULE_GROUPS,
+  PLATFORM_INVOICE_CURRENCIES,
+  PLATFORM_INVOICE_CURRENCY_OTHER,
   PLATFORM_INVOICE_CUSTOMER_KINDS,
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
   PLATFORM_INVOICE_SPACING,
+  isKnownPlatformInvoiceCurrency,
+  normalizeInvoiceCurrency,
+  platformInvoiceCurrencySelectValue,
   buildPlatformBillingSummaries,
   calculateInvoiceTotals,
   emptyPlatformInvoiceForm,
@@ -386,6 +391,10 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
       notifyError("Enter the bill-to customer name.");
       return null;
     }
+    if (!normalizeInvoiceCurrency(form.currency, "")) {
+      notifyError("Choose a currency or enter a custom currency code.");
+      return null;
+    }
     const billedLines = (form.line_items ?? []).filter(
       (row) => row.included !== false && String(row.description ?? "").trim(),
     );
@@ -553,6 +562,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const activeLines = (form.line_items ?? []).filter((row) => row.included !== false);
   const seller = normalizeSeller(form.seller);
   const invoiceOptions = normalizeInvoiceOptions(form.invoice_options);
+  const currencySelectValue = platformInvoiceCurrencySelectValue(form.currency);
+  const currencyUsesCustomInput = currencySelectValue === PLATFORM_INVOICE_CURRENCY_OTHER;
 
   return (
     <div className="space-y-4">
@@ -711,6 +722,46 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   value={form.tax_rate}
                   onChange={(e) => updateForm({ tax_rate: e.target.value })}
                 />
+              </Field>
+              <Field label="Currency">
+                <SearchableSelect
+                  className={inputClass}
+                  value={currencySelectValue}
+                  nativeEvent
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next === PLATFORM_INVOICE_CURRENCY_OTHER) {
+                      updateForm({
+                        currency: isKnownPlatformInvoiceCurrency(form.currency)
+                          ? ""
+                          : normalizeInvoiceCurrency(form.currency, ""),
+                      });
+                      return;
+                    }
+                    updateForm({ currency: next });
+                  }}
+                  options={[
+                    ...PLATFORM_INVOICE_CURRENCIES.map((row) => ({
+                      value: row.code,
+                      label: row.label,
+                    })),
+                    { value: PLATFORM_INVOICE_CURRENCY_OTHER, label: "Other (type code)" },
+                  ]}
+                />
+                {currencyUsesCustomInput ? (
+                  <input
+                    className={`${inputClass} mt-2`}
+                    value={form.currency ?? ""}
+                    onChange={(e) =>
+                      updateForm({ currency: normalizeInvoiceCurrency(e.target.value, "") })
+                    }
+                    placeholder="e.g. EUR, MUR"
+                    maxLength={8}
+                  />
+                ) : null}
+                <p className="mt-1 text-xs text-slate-500">
+                  Centrix tenants usually use KES. External customers can bill in any currency.
+                </p>
               </Field>
             </div>
             <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-700">

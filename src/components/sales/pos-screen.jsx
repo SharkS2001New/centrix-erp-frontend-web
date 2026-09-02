@@ -16245,6 +16245,7 @@ export function PosScreen({ standalone = false }) {
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
                   picksDisabled={posSearchSuspended}
+                  dropdownSuppressed={posOverlayBlocksScan}
                 />
               )}
               <div className="space-y-1">
@@ -16838,6 +16839,7 @@ export function PosScreen({ standalone = false }) {
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
                     picksDisabled={posSearchSuspended}
+                    dropdownSuppressed={posOverlayBlocksScan}
                   />
                 }
                 qtyRef={qtyInputRef}

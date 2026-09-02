@@ -80,6 +80,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   disabled = false,
   /** Blocks pick / Enter / barcode only — typing stays enabled (avoids mid-search wipe). */
   picksDisabled = false,
+  /** Hide results while a modal owns the screen (payment, float, etc.). */
+  dropdownSuppressed = false,
   placeholder = "Search by product name or code…",
   inputRef = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
@@ -133,7 +135,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   useImperativeHandle(ref, () => ({
+    /** Programmatic hide (overlay/focus churn) — must not block results for an active query. */
     closeDropdown() {
+      setOpen(false);
+      setHighlight(-1);
+    },
+    /** Cashier dismissed results (Esc) while keeping the typed query. */
+    dismissDropdown() {
       setUserDismissed(true);
       setOpen(false);
       setHighlight(-1);
@@ -222,7 +230,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return filtered;
   }, [results, draftQuery, searching]);
   const dropdownActive = hasActiveQuery ? !userDismissed : open && !inputLocked;
-  const showDropdown = dropdownActive;
+  const showDropdown = dropdownActive && !dropdownSuppressed;
 
   useEffect(() => {
     if (!hasActiveQuery) {
@@ -251,9 +259,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }, [visibleResults]);
 
   useEffect(() => {
-    if (!hasActiveQuery || userDismissed) return;
-    setOpen(true);
-  }, [hasActiveQuery, visibleResults, searching, draftQuery, userDismissed]);
+    if (!hasActiveQuery || userDismissed || dropdownSuppressed) return;
+    if (visibleResults.length > 0 || searching) setOpen(true);
+  }, [hasActiveQuery, visibleResults, searching, draftQuery, userDismissed, dropdownSuppressed]);
 
   useEffect(() => {
     if (!dropdownActive || highlight < 0 || !visibleResults.length) return;
@@ -389,7 +397,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      if (open) {
+      if (open || (hasActiveQuery && visibleResults.length > 0)) {
         setUserDismissed(true);
         setOpen(false);
         setHighlight(-1);
