@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import {
@@ -54,9 +55,11 @@ import { useConfirm } from "@/lib/use-confirm";
 export function HrPayrollScreen() {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const admin = isAdminUser(user);
+  const canDeletePayrollRuns =
+    admin || hasPermission(P.hr.manage) || hasPermission(P.hr.payroll.create);
   const { runBlockingTask, overlayNode: deleteWaitOverlay, busy: deleteBusy } = useBlockingWait(
     "Deleting payroll…",
   );
@@ -564,7 +567,7 @@ export function HrPayrollScreen() {
                   <th className="px-4 py-2.5 text-right">Gross</th>
                   <th className="px-4 py-2.5 text-right">Net</th>
                   <th className="px-4 py-2.5">Status</th>
-                  <th className="w-[70px] px-4 py-2.5">Action</th>
+                  <th className="w-[100px] px-4 py-2.5">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -604,7 +607,7 @@ export function HrPayrollScreen() {
                             >
                               <ViewIcon />
                             </IconButton>
-                            {admin && payrollRunCanDelete(run) && (
+                            {canDeletePayrollRuns && payrollRunCanDelete(run) ? (
                               <IconButton
                                 label={deletingRunId === run.id ? "Deleting…" : "Delete run"}
                                 disabled={deleteBusy}
@@ -612,7 +615,7 @@ export function HrPayrollScreen() {
                               >
                                 <TrashIcon />
                               </IconButton>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>

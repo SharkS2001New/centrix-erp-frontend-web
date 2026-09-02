@@ -87,6 +87,7 @@ export function HrPayrollRunsIdScreen() {
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
   const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
+  const canDeletePayrollRuns = admin || canProcess;
   const runId = Number(params.id);
 
   const hrSettings = useMemo(
@@ -731,7 +732,7 @@ export function HrPayrollRunsIdScreen() {
                   </Link>
                 </>
               ) : null}
-              {admin && payrollRunCanDelete(run) ? (
+              {canDeletePayrollRuns && payrollRunCanDelete(run) ? (
                 <button
                   type="button"
                   onClick={deleteRun}
@@ -740,7 +741,7 @@ export function HrPayrollRunsIdScreen() {
                 >
                   {deleteBusy ? "Deleting…" : "Delete run"}
                 </button>
-              ) : admin ? (
+              ) : canDeletePayrollRuns && !payrollRunCanDelete(run) ? (
                 <p className="max-w-xs text-right text-xs text-slate-500">
                   {payrollRunDeleteLockHint(run)}
                 </p>
