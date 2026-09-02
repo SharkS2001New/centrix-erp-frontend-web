@@ -1,4 +1,5 @@
 import { PLATFORM_BILLING_MODULES } from "@/lib/platform-invoices";
+import { parseApiDateValue } from "@/lib/dashboard-dates";
 import {
   PROVISIONABLE_WORKSPACES,
   appIdsForIndustry,
@@ -369,8 +370,8 @@ export function formatBillingMoney(amount, currency = "KES") {
 
 export function formatBillingDate(value) {
   if (!value) return "—";
-  const d = new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return String(value);
+  const d = parseApiDateValue(value);
+  if (!d) return String(value);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 

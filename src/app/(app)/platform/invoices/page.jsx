@@ -9,6 +9,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { useConfirm } from "@/lib/use-confirm";
 import { printPlatformInvoice } from "@/lib/platform-invoice-print";
+import { formatBillingDate } from "@/lib/platform-billing";
 
 const STATUS_STYLES = {
   draft: "bg-slate-100 text-slate-700",
@@ -111,7 +112,7 @@ export default function PlatformInvoicesPage() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-5 py-3 text-slate-600">{invoice.issue_date?.slice?.(0, 10) ?? invoice.issue_date}</td>
+                    <td className="px-5 py-3 text-slate-600">{formatBillingDate(invoice.issue_date)}</td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[invoice.status] ?? STATUS_STYLES.draft}`}>
                         {invoice.status}

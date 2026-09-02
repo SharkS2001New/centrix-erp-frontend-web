@@ -1,3 +1,10 @@
+import {
+  apiDateToInputValue,
+  parseApiDateValue,
+  parseLocalDateInputValue,
+  toLocalDateInputValue,
+} from "@/lib/dashboard-dates";
+
 /** Built-in platform invoice design templates (super admin billing). */
 export const PLATFORM_INVOICE_DESIGN_TEMPLATES = [
   { id: "modern", label: "Modern", description: "Clean layout with blue accent header — Stripe-inspired." },
@@ -341,7 +348,7 @@ export function invoiceSpacing(spacingId) {
 }
 
 export function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateInputValue();
 }
 
 export const DEFAULT_INVOICE_OPTIONS = {
@@ -386,8 +393,8 @@ export function sampleInvoiceForDesignPreview(templateId = "modern", overrides =
     invoice_number: "PLT-PREVIEW-001",
     status: "draft",
     currency: "KES",
-    issue_date: new Date().toISOString().slice(0, 10),
-    due_date: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+    issue_date: todayIsoDate(),
+    due_date: addDaysIsoDate(todayIsoDate(), 14),
     bill_to_name: "Sample Customer Ltd",
     bill_to_email: "billing@example.com",
     bill_to_phone: "0700 000 000",
@@ -759,9 +766,10 @@ export function normalizeSeller(seller) {
 }
 
 export function addDaysIsoDate(isoDate, days) {
-  const d = new Date(`${isoDate}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const d = parseLocalDateInputValue(isoDate) ?? parseApiDateValue(isoDate);
+  if (!d) return isoDate;
+  d.setDate(d.getDate() + Number(days));
+  return toLocalDateInputValue(d);
 }
 
 export function emptyPlatformInvoiceForm(overrides = {}) {
@@ -883,8 +891,8 @@ export function invoiceRecordToForm(record) {
     status: record.status ?? "draft",
     template_id: record.template_id ?? "modern",
     currency: normalizeInvoiceCurrency(record.currency),
-    issue_date: record.issue_date?.slice?.(0, 10) ?? record.issue_date ?? todayIsoDate(),
-    due_date: record.due_date?.slice?.(0, 10) ?? record.due_date ?? "",
+    issue_date: apiDateToInputValue(record.issue_date) || todayIsoDate(),
+    due_date: apiDateToInputValue(record.due_date),
     bill_to_name: record.bill_to_name ?? "",
     bill_to_email: record.bill_to_email ?? "",
     bill_to_phone: record.bill_to_phone ?? "",

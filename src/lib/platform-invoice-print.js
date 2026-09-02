@@ -1,4 +1,5 @@
 import { escapeHtml } from "@/lib/sale-document-print-shared";
+import { parseApiDateValue } from "@/lib/dashboard-dates";
 import {
   activeInvoiceLineItems,
   calculateInvoiceTotals,
@@ -36,8 +37,8 @@ function formatMoney(amount, currency = "KES") {
 
 function formatDate(value) {
   if (!value) return "—";
-  const d = new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return value;
+  const d = parseApiDateValue(value);
+  if (!d) return String(value);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 

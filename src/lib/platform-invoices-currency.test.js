@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateInvoiceTotals,
   invoiceFormToPayload,
+  invoiceRecordToForm,
   invoiceVatEnabled,
   invoiceShowsLineNumbers,
   isKnownPlatformInvoiceCurrency,
@@ -81,5 +82,22 @@ describe("platform invoice currency", () => {
     ];
     expect(invoiceShowsLineNumbers(one)).toBe(false);
     expect(invoiceShowsLineNumbers(two)).toBe(true);
+  });
+
+  it("keeps invoice issue date when API returns Nairobi midnight as UTC", () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Africa/Nairobi";
+    try {
+      const form = invoiceRecordToForm({
+        issue_date: "2026-09-01T21:00:00.000000Z",
+        due_date: "2026-10-01T21:00:00.000000Z",
+        line_items: [{ description: "Hosting", quantity: 1, unit_price: 100, included: true }],
+      });
+      expect(form.issue_date).toBe("2026-09-02");
+      expect(form.due_date).toBe("2026-10-02");
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
   });
 });

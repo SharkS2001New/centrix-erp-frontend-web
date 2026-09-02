@@ -1,3 +1,20 @@
+/** Parse API/form billing date (YYYY-MM-DD or ISO datetime) as local calendar day. */
+export function parseApiDateValue(value) {
+  if (value == null || value === "") return null;
+  const raw = String(value).trim();
+  const plain = parseLocalDateInputValue(raw);
+  if (plain) return plain;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+}
+
+/** Normalize API datetime or YYYY-MM-DD to a date input value. */
+export function apiDateToInputValue(value) {
+  const d = parseApiDateValue(value);
+  return d ? toLocalDateInputValue(d) : "";
+}
+
 /** Format a Date as YYYY-MM-DD in the local timezone (avoid UTC shift from toISOString). */
 export function toLocalDateInputValue(date = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
