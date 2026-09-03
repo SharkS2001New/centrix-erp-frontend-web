@@ -51,8 +51,9 @@ export function HrCrudPage({
   addButtonLabel = "Add new",
   drawerCreateTitle,
   renderRowActions,
-  /** Optional controls rendered inside the list FilterToolbar (before search). */
-  filterSlot = null,
+      /** Optional controls rendered inside the list FilterToolbar (before search).
+       *  Pass a node, or a function `({ reload, loading }) => node` for Apply/Filter buttons. */
+      filterSlot = null,
   exportEnabled = true,
   exportFilename,
   /** Report title for PDF/CSV (defaults to page title). */
@@ -254,7 +255,7 @@ export function HrCrudPage({
           </div>
         ) : null}
         <FilterToolbar>
-          {filterSlot}
+          {typeof filterSlot === "function" ? filterSlot({ reload: load, loading }) : filterSlot}
           {showSearch ? (
             <SearchInput
               value={search}

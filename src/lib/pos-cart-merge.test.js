@@ -134,6 +134,53 @@ describe("mergePreservedOptimisticLines", () => {
     expect(mergePreservedOptimisticLines(server, prev)).toEqual(server);
   });
 
+  it("keeps a second same-SKU optimistic when combine is off", () => {
+    const server = [
+      { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
+    ];
+    const prev = [
+      { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
+      {
+        id: "pending-10",
+        product_code: "SUGAR",
+        quantity: 10,
+        amount: 1300,
+        on_wholesale_retail: 0,
+        _optimistic: true,
+      },
+    ];
+    const merged = mergePreservedOptimisticLines(server, prev, {
+      combineIdenticalLines: false,
+    });
+    expect(merged).toHaveLength(2);
+    expect(merged.map((line) => line.quantity)).toEqual([2, 10]);
+    expect(merged[1]._optimistic).toBe(true);
+  });
+
+  it("drops the matching optimistic after a combine-off POST lands", () => {
+    const server = [
+      { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
+      { id: 2, product_code: "SUGAR", quantity: 10, amount: 1300, on_wholesale_retail: 0 },
+    ];
+    const prev = [
+      { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
+      {
+        id: "pending-10",
+        product_code: "SUGAR",
+        quantity: 10,
+        amount: 1300,
+        on_wholesale_retail: 0,
+        _optimistic: true,
+      },
+    ];
+    const merged = mergePreservedOptimisticLines(server, prev, {
+      combineIdenticalLines: false,
+    });
+    expect(merged).toHaveLength(2);
+    expect(merged.every((line) => !line._optimistic)).toBe(true);
+    expect(merged.map((line) => line.quantity)).toEqual([2, 10]);
+  });
+
   it("collapses duplicate server rows for the same SKU", () => {
     const server = [
       { id: 1, product_code: "BANJAB", quantity: 2, amount: 7000, on_wholesale_retail: 0 },
@@ -196,6 +243,45 @@ describe("applyInPlaceLineSwap", () => {
     expect(result).toHaveLength(1);
     expect(result[0].product_code).toBe("NEW");
     expect(Number(result[0].quantity)).toBe(2);
+  });
+
+  it("keeps an existing same-SKU sibling when combine is off", () => {
+    const lines = [
+      {
+        id: 1,
+        update_code: "L1",
+        product_code: "RICE",
+        on_wholesale_retail: 0,
+        quantity: 1,
+        unit_price: 10,
+        amount: 10,
+      },
+      {
+        id: 2,
+        update_code: "L2",
+        product_code: "SUGAR",
+        on_wholesale_retail: 0,
+        quantity: 2,
+        unit_price: 100,
+        amount: 200,
+      },
+    ];
+    const nextLine = {
+      id: 1,
+      update_code: "L1",
+      product_code: "SUGAR",
+      on_wholesale_retail: 0,
+      quantity: 10,
+      unit_price: 130,
+      amount: 1300,
+    };
+    const { lines: result } = applyInPlaceLineSwap(lines, {
+      targetLine: lines[0],
+      nextLine,
+      combineIdenticalLines: false,
+    });
+    expect(result).toHaveLength(2);
+    expect(result.map((line) => line.quantity).sort((a, b) => a - b)).toEqual([2, 10]);
   });
 });
 
@@ -419,6 +505,51 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines[0].id).toBe(1);
     expect(next.lines[0].update_code).toBe("u1");
     expect(next.lines[0]._optimistic).toBe(true);
+  });
+
+  it("does not drop a same-SKU sibling when editing with combine off", () => {
+    const prev = {
+      id: 10,
+      update_no: 4,
+      lines: [
+        {
+          id: 1,
+          update_code: "u1",
+          product_code: "SUGAR",
+          quantity: 2,
+          amount: 280,
+          on_wholesale_retail: 0,
+        },
+        {
+          id: 2,
+          update_code: "u2",
+          product_code: "SUGAR",
+          quantity: 10,
+          amount: 1300,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "SUGAR", product_name: "Sugar" },
+      {
+        product_code: "SUGAR",
+        quantity: 3,
+        unit_price: 140,
+        display_unit_price: 140,
+        uom: "KG",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 420 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, {
+      editingRef: "u1",
+      combineIdenticalLines: false,
+    });
+    expect(next.lines).toHaveLength(2);
+    expect(next.lines.map((line) => line.quantity).sort((a, b) => a - b)).toEqual([3, 10]);
   });
 
   it("falls back to editingId when update_code no longer matches (previous-order restore)", () => {

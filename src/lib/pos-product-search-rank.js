@@ -270,14 +270,21 @@ export function matchKindsForIndexed(hay, query, options = {}) {
     if (hay.nameCompact.includes(q.compact) || hay.codeCompact.includes(q.compact)) {
       return ["compact_match"];
     }
-    // One extra letter past a name token (yaba → yabal) — keep the row while refining.
+    // Keep the row while refining a name token (yaba→yabal, kamand→kamande).
+    // Allow 1–2 extra letters past a catalog word, or query as a near-prefix of a word.
     for (const word of hay.words ?? []) {
-      if (
-        word.length >= 3 &&
-        q.compact.startsWith(word) &&
-        q.compact.length - word.length === 1
-      ) {
+      if (word.length < 3) continue;
+      if (q.compact.startsWith(word) && q.compact.length - word.length <= 2) {
         return ["word_prefix"];
+      }
+      if (word.startsWith(q.compact) && word.length - q.compact.length <= 2) {
+        return ["word_prefix"];
+      }
+      if (
+        Math.abs(word.length - q.compact.length) <= 2 &&
+        levenshteinDistance(q.compact, word) <= maxFuzzyDistance(q.compact)
+      ) {
+        return ["fuzzy_name"];
       }
     }
   }

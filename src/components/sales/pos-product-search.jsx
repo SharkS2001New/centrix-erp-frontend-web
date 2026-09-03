@@ -226,9 +226,12 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     const list = Array.isArray(results) ? results : [];
     if (!list.length) return [];
     const filtered = list.filter((product) => productMatchesPosSearch(product, q));
-    if (!filtered.length && searching && list.length) return list;
-    return filtered;
-  }, [results, draftQuery, searching]);
+    if (filtered.length) return filtered;
+    // Never blank the list mid-type. While debounce lags (searching=false) or a
+    // longer query is in flight, keep the last committed hits until searchProducts
+    // replaces them — otherwise yab→yabal / kamand→kamande blinks empty.
+    return list;
+  }, [results, draftQuery]);
   const dropdownActive = hasActiveQuery ? !userDismissed : open && !inputLocked;
   const showDropdown = dropdownActive && !dropdownSuppressed;
 

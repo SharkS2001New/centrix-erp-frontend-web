@@ -260,14 +260,14 @@ export function applyInPlaceLineSwap(
 
   list[idx] = nextLine;
   const mergeKey = cartLineMergeKey(nextLine);
-  const keptRef = cartLineRef(nextLine);
-  const filtered = list.filter((row, i) => {
-    if (i === idx) return true;
-    if (cartLineMergeKey(row) !== mergeKey) return true;
-    // Drop duplicate SKU rows — keep the swapped target row only.
-    if (keptRef != null && cartLineMatchesRef(row, keptRef)) return false;
-    return false;
-  });
+  const filtered =
+    combineIdenticalLines === false
+      ? list
+      : list.filter((row, i) => {
+          if (i === idx) return true;
+          // Drop duplicate SKU rows — keep the swapped target row only.
+          return cartLineMergeKey(row) !== mergeKey;
+        });
 
   return {
     idx,
@@ -304,21 +304,69 @@ export function mergePreservedOptimisticLines(
   { combineIdenticalLines = true, excludedLineRefs = null } = {},
 ) {
   const lines = filterCartLinesExcludedRefs(serverLines, excludedLineRefs);
-  for (const line of prevLines ?? []) {
-    if (!line?._optimistic) continue;
-    const already =
+  const optimisticPrev = (prevLines ?? []).filter((line) => line?._optimistic);
+  if (optimisticPrev.length === 0) {
+    return collapseCombineableCartLines(lines, { combineIdenticalLines });
+  }
+
+  if (combineIdenticalLines !== false) {
+    for (const line of optimisticPrev) {
+      const already =
+        (line?.id != null &&
+          !String(line.id).startsWith("pending-") &&
+          !String(line.id).startsWith("opt-") &&
+          lines.some((row) => String(row.id) === String(line.id))) ||
+        lines.some(
+          (row) =>
+            String(row.product_code) === String(line.product_code) &&
+            Number(row.on_wholesale_retail ?? 0) === Number(line.on_wholesale_retail ?? 0),
+        ) ||
+        lines.some((row) => String(cartLineRef(row)) === String(cartLineRef(line)));
+      if (!already) lines.push(line);
+    }
+    return collapseCombineableCartLines(lines, { combineIdenticalLines });
+  }
+
+  // Combine off: Sugar 2kg + Sugar 10kg are separate lines. Only drop an optimistic
+  // row when the server has "absorbed" it (more server rows for that SKU than the
+  // non-optimistic rows we already had) — never because the SKU merely exists.
+  const confirmedPrev = (prevLines ?? []).filter((line) => !line?._optimistic);
+  const serverCountByKey = new Map();
+  for (const row of lines) {
+    const key = cartLineMergeKey(row);
+    if (!key) continue;
+    serverCountByKey.set(key, (serverCountByKey.get(key) ?? 0) + 1);
+  }
+  const confirmedCountByKey = new Map();
+  for (const row of confirmedPrev) {
+    const key = cartLineMergeKey(row);
+    if (!key) continue;
+    confirmedCountByKey.set(key, (confirmedCountByKey.get(key) ?? 0) + 1);
+  }
+  const absorbedRemainingByKey = new Map();
+  for (const [key, serverCount] of serverCountByKey) {
+    const confirmed = confirmedCountByKey.get(key) ?? 0;
+    absorbedRemainingByKey.set(key, Math.max(0, serverCount - confirmed));
+  }
+
+  for (const line of optimisticPrev) {
+    const sameIdentity =
       (line?.id != null &&
         !String(line.id).startsWith("pending-") &&
         !String(line.id).startsWith("opt-") &&
         lines.some((row) => String(row.id) === String(line.id))) ||
-      lines.some(
-        (row) =>
-          String(row.product_code) === String(line.product_code) &&
-          Number(row.on_wholesale_retail ?? 0) === Number(line.on_wholesale_retail ?? 0),
-      ) ||
       lines.some((row) => String(cartLineRef(row)) === String(cartLineRef(line)));
-    if (!already) lines.push(line);
+    if (sameIdentity) continue;
+
+    const key = cartLineMergeKey(line);
+    const remaining = absorbedRemainingByKey.get(key) ?? 0;
+    if (remaining > 0) {
+      absorbedRemainingByKey.set(key, remaining - 1);
+      continue;
+    }
+    lines.push(line);
   }
+
   return collapseCombineableCartLines(lines, { combineIdenticalLines });
 }
 
@@ -596,13 +644,16 @@ export function applyOptimisticCartMutation(
     }
     if (idx >= 0) {
       replaceCartLineInPlace(lines, idx, optimisticLine);
-      // F12 bags↔kg: drop any other same-SKU row that now shares this mode.
-      const mergeKey = cartLineMergeKey(lines[idx]);
-      for (let i = lines.length - 1; i >= 0; i -= 1) {
-        if (i === idx) continue;
-        if (cartLineMergeKey(lines[i]) === mergeKey) {
-          lines.splice(i, 1);
-          if (i < idx) idx -= 1;
+      // When combine is on, F12 bags↔kg / edit must not leave a twin same-mode row.
+      // When off, Sugar 2kg + Sugar 10kg stay as siblings — never drop the other line.
+      if (combineIdenticalLines !== false) {
+        const mergeKey = cartLineMergeKey(lines[idx]);
+        for (let i = lines.length - 1; i >= 0; i -= 1) {
+          if (i === idx) continue;
+          if (cartLineMergeKey(lines[i]) === mergeKey) {
+            lines.splice(i, 1);
+            if (i < idx) idx -= 1;
+          }
         }
       }
     }

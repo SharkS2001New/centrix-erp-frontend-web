@@ -2219,6 +2219,8 @@ export function PosScreen({ standalone = false }) {
   const [selectedProductCode, setSelectedProductCode] = useState(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef(null);
+  /** Last query that painted non-empty hits — used to avoid wiping on refine misses. */
+  const lastHitsQueryRef = useRef("");
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const selectedProductRef = useRef(null);
@@ -5046,6 +5048,7 @@ export function PosScreen({ standalone = false }) {
   function resetProductSearchField() {
     productSearchRef.current?.clearDraft?.();
     updateSearchQuery("");
+    lastHitsQueryRef.current = "";
     setSearchResults([]);
   }
 
@@ -5417,14 +5420,31 @@ export function PosScreen({ standalone = false }) {
       const commitSearchResults = (list, { allowEmpty = false } = {}) => {
         if (list.length > 0) {
           committedNonEmpty = true;
+          lastHitsQueryRef.current = trimmed;
           setSearchResults((prev) => (sameSearchResultList(prev, list) ? prev : list));
           return;
         }
         if (!allowEmpty) return;
-        setSearchResults([]);
+        // Index/API often miss one extra letter (yab→yabal). Keep prior hits while
+        // the cashier is still refining that successful query.
+        setSearchResults((prev) => {
+          if (!prev?.length) {
+            lastHitsQueryRef.current = "";
+            return [];
+          }
+          const lastQ = String(lastHitsQueryRef.current ?? "").trim().toLowerCase();
+          const nextQ = trimmed.toLowerCase();
+          if (lastQ && nextQ.startsWith(lastQ)) {
+            const still = prev.filter((p) => productMatchesPosSearch(p, trimmed));
+            return still.length ? still : prev;
+          }
+          lastHitsQueryRef.current = "";
+          return [];
+        });
       };
 
       if (!trimmed) {
+        lastHitsQueryRef.current = "";
         setSearchResults([]);
         setSearching(false);
         return;
@@ -6301,14 +6321,29 @@ export function PosScreen({ standalone = false }) {
         ? liveCart
         : await ensureCart();
     // ensureCart may replace pending-fresh — re-paint so the row never blanks.
-    // Never stack a second optimistic row for the same add (pending-fresh id swap
+    // Never stack a second optimistic row for the *same* add (pending-fresh id swap
     // used to push BanjaB twice before the first POST landed).
-    const optimisticAddAlreadyPainted = (cartRef.current?.lines ?? []).some(
-      (line) =>
-        line?._optimistic &&
-        String(line.product_code) === String(product.product_code) &&
-        Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
-    );
+    // When combine is off, only treat *this* commit's optimistic token as painted —
+    // another Sugar line in flight must not block a second intentional add.
+    const optimisticAddAlreadyPainted = (() => {
+      const live = cartRef.current?.lines ?? [];
+      if (painted?.optimisticLine) {
+        const token = cartLineRef(painted.optimisticLine);
+        if (
+          token &&
+          live.some((line) => line?._optimistic && String(cartLineRef(line)) === String(token))
+        ) {
+          return true;
+        }
+        if (combineIdenticalLinesRef.current === false) return false;
+      }
+      return live.some(
+        (line) =>
+          line?._optimistic &&
+          String(line.product_code) === String(product.product_code) &&
+          Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
+      );
+    })();
     if (
       activeCart?.id &&
       !optimisticAddAlreadyPainted &&
@@ -8969,11 +9004,46 @@ export function PosScreen({ standalone = false }) {
           product_vat: lineProductVat(product, computed.lineAmount),
           uom: computed.uomLabel || existing.uom || product.package_name,
         };
+        // F12 bags↔kg used to leave a same-mode twin on screen (two Bags rows)
+        // because this paint path skipped collapse — commitCartLine then skipped
+        // optimistic twin-drop once the painted row already matched the edit.
+        const paintedLines = finalizeCartLineList(lines, {
+          combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        });
         const nextCart = isPreviousOrderEditSession(live)
-          ? withEditDraftDirty({ ...live, lines })
-          : { ...live, lines };
+          ? withEditDraftDirty({ ...live, lines: paintedLines })
+          : { ...live, lines: paintedLines };
         cartRef.current = nextCart;
         setCart(nextCart);
+
+        // After collapse, PATCH the surviving same-mode row (earlier twin may keep its id).
+        const surviving =
+          paintedLines.find(
+            (row) =>
+              String(row.product_code) === String(existing.product_code) &&
+              Number(row.on_wholesale_retail ?? 0) === Number(sessionIsRetail ? 1 : 0),
+          ) ??
+          paintedLines.find(
+            (row) =>
+              sameLineId(row.id, existing.id) ||
+              String(cartLineRef(row)) === String(cartLineRef(existing) ?? lineRef),
+          ) ??
+          existing;
+        const commitComputed =
+          surviving &&
+          Math.abs(Number(surviving.quantity ?? 0) - Number(computed.baseQty)) > 0.0001
+            ? {
+                ...computed,
+                baseQty: Number(surviving.quantity),
+                lineAmount: Number(surviving.amount ?? computed.lineAmount),
+                unitPricePerBase: Number(
+                  surviving.unit_price ?? computed.unitPricePerBase,
+                ),
+                displayUnitPrice: Number(
+                  surviving.display_unit_price ?? computed.displayUnitPrice,
+                ),
+              }
+            : computed;
 
         if (isPreviousOrderEditSession(nextCart)) {
           if (qtyActuallyChanged || modeActuallyChanged) {
@@ -9027,10 +9097,10 @@ export function PosScreen({ standalone = false }) {
         try {
           await commitCartLine({
             product,
-            computed,
-            incrementBaseQty: computed.baseQty,
-            editingId: existing.id,
-            editingRef: cartLineRef(existing) ?? lineRef,
+            computed: commitComputed,
+            incrementBaseQty: commitComputed.baseQty,
+            editingId: surviving.id,
+            editingRef: cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef,
             discount: perUnitDiscount,
             clearEntry: false,
             successMessage: null,
@@ -9040,32 +9110,52 @@ export function PosScreen({ standalone = false }) {
           });
           const after = (cartRef.current?.lines ?? []).find(
             (row) =>
+              sameLineId(row.id, surviving.id) ||
               sameLineId(row.id, existing.id) ||
-              String(cartLineRef(row)) === String(cartLineRef(existing) ?? lineRef),
+              String(cartLineRef(row)) ===
+                String(cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef),
           );
           if (
             after &&
-            Math.abs(Number(after.quantity ?? 0) - Number(computed.baseQty)) > 0.0001
+            Math.abs(Number(after.quantity ?? 0) - Number(commitComputed.baseQty)) > 0.0001
           ) {
             // Server response lost the edit — re-apply the cashier's qty.
             const repaired = cartRef.current ?? nextCart;
             const repairedLines = [...(repaired.lines ?? [])];
             const repairIdx = findCartLineIndexByRef(
               repairedLines,
-              cartLineRef(existing) ?? lineRef,
+              cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef,
             );
             if (repairIdx >= 0) {
               repairedLines[repairIdx] = {
                 ...repairedLines[repairIdx],
-                quantity: computed.baseQty,
-                unit_price: computed.unitPricePerBase,
-                display_unit_price: computed.displayUnitPrice,
-                amount: computed.lineAmount,
+                quantity: commitComputed.baseQty,
+                unit_price: commitComputed.unitPricePerBase,
+                display_unit_price: commitComputed.displayUnitPrice,
+                amount: commitComputed.lineAmount,
                 on_wholesale_retail: sessionIsRetail ? 1 : 0,
               };
-              const fixed = { ...repaired, lines: repairedLines };
+              const fixed = {
+                ...repaired,
+                lines: finalizeCartLineList(repairedLines, {
+                  combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+                }),
+              };
               cartRef.current = fixed;
               setCart(fixed);
+            }
+          } else {
+            // PATCH may return collapsed twins — always sanitize what we show.
+            const liveAfter = cartRef.current;
+            if (liveAfter?.lines?.length) {
+              const collapsed = finalizeCartLineList(liveAfter.lines, {
+                combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+              });
+              if (collapsed.length !== liveAfter.lines.length) {
+                const sanitized = { ...liveAfter, lines: collapsed };
+                cartRef.current = sanitized;
+                setCart(sanitized);
+              }
             }
           }
         } catch (e) {

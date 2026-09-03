@@ -90,6 +90,14 @@ describe("pos-product-search-rank", () => {
     expect(productMatchesPosSearch(yaba, "yabal")).toBe(true);
   });
 
+  it("keeps Kamande hits while refining kamand → kamande", () => {
+    const kamande = { product_code: "K2", product_name: "Kamande Beans 1kg" };
+    expect(productMatchesPosSearch(kamande, "kam")).toBe(true);
+    expect(productMatchesPosSearch(kamande, "kamand")).toBe(true);
+    expect(productMatchesPosSearch(kamande, "kamande")).toBe(true);
+    expect(productMatchesPosSearch(kamande, "kamandes")).toBe(true);
+  });
+
   it("ranks marai ahead of mara and marathon", () => {
     const marai = { product_code: "M1", product_name: "Marai Rice" };
     const mara = { product_code: "M2", product_name: "Mara Sugar" };

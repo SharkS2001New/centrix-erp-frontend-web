@@ -18,7 +18,7 @@ import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
 import { notifySuccess } from "@/lib/notify";
 import { getReportsDefaultDateRange } from "@/lib/sales-settings";
-import { HrDateField } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterButton } from "@/components/hr/hr-list-toolbar";
 
 function PrintIcon() {
   return (
@@ -63,14 +63,17 @@ export function HrCashAdvancesScreen() {
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [statusFilter, setStatusFilter] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
+  const [appliedStatus, setAppliedStatus] = useState("");
 
   const listSearchParams = useMemo(
     () => ({
-      ...(fromDate ? { from_date: fromDate } : {}),
-      ...(toDate ? { to_date: toDate } : {}),
-      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(appliedFrom ? { from_date: appliedFrom } : {}),
+      ...(appliedTo ? { to_date: appliedTo } : {}),
+      ...(appliedStatus ? { status: appliedStatus } : {}),
     }),
-    [fromDate, toDate, statusFilter],
+    [appliedFrom, appliedTo, appliedStatus],
   );
 
   function printVoucher(advance, employees = []) {
@@ -139,7 +142,7 @@ export function HrCashAdvancesScreen() {
           .toLowerCase();
         return hay.includes(q);
       }}
-      filterSlot={
+      filterSlot={({ reload, loading }) => (
         <>
           <HrDateField label="From" value={fromDate} onChange={setFromDate} />
           <HrDateField label="To" value={toDate} onChange={setToDate} />
@@ -157,8 +160,21 @@ export function HrCashAdvancesScreen() {
               <option value="cancelled">Cancelled</option>
             </select>
           </Field>
+          <HrFilterButton
+            loading={loading}
+            onClick={() => {
+              const unchanged =
+                fromDate === appliedFrom &&
+                toDate === appliedTo &&
+                statusFilter === appliedStatus;
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+              setAppliedStatus(statusFilter);
+              if (unchanged) void reload();
+            }}
+          />
         </>
-      }
+      )}
       exportTitle="Cash advances"
       exportFilename="cash-advances"
       exportColumns={[

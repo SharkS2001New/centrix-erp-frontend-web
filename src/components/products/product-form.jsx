@@ -281,6 +281,17 @@ export async function saveRetailPackageSetting(form, productCode, { hotelCatalog
     return;
   }
 
+  // Row may already exist (retail package page / prior save) even when the form
+  // has no retail_package_id — POST upserts by product_code on the API.
+  const existing = await loadRetailPackageForProduct(productCode);
+  if (existing?.id) {
+    await apiRequest(`/retail-package-settings/${existing.id}`, {
+      method: "PUT",
+      body,
+    });
+    return;
+  }
+
   await apiRequest("/retail-package-settings", { method: "POST", body });
 }
 
