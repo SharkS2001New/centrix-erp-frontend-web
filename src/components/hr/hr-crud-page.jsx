@@ -90,8 +90,13 @@ export function HrCrudPage({
 
   // Keep loadExtra out of `load` identity — inline loadExtra from parents was
   // recreating load on every draft filter keystroke and refetching the list.
+  // Ref is synced in an effect (not during render). Extra is fetched in a
+  // separate effect so `load` never closes over a ref (react-hooks/refs).
   const loadExtraRef = useRef(loadExtra);
-  loadExtraRef.current = loadExtra;
+  useEffect(() => {
+    loadExtraRef.current = loadExtra;
+  }, [loadExtra]);
+  const [extraEpoch, setExtraEpoch] = useState(0);
 
   const listParamsKey = useMemo(
     () => JSON.stringify(listSearchParams ?? null),
@@ -106,22 +111,17 @@ export function HrCrudPage({
     setError(null);
     setLoading(true);
     try {
-      const extraFn = loadExtraRef.current;
-      const extraPromise = extraFn ? extraFn().catch(() => ({})) : Promise.resolve({});
-      const [res, extraData] = await Promise.all([
-        apiRequest(apiPath, {
-          searchParams: {
-            per_page: pageSize,
-            page,
-            ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-            ...(listSearchParams ?? {}),
-          },
-        }),
-        extraPromise,
-      ]);
+      const res = await apiRequest(apiPath, {
+        searchParams: {
+          per_page: pageSize,
+          page,
+          ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+          ...(listSearchParams ?? {}),
+        },
+      });
       setRows(res.data ?? []);
       setTotal(Number(res.meta?.total ?? res.total ?? res.data?.length ?? 0));
-      setExtra(extraData ?? {});
+      setExtraEpoch((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -130,6 +130,27 @@ export function HrCrudPage({
     // listParamsKey tracks listSearchParams content without object-identity churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- listSearchParams via listParamsKey
   }, [apiPath, listParamsKey, listSearchParams, page, pageSize, debouncedSearch]);
+
+  useEffect(() => {
+    if (extraEpoch === 0) return undefined;
+    let cancelled = false;
+    (async () => {
+      const extraFn = loadExtraRef.current;
+      if (!extraFn) {
+        if (!cancelled) setExtra({});
+        return;
+      }
+      try {
+        const extraData = await extraFn();
+        if (!cancelled) setExtra(extraData ?? {});
+      } catch {
+        if (!cancelled) setExtra({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [extraEpoch]);
 
   const tableExtra = useMemo(
     () => ({ employees: [], ...extra }),
