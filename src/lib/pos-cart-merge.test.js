@@ -1008,4 +1008,20 @@ describe("findModeConvertibleCartLine", () => {
     ];
     expect(findModeConvertibleCartLine(lines, "SUGAR", true)).toBeNull();
   });
+
+  it("never converts when combine-identical is off (Sugar bag + Sugar kg stay separate)", () => {
+    const lines = [
+      {
+        id: 1,
+        product_code: "SUGAR",
+        quantity: 50,
+        on_wholesale_retail: 0,
+      },
+    ];
+    expect(
+      findModeConvertibleCartLine(lines, "SUGAR", true, {
+        combineIdenticalLines: false,
+      }),
+    ).toBeNull();
+  });
 });

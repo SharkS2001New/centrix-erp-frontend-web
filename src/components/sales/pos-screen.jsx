@@ -6915,6 +6915,7 @@ export function PosScreen({ standalone = false }) {
         cartRef.current?.lines,
         product.product_code,
         nextRetailFlag,
+        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
       );
       if (convertTarget) {
         await setCartLineEntryQuantity(convertTarget, "1");
@@ -8298,8 +8299,8 @@ export function PosScreen({ standalone = false }) {
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
 
-    // F12 flipped retail↔wholesale: same SKU already on cart as the other mode —
-    // convert that single row in place (1 bag → 1 kg) instead of appending a twin.
+    // F12 flipped retail↔wholesale with combine-on: convert the sole opposite-mode
+    // row in place. When combine is off, bags + kg stay separate new lines (not a swap).
     if (!editingLineId) {
       const nextRetailFlag = posLineWholesaleRetailFlag(
         productForAdd,
@@ -8311,6 +8312,7 @@ export function PosScreen({ standalone = false }) {
         cartRef.current?.lines ?? cart?.lines,
         lineForm.product_code,
         nextRetailFlag,
+        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
       );
       if (convertTarget) {
         clearClassicEntryFields();
