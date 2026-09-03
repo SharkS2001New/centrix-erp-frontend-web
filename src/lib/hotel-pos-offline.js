@@ -688,6 +688,27 @@ export function isHotelLocalFirstCheckout({ payments, folioId = null, check = nu
   return paySum + 0.01 >= due;
 }
 
+/**
+ * Local-first checkout queues sync and can leave a server check "open" in backoffice.
+ * When online with a server check id, settle immediately instead.
+ */
+export function shouldUseHotelLocalFirstCheckout({
+  check,
+  sellingLocked = false,
+} = {}) {
+  const hasServerCheck =
+    !isLocalHotelCheckId(check?.id) && Number(check?.id) > 0;
+  if (hasServerCheck && !sellingLocked) {
+    return false;
+  }
+  return (
+    !hasServerCheck ||
+    sellingLocked ||
+    Boolean(check?.offline) ||
+    Boolean(check?.offline_client_check_uuid)
+  );
+}
+
 export const HOTEL_VOID_ORDER_NAME = "Void order";
 
 export function resolveHotelPosVoidTarget(ticket, lastReceipt) {

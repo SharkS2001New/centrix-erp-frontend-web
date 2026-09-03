@@ -74,3 +74,24 @@ export function isHospitalityServiceEnabled(capabilitiesOrSettings, serviceKey) 
   const services = resolveHospitalityServices(capabilitiesOrSettings);
   return Boolean(services[serviceKey]);
 }
+
+/** Hotel vs bar channel label for checks and orders (not the physical outlet name). */
+export function hospitalityOutletKindLabel(outlet) {
+  const type = String(outlet?.outlet_type ?? outlet?.menu_channel ?? "").toLowerCase();
+  return type === "bar" ? "Bar" : "Hotel";
+}
+
+/** Outlet filter options on Sales & orders list pages. */
+export function hospitalityOutletFilterOptions(listChannel = "all") {
+  if (listChannel === "bar") {
+    return [{ value: "", label: "Bar" }];
+  }
+  if (listChannel === "hotel") {
+    return [{ value: "", label: "Hotel" }];
+  }
+  return [
+    { value: "", label: "Hotel and Bar" },
+    { value: "hotel", label: "Hotel" },
+    { value: "bar", label: "Bar" },
+  ];
+}

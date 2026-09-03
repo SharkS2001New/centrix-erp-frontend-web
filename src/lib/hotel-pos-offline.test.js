@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProductToHotelCheckInMemory, mergeHotelCheckFromServer, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget, hotelOfflineSyncProductLines, healHotelOfflineSyncBody } from "@/lib/hotel-pos-offline";
+import { addProductToHotelCheckInMemory, mergeHotelCheckFromServer, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget, hotelOfflineSyncProductLines, healHotelOfflineSyncBody, shouldUseHotelLocalFirstCheckout } from "@/lib/hotel-pos-offline";
 
 describe("isHotelLocalFirstCheckout", () => {
   const check = { total: 100, amount_paid: 0, balance_due: 100 };
@@ -48,6 +48,32 @@ describe("isHotelLocalFirstCheckout", () => {
         payments: [{ method_code: "CASH", amount: 80 }],
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldUseHotelLocalFirstCheckout", () => {
+  it("settles online when the check already exists on the server", () => {
+    expect(
+      shouldUseHotelLocalFirstCheckout({
+        check: { id: 42, total: 100 },
+        sellingLocked: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("uses local-first when offline or only on device", () => {
+    expect(
+      shouldUseHotelLocalFirstCheckout({
+        check: { id: 42, total: 100 },
+        sellingLocked: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseHotelLocalFirstCheckout({
+        check: { id: "local:abc", total: 100 },
+        sellingLocked: false,
+      }),
+    ).toBe(true);
   });
 });
 

@@ -34,7 +34,7 @@ import {
   completeOfflineHotelCashCheck,
   discardPendingHotelOfflineCheck,
   HOTEL_VOID_ORDER_NAME,
-  isHotelLocalFirstCheckout,
+  shouldUseHotelLocalFirstCheckout,
   isLocalHotelCheckId,
   resolveHotelPosVoidTarget,
   loadPersistedLocalHotelCheck,
@@ -1544,11 +1544,10 @@ export function HotelBarPosScreen() {
     // Open while still in the Complete payment click — after await settle, popups are often blocked.
     const printWindow = openHotelReceiptPrintWindow();
     try {
-      const useLocalFirst =
-        isLocalHotelCheckId(ticket.id) ||
-        Boolean(ticket.offline) ||
-        Boolean(ticket.offline_client_check_uuid) ||
-        isHotelLocalFirstCheckout({ payments, folioId: folio_id, check: ticket });
+      const useLocalFirst = shouldUseHotelLocalFirstCheckout({
+        check: ticket,
+        sellingLocked,
+      });
 
       if (useLocalFirst) {
         await ensureTableAssigned(ticket);

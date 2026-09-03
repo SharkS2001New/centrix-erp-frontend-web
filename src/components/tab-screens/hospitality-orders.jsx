@@ -27,7 +27,11 @@ import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { fetchHotelPosSettings, voidHotelCheck } from "@/lib/hospitality-pos-api";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { HOTEL_VOID_ORDER_NAME } from "@/lib/hotel-pos-offline";
-import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import {
+  hospitalityOutletFilterOptions,
+  hospitalityOutletKindLabel,
+  isHospitalityServiceEnabled,
+} from "@/lib/hospitality-services";
 import {
   buildHospitalityCheckPrintOptions,
   normalizeHospitalityCheckPrintSettings,
@@ -132,13 +136,6 @@ const ORDER_CHANNELS = {
   },
 };
 
-function outletMatchesChannel(outlet, channel) {
-  const type = String(outlet?.outlet_type ?? "").toLowerCase();
-  if (channel === "bar") return type === "bar";
-  if (channel === "hotel") return type !== "bar";
-  return true;
-}
-
 export function HospitalityHotelOrdersScreen() {
   return <HospitalityOrdersScreen channel="hotel" />;
 }
@@ -157,10 +154,9 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
     [capabilities?.module_settings],
   );
   const [rows, setRows] = useState([]);
-  const [outlets, setOutlets] = useState([]);
   // Default All so settled Hotel POS tickets appear like backoffice completed orders.
   const [status, setStatus] = useState("");
-  const [outletId, setOutletId] = useState("");
+  const [outletKind, setOutletKind] = useState("");
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
@@ -196,23 +192,6 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiRequest("/hospitality/outlets", { loading: false });
-        if (!cancelled) {
-          setOutlets(Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []);
-        }
-      } catch {
-        if (!cancelled) setOutlets([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
     fetchHotelPosSettings()
       .then((settings) => {
         if (cancelled || !settings) return;
@@ -241,11 +220,12 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const listChannel =
+        channel === "all" ? outletKind || undefined : channel;
       const res = await apiRequest("/hospitality/checks", {
         searchParams: {
           status: status || undefined,
-          outlet_id: outletId || undefined,
-          channel: channel === "all" ? undefined : channel,
+          channel: listChannel || undefined,
           q: debouncedSearch || undefined,
           from_date: appliedFrom || undefined,
           to_date: appliedTo || undefined,
@@ -264,24 +244,22 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, page, pageSize, channel, copy.title]);
+  }, [status, outletKind, debouncedSearch, appliedFrom, appliedTo, page, pageSize, channel, copy.title]);
 
   useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);
-  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, pageSize, channel]);
-
-  const visibleOutlets = useMemo(
-    () => outlets.filter((outlet) => outletMatchesChannel(outlet, channel)),
-    [outlets, channel],
-  );
+  }, [status, outletKind, debouncedSearch, appliedFrom, appliedTo, pageSize, channel]);
 
   useEffect(() => {
-    if (!outletId) return;
-    const stillValid = visibleOutlets.some((outlet) => String(outlet.id) === String(outletId));
-    if (!stillValid) setOutletId("");
-  }, [outletId, visibleOutlets]);
+    setOutletKind("");
+  }, [channel]);
+
+  const outletFilterOptions = useMemo(
+    () => hospitalityOutletFilterOptions(channel),
+    [channel],
+  );
 
   const allExpanded = useMemo(
     () => rows.length > 0 && rows.every((row) => expandedIds.has(row.id)),
@@ -435,20 +413,16 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
               ]}
             />
           </Field>
-          <Field label="Outlet">
-            <FilterSelect
-              className={FILTER_CONTROL_CLASS}
-              value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              options={[
-                { value: "", label: channel === "bar" ? "All bar outlets" : channel === "hotel" ? "All hotel outlets" : "All outlets" },
-                ...visibleOutlets.map((outlet) => ({
-                  value: String(outlet.id),
-                  label: outlet.name || outlet.code,
-                })),
-              ]}
-            />
-          </Field>
+          {channel === "all" ? (
+            <Field label="Outlet">
+              <FilterSelect
+                className={FILTER_CONTROL_CLASS}
+                value={outletKind}
+                onChange={(e) => setOutletKind(e.target.value)}
+                options={outletFilterOptions}
+              />
+            </Field>
+          ) : null}
           <button
             type="button"
             onClick={applyDateFilter}
@@ -562,7 +536,9 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
                         {guestNameEnabled ? (
                           <td className="px-3 py-2">{row.guest_name || row.customer_name || "—"}</td>
                         ) : null}
-                        <td className="px-3 py-2">{row.outlet?.name || "—"}</td>
+                        <td className="px-3 py-2">
+                          {row.outlet ? hospitalityOutletKindLabel(row.outlet) : "—"}
+                        </td>
                         {tablesEnabled ? (
                           <td className="px-3 py-2">
                             {row.floor_table?.label || row.floor_table?.code || "—"}

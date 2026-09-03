@@ -826,6 +826,29 @@ export function EndOfDayReportScreen({
     };
   }, [organizationId, branchId]);
 
+  // Anyone who sold in the loaded report must appear in the filter — even if their
+  // role later lost create permissions (common for Hotel POS cashiers).
+  useEffect(() => {
+    const sold = Array.isArray(report?.cashiers) ? report.cashiers : [];
+    if (!sold.length) return;
+    setCashierOptions((prev) => {
+      const byId = new Map(prev.map((row) => [row.value, row]));
+      let changed = false;
+      for (const row of sold) {
+        const id = row?.cashier_id != null ? String(row.cashier_id) : "";
+        if (!id || id === "0") continue;
+        if (byId.has(id)) continue;
+        byId.set(id, {
+          value: id,
+          label: String(row.cashier ?? "").trim() || `User #${id}`,
+        });
+        changed = true;
+      }
+      if (!changed) return prev;
+      return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+    });
+  }, [report?.cashiers]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);

@@ -18,7 +18,7 @@ import {
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { fetchHotelPosSettings, voidHotelCheck } from "@/lib/hospitality-pos-api";
 import { HOTEL_VOID_ORDER_NAME } from "@/lib/hotel-pos-offline";
-import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { hospitalityOutletKindLabel, isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import {
   buildHospitalityCheckPrintOptions,
   normalizeHospitalityCheckPrintSettings,
@@ -170,7 +170,9 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
 
   const guestNameEnabled = printSettings?.enable_check_guest_name === true;
   const tableLabel = check?.floor_table?.label || check?.floor_table?.code || "—";
-  const outletLabel = check?.outlet?.name || check?.outlet?.code || "—";
+  const outletLabel = check?.outlet
+    ? hospitalityOutletKindLabel(check.outlet)
+    : "—";
   const payments = Array.isArray(check?.payments) ? check.payments : [];
   const lines = Array.isArray(check?.lines) ? check.lines : [];
   const listNav = ordersListForCheck(check);
