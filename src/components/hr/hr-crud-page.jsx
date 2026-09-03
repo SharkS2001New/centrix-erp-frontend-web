@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -51,9 +51,9 @@ export function HrCrudPage({
   addButtonLabel = "Add new",
   drawerCreateTitle,
   renderRowActions,
-      /** Optional controls rendered inside the list FilterToolbar (before search).
-       *  Pass a node, or a function `({ reload, loading }) => node` for Apply/Filter buttons. */
-      filterSlot = null,
+  /** Optional controls rendered inside the list FilterToolbar (before search).
+   *  Pass a node, or a function `({ reload, loading }) => node` for Apply/Filter buttons. */
+  filterSlot = null,
   exportEnabled = true,
   exportFilename,
   /** Report title for PDF/CSV (defaults to page title). */
@@ -88,17 +88,26 @@ export function HrCrudPage({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
+  // Keep loadExtra out of `load` identity — inline loadExtra from parents was
+  // recreating load on every draft filter keystroke and refetching the list.
+  const loadExtraRef = useRef(loadExtra);
+  loadExtraRef.current = loadExtra;
+
+  const listParamsKey = useMemo(
+    () => JSON.stringify(listSearchParams ?? null),
+    [listSearchParams],
+  );
+
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, apiPath, listSearchParams]);
+  }, [debouncedSearch, apiPath, listParamsKey]);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const extraPromise = loadExtra
-        ? loadExtra().catch(() => ({}))
-        : Promise.resolve({});
+      const extraFn = loadExtraRef.current;
+      const extraPromise = extraFn ? extraFn().catch(() => ({})) : Promise.resolve({});
       const [res, extraData] = await Promise.all([
         apiRequest(apiPath, {
           searchParams: {
@@ -118,14 +127,19 @@ export function HrCrudPage({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, listSearchParams, loadExtra, page, pageSize, debouncedSearch]);
+    // listParamsKey tracks listSearchParams content without object-identity churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listSearchParams via listParamsKey
+  }, [apiPath, listParamsKey, listSearchParams, page, pageSize, debouncedSearch]);
 
   const tableExtra = useMemo(
     () => ({ employees: [], ...extra }),
     [extra],
   );
 
-  useTabAwareDataLoad(load);
+  useTabAwareDataLoad(load, {
+    depsKey: `${apiPath}|${page}|${pageSize}|${debouncedSearch}|${listParamsKey}`,
+    hasData: true,
+  });
 
   // Prefer server `q`; keep optional client refine for endpoints that ignore q.
   const filtered = useMemo(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
@@ -75,6 +75,13 @@ export function HrCashAdvancesScreen() {
     }),
     [appliedFrom, appliedTo, appliedStatus],
   );
+
+  const loadExtra = useCallback(async () => {
+    const res = await apiRequest("/employees", {
+      searchParams: { per_page: 200, fields: "lean" },
+    });
+    return { employees: res.data ?? [] };
+  }, []);
 
   function printVoucher(advance, employees = []) {
     const employee =
@@ -208,12 +215,7 @@ export function HrCashAdvancesScreen() {
         }
         return all.map((r) => mapAdvanceExportRow(r));
       }}
-      loadExtra={async () => {
-        const res = await apiRequest("/employees", {
-          searchParams: { per_page: 200, fields: "lean" },
-        });
-        return { employees: res.data ?? [] };
-      }}
+      loadExtra={loadExtra}
       onCreated={(created) => {
         notifySuccess("Cash advance submitted for manager approval");
         printVoucher(created, []);

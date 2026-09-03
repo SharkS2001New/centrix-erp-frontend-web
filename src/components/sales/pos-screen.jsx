@@ -580,9 +580,12 @@ function usesLocalPosCartWorkspace(cart) {
   return Boolean(cart?.offline || cart?.offline_client_sale_uuid);
 }
 
-/** True when the TemporaryCart already owns this line on the server (safe to DELETE). */
+/** True when the TemporaryCart already owns this line on the server (safe to PATCH/DELETE). */
 function isServerPersistedCartLine(line) {
-  if (!line || line._optimistic) return false;
+  if (!line) return false;
+  // Optimistic paint on an existing TemporaryCart row keeps the real id / CLU- ref.
+  // Do NOT treat `_optimistic` as "not persisted" — that forced merge adds to POST a
+  // second Sugar line while the first row already showed qty 2.
   const ref = cartLineRef(line);
   if (ref == null || isLocalCartLineId(ref)) return false;
   const s = String(ref);
@@ -5992,11 +5995,13 @@ export function PosScreen({ standalone = false }) {
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
     const intendedEdit = editingId != null || editingRef != null;
+    const combineIdentical = combineIdenticalLinesRef.current !== false;
     // Always re-resolve merge against the live cart. Classic Qty-Enter queues
     // commits with a stale mergeTarget from React state — during an outage that
     // spawned one optimistic row per key-repeat instead of one merged line.
-    let resolvedMergeTarget = mergeTarget;
-    if (!intendedEdit && posSalesConfig.combineIdenticalLines !== false) {
+    // When combine is off, never merge — Sugar 1 bag + Sugar 1 bag stay two lines.
+    let resolvedMergeTarget = null;
+    if (!intendedEdit && combineIdentical) {
       resolvedMergeTarget =
         findMergeableCartLine(
           liveCart?.lines,
@@ -6006,9 +6011,14 @@ export function PosScreen({ standalone = false }) {
           sellWholesaleRef.current,
           null,
           product,
-          { combineIdenticalLines: combineIdenticalLinesRef.current },
-        ) ?? mergeTarget;
+          { combineIdenticalLines: true },
+        ) ?? (mergeTarget && combineIdentical ? mergeTarget : null);
     }
+    /** Qty on the merge target before this commit paints — avoids double-adding after paint. */
+    let mergeQtyBeforePaint =
+      resolvedMergeTarget != null && !intendedEdit
+        ? Number(resolvedMergeTarget.quantity ?? 0)
+        : null;
     let targetLineRef = cartLineRef(
       editingRef != null || editingId != null
         ? { update_code: editingRef, id: editingId }
@@ -6024,7 +6034,10 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (resolvedMergeTarget && !editingId) {
-      const newBaseQty = Number(resolvedMergeTarget.quantity) + incrementBaseQty;
+      const newBaseQty =
+        (mergeQtyBeforePaint != null && Number.isFinite(mergeQtyBeforePaint)
+          ? mergeQtyBeforePaint
+          : Number(resolvedMergeTarget.quantity)) + incrementBaseQty;
       const mergedEntryQty = posEntryQtyFromBaseQty(
         newBaseQty,
         product,
@@ -6043,6 +6056,17 @@ export function PosScreen({ standalone = false }) {
       finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
     }
 
+    // Freeze the TemporaryCart line ref for merge PATCH *before* optimistic paint.
+    // Paint marks the row `_optimistic`; older checks then skipped PATCH and POSTed a twin.
+    // Never set when combine is off — that must always POST a new line.
+    let mergePatchRef =
+      combineIdentical &&
+      !intendedEdit &&
+      resolvedMergeTarget &&
+      isServerPersistedCartLine(resolvedMergeTarget)
+        ? String(cartLineRef(resolvedMergeTarget) ?? "")
+        : "";
+
     const stockAsRetail =
       lineRetailStockFlagOverride != null
         ? lineRetailStockFlagOverride
@@ -6059,7 +6083,9 @@ export function PosScreen({ standalone = false }) {
 
     const stockBaseQty =
       resolvedMergeTarget && !editingId
-        ? Number(resolvedMergeTarget.quantity) + incrementBaseQty
+        ? (mergeQtyBeforePaint != null && Number.isFinite(mergeQtyBeforePaint)
+            ? mergeQtyBeforePaint
+            : Number(resolvedMergeTarget.quantity)) + incrementBaseQty
         : computed.baseQty;
 
     const stockCheck = posStockAvailability({
@@ -6126,7 +6152,7 @@ export function PosScreen({ standalone = false }) {
       // Re-resolve against the offline workspace — continueOpenCart may have just
       // collapsed duplicate rows from a link flap.
       const offlineMerge =
-        !intendedEdit && posSalesConfig.combineIdenticalLines !== false
+        !intendedEdit && combineIdentical
           ? findMergeableCartLine(
               working?.lines,
               product.product_code,
@@ -6135,11 +6161,12 @@ export function PosScreen({ standalone = false }) {
               sellWholesaleRef.current,
               null,
               product,
-              { combineIdenticalLines: combineIdenticalLinesRef.current },
+              { combineIdenticalLines: true },
             ) ?? resolvedMergeTarget
           : resolvedMergeTarget;
       if (offlineMerge && !editingId && offlineMerge !== resolvedMergeTarget) {
-        const newBaseQty = Number(offlineMerge.quantity) + incrementBaseQty;
+        mergeQtyBeforePaint = Number(offlineMerge.quantity ?? 0);
+        const newBaseQty = mergeQtyBeforePaint + incrementBaseQty;
         const mergedEntryQty = posEntryQtyFromBaseQty(
           newBaseQty,
           product,
@@ -6296,9 +6323,11 @@ export function PosScreen({ standalone = false }) {
       const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
       const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
         mergeTarget: resolvedMergeTarget,
-        editingRef: targetLineRef,
-        editingId,
-        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        // Only pass editing refs for true in-place edits — merges must use mergeTarget
+        // so we never confuse "update qty on existing SKU" with "new line".
+        editingRef: intendedEdit ? targetLineRef : null,
+        editingId: intendedEdit ? editingId : null,
+        combineIdenticalLines: combineIdentical,
       });
       cartRef.current = optimisticCart;
       setCart(optimisticCart);
@@ -6358,7 +6387,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     // Server cart may exist now — merge into a persisted row, not a second POST.
-    if (!intendedEdit && posSalesConfig.combineIdenticalLines !== false) {
+    if (!intendedEdit && combineIdentical) {
       const postEnsureLines = (cartRef.current ?? activeCart)?.lines ?? [];
       // Prefer an already-synced TemporaryCart row over an in-flight optimistic twin.
       const serverMergeTarget =
@@ -6370,7 +6399,7 @@ export function PosScreen({ standalone = false }) {
           sellWholesaleRef.current,
           null,
           product,
-          { combineIdenticalLines: combineIdenticalLinesRef.current },
+          { combineIdenticalLines: true },
         ) ??
         findMergeableCartLine(
           postEnsureLines,
@@ -6380,12 +6409,20 @@ export function PosScreen({ standalone = false }) {
           sellWholesaleRef.current,
           null,
           product,
-          { combineIdenticalLines: combineIdenticalLinesRef.current },
+          { combineIdenticalLines: true },
         );
       if (serverMergeTarget && !editingId) {
         resolvedMergeTarget = serverMergeTarget;
         targetLineRef = cartLineRef(serverMergeTarget);
-        const newBaseQty = Number(serverMergeTarget.quantity) + incrementBaseQty;
+        if (isServerPersistedCartLine(serverMergeTarget)) {
+          mergePatchRef = String(cartLineRef(serverMergeTarget) ?? mergePatchRef);
+        }
+        // Always merge from the pre-paint qty — painted rows already include incrementBaseQty.
+        const baseBefore =
+          mergeQtyBeforePaint != null && Number.isFinite(mergeQtyBeforePaint)
+            ? mergeQtyBeforePaint
+            : Number(serverMergeTarget.quantity);
+        const newBaseQty = baseBefore + incrementBaseQty;
         const mergedEntryQty = posEntryQtyFromBaseQty(
           newBaseQty,
           product,
@@ -6415,6 +6452,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     const persistedPatchRef = (() => {
+      if (mergePatchRef) return mergePatchRef;
       if (resolvedMergeTarget && isServerPersistedCartLine(resolvedMergeTarget)) {
         return cartLineRef(resolvedMergeTarget);
       }
@@ -6532,8 +6570,9 @@ export function PosScreen({ standalone = false }) {
       painted?.optimisticCart ??
       applyOptimisticCartMutation(activeCart, optimisticLine, {
         mergeTarget: resolvedMergeTarget,
-        editingRef: targetLineRef,
-        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        editingRef: intendedEdit ? targetLineRef : null,
+        editingId: intendedEdit ? editingId : null,
+        combineIdenticalLines: combineIdentical,
       });
 
     // Previous-order edit: keep line add/update local until Complete saves + prints.
@@ -6635,6 +6674,10 @@ export function PosScreen({ standalone = false }) {
             },
           );
         }
+        nextCart = {
+          ...nextCart,
+          lines: finalizeCartLineList(nextCart.lines, cartMergeOptions()),
+        };
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
           setCart(nextCart);
@@ -6666,6 +6709,10 @@ export function PosScreen({ standalone = false }) {
           onWholesaleRetailFlag,
           override,
         });
+        nextCart = {
+          ...nextCart,
+          lines: finalizeCartLineList(nextCart.lines, cartMergeOptions()),
+        };
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
           setCart(nextCart);
