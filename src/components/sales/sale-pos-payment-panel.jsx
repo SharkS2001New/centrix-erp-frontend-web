@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PosPaymentPanel } from "@/components/sales/pos-payment-panel";
-import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
+import { getCheckoutPaymentConfig, isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { getOrderWorkflow } from "@/lib/order-workflow";
 import { isStkPushEnabled } from "@/lib/finance-settings";
 import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
 import { resolvePaymentMethodByCode } from "@/lib/sales";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import { useAuth } from "@/contexts/auth-context";
+import { usePosSession } from "@/contexts/pos-session-context";
 
 /**
  * POS checkout payment UI for an existing sale (orders list / order summary).
@@ -24,10 +26,13 @@ export function SalePosPaymentPanel({
   onPaid,
   embedded = true,
 }) {
+  const { user } = useAuth();
+  const { floatSessionId: contextFloatSessionId, refreshActiveSession } = usePosSession();
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [methodsError, setMethodsError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const tillFloatEnabled = isTillFloatWorkflowEnabled(capabilities?.module_settings);
 
   const workflow = useMemo(() => getOrderWorkflow(capabilities, sale), [capabilities, sale]);
   const channel = sale?.channel ?? "backend";
@@ -86,6 +91,42 @@ export function SalePosPaymentPanel({
       });
   }, [open, capabilities]);
 
+  // Shop Debtors / All Orders: ensure we have the cashier's open till before Collect payment.
+  useEffect(() => {
+    if (!open || !tillFloatEnabled) return;
+    if (floatSessionId || contextFloatSessionId) return;
+    void refreshActiveSession?.();
+  }, [open, tillFloatEnabled, floatSessionId, contextFloatSessionId, refreshActiveSession]);
+
+  const resolveFloatSessionId = useCallback(async () => {
+    const fromProp = floatSessionId != null && Number(floatSessionId) > 0 ? Number(floatSessionId) : null;
+    if (fromProp) return fromProp;
+    const fromCtx =
+      contextFloatSessionId != null && Number(contextFloatSessionId) > 0
+        ? Number(contextFloatSessionId)
+        : null;
+    if (fromCtx) return fromCtx;
+    if (!tillFloatEnabled || !user?.id) return null;
+    try {
+      const refreshed = await refreshActiveSession?.();
+      if (refreshed?.id) return Number(refreshed.id);
+      const res = await apiRequest("/till-float-sessions", {
+        searchParams: {
+          per_page: 10,
+          "filter[status]": "open",
+          "filter[cashier_id]": user.id,
+        },
+        loading: false,
+        reportIssues: false,
+      });
+      const openSession =
+        (res.data ?? []).find((row) => String(row.status).toLowerCase() === "open") ?? null;
+      return openSession?.id != null ? Number(openSession.id) : null;
+    } catch {
+      return null;
+    }
+  }, [floatSessionId, contextFloatSessionId, tillFloatEnabled, user?.id, refreshActiveSession]);
+
   const handleComplete = useCallback(
     async (body) => {
       if (!sale?.id) return null;
@@ -100,13 +141,18 @@ export function SalePosPaymentPanel({
           );
         }
 
-        const splits = Array.isArray(body.payment_splits) && body.payment_splits.length > 0
-          ? body.payment_splits
-          : [{
-              method_code: String(body.payment_method_code ?? "CASH").toUpperCase(),
-              amount: body.pay_now,
-              reference_number: body.payment_reference || null,
-            }];
+        const splits =
+          Array.isArray(body.payment_splits) && body.payment_splits.length > 0
+            ? body.payment_splits
+            : [
+                {
+                  method_code: String(body.payment_method_code ?? "CASH").toUpperCase(),
+                  amount: body.pay_now,
+                  reference_number: body.payment_reference || null,
+                },
+              ];
+
+        const sessionId = await resolveFloatSessionId();
 
         let updated = sale;
         for (const split of splits) {
@@ -124,7 +170,7 @@ export function SalePosPaymentPanel({
               payment_method_id: method.id,
               amount: split.amount,
               reference_number: split.reference_number || null,
-              ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+              ...(sessionId ? { float_session_id: sessionId } : {}),
             },
           });
         }
@@ -138,10 +184,11 @@ export function SalePosPaymentPanel({
         setSaving(false);
       }
     },
-    [sale?.id, paymentMethods, methodsError, floatSessionId, onPaid],
+    [sale?.id, paymentMethods, methodsError, resolveFloatSessionId, onPaid],
   );
 
-  const billTotal = balanceDue ?? Math.max(0, Number(sale?.order_total ?? 0) - Number(sale?.amount_paid ?? 0));
+  const billTotal =
+    balanceDue ?? Math.max(0, Number(sale?.order_total ?? 0) - Number(sale?.amount_paid ?? 0));
 
   return (
     <PosPaymentPanel

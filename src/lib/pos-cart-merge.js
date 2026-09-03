@@ -596,6 +596,15 @@ export function applyOptimisticCartMutation(
     }
     if (idx >= 0) {
       replaceCartLineInPlace(lines, idx, optimisticLine);
+      // F12 bags↔kg: drop any other same-SKU row that now shares this mode.
+      const mergeKey = cartLineMergeKey(lines[idx]);
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        if (i === idx) continue;
+        if (cartLineMergeKey(lines[i]) === mergeKey) {
+          lines.splice(i, 1);
+          if (i < idx) idx -= 1;
+        }
+      }
     }
     // Editing must never invent a second row when the target line is missing.
   } else if (mergeTarget) {

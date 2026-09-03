@@ -496,6 +496,54 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines[0].quantity).toBe(6);
   });
 
+  it("F12 mode flip drops a same-mode twin instead of showing two bag rows", () => {
+    const prev = {
+      id: 10,
+      update_no: 2,
+      lines: [
+        {
+          id: 1,
+          update_code: "CLU-A",
+          product_code: "ZULLY",
+          quantity: 50,
+          amount: 1910,
+          on_wholesale_retail: 0,
+          uom: "Bags",
+        },
+        {
+          id: 2,
+          update_code: "CLU-B",
+          product_code: "ZULLY",
+          quantity: 1,
+          amount: 38.2,
+          on_wholesale_retail: 1,
+          uom: "KG",
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "ZULLY", product_name: "ZULLY HB 2KG" },
+      {
+        product_code: "ZULLY",
+        quantity: 50,
+        unit_price: 38.2,
+        display_unit_price: 1910,
+        uom: "Bags",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 1910 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, {
+      editingRef: "CLU-B",
+      editingId: 2,
+    });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].on_wholesale_retail).toBe(0);
+    expect(next.lines[0].product_code).toBe("ZULLY");
+  });
+
   it("merges into an existing SKU row instead of pushing a second optimistic line", () => {
     const prev = {
       id: 10,

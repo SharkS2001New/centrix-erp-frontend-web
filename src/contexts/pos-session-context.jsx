@@ -26,6 +26,9 @@ const POS_SESSION_PATH_PREFIXES = [
   "/sales/pos",
   "/sales/till-management",
   "/sales/orders",
+  // Collecting shop debtors must attach to the cashier's open till (X / Z / EOD).
+  "/sales/shop-debtors",
+  "/customers/shop-debtors",
   "/fulfillment/orders",
 ];
 
@@ -341,12 +344,23 @@ export function PosSessionProvider({ children }) {
   );
 
   const refreshActiveSession = useCallback(async () => {
-    if (!tillFloatEnabled || !activeSession?.id) return null;
-    const verified = await verifySession(activeSession);
+    if (!tillFloatEnabled) return null;
+    if (activeSession?.id) {
+      const verified = await verifySession(activeSession);
+      setActiveSession(verified);
+      if (verified?.id) await refreshReport(verified.id);
+      return verified;
+    }
+    // Shop Debtors / Collect payment: recover the cashier's open till even when
+    // this browser tab never opened External POS (no stored session).
+    if (!user?.id) return null;
+    const recovered = await findOpenSessionForUser(user.id);
+    if (!recovered) return null;
+    const verified = await verifySession(recovered);
     setActiveSession(verified);
     if (verified?.id) await refreshReport(verified.id);
     return verified;
-  }, [activeSession, verifySession, refreshReport, tillFloatEnabled]);
+  }, [activeSession, verifySession, refreshReport, tillFloatEnabled, user?.id, findOpenSessionForUser]);
 
   const suspendSession = useCallback(async () => {
     if (!tillFloatEnabled || !activeSession?.id) return null;
