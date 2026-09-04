@@ -26,7 +26,7 @@ function ClassicLineQtyCell({
   onSetQty,
   onDraftQtyChange = null,
   swapQtyCommit = false,
-  /** True when F12 session differs from this line — Enter (not blur) reprices it. */
+  /** True when F12 session differs from this line — Enter reprices it (blur never does). */
   forceSameQtyCommit = false,
   inputRef = null,
   onFocusLine = null,
@@ -38,6 +38,7 @@ function ClassicLineQtyCell({
   const pendingCommitRef = useRef(null);
   const inputElRef = useRef(null);
   void lineBusy;
+  void forceSameQtyCommit;
 
   // Keep parent swapLineQtyRef in sync without mutating props during a ref callback
   // (react-hooks/immutability).
@@ -100,15 +101,10 @@ function ClassicLineQtyCell({
     }
     if (trimmed !== draft) setDraft(trimmed);
     // F12 retail/wholesale applies only on Enter for this focused line.
-    // Blur must not reprice when the number is unchanged (even after F12).
-    // forceSameQtyCommit covers Enter when applySessionMode was lost but session
-    // still differs from the line (parent sets this while the qty cell is focused).
-    if (
-      !applySessionMode &&
-      !swapQtyCommit &&
-      !forceSameQtyCommit &&
-      trimmed === committed
-    ) {
+    // Blur must not reprice when the number is unchanged (even after F12) —
+    // forceSameQtyCommit used to allow blur to PATCH, which raced Enter and
+    // left Sugar as both 1 kg and 1 bag.
+    if (!applySessionMode && !swapQtyCommit && trimmed === committed) {
       return;
     }
     pendingCommitRef.current = trimmed;
@@ -140,8 +136,8 @@ function ClassicLineQtyCell({
             skipBlurCommitRef.current = false;
             return;
           }
-          // Qty edits still save on leave. F12 mode flip is Enter-only on this cell
-          // so a remount/blur after F12 cannot reprice the whole cart.
+          // Qty number edits still save on leave. F12 mode flip is Enter-only —
+          // unchanged qty after F12 must not PATCH (avoids twin kg+bag rows).
           commit({ applySessionMode: false, value: e.currentTarget.value });
         }}
         onKeyDown={(e) => {
@@ -152,8 +148,8 @@ function ClassicLineQtyCell({
             // Enter already commits — skip the blur commit that would fire next
             // (double swap/qty PATCH raced update_no and left the old SKU on the server).
             skipBlurCommitRef.current = true;
-            // Always notify parent on Enter so F12 wholesale↔retail with the same
-            // number still reprices this line; parent no-ops when nothing changed.
+            // applySessionMode: F12 wholesale↔retail with the same typed number
+            // still reprices this line; parent no-ops when nothing changed.
             commit({ applySessionMode: true, value: e.currentTarget.value });
             // Blur after paint protection is armed — parent moves focus to Scan.
             e.currentTarget.blur();
@@ -251,7 +247,7 @@ export function ClassicPosCartTable({
   onSetQty,
   onQtyFocus = null,
   onQtyBlur = null,
-  /** When true for a line, qty Enter/blur commits even if the number is unchanged (F12 mode). */
+  /** When true for a line, qty Enter commits even if the number is unchanged (F12 mode). */
   lineForceSameQtyCommit = null,
   onSwapDraftQtyChange = null,
   scanSearch = null,
@@ -704,9 +700,18 @@ export function ClassicPosCartTable({
                     disabled={busy}
                     aria-label={entryQtyUnit ? `Quantity (${entryQtyUnit})` : "Quantity"}
                     onChange={(e) => onEntryQtyChange?.(e.target.value)}
-                    onBlur={() => {
+                    onBlur={(e) => {
                       if (skipEntryQtyBlurCommitRef.current) {
                         skipEntryQtyBlurCommitRef.current = false;
+                        return;
+                      }
+                      // Clicking a cart line qty to F12-convert must not also
+                      // commit the entry row (that POSTed a twin bag/kg line).
+                      const next = e.relatedTarget;
+                      if (
+                        next instanceof HTMLElement &&
+                        next.classList.contains("classic-pos-line-qty-input")
+                      ) {
                         return;
                       }
                       // Mouse away / click Scan code — same commit as Enter.

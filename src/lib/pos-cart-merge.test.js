@@ -723,6 +723,74 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines[0].quantity).toBe(2);
   });
 
+  it("dedupeSkuLinesAfterInPlaceEdit keeps one row after Sugar kg→bag F12", () => {
+    const keep = {
+      id: 1,
+      update_code: "CLU-1",
+      product_code: "SUGAR",
+      quantity: 50,
+      on_wholesale_retail: 0,
+    };
+    const lines = [
+      keep,
+      {
+        id: "pending-dup",
+        update_code: "pending-dup",
+        product_code: "SUGAR",
+        quantity: 50,
+        on_wholesale_retail: 0,
+        _optimistic: true,
+      },
+    ];
+    const next = dedupeSkuLinesAfterInPlaceEdit(lines, {
+      productCode: "SUGAR",
+      keepLine: keep,
+      modeFlipped: true,
+      skuLineCountBefore: 1,
+    });
+    expect(next).toHaveLength(1);
+    expect(next[0].id).toBe(1);
+    expect(next[0].on_wholesale_retail).toBe(0);
+  });
+
+  it("applyCartMutationResponse after F12 edit does not revive a kg twin", () => {
+    const prev = {
+      id: 10,
+      update_no: 3,
+      lines: [
+        {
+          id: 1,
+          update_code: "CLU-1",
+          product_code: "SUGAR",
+          quantity: 50,
+          amount: 2500,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const server = {
+      id: 10,
+      update_no: 4,
+      lines: [
+        {
+          id: 1,
+          update_code: "CLU-1",
+          product_code: "SUGAR",
+          quantity: 50,
+          amount: 2500,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, server, {
+      targetLineRef: "CLU-1",
+      combineIdenticalLines: false,
+    });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].on_wholesale_retail).toBe(0);
+    expect(next.lines[0].quantity).toBe(50);
+  });
+
   it("dedupeSkuLinesAfterInPlaceEdit keeps one row after F12 when SKU was alone", () => {
     const lines = [
       {
@@ -1110,17 +1178,29 @@ describe("findModeConvertibleCartLine", () => {
     expect(findModeConvertibleCartLine(lines, "SUGAR", true)).toBeNull();
   });
 
-  it("never converts when combine-identical is off (Sugar bag + Sugar kg stay separate)", () => {
+  it("converts the sole opposite-mode row even when combine-identical is off", () => {
     const lines = [
       {
         id: 1,
         product_code: "SUGAR",
-        quantity: 50,
-        on_wholesale_retail: 0,
+        quantity: 1,
+        on_wholesale_retail: 1,
       },
     ];
     expect(
-      findModeConvertibleCartLine(lines, "SUGAR", true, {
+      findModeConvertibleCartLine(lines, "SUGAR", false, {
+        combineIdenticalLines: false,
+      })?.id,
+    ).toBe(1);
+  });
+
+  it("does not convert when combine is off and the SKU already has two modes", () => {
+    const lines = [
+      { id: 1, product_code: "SUGAR", quantity: 50, on_wholesale_retail: 0 },
+      { id: 2, product_code: "SUGAR", quantity: 1, on_wholesale_retail: 1 },
+    ];
+    expect(
+      findModeConvertibleCartLine(lines, "SUGAR", false, {
         combineIdenticalLines: false,
       }),
     ).toBeNull();

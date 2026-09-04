@@ -6339,6 +6339,8 @@ export function PosScreen({ standalone = false }) {
       );
 
     const paintOptimisticOn = (baseCart) => {
+      // Classic qty/F12 already painted this row — do not rebuild with a pending-*
+      // token (that raced TemporaryCart merge and left Sugar as kg + bag).
       if (!baseCart?.id || needsLineDiscountApproval || lineAlreadyMatchesEdit) return null;
       const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
       const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
@@ -6585,15 +6587,20 @@ export function PosScreen({ standalone = false }) {
     }
 
     const optimisticLine =
-      painted?.optimisticLine ?? buildOptimisticCartLine(product, lineBody, finalComputed);
+      painted?.optimisticLine ??
+      (lineAlreadyMatchesEdit
+        ? null
+        : buildOptimisticCartLine(product, lineBody, finalComputed));
     const optimisticCart =
       painted?.optimisticCart ??
-      applyOptimisticCartMutation(activeCart, optimisticLine, {
-        mergeTarget: resolvedMergeTarget,
-        editingRef: intendedEdit ? targetLineRef : null,
-        editingId: intendedEdit ? editingId : null,
-        combineIdenticalLines: combineIdentical,
-      });
+      (lineAlreadyMatchesEdit
+        ? activeCart
+        : applyOptimisticCartMutation(activeCart, optimisticLine, {
+            mergeTarget: resolvedMergeTarget,
+            editingRef: intendedEdit ? targetLineRef : null,
+            editingId: intendedEdit ? editingId : null,
+            combineIdenticalLines: combineIdentical,
+          }));
 
     // Previous-order edit: keep line add/update local until Complete saves + prints.
     if (isPreviousOrderEditSession(activeCart)) {
@@ -8319,8 +8326,8 @@ export function PosScreen({ standalone = false }) {
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
 
-    // F12 flipped retail↔wholesale with combine-on: convert the sole opposite-mode
-    // row in place. When combine is off, bags + kg stay separate new lines (not a swap).
+    // F12 flipped retail↔wholesale: convert the sole opposite-mode row in place
+    // (1 kg → 1 bag). When the SKU already has bag + kg rows, add a new line.
     if (!editingLineId) {
       const nextRetailFlag = posLineWholesaleRetailFlag(
         productForAdd,
@@ -9131,6 +9138,12 @@ export function PosScreen({ standalone = false }) {
           } else {
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
           }
+          if (modeActuallyChanged) {
+            setSelectedProduct(null);
+            selectedProductRef.current = null;
+            setSelectedProductCode(null);
+            setLineForm(EMPTY_LINE);
+          }
           setSelectedLineId(null);
           focusedCartQtyLineIdRef.current = null;
           setFocusedCartQtyLineId(null);
@@ -9158,6 +9171,12 @@ export function PosScreen({ standalone = false }) {
           if (qtyActuallyChanged || modeActuallyChanged) {
             announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
           }
+          if (modeActuallyChanged) {
+            setSelectedProduct(null);
+            selectedProductRef.current = null;
+            setSelectedProductCode(null);
+            setLineForm(EMPTY_LINE);
+          }
           setSelectedLineId(null);
           focusedCartQtyLineIdRef.current = null;
           setFocusedCartQtyLineId(null);
@@ -9169,6 +9188,13 @@ export function PosScreen({ standalone = false }) {
         // Never revert the painted qty if PATCH fails (stale update_no used to snap 1→2).
         if (qtyActuallyChanged || modeActuallyChanged) {
           announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
+        }
+        // Drop parked entry SKU after F12 convert so Scan Enter cannot POST a twin.
+        if (modeActuallyChanged) {
+          setSelectedProduct(null);
+          selectedProductRef.current = null;
+          setSelectedProductCode(null);
+          setLineForm(EMPTY_LINE);
         }
         setSelectedLineId(null);
         focusedCartQtyLineIdRef.current = null;

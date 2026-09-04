@@ -33,18 +33,18 @@ export function findMergeableCartLine(
 }
 
 /**
- * After F12 flips retail/wholesale, re-adding the same SKU may convert the
- * existing opposite-mode row in place — never spawn "1 bag" + "1 kg".
- * Only when combine-identical is on and that SKU appears once on the cart.
- * When combine is off, Sugar 1 bag + Sugar 10 kg are intentional separate lines.
+ * After F12 flips retail/wholesale, re-adding the same SKU must convert the
+ * sole opposite-mode row in place — never spawn "1 bag" + "1 kg".
+ * When that SKU already appears more than once (intentional bag + kg, or two
+ * bag lines with combine off), leave them alone and let add create a new row.
  */
 export function findModeConvertibleCartLine(
   cartLines,
   productCode,
   nextOnWholesaleRetail,
-  { combineIdenticalLines = true } = {},
+  { combineIdenticalLines: _combineIdenticalLines = true } = {},
 ) {
-  if (combineIdenticalLines === false) return null;
+  void _combineIdenticalLines;
   if (!cartLines?.length || !productCode) return null;
   const sameSku = cartLines.filter(
     (line) => String(line.product_code) === String(productCode),
