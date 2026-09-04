@@ -624,7 +624,7 @@ export function applyCartMutationResponse(
 
   const lines = [...(prevCart.lines ?? [])];
   const ref = cartLineRef(res);
-  const idx =
+  let idx =
     targetLineRef != null && String(targetLineRef).trim() !== ""
       ? findCartLineIndexByRef(lines, targetLineRef)
       : findCartLineIndexByRef(lines, ref);
