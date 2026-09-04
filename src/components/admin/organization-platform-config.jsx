@@ -264,8 +264,8 @@ export function OrganizationTenantProfile({
         {setupProfiles.length > 0 ? (
           <OrgRegisterField label="Setup type *" className="sm:col-span-2 sm:max-w-md">
             <SearchableSelect
-  className={inputClass}
-  value={deploymentProfile}
+              className={inputClass}
+              value={deploymentProfile}
   nativeEvent
   onChange={((e) => onProfileChange?.(e.target.value))}
   options={setupProfiles.map((profile) => ({ value: profile.key, label: profile.label }))}
@@ -274,7 +274,7 @@ export function OrganizationTenantProfile({
               {industry === "hospitality"
                 ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
                 : deploymentProfile === "custom"
-                  ? "Start from a blank setup and enable only the applications you need on the Applications tab."
+                ? "Start from a blank setup and enable only the applications you need on the Applications tab."
                   : "Preset within this industry. Changing it updates the default application toggles."}
             </p>
           </OrgRegisterField>
@@ -748,19 +748,19 @@ export function OrganizationPlatformSalesSettings({
               <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Mobile orders queue shortcuts
               </p>
-              <Toggle
+          <Toggle
                 label="Returns card on Mobile orders"
                 description="Off by default. Shows a Returns card beside search on Sales → Mobile orders. View returns performed for the selected dates, or approve pending returns."
                 checked={Boolean(salesPlatform?.enable_mobile_orders_returns_card)}
                 onChange={(v) => patch({ enable_mobile_orders_returns_card: v })}
-              />
-              <Toggle
+          />
+          <Toggle
                 label="Payments card on Mobile orders"
                 description="Off by default. Shows a Payments card beside search on Sales → Mobile orders. Mark all unpaid orders on the page as paid, or select specific orders."
                 checked={Boolean(salesPlatform?.enable_mobile_orders_payments_card)}
                 onChange={(v) => patch({ enable_mobile_orders_payments_card: v })}
-              />
-              <Toggle
+          />
+          <Toggle
                 label="Expenses card on Mobile orders"
                 description="Off by default. Lets sales reps record route expenses on the mobile app. Managers approve them from a card on Sales → Mobile orders; approved amounts deduct from that rep’s sales for the expense date."
                 checked={Boolean(salesPlatform?.enable_mobile_orders_expenses_card)}
@@ -851,7 +851,7 @@ export function OrganizationOrdersListSettings({
   const sectionEnabled = isHospitality ? hospitalityEnabled || salesEnabled : salesEnabled;
 
   return (
-    <PlatformFormSection
+      <PlatformFormSection
       title={isHospitality ? "Sales & orders and reports" : "Orders list & reports"}
       description={
         isHospitality
@@ -881,7 +881,7 @@ export function OrganizationOrdersListSettings({
           industry={isHospitality ? "hospitality" : "commerce"}
         />
       )}
-    </PlatformFormSection>
+      </PlatformFormSection>
   );
 }
 
@@ -997,8 +997,8 @@ export function OrganizationOrderWorkflowSettings({
                   </OrgRegisterField>
                   <OrgRegisterField label="Still in pipeline before">
                     <SearchableSelect
-  className={inputClass}
-  value={salesPlatform?.order_expiry_before_status ?? "processed"}
+                      className={inputClass}
+                      value={salesPlatform?.order_expiry_before_status ?? "processed"}
   nativeEvent
   onChange={((e) => patch({ order_expiry_before_status: e.target.value }))}
   options={expiryPipelineSteps.map((step) => ({ value: step.key, label: step.label }))}
@@ -1931,21 +1931,21 @@ export function OrganizationModuleToggles({
               }`}
             >
               <label className="flex items-start gap-4">
-                <input
-                  type="checkbox"
-                  className="mt-1 rounded border-[var(--theme-border)]"
-                  checked={enabled}
-                  disabled={distributionBlocked}
-                  onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="text-lg" aria-hidden>
-                      {workspaceToggleIcon(workspace.icon)}
-                    </span>
-                    <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-[var(--theme-border)]"
+                checked={enabled}
+                disabled={distributionBlocked}
+                onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-lg" aria-hidden>
+                    {workspaceToggleIcon(workspace.icon)}
                   </span>
-                  <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
+                  <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
+                </span>
+                <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
                       Centrix ERP theme colors are configured by the organization under Administration
@@ -1953,21 +1953,21 @@ export function OrganizationModuleToggles({
                       Organization settings → Sales → Tills.
                     </span>
                   ) : null}
-                  {isDistribution ? (
-                    <span className="theme-subtext mt-1 block text-xs">
-                      {mobileOrdersEnabled
-                        ? "Requires mobile orders to be enabled."
-                        : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
-                    </span>
-                  ) : null}
-                  {workspace.id === "admin" && !enabled ? (
-                    <span className="mt-1 block text-xs text-amber-800 dark:text-amber-300">
-                      Organization settings, security, notifications, and AI preferences move to Platform → Organization
-                      settings for this tenant.
-                    </span>
-                  ) : null}
-                </span>
-              </label>
+                {isDistribution ? (
+                  <span className="theme-subtext mt-1 block text-xs">
+                    {mobileOrdersEnabled
+                      ? "Requires mobile orders to be enabled."
+                      : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
+                  </span>
+                ) : null}
+                {workspace.id === "admin" && !enabled ? (
+                  <span className="mt-1 block text-xs text-amber-800 dark:text-amber-300">
+                    Organization settings, security, notifications, and AI preferences move to Platform → Organization
+                    settings for this tenant.
+                  </span>
+                ) : null}
+              </span>
+            </label>
               {workspace.id === "pos" && enabled && typeof onSalesChange === "function" ? (
                 <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
                   <ExternalPosPlatformFields
@@ -2293,8 +2293,8 @@ export function OrganizationUsersPanel({
                 </OrgRegisterField>
                 <OrgRegisterField label="Branch *">
                   <SearchableSelect
-  className={inputClass}
-  value={branchId}
+                    className={inputClass}
+                    value={branchId}
   nativeEvent
   onChange={((e) => setBranchId(e.target.value))}
   options={branches.map((branch) => ({ value: String(branch.id), label: branch.branch_name }))}
@@ -2302,11 +2302,11 @@ export function OrganizationUsersPanel({
                 </OrgRegisterField>
                 <OrgRegisterField label="Role *">
                   <SearchableSelect
-  className={inputClass}
-  value={roleId}
+                    className={inputClass}
+                    value={roleId}
   nativeEvent
   onChange={((e) => setRoleId(e.target.value))}
-  disabled={isAdmin}
+                    disabled={isAdmin}
   options={roles.map((role) => ({ value: String(role.id), label: role.role_name }))}
 />
                 </OrgRegisterField>
@@ -2736,10 +2736,10 @@ function OrganizationUserRow({
             <div className="w-36">
               <PasswordInput
                 className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-                placeholder="New password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              placeholder="New password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
             </div>
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               <input
@@ -2772,19 +2772,19 @@ function OrganizationUserRow({
             >
               {user.is_active ? "Disable login" : "Enable login"}
             </button>
-            <button
-              type="button"
+              <button
+                type="button"
               disabled={busy || isSoleOrgAdmin}
               title={
                 isSoleOrgAdmin
                   ? "Cannot delete the only organization administrator — promote another user first"
                   : undefined
               }
-              onClick={() => void deleteUser()}
-              className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              Delete user
-            </button>
+                onClick={() => void deleteUser()}
+                className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete user
+              </button>
           </div>
           {saved ? <p className="text-xs text-emerald-700">User details saved.</p> : null}
           {error ? <p className="text-xs text-red-600">{error}</p> : null}
@@ -2873,29 +2873,29 @@ export function OrganizationStatusPanel({ organization, isActive: isActiveProp, 
 
   return (
     <div className="space-y-6">
-      <PlatformFormSection
-        title="Organization status"
-        description="Disabling an organization signs out all users and blocks sign-in until re-enabled."
-      >
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={isActive}
-            onChange={(e) => onChange?.({ is_active: e.target.checked })}
-          />
-          <span>
-            <span className="block text-sm font-medium text-slate-900">
-              {isActive ? "Organization is active" : "Organization is disabled"}
-            </span>
-            <span className="mt-0.5 block text-xs text-slate-500">
-              {isActive
-                ? "Users can sign in normally."
-                : "All users are signed out and cannot sign in until you re-enable this organization."}
-            </span>
+    <PlatformFormSection
+      title="Organization status"
+      description="Disabling an organization signs out all users and blocks sign-in until re-enabled."
+    >
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={isActive}
+          onChange={(e) => onChange?.({ is_active: e.target.checked })}
+        />
+        <span>
+          <span className="block text-sm font-medium text-slate-900">
+            {isActive ? "Organization is active" : "Organization is disabled"}
           </span>
-        </label>
-      </PlatformFormSection>
+          <span className="mt-0.5 block text-xs text-slate-500">
+            {isActive
+              ? "Users can sign in normally."
+              : "All users are signed out and cannot sign in until you re-enable this organization."}
+          </span>
+        </span>
+      </label>
+    </PlatformFormSection>
 
       {organizationId ? (
         <OrganizationBillingPanel

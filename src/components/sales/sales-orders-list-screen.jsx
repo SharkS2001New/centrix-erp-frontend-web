@@ -572,7 +572,7 @@ export default function SalesOrdersListScreen({
     // so platform admins can set a wider window (e.g. 30 or 60 days) per org.
     const range =
       queueConfig?.dateRangeDays != null
-        ? defaultDateRange(queueConfig.dateRangeDays)
+          ? defaultDateRange(queueConfig.dateRangeDays)
         : shopDebtorsOnly
           ? shopDebtorsDefaultRange
           : routeOrdersOnly && routeOrdersDateRangeDays != null
@@ -777,9 +777,9 @@ export default function SalesOrdersListScreen({
         ? queueConfig.fixedStatusFilter
         : statusFromColumn
           ? statusFromColumn
-          : effectiveStatusFilter !== "all"
-            ? effectiveStatusFilter
-            : null;
+        : effectiveStatusFilter !== "all"
+          ? effectiveStatusFilter
+          : null;
       if (statusParam) filters.status = statusParam;
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
@@ -910,16 +910,16 @@ export default function SalesOrdersListScreen({
       setTotalOrders(parsed.total);
       setTotalPages(parsed.totalPages);
       // Items load on expand via loadOrderDetail — keep any already-fetched details.
-      setDetailsById((prev) => {
-        const next = { ...prev };
+        setDetailsById((prev) => {
+          const next = { ...prev };
         for (const sale of list) {
           const key = String(sale.id);
           if (next[key]?.items === undefined && sale.items !== undefined) {
             next[key] = sale;
           }
-        }
-        return next;
-      });
+          }
+          return next;
+        });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load orders");
     } finally {
@@ -980,7 +980,7 @@ export default function SalesOrdersListScreen({
   );
 
   const rejectActionRequest = useCallback((requestId, approvalLines = []) => {
-    if (!requestId) return;
+      if (!requestId) return;
     setRejectContext({ requestId, approvalLines });
   }, []);
 
@@ -1079,7 +1079,7 @@ export default function SalesOrdersListScreen({
     if (!isOrderEditActionVisible(sale, workflow, capabilities)) return;
 
     if (shouldOpenBackofficeOrderEdit(sale, workflow, capabilities)) {
-      setEditSale(sale);
+    setEditSale(sale);
       return;
     }
 
@@ -1448,7 +1448,7 @@ export default function SalesOrdersListScreen({
       return updated;
     } catch (e) {
       if (!quiet) {
-        setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
+      setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
       }
       return null;
     } finally {
@@ -1477,15 +1477,15 @@ export default function SalesOrdersListScreen({
   async function handleAdvance(sale, targetStatus) {
     if (transitionBusyId === sale.id || fulfillment.busy) return null;
     try {
-      if (targetStatus === "cancelled") {
+    if (targetStatus === "cancelled") {
         return await transitionOrder(sale, targetStatus);
       }
       const fromStatus = String(sale?.status ?? "").toLowerCase();
       if (fromStatus === "expired" || fromStatus === "cancelled") {
         return await transitionOrder(sale, targetStatus);
-      }
-      if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
-        setPaySale(sale);
+    }
+    if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
+      setPaySale(sale);
         return null;
       }
       return await fulfillment.requestTransition(sale, targetStatus);
@@ -1908,7 +1908,7 @@ export default function SalesOrdersListScreen({
                   ? "Sales orders for regular and debtor customers only."
                   : routeOrdersOnly
                     ? `Delivery-route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only here — change status in Sales → Orders.`
-                    : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
+            : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
         }
       action={
         routeOrdersOnly ? (
@@ -1951,20 +1951,20 @@ export default function SalesOrdersListScreen({
               </button>
             ) : null}
             {queueConfig?.activityHref ? (
-              <Link
+            <Link
                 href={queueConfig.activityHref}
-                className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
                 Conversations & help
-              </Link>
+            </Link>
             ) : null}
             {hasPermission(P.sales.orders.create) ? (
-              <Link
-                href="/sales/pos"
-                className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-              >
-                + New sale
-              </Link>
+          <Link
+            href="/sales/pos"
+            className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+          >
+            + New sale
+          </Link>
             ) : null}
           </div>
         )
@@ -1981,55 +1981,55 @@ export default function SalesOrdersListScreen({
                 />
               </Field>
             ) : null}
-            <Field label="From">
-              <input
-                type="date"
-                className={FILTER_CONTROL_CLASS}
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value || isoDate())}
-              />
-            </Field>
-            <Field label="To">
-              <input
-                type="date"
-                className={FILTER_CONTROL_CLASS}
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value || isoDate())}
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={applyDateFilter}
-              className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
-            >
-              Filter
-            </button>
+          <Field label="From">
+            <input
+              type="date"
+              className={FILTER_CONTROL_CLASS}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value || isoDate())}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              className={FILTER_CONTROL_CLASS}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value || isoDate())}
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={applyDateFilter}
+            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+          >
+            Filter
+          </button>
             {!routeOrdersOnly && showRouteFilter ? (
-              <Field label="Route">
-                <FilterSelect
-                  value={routeFilter}
-                  onChange={(e) => handleRouteFilterChange(e.target.value)}
-                  options={routeFilterOptions}
-                />
-              </Field>
-            ) : null}
-            <Field label="Status">
+            <Field label="Route">
               <FilterSelect
-                value={effectiveStatusFilter ?? "all"}
-                disabled={queueConfig?.lockStatusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={routeFilter}
+                onChange={(e) => handleRouteFilterChange(e.target.value)}
+                options={routeFilterOptions}
+              />
+            </Field>
+          ) : null}
+          <Field label="Status">
+              <FilterSelect
+              value={effectiveStatusFilter ?? "all"}
+              disabled={queueConfig?.lockStatusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
                 options={statusOptions}
               />
-            </Field>
-            {showSourceFilter ? (
-              <Field label="Source">
+          </Field>
+          {showSourceFilter ? (
+            <Field label="Source">
                 <FilterSelect
-                  value={effectiveSourceFilter ?? "all"}
-                  onChange={(e) => setSourceFilter(e.target.value)}
+                value={effectiveSourceFilter ?? "all"}
+                onChange={(e) => setSourceFilter(e.target.value)}
                   options={sourceOptions}
                 />
-              </Field>
-            ) : null}
+            </Field>
+          ) : null}
             {showCashierFilter ? (
               <Field label="User">
                 <FilterSelect
@@ -2037,9 +2037,9 @@ export default function SalesOrdersListScreen({
                   onChange={(e) => setCashierFilter(e.target.value)}
                   options={sellerFilterOptions}
                 />
-              </Field>
+          </Field>
             ) : null}
-          </FilterToolbar>
+        </FilterToolbar>
         </div>
       }
       banner={
@@ -2100,7 +2100,7 @@ export default function SalesOrdersListScreen({
               routeById={routeById}
             />
           ) : (
-            <OrderSummaryStats summary={summary} hint={summaryHint} />
+          <OrderSummaryStats summary={summary} hint={summaryHint} />
           )
         ) : null}
 
@@ -2327,7 +2327,7 @@ export default function SalesOrdersListScreen({
                       </tr>
                     ) : (
                       pageSlice.map((sale) => {
-                        const key = String(sale.id);
+                      const key = String(sale.id);
                         const rowWorkflow = workflowBySaleId.get(sale.id);
                         const cancelledRestore =
                           !routeOrdersOnly &&
@@ -2345,16 +2345,16 @@ export default function SalesOrdersListScreen({
                         const restoreLabel = restoreTarget
                           ? `Restore to ${workflowStatusLabel(rowWorkflow, restoreTarget)}`
                           : null;
-                        return (
+                      return (
                           <OrderListTableRow
-                            key={sale.id}
-                            sale={sale}
+                          key={sale.id}
+                          sale={sale}
                             workflow={rowWorkflow}
-                            detail={detailsById[key]}
-                            itemsLoading={detailLoadingId === key}
-                            uomById={uomById}
-                            expanded={expandedIds.has(key)}
-                            onToggleExpand={() => toggleExpand(sale.id)}
+                          detail={detailsById[key]}
+                          itemsLoading={detailLoadingId === key}
+                          uomById={uomById}
+                          expanded={expandedIds.has(key)}
+                          onToggleExpand={() => toggleExpand(sale.id)}
                             onContextMenu={
                               routeOrdersOnly
                                 ? undefined
@@ -2362,20 +2362,20 @@ export default function SalesOrdersListScreen({
                             }
                             onView={routeOrdersOnly ? undefined : () => viewOrder(sale)}
                             onPrint={routeOrdersOnly ? undefined : () => void printOrder(sale)}
-                            printAriaLabel={orderPrintAriaLabel}
+                          printAriaLabel={orderPrintAriaLabel}
                             onOpenActionsMenu={
                               routeOrdersOnly
                                 ? undefined
                                 : (event) => openActionsMenuFromButton(event, sale)
                             }
-                            onCollectPayment={
+                          onCollectPayment={
                               routeOrdersOnly
                                 ? null
                                 : canCollectPayments &&
                                     canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
-                                  ? () => openCollectPayment(sale)
-                                  : null
-                            }
+                              ? () => openCollectPayment(sale)
+                              : null
+                          }
                             onEdit={
                               !routeOrdersOnly &&
                               isOrderEditActionVisible(sale, rowWorkflow, capabilities)
@@ -2397,31 +2397,31 @@ export default function SalesOrdersListScreen({
                             actionBusy={transitionBusyId === sale.id || blockingBatchBusy}
                             showOrderColumn={visibleColumnSet.has("order")}
                             showCustomerColumn={visibleColumnSet.has("customer")}
-                            showBranchColumn={showBranchColumn}
-                            branchName={saleBranchLabel(sale, branchById)}
-                            showRouteColumn={showRouteColumn}
-                            showDeliveryDateColumn={showDeliveryDateColumn}
-                            showConnectivityColumn={showConnectivityColumn}
+                          showBranchColumn={showBranchColumn}
+                          branchName={saleBranchLabel(sale, branchById)}
+                          showRouteColumn={showRouteColumn}
+                          showDeliveryDateColumn={showDeliveryDateColumn}
+                          showConnectivityColumn={showConnectivityColumn}
                             showAmountColumn={visibleColumnSet.has("amount")}
                             showAmountPaidColumn={showAmountPaidColumn}
                             showBalanceColumn={showBalanceColumn}
                             showVatColumn={visibleColumnSet.has("vat")}
                             showStatusColumn={visibleColumnSet.has("status")}
                             showMethodColumn={visibleColumnSet.has("method")}
-                            showSourceColumn={showSourceColumn}
+                          showSourceColumn={showSourceColumn}
                             showPlacedByColumn={visibleColumnSet.has("placed_by")}
-                            routeById={routeById}
-                            paymentRefsBySaleId={paymentRefsBySaleId}
-                            columnCount={columnCount}
+                          routeById={routeById}
+                          paymentRefsBySaleId={paymentRefsBySaleId}
+                          columnCount={columnCount}
                             showDiscountColumn={showDiscountColumn}
                             showApprovalColumn={showApprovalColumn}
                             showRejectionStrip={showRejectionStrip}
                             showActionsColumn={!routeOrdersOnly}
                             queueSlug={paymentQueueSlug}
-                            onApproveActionRequest={approveActionRequest}
-                            onRejectActionRequest={rejectActionRequest}
+                          onApproveActionRequest={approveActionRequest}
+                          onRejectActionRequest={rejectActionRequest}
                             canApproveDiscounts={canApproveDiscounts}
-                            capabilities={capabilities}
+                          capabilities={capabilities}
                             selection={
                               routeOrdersOnly
                                 ? null
@@ -2440,13 +2440,13 @@ export default function SalesOrdersListScreen({
             </>
           )}
           {!routeOrdersOnly ? (
-            <OrderContextMenu
-              open={Boolean(contextMenu)}
-              x={contextMenu?.x ?? 0}
-              y={contextMenu?.y ?? 0}
-              items={contextMenuItems}
-              onClose={() => setContextMenu(null)}
-            />
+          <OrderContextMenu
+            open={Boolean(contextMenu)}
+            x={contextMenu?.x ?? 0}
+            y={contextMenu?.y ?? 0}
+            items={contextMenuItems}
+            onClose={() => setContextMenu(null)}
+          />
           ) : null}
           <PaginationBar
             page={page}

@@ -1157,16 +1157,6 @@ export function EmployeeFormWizard({
                 className={inputClassName()}
               />
             </Field>
-            <Field label="Deduct SHIF (SHA) from payroll">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!form.pays_sha}
-                  onChange={(e) => updateField("pays_sha", e.target.checked)}
-                />
-                <span className="text-sm text-slate-700">Deduct SHIF for this employee</span>
-              </label>
-            </Field>
             <Field label="Housing levy number">
               <input
                 type="text"
@@ -1175,10 +1165,106 @@ export function EmployeeFormWizard({
                 className={inputClassName()}
               />
             </Field>
-            <p className="text-xs text-slate-500 md:col-span-2 xl:col-span-3">
-              PAYE, NSSF, SHIF, and Housing Levy are calculated automatically when payroll is
-              processed.
-            </p>
+            <div className="md:col-span-2 xl:col-span-3">
+              <p className="mb-2 text-sm font-medium text-slate-800">Statutory deductions</p>
+              <p className="mb-3 text-xs text-slate-500">
+                Enabled by default. Uncheck only when this employee should not pay that item.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!form.pays_sha}
+                    onChange={(e) => updateField("pays_sha", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-700">Deduct SHIF (SHA)</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.pays_nssf !== false}
+                    onChange={(e) => updateField("pays_nssf", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-700">Deduct NSSF</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.pays_housing_levy !== false}
+                    onChange={(e) => updateField("pays_housing_levy", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-700">Deduct Housing Levy</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.pays_paye !== false}
+                    onChange={(e) => updateField("pays_paye", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-700">Deduct PAYE</span>
+                </label>
+              </div>
+            </div>
+            <div className="md:col-span-2 xl:col-span-3">
+              <p className="mb-2 text-sm font-medium text-slate-800">Overtime</p>
+              <p className="mb-3 text-xs text-slate-500">
+                Turn off eligibility when pay already includes overtime. Auto-approve creates
+                approved OT on late clock-out; otherwise OT goes to Pending overtime for
+                approval. A locked monthly amount pays that fixed OT and skips punch-based OT.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={form.eligible_for_overtime !== false}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      updateField("eligible_for_overtime", on);
+                      if (!on) updateField("auto_approve_overtime", false);
+                    }}
+                  />
+                  <span className="text-sm text-slate-700">
+                    <span className="font-medium">Eligible for overtime</span>
+                    <span className="block text-xs text-slate-500">
+                      Uncheck if salary already covers overtime (no OT pay).
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={
+                      form.eligible_for_overtime !== false && form.auto_approve_overtime !== false
+                    }
+                    disabled={form.eligible_for_overtime === false}
+                    onChange={(e) => updateField("auto_approve_overtime", e.target.checked)}
+                  />
+                  <span className="text-sm text-slate-700">
+                    <span className="font-medium">Auto-approve overtime</span>
+                    <span className="block text-xs text-slate-500">
+                      On: late clock-out creates approved OT. Off: OT stays pending until
+                      approved.
+                    </span>
+                  </span>
+                </label>
+                <div className="sm:col-span-2">
+                  <Field label="Locked monthly overtime (KES)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.monthly_overtime_amount}
+                      onChange={(e) => updateField("monthly_overtime_amount", e.target.value)}
+                      className={inputClassName()}
+                      placeholder="Leave blank to use punch / manual OT only"
+                      disabled={form.eligible_for_overtime === false}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>

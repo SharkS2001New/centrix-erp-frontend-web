@@ -106,7 +106,14 @@ export const EMPTY_EMPLOYEE_FORM = {
   kra_pin: "",
   nssf_number: "",
   sha_number: "",
+  pays_sha: true,
+  pays_nssf: true,
+  pays_housing_levy: true,
+  pays_paye: true,
   housing_levy_number: "",
+  eligible_for_overtime: true,
+  auto_approve_overtime: true,
+  monthly_overtime_amount: "",
   is_active: true,
   payment_accounts: defaultPaymentAccountsForNewEmployee(),
   emergency_contacts: [createEmptyEmergencyContact({ isPrimary: true })],
@@ -518,7 +525,16 @@ export function employeeToForm(employee) {
     nssf_number: employee.nssf_number ?? "",
     sha_number: employee.sha_number ?? "",
     pays_sha: employee.pays_sha !== false,
+    pays_nssf: employee.pays_nssf !== false,
+    pays_housing_levy: employee.pays_housing_levy !== false,
+    pays_paye: employee.pays_paye !== false,
     housing_levy_number: employee.housing_levy_number ?? "",
+    eligible_for_overtime: employee.eligible_for_overtime !== false,
+    auto_approve_overtime: employee.auto_approve_overtime !== false,
+    monthly_overtime_amount:
+      employee.monthly_overtime_amount != null && employee.monthly_overtime_amount !== ""
+        ? String(employee.monthly_overtime_amount)
+        : "",
     is_active: employee.is_active !== false && employee.employment_status !== "terminated",
     payment_accounts: paymentAccountsToForm(bankAccounts, employee.employment_type ?? "permanent"),
     emergency_contacts: emergencyContactsToForm(employee.emergency_contacts ?? employee.emergencyContacts),
@@ -668,6 +684,13 @@ export function buildEmployeeBody(form, organizationId, branchId, { isEdit = fal
     sha_number: form.sha_number.trim() || null,
     housing_levy_number: form.housing_levy_number.trim() || null,
     pays_sha: !!form.pays_sha,
+    pays_nssf: !!form.pays_nssf,
+    pays_housing_levy: !!form.pays_housing_levy,
+    pays_paye: !!form.pays_paye,
+    eligible_for_overtime: !!form.eligible_for_overtime,
+    auto_approve_overtime: !!form.eligible_for_overtime && !!form.auto_approve_overtime,
+    monthly_overtime_amount:
+      form.monthly_overtime_amount !== "" ? parseFloat(form.monthly_overtime_amount) : null,
     is_active: form.is_active && status === "active",
   };
   if (isEdit && employeeCode) {

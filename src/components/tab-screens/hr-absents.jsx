@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { composeEmployeeDisplayName, formatHoursWorked } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
@@ -45,6 +45,7 @@ export function HrAbsentsScreen() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
+  const [markingId, setMarkingId] = useState(null);
   const [fromDate, setFromDate] = useState(daysAgo(14));
   const [toDate, setToDate] = useState(daysAgo(1));
   const [appliedFrom, setAppliedFrom] = useState(daysAgo(14));
@@ -79,6 +80,31 @@ export function HrAbsentsScreen() {
 
   useTabAwareDataLoad(load);
 
+  async function markPresent(row) {
+    if (!row?.id) return;
+    setMarkingId(row.id);
+    try {
+      await apiRequest(`/employee-attendance/${row.id}`, {
+        method: "PUT",
+        body: {
+          employee_id: row.employee_id,
+          attendance_date: String(row.attendance_date).slice(0, 10),
+          status: "present",
+          check_in: null,
+          check_out: null,
+          notes: "Corrected to present by HR (no punches)",
+          source: row.source ?? "manual",
+        },
+      });
+      notifySuccess("Marked present — day will count as paid on the next payroll run.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not mark present");
+    } finally {
+      setMarkingId(null);
+    }
+  }
+
   async function fetchAllAbsentRows() {
     const all = [];
     let p = 1;
@@ -107,7 +133,7 @@ export function HrAbsentsScreen() {
   return (
     <CatalogPageShell
       title="Absents"
-      subtitle="Past scheduled workdays with no clock-in. Hours worked stay 0."
+      subtitle="Past scheduled workdays with no clock-in. Use Mark present to pay the day (do not only delete — a missing day is still unpaid)."
       action={
         <HrPageActions>
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={load} disabled={loading}>
@@ -153,6 +179,7 @@ export function HrAbsentsScreen() {
                 <th className="py-2 pr-4 font-medium">Code</th>
                 <th className="py-2 pr-4 font-medium">No of hours worked</th>
                 <th className="py-2 pr-4 font-medium">Notes</th>
+                <th className="py-2 pr-4 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -163,6 +190,16 @@ export function HrAbsentsScreen() {
                   <td className="py-2 pr-4">{r.employee?.employee_code ?? "—"}</td>
                   <td className="py-2 pr-4 tabular-nums">{formatHoursWorked(r.hours_worked ?? 0)}</td>
                   <td className="py-2 pr-4 text-slate-600">{r.notes || "—"}</td>
+                  <td className="py-2 pr-4">
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                      disabled={markingId === r.id}
+                      onClick={() => void markPresent(r)}
+                    >
+                      {markingId === r.id ? "Saving…" : "Mark present"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

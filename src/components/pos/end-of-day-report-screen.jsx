@@ -815,10 +815,10 @@ export function EndOfDayReportScreen({
         const rows = Array.isArray(res?.data) ? res.data : [];
         setCashierOptions(
           rows
-            .map((u) => ({
-              value: String(u.id),
-              label: u.full_name?.trim() || u.username || `User #${u.id}`,
-            }))
+      .map((u) => ({
+        value: String(u.id),
+        label: u.full_name?.trim() || u.username || `User #${u.id}`,
+      }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         );
       })
@@ -1059,19 +1059,19 @@ export function EndOfDayReportScreen({
   const expensesHref = buildExpensesHref({ fromDate: periodStart, toDate: periodEnd });
 
   const handleEodPrint = useCallback(() => {
-    if (!report) return;
+      if (!report) return;
     const periodLabel = isMonthly
       ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
       : formatReportDate(saleDate);
     void printEodReport(report, {
-      organizationName: organization?.org_name ?? organization?.name ?? "",
-      branchName,
-      cashierName: cashierName ?? "All cashiers",
+        organizationName: organization?.org_name ?? organization?.name ?? "",
+        branchName,
+        cashierName: cashierName ?? "All cashiers",
       sessionLabel: selectedSessionLabel,
       periodLabel,
       isMonthly,
       showFloat: showTillPanels,
-      showDiscounts: discountsEnabled,
+        showDiscounts: discountsEnabled,
       showCashVariance,
       actualCash: cashReconciliation?.actualCash,
       variance: cashReconciliation?.variance,
@@ -1081,31 +1081,31 @@ export function EndOfDayReportScreen({
       grossSalesExVat,
       netSalesExVat,
       cashierSalesRows,
-      userName: user?.full_name ?? user?.username,
+        userName: user?.full_name ?? user?.username,
       printedAt: formatAppDateTime(new Date()),
-    });
+      });
   }, [
-    branchName,
+      branchName,
     cashReconciliation,
-    cashierName,
+      cashierName,
     cashierSalesRows,
-    discountsEnabled,
+      discountsEnabled,
     expectedNetSales,
     grossSalesExVat,
     isMonthly,
     netSalesExVat,
-    organization?.name,
-    organization?.org_name,
+      organization?.name,
+      organization?.org_name,
     paymentLines,
     periodEnd,
     periodStart,
-    report,
+      report,
     showTillPanels,
     saleDate,
     selectedSessionLabel,
     showCashVariance,
-    user?.full_name,
-    user?.username,
+      user?.full_name,
+      user?.username,
   ]);
 
   return (
@@ -1145,32 +1145,32 @@ export function EndOfDayReportScreen({
       </div>
 
       <FilterToolbar className="mb-6 flex-wrap overflow-visible">
-        <div>
-          <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
-          <FilterSelect
-            value={branchId}
-            onChange={(e) => {
-              setBranchId(e.target.value);
-              setCashierId("");
+          <div>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
+            <FilterSelect
+              value={branchId}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+                setCashierId("");
               setFloatSessionId("");
-            }}
-            options={[
-              { value: "", label: "All branches" },
-              ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
-            ]}
-          />
-        </div>
-        <div>
+              }}
+              options={[
+                { value: "", label: "All branches" },
+                ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
+              ]}
+            />
+          </div>
+          <div>
           <label className="theme-subtext mb-1 block text-xs font-medium">Cashier / user</label>
-          <FilterSelect
-            value={cashierId}
+            <FilterSelect
+              value={cashierId}
             onChange={(e) => {
               setCashierId(e.target.value);
               setFloatSessionId("");
             }}
-            options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
-          />
-        </div>
+              options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
+            />
+          </div>
         {showTillPanels ? (
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
@@ -1184,41 +1184,41 @@ export function EndOfDayReportScreen({
             />
           </div>
         ) : null}
-        <div>
-          <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
-          <FilterSelect
-            value={reportMode}
-            onChange={(e) => setReportMode(e.target.value)}
-            options={[
-              { value: "daily", label: "Daily" },
-              { value: "monthly", label: "Monthly" },
-            ]}
-          />
-        </div>
-        {reportMode === "monthly" ? (
           <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
-            <input
-              type="month"
-              className={`${inputClassName()} w-40`}
-              value={saleMonth}
-              onChange={(e) => setSaleMonth(e.target.value)}
+            <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
+            <FilterSelect
+              value={reportMode}
+              onChange={(e) => setReportMode(e.target.value)}
+              options={[
+                { value: "daily", label: "Daily" },
+                { value: "monthly", label: "Monthly" },
+              ]}
             />
           </div>
-        ) : (
-          <div>
+          {reportMode === "monthly" ? (
+            <div>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
+              <input
+                type="month"
+                className={`${inputClassName()} w-40`}
+                value={saleMonth}
+                onChange={(e) => setSaleMonth(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Sale date</label>
-            <input
-              type="date"
-              className={`${inputClassName()} w-40`}
-              value={saleDate}
-              onChange={(e) => setSaleDate(e.target.value)}
-            />
-          </div>
-        )}
-        <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
-          Filter
-        </button>
+              <input
+                type="date"
+                className={`${inputClassName()} w-40`}
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+              />
+            </div>
+          )}
+          <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
+            Filter
+          </button>
       </FilterToolbar>
 
       {error ? (
@@ -1379,7 +1379,7 @@ export function EndOfDayReportScreen({
                         <SummaryRow label="M-Pesa" value={formatTillKes(row.mpesa_collected)} />
                         {row.room_charge != null && Number(row.room_charge) > 0 ? (
                           <SummaryRow label="Charge to room" value={formatTillKes(row.room_charge)} />
-                        ) : null}
+                          ) : null}
                         <SummaryRow
                           label="Equity"
                           value={formatTillKes(row.equity_collected ?? 0)}

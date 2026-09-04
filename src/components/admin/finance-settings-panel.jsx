@@ -327,9 +327,9 @@ export function FinanceSettingsPanel({
       ) : (
         <div className="mt-5 space-y-5">
           {useSubTabs ? (
-            <SettingsSubTabBar
-              tabs={visibleTabs}
-              activeTab={activeTab}
+          <SettingsSubTabBar
+            tabs={visibleTabs}
+            activeTab={activeTab}
               onTabChange={onSubTabChange}
               ariaLabel={
                 mode === "mpesa"
@@ -342,190 +342,190 @@ export function FinanceSettingsPanel({
           ) : null}
 
           {renderKra ? (
-            <div>
+          <div>
               {mode === "all" ? (
-                <p className="theme-subtext text-sm">
-                  Connect your on-prem KRA fiscal device and choose when completed sales are signed through it.
-                </p>
+            <p className="theme-subtext text-sm">
+              Connect your on-prem KRA fiscal device and choose when completed sales are signed through it.
+            </p>
               ) : null}
               <div className={`${mode === "all" ? "mt-3" : ""} space-y-3`}>
-                <Toggle
-                  label="KRA device configured"
-                  description="Stores device IP, serial number, and shop PIN. Required before connection checks or PLU registration."
-                  checked={Boolean(form.enable_kra_device)}
-                  onChange={(v) => setForm((f) => ({ ...f, enable_kra_device: v }))}
-                />
-                {form.enable_kra_device ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Device IP / URL">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_device_ip}
-                        onChange={(e) => setForm((f) => ({ ...f, kra_device_ip: e.target.value }))}
-                        placeholder="192.168.1.50:8010 or https://kramoonstores.example.com"
-                      />
-                    </Field>
-                    <Field label="Fiscal hardware IP (Smart VSCU)">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_device_hardware_ip}
-                        onChange={(e) => setForm((f) => ({ ...f, kra_device_hardware_ip: e.target.value }))}
-                        placeholder="192.168.1.39"
-                      />
-                      <p className="theme-subtext mt-1 text-xs">
-                        LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a
-                        hostname, not an IP.
-                      </p>
-                    </Field>
-                    <Field label="Device serial number (SN)">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_serial_number}
-                        onChange={(e) => setForm((f) => ({ ...f, kra_serial_number: e.target.value }))}
-                      />
-                    </Field>
-                    <Field label="Shop KRA PIN">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_pin_number}
-                        onChange={(e) => setForm((f) => ({ ...f, kra_pin_number: e.target.value.toUpperCase() }))}
-                      />
-                    </Field>
-                    <Field label="PLU register path">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_plu_register_path}
-                        onChange={(e) => setForm((f) => ({ ...f, kra_plu_register_path: e.target.value }))}
-                        placeholder="/api/upload-plu-data"
-                      />
-                    </Field>
-                    <div className="flex flex-col gap-2 sm:col-span-2">
-                      <div className="flex flex-wrap items-end gap-2">
-                        <div className="min-w-[220px] flex-1">
-                          <Toggle
-                            label="Test mode on device"
-                            checked={Boolean(form.kra_device_test_mode)}
-                            onChange={(v) => setForm((f) => ({ ...f, kra_device_test_mode: v }))}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={kraHealthTesting || !form.kra_device_ip.trim()}
-                          onClick={() => void testKraDeviceHealth()}
-                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
-                        >
-                          {kraHealthTesting ? "Testing…" : "Test connection"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={kraInitTesting || !form.kra_device_ip.trim() || !form.kra_serial_number.trim()}
-                          onClick={() => void initializeKraDevice()}
-                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
-                        >
-                          {kraInitTesting ? "Initializing…" : "Initialize device"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={kraRestartTesting || !form.kra_device_ip.trim()}
-                          onClick={() => void restartKraDevice()}
-                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
-                        >
-                          {kraRestartTesting ? "Restarting…" : "Restart device"}
-                        </button>
+              <Toggle
+                label="KRA device configured"
+                description="Stores device IP, serial number, and shop PIN. Required before connection checks or PLU registration."
+                checked={Boolean(form.enable_kra_device)}
+                onChange={(v) => setForm((f) => ({ ...f, enable_kra_device: v }))}
+              />
+              {form.enable_kra_device ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Device IP / URL">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_device_ip}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_device_ip: e.target.value }))}
+                      placeholder="192.168.1.50:8010 or https://kramoonstores.example.com"
+                    />
+                  </Field>
+                  <Field label="Fiscal hardware IP (Smart VSCU)">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_device_hardware_ip}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_device_hardware_ip: e.target.value }))}
+                      placeholder="192.168.1.39"
+                    />
+                    <p className="theme-subtext mt-1 text-xs">
+                      LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a
+                      hostname, not an IP.
+                    </p>
+                  </Field>
+                  <Field label="Device serial number (SN)">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_serial_number}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_serial_number: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Shop KRA PIN">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_pin_number}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_pin_number: e.target.value.toUpperCase() }))}
+                    />
+                  </Field>
+                  <Field label="PLU register path">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_plu_register_path}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_plu_register_path: e.target.value }))}
+                      placeholder="/api/upload-plu-data"
+                    />
+                  </Field>
+                  <div className="flex flex-col gap-2 sm:col-span-2">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="min-w-[220px] flex-1">
+                        <Toggle
+                          label="Test mode on device"
+                          checked={Boolean(form.kra_device_test_mode)}
+                          onChange={(v) => setForm((f) => ({ ...f, kra_device_test_mode: v }))}
+                        />
                       </div>
-                      {kraHealthResult ? (
+                      <button
+                        type="button"
+                        disabled={kraHealthTesting || !form.kra_device_ip.trim()}
+                        onClick={() => void testKraDeviceHealth()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraHealthTesting ? "Testing…" : "Test connection"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={kraInitTesting || !form.kra_device_ip.trim() || !form.kra_serial_number.trim()}
+                        onClick={() => void initializeKraDevice()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraInitTesting ? "Initializing…" : "Initialize device"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={kraRestartTesting || !form.kra_device_ip.trim()}
+                        onClick={() => void restartKraDevice()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraRestartTesting ? "Restarting…" : "Restart device"}
+                      </button>
+                    </div>
+                    {kraHealthResult ? (
                         <div className={`text-sm ${kraHealthResult.ok ? "text-emerald-700" : "text-red-700"}`}>
-                          <p>
-                            {kraHealthResult.message}
-                            {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                        <p>
+                          {kraHealthResult.message}
+                          {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                        </p>
+                        {kraHealthResult.deviceConnection ? (
+                          <p className="theme-subtext mt-1 text-xs">
+                            Device connection: {kraHealthResult.deviceConnection}
+                            {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
                           </p>
-                          {kraHealthResult.deviceConnection ? (
-                            <p className="theme-subtext mt-1 text-xs">
-                              Device connection: {kraHealthResult.deviceConnection}
-                              {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="theme-subtext text-xs">
-                          <strong>Test connection</strong> calls{" "}
-                          <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
-                          <strong>Initialize</strong> calls{" "}
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="theme-subtext text-xs">
+                        <strong>Test connection</strong> calls{" "}
+                        <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
+                        <strong>Initialize</strong> calls{" "}
                           <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/init</code> (serial + hardware
                           IP). <strong>Restart</strong> calls{" "}
-                          <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/restart-device</code>.
-                        </p>
-                      )}
-                    </div>
+                        <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/restart-device</code>.
+                      </p>
+                    )}
                   </div>
-                ) : null}
-                {form.enable_kra_device ? (
-                  <>
-                    <Toggle
-                      label="Use KRA device for sales"
-                      description="When on, completed sales are signed through the device (unless bypassed below). When off, sales use normal VAT calculations without calling the device."
-                      checked={Boolean(form.default_submit_kra)}
-                      onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
-                    />
-                    <Field label="Bypass KRA for orders at or above (KES)">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className={inputClassName()}
-                        value={form.kra_bypass_above_amount ?? ""}
+                </div>
+              ) : null}
+              {form.enable_kra_device ? (
+                <>
+                  <Toggle
+                    label="Use KRA device for sales"
+                    description="When on, completed sales are signed through the device (unless bypassed below). When off, sales use normal VAT calculations without calling the device."
+                    checked={Boolean(form.default_submit_kra)}
+                    onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
+                  />
+                  <Field label="Bypass KRA for orders at or above (KES)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className={inputClassName()}
+                      value={form.kra_bypass_above_amount ?? ""}
                         onChange={(e) => setForm((f) => ({ ...f, kra_bypass_above_amount: e.target.value }))}
-                        placeholder="e.g. 50000"
-                      />
-                      <p className="theme-subtext mt-1 text-xs">
+                      placeholder="e.g. 50000"
+                    />
+                    <p className="theme-subtext mt-1 text-xs">
                         Leave blank to always fiscalize eligible sales. Example: 50000 skips KRA when the order total is
                         KES 50,000 or more.
-                      </p>
-                    </Field>
-                  </>
-                ) : null}
-              </div>
+                    </p>
+                  </Field>
+                </>
+              ) : null}
             </div>
+          </div>
           ) : null}
 
           {renderMpesa ? (
-            <div>
+          <div>
               {mode === "all" ? (
-                <p className="theme-subtext text-sm">
-                  Set up Safaricom Daraja for paybill, till, and STK push at checkout.
-                </p>
+            <p className="theme-subtext text-sm">
+              Set up Safaricom Daraja for paybill, till, and STK push at checkout.
+            </p>
               ) : null}
 
-              {mpesaStatus ? (
+            {mpesaStatus ? (
                 <div className={`${mode === "all" ? "mt-3" : ""} flex flex-wrap items-center gap-2 text-xs text-slate-600`}>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium uppercase">
-                    {mpesaStatus.env ?? "sandbox"}
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium uppercase">
+                  {mpesaStatus.env ?? "sandbox"}
+                </span>
+                {mpesaStatus.shortcode ? (
+                  <span>
+                    Shortcode / till: <strong>{mpesaStatus.shortcode}</strong>
                   </span>
-                  {mpesaStatus.shortcode ? (
-                    <span>
-                      Shortcode / till: <strong>{mpesaStatus.shortcode}</strong>
-                    </span>
-                  ) : null}
-                  <span
-                    className={
-                      mpesaStatus.ready
-                        ? "rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800"
-                        : "rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800"
-                    }
-                  >
-                    {mpesaStatus.ready ? "Configured" : "Incomplete"}
-                  </span>
-                </div>
-              ) : null}
-
-              <div className="mt-4">
-                <Toggle
-                  label="Enable STK push at POS"
-                  description="When enabled, cashiers can send Lipa na M-Pesa STK prompts from the POS payment dialog. When disabled, only manual paybill / check payment is available."
-                  checked={mpesa.enable_stk_push !== false}
-                  onChange={(v) => setMpesa("enable_stk_push", v)}
-                />
+                ) : null}
+                <span
+                  className={
+                    mpesaStatus.ready
+                      ? "rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800"
+                      : "rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800"
+                  }
+                >
+                  {mpesaStatus.ready ? "Configured" : "Incomplete"}
+                </span>
               </div>
+            ) : null}
+
+            <div className="mt-4">
+              <Toggle
+                label="Enable STK push at POS"
+                description="When enabled, cashiers can send Lipa na M-Pesa STK prompts from the POS payment dialog. When disabled, only manual paybill / check payment is available."
+                checked={mpesa.enable_stk_push !== false}
+                onChange={(v) => setMpesa("enable_stk_push", v)}
+              />
+            </div>
 
               <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                 <Toggle
@@ -575,100 +575,100 @@ export function FinanceSettingsPanel({
                 ) : null}
               </div>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
                   <strong>Organization default Daraja app.</strong> These credentials apply to every paybill
                   that does not set its own keys. Open the <em>Saved M-Pesa accounts</em> tab to attach a different
                   Safaricom app to a specific shortcode.
                 </div>
-                <Field label="Environment">
+              <Field label="Environment">
                   <SearchableSelect
-                    className={inputClassName()}
-                    value={mpesa.env ?? "sandbox"}
+                  className={inputClassName()}
+                  value={mpesa.env ?? "sandbox"}
                     nativeEvent
-                    onChange={(e) => setMpesa("env", e.target.value)}
+                  onChange={(e) => setMpesa("env", e.target.value)}
                     options={[
                       { value: "sandbox", label: "Sandbox" },
                       { value: "live", label: "Live" },
                     ]}
                   />
-                </Field>
-                <Field label="Consumer key">
-                  <input
-                    className={inputClassName()}
-                    value={mpesa.consumer_key ?? ""}
-                    onChange={(e) => setMpesa("consumer_key", e.target.value)}
-                  />
-                </Field>
-                <Field label="Consumer secret">
-                  <input
-                    type="password"
-                    className={inputClassName()}
-                    value={mpesa.consumer_secret ?? ""}
-                    onChange={(e) => setMpesa("consumer_secret", e.target.value)}
-                    placeholder="Leave blank to keep existing"
-                  />
-                </Field>
-                <Field label="Passkey (Lipa na M-Pesa)">
-                  <input
-                    type="password"
-                    className={inputClassName()}
-                    value={mpesa.passkey ?? ""}
-                    onChange={(e) => setMpesa("passkey", e.target.value)}
-                    placeholder="Leave blank to keep existing"
-                  />
-                </Field>
+              </Field>
+              <Field label="Consumer key">
+                <input
+                  className={inputClassName()}
+                  value={mpesa.consumer_key ?? ""}
+                  onChange={(e) => setMpesa("consumer_key", e.target.value)}
+                />
+              </Field>
+              <Field label="Consumer secret">
+                <input
+                  type="password"
+                  className={inputClassName()}
+                  value={mpesa.consumer_secret ?? ""}
+                  onChange={(e) => setMpesa("consumer_secret", e.target.value)}
+                  placeholder="Leave blank to keep existing"
+                />
+              </Field>
+              <Field label="Passkey (Lipa na M-Pesa)">
+                <input
+                  type="password"
+                  className={inputClassName()}
+                  value={mpesa.passkey ?? ""}
+                  onChange={(e) => setMpesa("passkey", e.target.value)}
+                  placeholder="Leave blank to keep existing"
+                />
+              </Field>
                 <Field label="Default paybill shortcode (STK)">
-                  <input
-                    className={inputClassName()}
-                    value={mpesa.shortcode ?? ""}
-                    onChange={(e) => setMpesa("shortcode", e.target.value)}
-                  />
-                </Field>
+                <input
+                  className={inputClassName()}
+                  value={mpesa.shortcode ?? ""}
+                  onChange={(e) => setMpesa("shortcode", e.target.value)}
+                />
+              </Field>
                 <Field label="Default till number (PartyB)">
-                  <input
-                    className={inputClassName()}
-                    value={mpesa.till_number ?? ""}
-                    onChange={(e) => setMpesa("till_number", e.target.value)}
-                  />
-                </Field>
+                <input
+                  className={inputClassName()}
+                  value={mpesa.till_number ?? ""}
+                  onChange={(e) => setMpesa("till_number", e.target.value)}
+                />
+              </Field>
                 <Field label="Default C2B paybill / till shortcode">
-                  <input
-                    className={inputClassName()}
-                    value={mpesa.child_storecode ?? ""}
-                    onChange={(e) => setMpesa("child_storecode", e.target.value)}
-                    placeholder="Same as registered on Daraja"
-                  />
-                </Field>
-              </div>
+                <input
+                  className={inputClassName()}
+                  value={mpesa.child_storecode ?? ""}
+                  onChange={(e) => setMpesa("child_storecode", e.target.value)}
+                  placeholder="Same as registered on Daraja"
+                />
+              </Field>
+            </div>
 
-              <div className="mt-4 space-y-3">
-                <UrlField
+            <div className="mt-4 space-y-3">
+              <UrlField
                   label="Default C2B confirmation URL (register on Daraja)"
-                  value={mpesa.c2b_confirmation_url ?? ""}
-                  onChange={(v) => setMpesa("c2b_confirmation_url", v)}
-                  placeholder="https://your-api.example.com/api/v1/payments/c2b/confirmation"
-                />
-                <UrlField
+                value={mpesa.c2b_confirmation_url ?? ""}
+                onChange={(v) => setMpesa("c2b_confirmation_url", v)}
+                placeholder="https://your-api.example.com/api/v1/payments/c2b/confirmation"
+              />
+              <UrlField
                   label="Default C2B validation URL (register on Daraja)"
-                  value={mpesa.c2b_validation_url ?? ""}
-                  onChange={(v) => setMpesa("c2b_validation_url", v)}
-                  placeholder="https://your-api.example.com/api/v1/payments/c2b/validation"
-                />
-                <UrlField
+                value={mpesa.c2b_validation_url ?? ""}
+                onChange={(v) => setMpesa("c2b_validation_url", v)}
+                placeholder="https://your-api.example.com/api/v1/payments/c2b/validation"
+              />
+              <UrlField
                   label="Default STK push callback URL"
-                  value={mpesa.stk_callback_url ?? ""}
-                  onChange={(v) => setMpesa("stk_callback_url", v)}
-                  placeholder="https://your-api.example.com/api/v1/payments/stk/callback"
-                />
-              </div>
+                value={mpesa.stk_callback_url ?? ""}
+                onChange={(v) => setMpesa("stk_callback_url", v)}
+                placeholder="https://your-api.example.com/api/v1/payments/stk/callback"
+              />
+            </div>
 
-              {mpesaStatus?.issues?.length ? (
-                <ul className="mt-3 list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  {mpesaStatus.issues.map((issue) => (
-                    <li key={issue}>{issue}</li>
-                  ))}
-                </ul>
+            {mpesaStatus?.issues?.length ? (
+              <ul className="mt-3 list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {mpesaStatus.issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
               ) : null}
             </div>
           ) : null}
@@ -700,7 +700,7 @@ export function FinanceSettingsPanel({
                 />
               </div>
             </div>
-          ) : null}
+            ) : null}
 
           {renderEquity ? (
             <div className="space-y-4">
@@ -785,7 +785,7 @@ export function FinanceSettingsPanel({
                   />
                 </Field>
               </div>
-            </div>
+          </div>
           ) : null}
 
           {renderEquityAccountsTab ? (
@@ -807,7 +807,7 @@ export function FinanceSettingsPanel({
           ) : null}
 
           {showOrgSaveButton ? (
-            <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>
+          <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>
               {saving
                 ? "Saving…"
                 : activeTab === "kra" || mode === "kra"
@@ -817,7 +817,7 @@ export function FinanceSettingsPanel({
                     : activeTab === "equity" || mode === "equity"
                       ? "Save Equity settings"
                       : "Save finance settings"}
-            </PrimaryButton>
+          </PrimaryButton>
           ) : null}
         </div>
       )}

@@ -536,7 +536,7 @@ export function EmployeeLeaveHub({
               Enter leave dates and a reason, then submit for administrator approval.
             </p>
           </div>
-          {form ? (
+      {form ? (
             <form onSubmit={save} className="space-y-4">
               <HrOffDayAssignmentFields
                 form={form}

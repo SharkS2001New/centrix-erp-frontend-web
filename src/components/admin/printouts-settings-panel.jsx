@@ -261,8 +261,8 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <Field label="Receipt copies">
                   <SearchableSelect
-  className={inputClassName()}
-  value={form.receipt_copies}
+                    className={inputClassName()}
+                    value={form.receipt_copies}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, receipt_copies: e.target.value })))}
   options={[{ value: '1', label: 'Single receipt' }, { value: '2', label: 'Double receipt (customer + merchant)' }]}
@@ -307,8 +307,8 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
           />
           <Field label="Report and document header">
             <SearchableSelect
-  className={inputClassName()}
-  value={form.document_header_display}
+              className={inputClassName()}
+              value={form.document_header_display}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, document_header_display: e.target.value })))}
   options={DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
@@ -328,8 +328,8 @@ function OrderPrintFormatField({ form, setForm }) {
   return (
     <Field label="Order print format">
       <SearchableSelect
-  className={inputClassName()}
-  value={form.order_document_type}
+        className={inputClassName()}
+        value={form.order_document_type}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, order_document_type: e.target.value })))}
   options={[{ value: 'receipt', label: 'Thermal receipt only' }, { value: 'invoice', label: 'A4 sales invoice only' }, { value: 'both', label: 'Both — choose at print time' }]}

@@ -675,8 +675,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               )}
               <Field label="Design template">
                 <SearchableSelect
-  className={inputClass}
-  value={form.template_id}
+                  className={inputClass}
+                  value={form.template_id}
   nativeEvent
   onChange={((e) => updateForm({ template_id: e.target.value }))}
   options={PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => ({ value: tpl.id, label: tpl.label }))}
@@ -684,7 +684,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               </Field>
               <Field label="Saved template">
                 <SearchableSelect
-  className={inputClass}
+                  className={inputClass}
   value={""}
   nativeEvent
   onChange={((e) => {
@@ -696,8 +696,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               </Field>
               <Field label="Status">
                 <SearchableSelect
-  className={inputClass}
-  value={form.status}
+                  className={inputClass}
+                  value={form.status}
   nativeEvent
   onChange={((e) => updateForm({ status: e.target.value }))}
   options={PLATFORM_INVOICE_STATUSES.map((row) => ({ value: row.id, label: row.label }))}
@@ -968,8 +968,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 <>
               <Field label="Header branding">
                 <SearchableSelect
-  className={inputClass}
-  value={invoiceOptions.brand_mode}
+                  className={inputClass}
+                  value={invoiceOptions.brand_mode}
   nativeEvent
   onChange={((e) => updateInvoiceOptions({ brand_mode: e.target.value }))}
   options={[{ value: 'name', label: 'Name only' }, { value: 'logo', label: 'Logo only' }, { value: 'both', label: 'Logo and name' }]}
@@ -1030,8 +1030,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 <>
                   <Field label="Watermark style">
                     <SearchableSelect
-  className={inputClass}
-  value={invoiceOptions.watermark_mode}
+                      className={inputClass}
+                      value={invoiceOptions.watermark_mode}
   nativeEvent
   onChange={((e) => updateInvoiceOptions({ watermark_mode: e.target.value }))}
   options={[{ value: 'name', label: 'Brand name' }, { value: 'text', label: 'Custom text' }, { value: 'logo', label: 'Logo image' }]}

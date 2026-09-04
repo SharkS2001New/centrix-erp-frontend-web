@@ -80,8 +80,20 @@ export function ClassicBackofficeOrderEditModal({
   const [baselineRemovedIds, setBaselineRemovedIds] = useState([]);
   const [retailByCode, setRetailByCode] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryRef = useRef("");
+  const productSearchRef = useRef(null);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const updateSearchQuery = useCallback((next) => {
+    const value = String(next ?? "");
+    searchQueryRef.current = value;
+    setSearchQuery(value);
+  }, []);
+  const resetProductSearchField = useCallback(() => {
+    productSearchRef.current?.clearDraft?.();
+    updateSearchQuery("");
+    setSearchResults([]);
+  }, [updateSearchQuery]);
   const [sellAtRetail, setSellAtRetail] = useState(false);
   const [routeMarkupPerUnit, setRouteMarkupPerUnit] = useState(0);
   const [routeMarkupLabel, setRouteMarkupLabel] = useState("");
@@ -205,9 +217,8 @@ export function ClassicBackofficeOrderEditModal({
     setSwapDraft(null);
     setEntryProduct(null);
     setEntryQty("");
-    setSearchQuery("");
-    setSearchResults([]);
-  }, []);
+    resetProductSearchField();
+  }, [resetProductSearchField]);
 
   const loadItems = useCallback(async () => {
     if (!sale?.id) return;
@@ -456,8 +467,7 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(lineKey(line));
     setEntryProduct(null);
     setEntryQty("");
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setStatusMessage(
       `Swap ${lineLabel(line)}: search or scan the replacement product. Esc cancels.`,
     );
@@ -469,8 +479,7 @@ export function ClassicBackofficeOrderEditModal({
     setSwapDraft(null);
     setEntryProduct(null);
     setEntryQty("");
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setStatusMessage("Swap cancelled.");
   }
 
@@ -478,8 +487,7 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(null);
     setEntryProduct(null);
     setEntryQty("");
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     requestAnimationFrame(() => {
       searchInputRef.current?.focus?.();
       searchInputRef.current?.select?.();
@@ -547,8 +555,7 @@ export function ClassicBackofficeOrderEditModal({
         product: productWithUom(product, uomById),
         quantity: String(defaultQty),
       });
-      setSearchQuery("");
-      setSearchResults([]);
+      resetProductSearchField();
       setStatusMessage(
         `Replacement ${product.product_code} ready — edit qty and press Enter to commit.`,
       );
@@ -585,8 +592,7 @@ export function ClassicBackofficeOrderEditModal({
         ),
       );
       setSelectedLineKey(focusKey);
-      setSearchQuery("");
-      setSearchResults([]);
+      resetProductSearchField();
       setEntryProduct(null);
       setEntryQty("");
       setStatusMessage(`Increased qty for ${code}.`);
@@ -601,7 +607,8 @@ export function ClassicBackofficeOrderEditModal({
     );
     setEntryQty(String(defaultQty));
     // Keep product code in scan field while qty is edited (same as Classic POS).
-    setSearchQuery(code);
+    updateSearchQuery(code);
+    productSearchRef.current?.setDraftValue?.(code);
     setSearchResults([]);
     requestAnimationFrame(() => {
       entryQtyRef.current?.focus?.();
@@ -629,8 +636,7 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(lineKey(newLine));
     setEntryProduct(null);
     setEntryQty("");
-    setSearchQuery("");
-    setSearchResults([]);
+    resetProductSearchField();
     setError(null);
     setStatusMessage(`Added ${entryProduct.product_code}.`);
   }
@@ -853,15 +859,17 @@ export function ClassicBackofficeOrderEditModal({
     !allLinesSelected && cartLines.some((line) => selectedLineIds.has(String(line.id)));
   const productSearch = (
     <PosProductSearch
+      ref={productSearchRef}
       variant="classic"
       inputRef={searchInputRef}
       query={searchQuery}
+      persistedDraftRef={searchQueryRef}
       onQueryChange={(value) => {
         if (entryProduct) {
           setEntryProduct(null);
           setEntryQty("");
         }
-        setSearchQuery(value);
+        updateSearchQuery(value);
       }}
       results={searchResults}
       searching={searching}
@@ -1083,8 +1091,7 @@ export function ClassicBackofficeOrderEditModal({
                   e.preventDefault();
                   setEntryProduct(null);
                   setEntryQty("");
-                  setSearchQuery("");
-                  setSearchResults([]);
+                  resetProductSearchField();
                   requestAnimationFrame(() => {
                     searchInputRef.current?.focus?.();
                     searchInputRef.current?.select?.();

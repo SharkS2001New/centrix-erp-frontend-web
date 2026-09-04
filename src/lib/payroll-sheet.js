@@ -133,10 +133,10 @@ function lineNetPay(line, meta, grossPay) {
   const direct = coalesceAmount(line?.net_pay, meta?.net_pay);
   const payroll = meta?.payroll ?? {};
   const advance = advanceAmount(payroll);
-  const nssf = Number(line?.nssf ?? 0);
+  const nssf = Number(line?.employee && (line.employee.pays_nssf === false || line.employee.pays_nssf === 0) ? 0 : (line?.nssf ?? 0));
   const shif = Number(line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0) ? 0 : (line?.shif ?? 0));
-  const housing = Number(line?.housing_levy ?? 0);
-  const paye = Number(line?.paye ?? 0);
+  const housing = Number(line?.employee && (line.employee.pays_housing_levy === false || line.employee.pays_housing_levy === 0) ? 0 : (line?.housing_levy ?? 0));
+  const paye = Number(line?.employee && (line.employee.pays_paye === false || line.employee.pays_paye === 0) ? 0 : (line?.paye ?? 0));
   const absentism = attendanceHoldAmount(payroll);
   const damages = combinedDamagesAmount(payroll);
   const total = Math.round((advance + nssf + shif + housing + paye + absentism + damages) * 100) / 100;
@@ -177,7 +177,20 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
   const grossPay = lineGrossPay(line, meta);
   const netPay = lineNetPay(line, meta, grossPay);
 
-  const computedTotal = Math.round((advanceAmount(payroll) + Number(line?.nssf ?? 0) + ((line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0)) ? 0 : Number(line?.shif ?? 0)) + Number(line?.housing_levy ?? 0) + Number(line?.paye ?? 0) + attendanceHoldAmount(payroll) + combinedDamagesAmount(payroll)) * 100) / 100;
+  const nssfVal = (line?.employee && (line.employee.pays_nssf === false || line.employee.pays_nssf === 0))
+    ? 0
+    : Number(line?.nssf ?? 0);
+  const shifVal = (line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0))
+    ? 0
+    : Number(line?.shif ?? 0);
+  const housingVal = (line?.employee && (line.employee.pays_housing_levy === false || line.employee.pays_housing_levy === 0))
+    ? 0
+    : Number(line?.housing_levy ?? 0);
+  const payeVal = (line?.employee && (line.employee.pays_paye === false || line.employee.pays_paye === 0))
+    ? 0
+    : Number(line?.paye ?? 0);
+
+  const computedTotal = Math.round((advanceAmount(payroll) + nssfVal + shifVal + housingVal + payeVal + attendanceHoldAmount(payroll) + combinedDamagesAmount(payroll)) * 100) / 100;
 
   return {
     no: index + 1,
@@ -186,13 +199,10 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
     overtime: Number(payroll.overtime ?? 0),
     gross_salary: grossPay,
     advance: advanceAmount(payroll),
-    nssf: Number(line?.nssf ?? 0),
-    // SHA (shif) may be employee-specific; front-end display respects an employee flag if present.
-    shif: (line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0))
-      ? 0
-      : Number(line?.shif ?? 0),
-    housing: Number(line?.housing_levy ?? 0),
-    paye: Number(line?.paye ?? 0),
+    nssf: nssfVal,
+    shif: shifVal,
+    housing: housingVal,
+    paye: payeVal,
     absentism: attendanceHoldAmount(payroll),
     damages: combinedDamagesAmount(payroll),
     total_ded: computedTotal,

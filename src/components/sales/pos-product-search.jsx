@@ -112,7 +112,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const inputFocusedRef = useRef(false);
   const mountedRef = useRef(false);
   const [draftQuery, setDraftQuery] = useState(() => draftQueryRef.current);
-  const [inputFocused, setInputFocused] = useState(false);
   const idleQuery = !String(draftQuery ?? "").trim();
 
   function writeDraft(next, { notifyParent = true, touchDom = true } = {}) {
@@ -168,20 +167,23 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   // Restore after remount (cart re-render moves the search slot in classic layout).
   useLayoutEffect(() => {
-    const saved = String(persistedDraftRef?.current ?? draftQueryRef.current ?? "");
+    const saved = String(
+      persistedDraftRef?.current ?? draftQueryRef.current ?? query ?? "",
+    );
     writeDraft(saved, { notifyParent: false });
     mountedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount restore only
   }, []);
 
-  // Parent may push park / swap codes. Never mirror parent "" or stale prefixes.
+  // Parent may seed an empty field after clear. Never mirror parent "" or a stale
+  // parked code over live typing — that race wiped the draft when searching fast.
+  // Depend on `query` only: re-running on focus/blur used to re-apply a lagged parent.
   useEffect(() => {
     if (!mountedRef.current) return;
     const parent = String(query ?? "");
     const local = String(localInputRef.current?.value ?? draftQueryRef.current ?? "");
 
     if (!shouldSyncParentSearchQuery(parent, local, {
-      inputFocused: inputFocusedRef.current,
       allowParentClear: allowParentClearRef.current,
     })) {
       return;
@@ -192,7 +194,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     }
 
     writeDraft(parent, { notifyParent: false });
-  }, [query, inputFocused]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- query-driven sync only
+  }, [query]);
 
   useEffect(() => {
     if (inputLocked && !String(draftQuery ?? "").trim()) {
@@ -561,7 +564,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         onFocus={() => {
           if (inputLocked) return;
           inputFocusedRef.current = true;
-          setInputFocused(true);
           if (String(draftQuery ?? "").trim()) setUserDismissed(false);
           setOpen(true);
         }}
@@ -573,7 +575,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
             if (input && active === input) return;
             if (listRef.current?.contains(active)) return;
             inputFocusedRef.current = false;
-            setInputFocused(false);
           });
         }}
       />

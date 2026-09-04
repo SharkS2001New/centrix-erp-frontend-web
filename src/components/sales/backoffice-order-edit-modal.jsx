@@ -347,7 +347,7 @@ export function ModernBackofficeOrderEditModal({
       );
       setPendingFocusQtyKey(focusKey);
       setAddProductCode("");
-      return;
+        return;
     }
 
     const newLine = buildNewDraftLine(product, uomById, packages, {
@@ -660,24 +660,24 @@ export function ModernBackofficeOrderEditModal({
                   ) : null}
                 </div>
               ) : null}
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
-                    <th className="px-3 py-2">Item</th>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
+                  <th className="px-3 py-2">Item</th>
                     {retailPricingEnabled ? <th className="w-28 px-3 py-2">Type</th> : null}
-                    <th className="w-28 px-3 py-2 text-right">Qty</th>
-                    <th className="w-32 px-3 py-2 text-right">Unit price</th>
+                  <th className="w-28 px-3 py-2 text-right">Qty</th>
+                  <th className="w-32 px-3 py-2 text-right">Unit price</th>
                     {discountEditEnabled ? (
                       <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
-                    ) : null}
-                    <th className="w-32 px-3 py-2 text-right">Amount</th>
+                  ) : null}
+                  <th className="w-32 px-3 py-2 text-right">Amount</th>
                     <th className="w-12 px-2 py-2 text-center">
                       <span className="sr-only">Remove</span>
                     </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line) => {
+                </tr>
+              </thead>
+              <tbody>
+                    {lines.map((line) => {
                     const key = lineKey(line);
                     const changeKind = lineChangeKind(line, baselineByKey);
                     const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
@@ -689,7 +689,7 @@ export function ModernBackofficeOrderEditModal({
                     const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
                     const canTogglePricing = retailPricingEnabled && allowsRetail;
 
-                    return (
+                      return (
                       <tr
                         key={key}
                         className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
@@ -742,42 +742,42 @@ export function ModernBackofficeOrderEditModal({
                             )}
                           </td>
                         ) : null}
-                        <td className="px-3 py-2.5 text-right">
-                          <input
+                      <td className="px-3 py-2.5 text-right">
+                        <input
                             ref={(el) => {
                               if (el) qtyInputRefs.current.set(key, el);
                               else qtyInputRefs.current.delete(key);
                             }}
-                            type="number"
-                            min="0.0001"
-                            step="any"
+                          type="number"
+                          min="0.0001"
+                          step="any"
                             value={line.draftQty ?? ""}
-                            disabled={saving}
+                          disabled={saving}
                             onChange={(e) => updateQty(key, e.target.value)}
-                            className={`${inputClassName()} w-24 text-right text-sm`}
-                            aria-label={`Quantity for ${lineLabel(line)}`}
-                          />
-                        </td>
+                          className={`${inputClassName()} w-24 text-right text-sm`}
+                          aria-label={`Quantity for ${lineLabel(line)}`}
+                        />
+                      </td>
                         <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
-                          {formatSaleKes(unitPrice)}
-                        </td>
+                        {formatSaleKes(unitPrice)}
+                      </td>
                         {discountEditEnabled ? (
-                          <td className="px-3 py-2.5 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={line.draftDiscount ?? 0}
-                              disabled={saving}
+                            <td className="px-3 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={line.draftDiscount ?? 0}
+                                disabled={saving}
                               onChange={(e) => updateDiscount(key, e.target.value)}
-                              className={`${inputClassName()} w-28 text-right text-sm`}
-                              aria-label={`Discount for ${lineLabel(line)}`}
-                            />
-                          </td>
-                        ) : null}
+                                className={`${inputClassName()} w-28 text-right text-sm`}
+                                aria-label={`Discount for ${lineLabel(line)}`}
+                              />
+                            </td>
+                          ) : null}
                         <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
-                          {formatSaleKes(amount)}
-                        </td>
+                        {formatSaleKes(amount)}
+                      </td>
                         <td className="px-2 py-2.5 text-center">
                           <button
                             type="button"
@@ -790,11 +790,11 @@ export function ModernBackofficeOrderEditModal({
                             <TrashIcon />
                           </button>
                         </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
             </>
           )}
         </div>
