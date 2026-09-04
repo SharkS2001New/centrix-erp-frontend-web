@@ -433,6 +433,10 @@ async function printEodReport(report, meta) {
               ${printSummaryRow("KCB", formatTillKes(row.kcb_collected ?? 0))}`;
             if (showFloat) {
               block += printSummaryRow("Float", formatTillKes(row.opening_float));
+              block += printSummaryRow(
+                "Invoice sales (paid debtors)",
+                formatTillKes(row.paid_debtors ?? 0),
+              );
             }
             block += `</div>`;
             return block;
@@ -1040,6 +1044,7 @@ export function EndOfDayReportScreen({
         kcb_collected: p.kcb,
         bank_collected: p.bank,
         opening_float: s.opening_float,
+        paid_debtors: s.paid_debtors,
       },
     ];
   }, [report, cashierId, cashierName]);
@@ -1385,6 +1390,12 @@ export function EndOfDayReportScreen({
                         />
                           {showTillPanels ? (
                           <SummaryRow label="Float" value={formatTillKes(row.opening_float)} />
+                          ) : null}
+                          {showTillPanels ? (
+                          <SummaryRow
+                            label="Invoice sales (paid debtors)"
+                            value={formatTillKes(row.paid_debtors ?? 0)}
+                          />
                           ) : null}
                       </div>
                       );

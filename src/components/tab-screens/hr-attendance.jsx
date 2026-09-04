@@ -1,8 +1,9 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -85,6 +86,7 @@ function attendanceCountsInPayroll(status) {
 
 export function HrAttendanceScreen({ mode = "today" }) {
   const isHistory = mode === "history";
+  const searchParams = useSearchParams();
   const { capabilities, hasPermission, user } = useAuth();
   const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
@@ -106,13 +108,28 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(1));
-  const [historyToDate, setHistoryToDate] = useState(() => daysAgoCalendarDate(1));
-  const [appliedHistoryFrom, setAppliedHistoryFrom] = useState(() => daysAgoCalendarDate(1));
-  const [appliedHistoryTo, setAppliedHistoryTo] = useState(() => daysAgoCalendarDate(1));
+  const deepLinkFrom = searchParams?.get("from_date") || "";
+  const deepLinkTo = searchParams?.get("to_date") || "";
+  const deepLinkWaiverId = searchParams?.get("waiver_id") || "";
+  const [historyFromDate, setHistoryFromDate] = useState(
+    () => deepLinkFrom || daysAgoCalendarDate(1),
+  );
+  const [historyToDate, setHistoryToDate] = useState(
+    () => deepLinkTo || daysAgoCalendarDate(1),
+  );
+  const [appliedHistoryFrom, setAppliedHistoryFrom] = useState(
+    () => deepLinkFrom || daysAgoCalendarDate(1),
+  );
+  const [appliedHistoryTo, setAppliedHistoryTo] = useState(
+    () => deepLinkTo || daysAgoCalendarDate(1),
+  );
   const [recordSearch, setRecordSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [todaySearch, setTodaySearch] = useState("");
+  const [highlightWaiverId, setHighlightWaiverId] = useState(
+    () => (deepLinkWaiverId ? String(deepLinkWaiverId) : ""),
+  );
+  const waiverDeepLinkHandledRef = useRef("");
 
   useEffect(() => {
     if (isHistory) return undefined;
@@ -1055,6 +1072,22 @@ export function HrAttendanceScreen({ mode = "today" }) {
     }
   }
 
+  useEffect(() => {
+    if (!isHistory || !highlightWaiverId || historyLoading) return;
+    const target = records.find(
+      (r) => String(r.pending_waiver?.id ?? "") === String(highlightWaiverId),
+    );
+    if (!target) return;
+    const key = `${highlightWaiverId}:${target.id}`;
+    if (waiverDeepLinkHandledRef.current === key) return;
+    waiverDeepLinkHandledRef.current = key;
+    const rowEl = document.getElementById(`attendance-row-${target.id}`);
+    rowEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (canReviewWaiver(target)) {
+      void reviewWaiverRequest(target, true);
+    }
+  }, [highlightWaiverId, historyLoading, isHistory, records, canApproveWaivers, user?.id]);
+
   async function syncFromDevices() {
     setSyncingPunches(true);
     try {
@@ -1738,7 +1771,16 @@ export function HrAttendanceScreen({ mode = "today" }) {
                     </tr>
                   ) : (
                     records.map((r) => (
-                      <tr key={r.id} className="theme-table-body-row">
+                      <tr
+                        id={`attendance-row-${r.id}`}
+                        key={r.id}
+                        className={`theme-table-body-row${
+                          highlightWaiverId &&
+                          String(r.pending_waiver?.id ?? "") === String(highlightWaiverId)
+                            ? " bg-amber-50 ring-1 ring-inset ring-amber-200"
+                            : ""
+                        }`}
+                      >
                         <TableRowSelectCell
                           checked={selectedIds.has(String(r.id))}
                           onChange={() => toggleOne(r.id)}
