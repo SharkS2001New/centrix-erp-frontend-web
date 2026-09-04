@@ -393,6 +393,54 @@ export function cartLineIdentityKeys(line) {
     .map((key) => String(key));
 }
 
+/** True when two cart rows share any id / update_code / client_line_id. */
+export function cartLinesShareIdentity(a, b) {
+  if (a == null || b == null) return false;
+  if (cartLineMatchesRef(a, b) || cartLineMatchesRef(b, a)) return true;
+  const keysB = new Set(cartLineIdentityKeys(b));
+  return cartLineIdentityKeys(a).some((key) => keysB.has(key));
+}
+
+/**
+ * After qty Enter / F12 mode flip on a line that was the only row for that SKU,
+ * drop accidental copies of the same SKU (edit must never leave a twin).
+ */
+export function dedupeSkuLinesAfterInPlaceEdit(
+  lines,
+  { productCode, keepLine, modeFlipped = false, skuLineCountBefore = null } = {},
+) {
+  const list = Array.isArray(lines) ? lines : [];
+  const code = String(productCode ?? keepLine?.product_code ?? "").trim();
+  if (!code || !keepLine) return list;
+
+  const skuRows = list.filter((row) => String(row.product_code) === code);
+  if (skuRows.length <= 1) return list;
+
+  const onlySkuBefore =
+    skuLineCountBefore == null ? modeFlipped : Number(skuLineCountBefore) <= 1;
+  if (!onlySkuBefore && !modeFlipped) return list;
+
+  const kept =
+    skuRows.find((row) => cartLinesShareIdentity(row, keepLine)) ??
+    skuRows.find((row) => cartLineMatchesRef(row, keepLine)) ??
+    skuRows[0];
+
+  if (onlySkuBefore) {
+    // Sole SKU line was edited (qty or F12) — that SKU must stay a single row.
+    return list.filter(
+      (row) => String(row.product_code) !== code || cartLinesShareIdentity(row, kept),
+    );
+  }
+
+  // Mode flip with siblings: drop same-mode twins only (keep intentional bags+kg).
+  const keptMode = Number(kept.on_wholesale_retail ?? 0);
+  return list.filter((row) => {
+    if (String(row.product_code) !== code) return true;
+    if (cartLinesShareIdentity(row, kept)) return true;
+    return Number(row.on_wholesale_retail ?? 0) !== keptMode;
+  });
+}
+
 /** Drop server rows the cashier already removed locally (DELETE still in flight). */
 export function filterCartLinesExcludedRefs(lines, excludedRefSet) {
   if (!excludedRefSet?.size) return Array.isArray(lines) ? lines : [];
@@ -581,6 +629,10 @@ export function applyCartMutationResponse(
       ? findCartLineIndexByRef(lines, targetLineRef)
       : findCartLineIndexByRef(lines, ref);
 
+  if (idx < 0 && targetLineRef != null && String(targetLineRef).trim() !== "") {
+    // Edit/PATCH target drifted (CLU- vs numeric id) — resolve before appending.
+    idx = lines.findIndex((row) => cartLinesShareIdentity(row, { update_code: targetLineRef, id: targetLineRef }));
+  }
   if (idx >= 0) {
     const { _optimistic: _dropOptimistic, ...rest } = lines[idx];
     lines[idx] = { ...rest, ...res };
@@ -592,6 +644,9 @@ export function applyCartMutationResponse(
     } else {
       lines.push(res);
     }
+  } else if (targetLineRef != null && String(targetLineRef).trim() !== "") {
+    // In-place edit missed the row — never invent a twin when combine is off.
+    return prevCart;
   } else {
     lines.push(res);
   }
@@ -645,6 +700,20 @@ export function applyOptimisticCartMutation(
     if (idx < 0 && editingId != null) {
       idx = lines.findIndex((line) => String(line?.id) === String(editingId));
     }
+    if (idx < 0) {
+      // Only resolve by the provided edit refs — never by product_code alone
+      // (a missing target must not rewrite another row of the same SKU).
+      idx = lines.findIndex(
+        (line) =>
+          cartLineMatchesRef(line, editingRef) ||
+          cartLineMatchesRef(line, editingId) ||
+          cartLinesShareIdentity(line, {
+            id: editingId,
+            update_code: editingRef,
+            client_line_id: editingRef,
+          }),
+      );
+    }
     if (idx >= 0) {
       replaceCartLineInPlace(lines, idx, optimisticLine);
       // When combine is on, F12 bags↔kg / edit must not leave a twin same-mode row.
@@ -654,6 +723,15 @@ export function applyOptimisticCartMutation(
         for (let i = lines.length - 1; i >= 0; i -= 1) {
           if (i === idx) continue;
           if (cartLineMergeKey(lines[i]) === mergeKey) {
+            lines.splice(i, 1);
+            if (i < idx) idx -= 1;
+          }
+        }
+      } else {
+        // Still drop exact identity copies (qty/F12 must not leave a cloned row).
+        for (let i = lines.length - 1; i >= 0; i -= 1) {
+          if (i === idx) continue;
+          if (cartLinesShareIdentity(lines[i], lines[idx])) {
             lines.splice(i, 1);
             if (i < idx) idx -= 1;
           }

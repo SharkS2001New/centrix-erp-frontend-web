@@ -60,7 +60,11 @@ import {
 import { fetchStockLevelsMap, mergeProductsWithLiveStock } from "@/lib/stock-cache";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
-import { collapseCombineableCartLines as collapseCombineableLocalLines } from "@/lib/pos-cart-merge";
+import {
+  collapseCombineableCartLines as collapseCombineableLocalLines,
+  cartLineIdentityKeys,
+  cartLinesShareIdentity,
+} from "@/lib/pos-cart-merge";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { vatFromInclusiveGross, vatRateFromProduct } from "@/lib/sales-vat";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
@@ -1773,7 +1777,8 @@ export { collapseCombineableCartLines as collapseCombineableLocalLines } from "@
 /**
  * Upsert a line into the local offline cart.
  * When combine is on: merge by SKU + retail/wholesale (classic POS).
- * When combine is off: only update the same client_line_id (edits); otherwise append.
+ * When combine is off: update the same identity (client_line_id / update_code / id);
+ * otherwise append. Qty Enter and F12 edits must never append a twin.
  */
 export async function upsertLocalPosCartLine(
   cart,
@@ -1781,16 +1786,16 @@ export async function upsertLocalPosCartLine(
   { combineIdenticalLines = true } = {},
 ) {
   const lines = [...(cart.lines ?? [])];
-  const clientId =
-    line?.client_line_id != null && String(line.client_line_id).trim() !== ""
-      ? String(line.client_line_id)
-      : null;
+  const needleKeys = new Set(cartLineIdentityKeys(line));
 
   let idx = -1;
-  if (clientId) {
-    idx = lines.findIndex(
-      (row) => String(row.client_line_id ?? row.update_code ?? row.id ?? "") === clientId,
+  if (needleKeys.size) {
+    idx = lines.findIndex((row) =>
+      cartLineIdentityKeys(row).some((key) => needleKeys.has(key)),
     );
+  }
+  if (idx < 0 && line) {
+    idx = lines.findIndex((row) => cartLinesShareIdentity(row, line));
   }
   if (idx < 0 && combineIdenticalLines !== false) {
     const key = lineKey(line);
@@ -1801,8 +1806,10 @@ export async function upsertLocalPosCartLine(
     lines[idx] = {
       ...lines[idx],
       ...line,
-      // Keep the first identity so repeat adds update the same row.
+      // Keep the first identity so qty/F12 edits update the same row.
       client_line_id: lines[idx].client_line_id ?? line.client_line_id,
+      id: lines[idx].id ?? line.id,
+      update_code: lines[idx].update_code ?? line.update_code,
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
     };

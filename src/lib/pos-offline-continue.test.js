@@ -245,6 +245,41 @@ describe("continueOpenCartThroughOutage", () => {
     expect(cart.lines[0].quantity).toBe(3);
   });
 
+  it("F12/qty edit updates by shared id when client_line_id and CLU- ref differ (combine off)", async () => {
+    let cart = {
+      id: "active",
+      offline: true,
+      lines: [
+        {
+          product_code: "ZULLY",
+          quantity: 1,
+          unit_price: 38.2,
+          amount: 38.2,
+          on_wholesale_retail: true,
+          client_line_id: "42",
+          id: 42,
+        },
+      ],
+    };
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        product_code: "ZULLY",
+        quantity: 50,
+        unit_price: 38.2,
+        amount: 1910,
+        on_wholesale_retail: false,
+        client_line_id: "CLU-42",
+        id: 42,
+        update_code: "CLU-42",
+      },
+      { combineIdenticalLines: false },
+    );
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0].quantity).toBe(50);
+    expect(Number(cart.lines[0].on_wholesale_retail)).toBe(0);
+  });
+
   it("does not collapse duplicate SKUs on outage when combine is off", async () => {
     const open = {
       id: 55,

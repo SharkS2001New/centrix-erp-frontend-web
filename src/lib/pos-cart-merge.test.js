@@ -7,6 +7,7 @@ import {
   cartLineMatchesRef,
   cartLineRef,
   collapseCombineableCartLines,
+  dedupeSkuLinesAfterInPlaceEdit,
   filterCartLinesExcludedRefs,
   findCartLineForEdit,
   findModeConvertibleCartLine,
@@ -673,6 +674,106 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines).toHaveLength(1);
     expect(next.lines[0].on_wholesale_retail).toBe(0);
     expect(next.lines[0].product_code).toBe("ZULLY");
+  });
+
+  it("qty edit with combine off does not leave an identity-cloned twin", () => {
+    const prev = {
+      id: 10,
+      lines: [
+        {
+          id: 5,
+          update_code: "CLU-Z",
+          client_line_id: "CLU-Z",
+          product_code: "ZULLY",
+          quantity: 1,
+          amount: 1910,
+          on_wholesale_retail: 0,
+        },
+        {
+          id: 5,
+          update_code: "CLU-Z",
+          client_line_id: "CLU-Z",
+          product_code: "ZULLY",
+          quantity: 1,
+          amount: 1910,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "ZULLY", product_name: "ZULLY HB 2KG" },
+      {
+        product_code: "ZULLY",
+        quantity: 2,
+        unit_price: 38.2,
+        display_unit_price: 1910,
+        uom: "Bags",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 3820 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, {
+      editingRef: "CLU-Z",
+      editingId: 5,
+      combineIdenticalLines: false,
+    });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].quantity).toBe(2);
+  });
+
+  it("dedupeSkuLinesAfterInPlaceEdit keeps one row after F12 when SKU was alone", () => {
+    const lines = [
+      {
+        id: 1,
+        update_code: "CLU-1",
+        product_code: "ZULLY",
+        quantity: 50,
+        on_wholesale_retail: 0,
+      },
+      {
+        id: 99,
+        update_code: "pending-x",
+        product_code: "ZULLY",
+        quantity: 50,
+        on_wholesale_retail: 0,
+      },
+    ];
+    const next = dedupeSkuLinesAfterInPlaceEdit(lines, {
+      productCode: "ZULLY",
+      keepLine: lines[0],
+      modeFlipped: true,
+      skuLineCountBefore: 1,
+    });
+    expect(next).toHaveLength(1);
+    expect(next[0].id).toBe(1);
+  });
+
+  it("dedupeSkuLinesAfterInPlaceEdit keeps intentional bags+kg when combine off", () => {
+    const lines = [
+      {
+        id: 1,
+        update_code: "A",
+        product_code: "SUGAR",
+        quantity: 1,
+        on_wholesale_retail: 0,
+      },
+      {
+        id: 2,
+        update_code: "B",
+        product_code: "SUGAR",
+        quantity: 10,
+        on_wholesale_retail: 1,
+      },
+    ];
+    const next = dedupeSkuLinesAfterInPlaceEdit(lines, {
+      productCode: "SUGAR",
+      keepLine: lines[1],
+      modeFlipped: true,
+      skuLineCountBefore: 2,
+    });
+    expect(next).toHaveLength(2);
   });
 
   it("merges into an existing SKU row instead of pushing a second optimistic line", () => {

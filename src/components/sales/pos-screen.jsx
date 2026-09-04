@@ -162,6 +162,8 @@ import {
   cartLineIdentityKeys,
   cartLineMatchesRef,
   cartLineRef,
+  cartLinesShareIdentity,
+  dedupeSkuLinesAfterInPlaceEdit,
   filterCartLinesExcludedRefs,
   finalizeCartLineList,
   findCartLineForEdit,
@@ -6185,14 +6187,32 @@ export function PosScreen({ standalone = false }) {
         targetLineRef = cartLineRef(offlineMerge);
       }
       const preserveOfflineIdentity = isActiveOfflineEditSession(working);
+      const editSourceLine =
+        intendedEdit
+          ? (working?.lines ?? []).find(
+              (row) =>
+                cartLineMatchesRef(row, targetLineRef) ||
+                cartLineMatchesRef(row, editingRef) ||
+                cartLineMatchesRef(row, editingId) ||
+                (resolvedMergeTarget && cartLinesShareIdentity(row, resolvedMergeTarget)),
+            ) ?? resolvedMergeTarget
+          : resolvedMergeTarget;
       const localLine = {
-        client_line_id:
-          editingId != null
-            ? String(editingRef ?? editingId)
-            : resolvedMergeTarget?.client_line_id ??
-              resolvedMergeTarget?.update_code ??
-              resolvedMergeTarget?.id ??
-              newClientSaleUuid(),
+        client_line_id: String(
+          editSourceLine?.client_line_id ??
+            editSourceLine?.update_code ??
+            editSourceLine?.id ??
+            (editingId != null ? editingRef ?? editingId : null) ??
+            resolvedMergeTarget?.client_line_id ??
+            resolvedMergeTarget?.update_code ??
+            resolvedMergeTarget?.id ??
+            newClientSaleUuid(),
+        ),
+        id: editSourceLine?.id ?? resolvedMergeTarget?.id,
+        update_code:
+          editSourceLine?.update_code ??
+          editSourceLine?.client_line_id ??
+          resolvedMergeTarget?.update_code,
         product_code: product.product_code,
         product_name: product.product_name ?? product.description ?? product.product_code,
         quantity: finalComputed.baseQty,
@@ -9031,6 +9051,9 @@ export function PosScreen({ standalone = false }) {
       // never snaps back to the old number while TemporaryCart is still catching up.
       if (classicLayout || localDraftEdit) {
         const live = cartRef.current ?? activeCart;
+        const skuLineCountBefore = (live?.lines ?? []).filter(
+          (row) => String(row.product_code) === String(liveLine.product_code),
+        ).length;
         const lines = [...(live?.lines ?? [])];
         let idx = findCartLineIndexByRef(lines, lineRef);
         if (idx < 0) {
@@ -9056,8 +9079,16 @@ export function PosScreen({ standalone = false }) {
         // F12 bags↔kg used to leave a same-mode twin on screen (two Bags rows)
         // because this paint path skipped collapse — commitCartLine then skipped
         // optimistic twin-drop once the painted row already matched the edit.
-        const paintedLines = finalizeCartLineList(lines, {
+        let paintedLines = finalizeCartLineList(lines, {
           combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        });
+        // Qty Enter / F12 on a single SKU row must never spawn a copy in offline DB
+        // or on screen — even when "combine identical" is off.
+        paintedLines = dedupeSkuLinesAfterInPlaceEdit(paintedLines, {
+          productCode: existing.product_code,
+          keepLine: lines[idx],
+          modeFlipped: switchingMode,
+          skuLineCountBefore,
         });
         const nextCart = isPreviousOrderEditSession(live)
           ? withEditDraftDirty({ ...live, lines: paintedLines })
@@ -9157,6 +9188,34 @@ export function PosScreen({ standalone = false }) {
             lineRetailStockFlagOverride: sessionIsRetail,
             keepOptimisticOnFailure: true,
           });
+          const afterCart = cartRef.current ?? nextCart;
+          const dedupedAfter = dedupeSkuLinesAfterInPlaceEdit(afterCart?.lines ?? [], {
+            productCode: existing.product_code,
+            keepLine: surviving,
+            modeFlipped: switchingMode,
+            skuLineCountBefore,
+          });
+          if (dedupedAfter.length !== (afterCart?.lines ?? []).length) {
+            const cleaned = { ...afterCart, lines: dedupedAfter };
+            cartRef.current = cleaned;
+            setCart(cleaned);
+            if (usesLocalPosCartWorkspace(cleaned)) {
+              try {
+                const saved = await saveLocalPosCart({
+                  ...cleaned,
+                  lines: dedupedAfter.map((l) => ({
+                    ...l,
+                    client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                  })),
+                });
+                const presented = presentLocalOfflineCart(saved);
+                cartRef.current = presented;
+                setCart(presented);
+              } catch {
+                /* keep in-memory */
+              }
+            }
+          }
           const after = (cartRef.current?.lines ?? []).find(
             (row) =>
               sameLineId(row.id, surviving.id) ||
