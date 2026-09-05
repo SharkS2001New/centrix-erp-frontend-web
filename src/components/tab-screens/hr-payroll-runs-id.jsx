@@ -291,8 +291,6 @@ export function HrPayrollRunsIdScreen() {
   function openPayrollReportTab(href, title) {
     if (tabWorkspaceEnabled) {
       openTab(href, title);
-      // Prefer router.push so navigation is not skipped when openTab's store
-      // update has not flushed yet.
       router.push(href);
       return;
     }
@@ -302,10 +300,6 @@ export function HrPayrollRunsIdScreen() {
   const lineIds = useMemo(() => lines.map((line) => String(line.id)), [lines]);
   const selectedCount = selectedLineIds.size;
   const allLinesSelected = lineIds.length > 0 && lineIds.every((id) => selectedLineIds.has(id));
-  const selectedLines = useMemo(
-    () => lines.filter((line) => selectedLineIds.has(String(line.id))),
-    [lines, selectedLineIds],
-  );
   const filteredLines = useMemo(() => {
     const q = debouncedSheetSearch.trim().toLowerCase();
     if (!q) return lines;
@@ -383,6 +377,18 @@ export function HrPayrollRunsIdScreen() {
     );
   }
 
+  /** Print/PDF omits bank account numbers (keep Acc no on-screen + CSV). */
+  function payrollSheetPrintColumns() {
+    return payrollSheetExportColumns().filter((col) => col.key !== "account_number");
+  }
+
+  function payrollSheetPrintFooterRow(targetLines = lines) {
+    const footer = payrollSheetFooterRow(targetLines);
+    if (!footer || typeof footer !== "object") return footer;
+    const { account_number: _omit, ...rest } = footer;
+    return rest;
+  }
+
   function payrollSheetRows(targetLines = lines) {
     return buildPayrollSheetRows(targetLines, employeeNameFromLine);
   }
@@ -443,9 +449,9 @@ export function HrPayrollRunsIdScreen() {
     try {
       printReportTable({
         meta,
-        columns: payrollSheetExportColumns(),
+        columns: payrollSheetPrintColumns(),
         rows: payrollSheetRows(),
-        footerRow: payrollSheetFooterRow(),
+        footerRow: payrollSheetPrintFooterRow(),
         branding,
         generalSettings: generalSettings(),
       });
@@ -505,10 +511,6 @@ export function HrPayrollRunsIdScreen() {
 
   async function emailAllReceipts() {
     await emailReceiptLines(lines, { selected: false });
-  }
-
-  async function emailSelectedReceipts() {
-    await emailReceiptLines(selectedLines, { selected: true });
   }
 
   async function openLineDetail(line) {
@@ -811,31 +813,11 @@ export function HrPayrollRunsIdScreen() {
                   </button>
                   <button
                     type="button"
-                    disabled={selectedCount === 0}
-                    onClick={() => printReceiptLines(selectedLines, "print")}
-                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
-                    title="Print payslip receipts for the selected employees"
-                  >
-                    Print selected receipts{selectedCount > 0 ? ` (${selectedCount})` : ""}
-                  </button>
-                  <button
-                    type="button"
                     disabled={emailing || processing}
                     onClick={() => void emailAllReceipts()}
                     className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
                   >
                     {emailing ? "Emailing…" : "Email all"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={emailing || processing || selectedCount === 0}
-                    onClick={() => void emailSelectedReceipts()}
-                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
-                    title="Email payslip receipts for the selected employees"
-                  >
-                    {emailing
-                      ? "Emailing…"
-                      : `Email selected${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
                   </button>
                   <button
                     type="button"

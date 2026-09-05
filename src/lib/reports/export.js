@@ -134,9 +134,10 @@ export function buildReportPrintHtml({
       : "table { font-size: 9px; } th, td { padding: 3px 4px; }"
     : "";
 
-  return `<!DOCTYPE html><html class="${landscape ? "centrix-print-landscape" : ""}"><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
-@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }
+/* Explicit mm size — avoid the "landscape" keyword (some engines rotate content twice). */
+@page { size: ${landscape ? "297mm 210mm" : "210mm 297mm"}; margin: 10mm; }
 ${reportDocumentStyles(generalSettings)}
 tr.note-row td { background: #f8fafc; color: #334155; font-size: 0.92em; padding-top: 4px; padding-bottom: 6px; }
 table { table-layout: fixed; }
@@ -145,7 +146,7 @@ th.num, td.num { white-space: nowrap; overflow-wrap: normal; word-break: normal;
 td.text, th.text { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: keep-all; overflow-wrap: normal; }
 td.wrap, th.wrap { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 ${compactTableCss}
-</style></head><body class="${landscape ? "centrix-print-landscape" : ""}">
+</style></head><body>
 ${watermarkHtml}
 ${orgHeaderHtml}
 <div class="meta">

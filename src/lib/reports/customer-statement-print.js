@@ -124,13 +124,11 @@ export function buildCustomerStatementPrintHtml({
     printedBy: null,
   });
 
-  return html
-    .replace("<html>", '<html class="centrix-print-landscape">')
-    .replace("<body>", '<body class="centrix-print-landscape">')
-    .replace(
-      "</style>",
-      `
-    @page { size: A4 landscape; margin: 0; }
+  return html.replace(
+    "</style>",
+    `
+    /* Explicit landscape mm — avoid the landscape keyword (double-rotate on some engines). */
+    @page { size: 297mm 210mm; margin: 0; }
     .page { max-width: none; }
     .statement-head { display:flex; justify-content:space-between; gap:24px; margin-bottom:12px; align-items:flex-start; }
     .statement-meta { text-align:right; }
@@ -145,7 +143,7 @@ export function buildCustomerStatementPrintHtml({
     table.aging-table th.num, table.aging-table td.num { white-space: nowrap; }
     .doc-title { text-align:left; font-size:22px; letter-spacing:0.04em; }
     </style>`,
-    );
+  );
 }
 
 export function printCustomerStatement(payload) {

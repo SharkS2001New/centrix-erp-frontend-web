@@ -360,23 +360,25 @@ export function sectionBelongsToWorkspace(section, workspaceId) {
  * @param {string} workspaceId
  */
 export function pathBelongsToWorkspace(pathname, workspaceId) {
-  if (!pathname || SHARED_WORKSPACE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  // Tab hrefs often include ?query — strip so report slug matching stays clean.
+  const path = String(pathname || "").split(/[?#]/)[0] || "";
+  if (!path || SHARED_WORKSPACE_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) {
     return true;
   }
 
   if (workspaceId === "pos" || workspaceId === "hotel_bar_pos") {
     const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];
-    return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+    return prefixes.some((p) => path === p || path.startsWith(`${p}/`));
   }
 
   if (workspaceId === "admin") {
     const prefixes = WORKSPACE_PATH_PREFIXES.admin ?? [];
-    if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    if (prefixes.some((p) => path === p || path.startsWith(`${p}/`))) {
       return true;
     }
     if (
       ADMIN_HOSPITALITY_OPS_PATH_PREFIXES.some(
-        (p) => pathname === p || pathname.startsWith(`${p}/`),
+        (p) => path === p || path.startsWith(`${p}/`),
       )
     ) {
       return true;
@@ -385,47 +387,47 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
   }
 
   const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];
-  if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  if (prefixes.some((p) => path === p || path.startsWith(`${p}/`))) {
     return true;
   }
 
   if (
     workspaceId === "hospitality_backoffice" &&
-    (pathname === "/admin/hotel-settings" ||
-      pathname.startsWith("/admin/hotel-settings/"))
+    (path === "/admin/hotel-settings" ||
+      path.startsWith("/admin/hotel-settings/"))
   ) {
     return true;
   }
 
-  if (workspaceId === "distribution" && /^\/sales\/orders\/[^/]+/.test(pathname)) {
+  if (workspaceId === "distribution" && /^\/sales\/orders\/[^/]+/.test(path)) {
     return true;
   }
 
   if (
     workspaceId === "backoffice" &&
-    (      pathname === "/fulfillment/routes" ||
-      pathname.startsWith("/fulfillment/routes/") ||
-      pathname === "/fulfillment/drivers" ||
-      pathname.startsWith("/fulfillment/drivers/") ||
-      pathname === "/fulfillment/vehicles" ||
-      pathname.startsWith("/fulfillment/vehicles/") ||
-      pathname === "/sales/loading-sheets" ||
-      pathname.startsWith("/sales/loading-sheets/") ||
-      pathname === "/sales/picking-lists" ||
-      pathname.startsWith("/sales/picking-lists/") ||
-      pathname === "/sales/trip-charts" ||
-      pathname.startsWith("/sales/trip-charts/") ||
-      pathname === "/fulfillment/loading-lists" ||
-      pathname.startsWith("/fulfillment/loading-lists/"))
+    (      path === "/fulfillment/routes" ||
+      path.startsWith("/fulfillment/routes/") ||
+      path === "/fulfillment/drivers" ||
+      path.startsWith("/fulfillment/drivers/") ||
+      path === "/fulfillment/vehicles" ||
+      path.startsWith("/fulfillment/vehicles/") ||
+      path === "/sales/loading-sheets" ||
+      path.startsWith("/sales/loading-sheets/") ||
+      path === "/sales/picking-lists" ||
+      path.startsWith("/sales/picking-lists/") ||
+      path === "/sales/trip-charts" ||
+      path.startsWith("/sales/trip-charts/") ||
+      path === "/fulfillment/loading-lists" ||
+      path.startsWith("/fulfillment/loading-lists/"))
   ) {
     return true;
   }
 
-  if (pathname === "/reports" || pathname.startsWith("/reports/")) {
-    if (pathname === "/reports" || pathname === "/reports/builder") {
+  if (path === "/reports" || path.startsWith("/reports/")) {
+    if (path === "/reports" || path === "/reports/builder") {
       return Object.hasOwn(WORKSPACE_REPORT_MODULES, workspaceId);
     }
-    const slugMatch = pathname.match(/^\/reports\/([^/]+)/);
+    const slugMatch = path.match(/^\/reports\/([^/]+)/);
     if (!slugMatch) {
       return workspaceId === "backoffice";
     }
