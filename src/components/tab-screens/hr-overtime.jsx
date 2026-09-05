@@ -1,9 +1,12 @@
 "use client";
 
-import { Field, formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
+import { useMemo, useState } from "react";
+import { Field, formatShortDate, inputClassName, FILTER_CONTROL_CLASS } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
+import { HrDateField, HrFilterButton } from "@/components/hr/hr-list-toolbar";
 import { apiRequest } from "@/lib/api";
+import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 const RATE_MODE_OPTIONS = [
   { value: "from_salary", label: "From salary (daily rate ÷ shift hours)" },
@@ -11,7 +14,35 @@ const RATE_MODE_OPTIONS = [
   { value: "fixed_amount", label: "Fixed total amount (KES)" },
 ];
 
+const STATUS_FILTER_OPTIONS = [
+  { value: "approved,paid", label: "Approved + paid" },
+  { value: "approved", label: "Approved only" },
+  { value: "paid", label: "Paid only" },
+];
+
+function daysAgo(days) {
+  const today = todayCalendarDate();
+  const ms = Date.parse(`${today}T12:00:00+03:00`) - days * 86_400_000;
+  return calendarDateInTimezone(new Date(ms)) ?? today;
+}
+
 export function HrOvertimeScreen() {
+  const [fromDate, setFromDate] = useState(daysAgo(30));
+  const [toDate, setToDate] = useState(todayCalendarDate());
+  const [statusFilter, setStatusFilter] = useState("approved,paid");
+  const [appliedFrom, setAppliedFrom] = useState(daysAgo(30));
+  const [appliedTo, setAppliedTo] = useState(todayCalendarDate());
+  const [appliedStatus, setAppliedStatus] = useState("approved,paid");
+
+  const listSearchParams = useMemo(
+    () => ({
+      "filter[status]": appliedStatus,
+      from_date: appliedFrom,
+      to_date: appliedTo,
+    }),
+    [appliedFrom, appliedTo, appliedStatus],
+  );
+
   return (
     <HrCrudPage
       title="Overtime"
@@ -19,9 +50,48 @@ export function HrOvertimeScreen() {
       addButtonLabel="Add overtime"
       drawerWide
       apiPath="/employee-overtime"
-      listSearchParams={{ "filter[status]": "approved,paid" }}
+      listSearchParams={listSearchParams}
+      enableRowSelection
+      selectionEntityName="overtime entry"
+      searchPlaceholder="Search employee, notes…"
+      filterSlot={({ reload, loading }) => (
+        <>
+          <HrDateField label="From" value={fromDate} onChange={setFromDate} />
+          <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <Field label="Status">
+            <select
+              className={FILTER_CONTROL_CLASS}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              {STATUS_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <HrFilterButton
+            loading={loading}
+            onClick={() => {
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+              setAppliedStatus(statusFilter);
+              if (
+                fromDate === appliedFrom &&
+                toDate === appliedTo &&
+                statusFilter === appliedStatus
+              ) {
+                void reload();
+              }
+            }}
+          />
+        </>
+      )}
       loadExtra={async () => {
-        const res = await apiRequest("/employees", { searchParams: { per_page: 200 } });
+        const res = await apiRequest("/employees", {
+          searchParams: { per_page: 200, fields: "lean", is_active: 1 },
+        });
         const employees = (res.data ?? []).filter((e) => e.shift_id != null);
         return { employees };
       }}
@@ -41,7 +111,7 @@ export function HrOvertimeScreen() {
         let page = 1;
         for (;;) {
           const res = await apiRequest("/employee-overtime", {
-            searchParams: { "filter[status]": "approved,paid", per_page: 200, page },
+            searchParams: { ...listSearchParams, per_page: 200, page },
           });
           const batch = res.data ?? [];
           all.push(...batch);
@@ -69,8 +139,8 @@ export function HrOvertimeScreen() {
         {
           key: "employee_id",
           label: "Employee",
-          render: (r, { employees = [] }) => {
-            const emp = employees.find((e) => e.id === r.employee_id);
+          render: (r) => {
+            const emp = r.employee;
             return emp ? composeEmployeeDisplayName(emp) : "—";
           },
         },
@@ -200,7 +270,6 @@ export function HrOvertimeScreen() {
                 value={form.amount}
                 onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
                 className={inputClassName()}
-                placeholder="e.g. 2500"
               />
             </Field>
           ) : (
@@ -209,7 +278,7 @@ export function HrOvertimeScreen() {
                 <input
                   type="number"
                   min="0"
-                  step="0.5"
+                  step="0.01"
                   value={form.hours}
                   onChange={(e) => setForm((p) => ({ ...p, hours: e.target.value }))}
                   className={inputClassName()}
@@ -220,17 +289,13 @@ export function HrOvertimeScreen() {
                   <input
                     type="number"
                     min="0"
+                    step="0.01"
                     value={form.hourly_rate}
                     onChange={(e) => setForm((p) => ({ ...p, hourly_rate: e.target.value }))}
                     className={inputClassName()}
-                    placeholder="e.g. 500"
                   />
                 </Field>
-              ) : (
-                <p className="text-sm text-slate-600">
-                  Rate = monthly salary ÷ scheduled work days in the month ÷ shift hours per day.
-                </p>
-              )}
+              ) : null}
             </>
           )}
           <HrSelectField
@@ -242,6 +307,14 @@ export function HrOvertimeScreen() {
               { value: "paid", label: "Paid" },
             ]}
           />
+          <Field label="Notes">
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+              className={inputClassName()}
+              rows={2}
+            />
+          </Field>
         </>
       )}
     />

@@ -1,18 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useConfirm } from "@/contexts/confirm-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { composeEmployeeDisplayName, formatHoursWorked } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
+  Field,
   PaginationBar,
   SECONDARY_BTN_CLASS,
+  SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { HrDateField, HrFilterButton, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialActions,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 function daysAgo(days) {
@@ -40,29 +50,51 @@ const ABSENT_EXPORT_COLUMNS = [
 ];
 
 export function HrAbsentsScreen() {
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [fromDate, setFromDate] = useState(daysAgo(14));
   const [toDate, setToDate] = useState(daysAgo(1));
+  const [search, setSearch] = useState("");
   const [appliedFrom, setAppliedFrom] = useState(daysAgo(14));
   const [appliedTo, setAppliedTo] = useState(daysAgo(1));
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     setPage(1);
-  }, [appliedFrom, appliedTo]);
+    clearSelection();
+  }, [appliedFrom, appliedTo, appliedSearch, clearSelection]);
+
+  const listParams = useMemo(
+    () => ({
+      "filter[status]": "absent",
+      from_date: appliedFrom,
+      to_date: appliedTo,
+      ...(appliedSearch ? { q: appliedSearch } : {}),
+    }),
+    [appliedFrom, appliedTo, appliedSearch],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiRequest("/employee-attendance", {
         searchParams: {
-          "filter[status]": "absent",
-          from_date: appliedFrom,
-          to_date: appliedTo,
+          ...listParams,
           per_page: pageSize,
           page,
         },
@@ -76,9 +108,13 @@ export function HrAbsentsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [appliedFrom, appliedTo, page, pageSize]);
+  }, [listParams, page, pageSize]);
 
   useTabAwareDataLoad(load);
+
+  const pageRowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   async function markPresent(row) {
     if (!row?.id) return;
@@ -97,11 +133,64 @@ export function HrAbsentsScreen() {
         },
       });
       notifySuccess("Marked present — day will count as paid on the next payroll run.");
+      clearSelection();
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not mark present");
     } finally {
       setMarkingId(null);
+    }
+  }
+
+  async function markPresentSelected() {
+    const selected = rows.filter((r) => selectedIds.has(String(r.id)));
+    if (selected.length === 0 || batchBusy) return;
+
+    const ok = await confirm({
+      title: "Mark selected present",
+      message: `Mark ${selected.length} absent day${selected.length === 1 ? "" : "s"} as present? They will count as paid on the next payroll run.`,
+      confirmLabel: "Mark present",
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const { succeeded, failed } = await runSequentialActions({
+        items: selected,
+        action: async (row) => {
+          await apiRequest(`/employee-attendance/${row.id}`, {
+            method: "PUT",
+            body: {
+              employee_id: row.employee_id,
+              attendance_date: String(row.attendance_date).slice(0, 10),
+              status: "present",
+              check_in: null,
+              check_out: null,
+              notes: "Corrected to present by HR (no punches)",
+              source: row.source ?? "manual",
+            },
+          });
+        },
+      });
+      clearSelection();
+      await load();
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "1 day marked present."
+            : `${succeeded.length} days marked present.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Could not mark selected present.");
+      } else {
+        notifyError(
+          `Marked ${succeeded.length}; ${failed.length} failed${
+            failed[0]?.message ? ` (${failed[0].message})` : ""
+          }`,
+        );
+      }
+    } finally {
+      setBatchBusy(false);
     }
   }
 
@@ -111,9 +200,7 @@ export function HrAbsentsScreen() {
     for (;;) {
       const data = await apiRequest("/employee-attendance", {
         searchParams: {
-          "filter[status]": "absent",
-          from_date: appliedFrom,
-          to_date: appliedTo,
+          ...listParams,
           per_page: 200,
           page: p,
         },
@@ -129,6 +216,7 @@ export function HrAbsentsScreen() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const actionBusy = batchBusy || markingId != null;
 
   return (
     <CatalogPageShell
@@ -153,13 +241,28 @@ export function HrAbsentsScreen() {
         <HrFilterToolbar>
           <HrDateField label="From" value={fromDate} onChange={setFromDate} />
           <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <Field label="Search">
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by employee name"
+            />
+          </Field>
           <HrFilterButton
             loading={loading}
             onClick={() => {
+              const nextSearch = search.trim();
               setAppliedFrom(fromDate);
               setAppliedTo(toDate);
+              setAppliedSearch(nextSearch);
               setPage(1);
-              if (fromDate === appliedFrom && toDate === appliedTo) void load();
+              if (
+                fromDate === appliedFrom &&
+                toDate === appliedTo &&
+                nextSearch === appliedSearch
+              ) {
+                void load();
+              }
             }}
           />
         </HrFilterToolbar>
@@ -168,12 +271,19 @@ export function HrAbsentsScreen() {
       {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-600">No absent records in this range.</p>
+        <p className="text-sm text-slate-600">
+          {appliedSearch ? "No absents match your filters." : "No absent records in this range."}
+        </p>
       ) : (
         <div className={`overflow-x-auto ${loading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
+                <TableSelectAllHeader
+                  checked={allOnPageSelected}
+                  indeterminate={someOnPageSelected}
+                  onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                />
                 <th className="py-2 pr-4 font-medium">Date</th>
                 <th className="py-2 pr-4 font-medium">Employee</th>
                 <th className="py-2 pr-4 font-medium">Code</th>
@@ -185,6 +295,11 @@ export function HrAbsentsScreen() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-slate-100">
+                  <TableRowSelectCell
+                    checked={selectedIds.has(String(r.id))}
+                    onChange={() => toggleOne(r.id)}
+                    label={`Select absent for ${composeEmployeeDisplayName(r.employee) || "employee"}`}
+                  />
                   <td className="py-2 pr-4">{formatShortDate(r.attendance_date)}</td>
                   <td className="py-2 pr-4">{composeEmployeeDisplayName(r.employee) || "—"}</td>
                   <td className="py-2 pr-4">{r.employee?.employee_code ?? "—"}</td>
@@ -194,7 +309,7 @@ export function HrAbsentsScreen() {
                     <button
                       type="button"
                       className="text-sm font-medium text-[#185FA5] hover:underline disabled:opacity-50"
-                      disabled={markingId === r.id}
+                      disabled={actionBusy}
                       onClick={() => void markPresent(r)}
                     >
                       {markingId === r.id ? "Saving…" : "Mark present"}
@@ -211,13 +326,28 @@ export function HrAbsentsScreen() {
         totalPages={totalPages}
         total={total}
         pageSize={pageSize}
-        onChange={setPage}
+        onChange={(next) => {
+          clearSelection();
+          setPage(next);
+        }}
         onPageSizeChange={(size) => {
+          clearSelection();
           setPageSize(size);
           setPage(1);
         }}
         pageSizeOptions={[10, 25, 50, 100]}
       />
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <button
+          type="button"
+          disabled={batchBusy || selectedCount === 0}
+          onClick={() => void markPresentSelected()}
+          className="rounded-lg bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+        >
+          {batchBusy ? "Working…" : `Mark present (${selectedCount})`}
+        </button>
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

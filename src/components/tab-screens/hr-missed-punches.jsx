@@ -12,14 +12,30 @@ import { useAuth } from "@/contexts/auth-context";
 import { useConfirm } from "@/lib/use-confirm";
 import {
   CatalogPageShell,
+  Field,
   PaginationBar,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
+  SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { HrPageActions } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterButton, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialActions,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { formatTimeForApi } from "@/components/hr/hr-shared";
+import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
+
+function daysAgo(days) {
+  const today = todayCalendarDate();
+  const ms = Date.parse(`${today}T12:00:00+03:00`) - days * 86_400_000;
+  return calendarDateInTimezone(new Date(ms)) ?? today;
+}
 
 function displayField(value) {
   if (value == null) return "—";
@@ -60,6 +76,30 @@ function toApiDateTime(date, time24) {
   return `${date} ${time}`;
 }
 
+function rowDateKey(row, tab) {
+  const raw =
+    tab === "unapplied"
+      ? row.event_time_local || row.event_time || ""
+      : row.clock_in_at || "";
+  return String(raw).slice(0, 10);
+}
+
+function matchesSearch(row, q) {
+  if (!q) return true;
+  const hay = [
+    row.employee_name,
+    row.employee_code,
+    row.device_no,
+    row.device_location,
+    row.reason_short,
+    row.process_error,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
 export function HrMissedPunchesScreen() {
   const { hasPermission } = useAuth();
   const confirm = useConfirm();
@@ -79,6 +119,22 @@ export function HrMissedPunchesScreen() {
   const [pageSize, setPageSize] = useState(25);
   const [reasonRow, setReasonRow] = useState(null);
   const [applyingId, setApplyingId] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [fromDate, setFromDate] = useState(daysAgo(14));
+  const [toDate, setToDate] = useState(todayCalendarDate());
+  const [search, setSearch] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState(daysAgo(14));
+  const [appliedTo, setAppliedTo] = useState(todayCalendarDate());
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -86,6 +142,11 @@ export function HrMissedPunchesScreen() {
       setTab("forgotten");
     }
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+    clearSelection();
+  }, [tab, appliedFrom, appliedTo, appliedSearch, clearSelection]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,6 +168,24 @@ export function HrMissedPunchesScreen() {
 
   const unappliedCount = Number(gapCounts?.unapplied_terminal_punches ?? unapplied.length);
   const forgottenCount = Number(gapCounts?.missing_clock_out ?? missingOut.length);
+
+  const filteredUnapplied = useMemo(() => {
+    const q = appliedSearch.toLowerCase();
+    return unapplied.filter((row) => {
+      const d = rowDateKey(row, "unapplied");
+      if (d && (d < appliedFrom || d > appliedTo)) return false;
+      return matchesSearch(row, q);
+    });
+  }, [unapplied, appliedFrom, appliedTo, appliedSearch]);
+
+  const filteredMissingOut = useMemo(() => {
+    const q = appliedSearch.toLowerCase();
+    return missingOut.filter((row) => {
+      const d = rowDateKey(row, "forgotten");
+      if (d && (d < appliedFrom || d > appliedTo)) return false;
+      return matchesSearch(row, q);
+    });
+  }, [missingOut, appliedFrom, appliedTo, appliedSearch]);
 
   function startEdit(row) {
     const inn = wallParts(row.clock_in_at);
@@ -170,11 +249,99 @@ export function HrMissedPunchesScreen() {
     try {
       await apiRequest(`/attendance/missed-punches/events/${row.id}/apply`, { method: "POST" });
       notifySuccess("Punch applied to attendance as Applied by HR manually.");
+      clearSelection();
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not apply punch");
     } finally {
       setApplyingId(null);
+    }
+  }
+
+  async function applySelectedUnapplied() {
+    const selected = filteredUnapplied.filter((r) => r.id && selectedIds.has(String(r.id)));
+    if (selected.length === 0 || batchBusy) return;
+
+    const ok = await confirm({
+      title: "Apply selected punches",
+      message: `Apply ${selected.length} terminal punch${selected.length === 1 ? "" : "es"} to attendance? Each will count as Applied by HR manually.`,
+      confirmLabel: "Apply",
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const { succeeded, failed } = await runSequentialActions({
+        items: selected,
+        action: async (row) => {
+          await apiRequest(`/attendance/missed-punches/events/${row.id}/apply`, { method: "POST" });
+        },
+      });
+      clearSelection();
+      await load();
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "1 punch applied."
+            : `${succeeded.length} punches applied.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Could not apply selected punches.");
+      } else {
+        notifyError(
+          `Applied ${succeeded.length}; ${failed.length} failed${
+            failed[0]?.message ? ` (${failed[0].message})` : ""
+          }`,
+        );
+      }
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function confirmSelectedForgotten() {
+    const selected = filteredMissingOut.filter(
+      (r) => r.id && r.auto_closed && selectedIds.has(String(r.id)),
+    );
+    if (selected.length === 0 || batchBusy) return;
+
+    const ok = await confirm({
+      title: "Confirm selected clock-outs",
+      message: `Confirm shift-end clock-out for ${selected.length} auto-closed day${selected.length === 1 ? "" : "s"}?`,
+      confirmLabel: "Confirm",
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const { succeeded, failed } = await runSequentialActions({
+        items: selected,
+        action: async (row) => {
+          await apiRequest(`/attendance/missed-punches/${row.id}/clock-out`, {
+            method: "POST",
+            body: { confirm_reconciliation: true },
+          });
+        },
+      });
+      clearSelection();
+      await load();
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "1 forgotten clock-out confirmed."
+            : `${succeeded.length} forgotten clock-outs confirmed.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Could not confirm selected clock-outs.");
+      } else {
+        notifyError(
+          `Confirmed ${succeeded.length}; ${failed.length} failed${
+            failed[0]?.message ? ` (${failed[0].message})` : ""
+          }`,
+        );
+      }
+    } finally {
+      setBatchBusy(false);
     }
   }
 
@@ -195,6 +362,7 @@ export function HrMissedPunchesScreen() {
       });
       notifySuccess(confirmOnly ? "Forgotten clock-out confirmed." : "Punch times saved.");
       setEditRow(null);
+      clearSelection();
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not save clock-out");
@@ -213,11 +381,24 @@ export function HrMissedPunchesScreen() {
     [editRow, missingOut],
   );
 
-  const list = tab === "unapplied" ? unapplied : missingOut;
+  const list = tab === "unapplied" ? filteredUnapplied : filteredMissingOut;
   const total = list.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
   const safePage = Math.min(page, totalPages);
   const paged = list.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageRowIds = useMemo(
+    () => paged.map((r) => r.id).filter((id) => id != null),
+    [paged],
+  );
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+
+  const selectedConfirmableCount = useMemo(() => {
+    if (tab !== "forgotten") return 0;
+    return filteredMissingOut.filter(
+      (r) => r.auto_closed && selectedIds.has(String(r.id)),
+    ).length;
+  }, [tab, filteredMissingOut, selectedIds]);
 
   return (
     <CatalogPageShell
@@ -227,17 +408,21 @@ export function HrMissedPunchesScreen() {
         <HrPageActions>
           {canRetry && tab === "unapplied" ? (
             <>
-            <button
-              type="button"
-              disabled={mapping || retrying || loading}
-              onClick={() => void autoMap()}
-              className={SECONDARY_BTN_CLASS}
-            >
-              {mapping ? "Mapping…" : "Auto-map terminal IDs"}
-            </button>
-            <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
-              {retrying ? "Retrying…" : "Retry pending punches"}
-            </PrimaryButton>
+              <button
+                type="button"
+                disabled={mapping || retrying || loading}
+                onClick={() => void autoMap()}
+                className={SECONDARY_BTN_CLASS}
+              >
+                {mapping ? "Mapping…" : "Auto-map terminal IDs"}
+              </button>
+              <PrimaryButton
+                type="button"
+                disabled={retrying || mapping || loading}
+                onClick={() => void retryPending()}
+              >
+                {retrying ? "Retrying…" : "Retry pending punches"}
+              </PrimaryButton>
             </>
           ) : null}
           {tab === "unapplied" ? (
@@ -251,9 +436,9 @@ export function HrMissedPunchesScreen() {
                 { key: "device", label: "Device" },
                 { key: "reason", label: "Reason" },
               ]}
-              totalCount={unapplied.length}
+              totalCount={filteredUnapplied.length}
               getInlineRows={async () =>
-                unapplied.map((row) => ({
+                filteredUnapplied.map((row) => ({
                   time: formatWhen(row.event_time_local || row.event_time),
                   employee_name: displayField(row.employee_name),
                   employee_code: displayField(row.employee_code),
@@ -275,9 +460,9 @@ export function HrMissedPunchesScreen() {
                 { key: "hours", label: "Hours" },
                 { key: "status", label: "Status" },
               ]}
-              totalCount={missingOut.length}
+              totalCount={filteredMissingOut.length}
               getInlineRows={async () =>
-                missingOut.map((row) => ({
+                filteredMissingOut.map((row) => ({
                   employee_name: displayField(row.employee_name),
                   employee_code: displayField(row.employee_code),
                   clock_in: formatWhen(row.clock_in_at),
@@ -291,6 +476,28 @@ export function HrMissedPunchesScreen() {
           )}
         </HrPageActions>
       }
+      toolbar={
+        <HrFilterToolbar>
+          <HrDateField label="From" value={fromDate} onChange={setFromDate} />
+          <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <Field label="Search">
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Employee, code, device…"
+            />
+          </Field>
+          <HrFilterButton
+            loading={loading}
+            onClick={() => {
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+              setAppliedSearch(search.trim());
+              setPage(1);
+            }}
+          />
+        </HrFilterToolbar>
+      }
     >
       <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-4 text-sm text-slate-600">
@@ -302,7 +509,8 @@ export function HrMissedPunchesScreen() {
         <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
           Duplicate punches
         </Link>
-        . Apply an unapplied punch when the person had a genuine reason — it counts on attendance as Applied by HR manually.
+        . Apply an unapplied punch when the person had a genuine reason — it counts on attendance as Applied by HR
+        manually.
       </p>
 
       <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1">
@@ -330,42 +538,66 @@ export function HrMissedPunchesScreen() {
 
       {tab === "unapplied" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-[15px] font-medium text-slate-900">Unapplied terminal punches</h2>
-        <p className="mt-1 text-sm text-slate-500">
+          <h2 className="text-[15px] font-medium text-slate-900">Unapplied terminal punches</h2>
+          <p className="mt-1 text-sm text-slate-500">
             These scans were stored but not counted. Apply one to attendance when HR confirms it should count.
-        </p>
-        {loading ? (
-          <p className="mt-3 text-sm text-slate-500">Loading…</p>
-        ) : unapplied.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No unapplied terminal punches.</p>
-        ) : (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          </p>
+          {loading ? (
+            <p className="mt-3 text-sm text-slate-500">Loading…</p>
+          ) : filteredUnapplied.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">
+              {appliedSearch || appliedFrom || appliedTo
+                ? "No unapplied punches match your filters."
+                : "No unapplied terminal punches."}
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Time</th>
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    {canRetry ? (
+                      <TableSelectAllHeader
+                        checked={allOnPageSelected}
+                        indeterminate={someOnPageSelected}
+                        onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                      />
+                    ) : null}
+                    <th className="px-3 py-2">Time</th>
                     <th className="px-3 py-2">Employee</th>
-                  <th className="px-3 py-2">Device</th>
-                  <th className="px-3 py-2">Reason</th>
+                    <th className="px-3 py-2">Device</th>
+                    <th className="px-3 py-2">Reason</th>
                     {canRetry ? <th className="px-3 py-2">Action</th> : null}
-                </tr>
-              </thead>
-              <tbody>
+                  </tr>
+                </thead>
+                <tbody>
                   {paged.map((row) => (
-                  <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
-                    <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
+                    <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
+                      {canRetry ? (
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(row.id))}
+                          onChange={() => toggleOne(row.id)}
+                          label={`Select punch for ${displayField(row.employee_name)}`}
+                        />
+                      ) : null}
+                      <td className="px-3 py-2 text-xs">
+                        {formatWhen(row.event_time_local || row.event_time)}
+                      </td>
                       <td className="px-3 py-2 text-sm">
                         {displayField(row.employee_name)}
                         {row.employee_code ? (
-                          <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
+                          <span className="ml-2 font-mono text-xs text-slate-500">
+                            {displayField(row.employee_code)}
+                          </span>
                         ) : null}
                       </td>
-                    <td className="px-3 py-2 text-xs">
-                      {displayField(row.device_no)}
-                      {row.device_location ? ` · ${row.device_location}` : ""}
-                    </td>
                       <td className="px-3 py-2 text-xs">
-                        <span className="text-red-700">{displayField(row.reason_short || row.process_error)}</span>
+                        {displayField(row.device_no)}
+                        {row.device_location ? ` · ${row.device_location}` : ""}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className="text-red-700">
+                          {displayField(row.reason_short || row.process_error)}
+                        </span>
                         {row.process_error ? (
                           <button
                             type="button"
@@ -380,117 +612,149 @@ export function HrMissedPunchesScreen() {
                         <td className="px-3 py-2">
                           <button
                             type="button"
-                            disabled={applyingId === row.id || !row.id}
+                            disabled={applyingId === row.id || !row.id || batchBusy}
                             onClick={() => void applyUnapplied(row)}
                             className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
                           >
                             {applyingId === row.id ? "Applying…" : "Apply to attendance"}
                           </button>
-                    </td>
+                        </td>
                       ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
             total={total}
             pageSize={pageSize}
-            onChange={setPage}
+            onChange={(next) => {
+              clearSelection();
+              setPage(next);
+            }}
             onPageSizeChange={(size) => {
+              clearSelection();
               setPageSize(size);
               setPage(1);
             }}
             pageSizeOptions={[10, 25, 50, 100]}
           />
-      </section>
+        </section>
       ) : (
-      <section className="theme-panel rounded-xl border p-5 shadow-sm">
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-[15px] font-medium text-slate-900">Forgotten clock-outs</h2>
-        <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500">
             Evening punch missing. At 02:00 Centrix auto-closes the day at the employee’s shift end so hours exist for
             payroll. Confirm that time, or set the real clock-in / clock-out.
-        </p>
-        {loading ? (
-          <p className="mt-3 text-sm text-slate-500">Loading…</p>
-        ) : missingOut.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No forgotten clock-outs.</p>
-        ) : (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          </p>
+          {loading ? (
+            <p className="mt-3 text-sm text-slate-500">Loading…</p>
+          ) : filteredMissingOut.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">
+              {appliedSearch ? "No forgotten clock-outs match your filters." : "No forgotten clock-outs."}
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[800px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Employee</th>
-                  <th className="px-3 py-2">Clock in</th>
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    {canRetry ? (
+                      <TableSelectAllHeader
+                        checked={allOnPageSelected}
+                        indeterminate={someOnPageSelected}
+                        onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                      />
+                    ) : null}
+                    <th className="px-3 py-2">Employee</th>
+                    <th className="px-3 py-2">Clock in</th>
                     <th className="px-3 py-2">Clock out</th>
                     <th className="px-3 py-2">Hours</th>
                     <th className="px-3 py-2">Status</th>
-                  {canRetry ? <th className="px-3 py-2">Action</th> : null}
-                </tr>
-              </thead>
-              <tbody>
+                    {canRetry ? <th className="px-3 py-2">Action</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
                   {paged.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
-                    <td className="px-3 py-2 text-sm">
-                      {displayField(row.employee_name)}
-                      <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
-                    </td>
-                    <td className="px-3 py-2 text-xs">{formatWhen(row.clock_in_at)}</td>
+                      {canRetry ? (
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(row.id))}
+                          onChange={() => toggleOne(row.id)}
+                          label={`Select forgotten clock-out for ${displayField(row.employee_name)}`}
+                        />
+                      ) : null}
+                      <td className="px-3 py-2 text-sm">
+                        {displayField(row.employee_name)}
+                        <span className="ml-2 font-mono text-xs text-slate-500">
+                          {displayField(row.employee_code)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">{formatWhen(row.clock_in_at)}</td>
                       <td className="px-3 py-2 text-xs">
                         {row.clock_out_at ? formatWhen(row.clock_out_at) : "—"}
                         {!row.clock_out_at && row.suggested_clock_out_at ? (
-                          <div className="text-[11px] text-slate-500">Shift end {formatWhen(row.suggested_clock_out_at)}</div>
+                          <div className="text-[11px] text-slate-500">
+                            Shift end {formatWhen(row.suggested_clock_out_at)}
+                          </div>
                         ) : null}
                       </td>
-                    <td className="px-3 py-2 text-xs">{row.hours_open != null ? `${row.hours_open}h` : "—"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {row.hours_open != null ? `${row.hours_open}h` : "—"}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {row.auto_closed ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-900">
                             Auto-closed — confirm
                           </span>
                         ) : (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">Still open</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                            Still open
+                          </span>
                         )}
                       </td>
-                    {canRetry ? (
-                      <td className="px-3 py-2">
+                      {canRetry ? (
+                        <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             {row.auto_closed ? (
                               <button
                                 type="button"
-                                disabled={saving}
+                                disabled={saving || batchBusy}
                                 onClick={() => void saveForgotten(row, { confirmOnly: true })}
                                 className="text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
                               >
                                 Confirm shift end
                               </button>
                             ) : null}
-                        <button
-                          type="button"
+                            <button
+                              type="button"
                               onClick={() => startEdit(row)}
                               className="text-xs font-medium text-[#185FA5] hover:underline"
-                        >
+                            >
                               Set times
-                        </button>
+                            </button>
                           </div>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
             total={total}
             pageSize={pageSize}
-            onChange={setPage}
+            onChange={(next) => {
+              clearSelection();
+              setPage(next);
+            }}
             onPageSizeChange={(size) => {
+              clearSelection();
               setPageSize(size);
               setPage(1);
             }}
@@ -514,11 +778,37 @@ export function HrMissedPunchesScreen() {
                   Cancel
                 </button>
               </div>
-        </div>
+            </div>
           ) : null}
-
-      </section>
+        </section>
       )}
+
+      {canRetry ? (
+        <BatchActionBar count={selectedCount} onClear={clearSelection}>
+          {tab === "unapplied" ? (
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={batchBusy || selectedCount === 0}
+              onClick={() => void applySelectedUnapplied()}
+            >
+              {batchBusy ? "Working…" : `Apply (${selectedCount})`}
+            </PrimaryButton>
+          ) : selectedConfirmableCount > 0 ? (
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={batchBusy}
+              onClick={() => void confirmSelectedForgotten()}
+            >
+              {batchBusy
+                ? "Working…"
+                : `Confirm shift end (${selectedConfirmableCount})`}
+            </PrimaryButton>
+          ) : null}
+        </BatchActionBar>
+      ) : null}
+
       {reasonRow ? (
         <>
           <button

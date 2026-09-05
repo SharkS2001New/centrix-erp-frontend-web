@@ -1,4 +1,5 @@
-import { formatHrKesFull } from "@/components/hr/hr-shared";
+import { formatOrgNumber } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
 /** Legacy payroll sheet column order (Moonlight-style). */
 export const PAYROLL_SHEET_COLUMNS = [
@@ -156,6 +157,24 @@ export function formatPayrollSheetExportAmount(value) {
   return amount.toFixed(2);
 }
 
+/**
+ * On-screen / print amounts: hide trailing .00, keep real cents (e.g. 157.50, 506.88).
+ * @param {unknown} value
+ * @param {object} [settings]
+ */
+export function formatPayrollSheetDisplayAmount(value, settings = GENERAL_DEFAULTS) {
+  if (value == null || value === "") return "—";
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+
+  const roundedCents = Math.round(amount * 100);
+  const decimals = roundedCents % 100 === 0 ? 0 : 2;
+  const general = settings ?? GENERAL_DEFAULTS;
+  const number = formatOrgNumber(roundedCents / 100, general, { decimals });
+  const currency = general.currency || "KES";
+  return `${currency} ${number}`;
+}
+
 /** Full account number for export — never coerce to a number. */
 export function formatPayrollSheetExportAccount(value) {
   return String(value ?? "").trim();
@@ -216,18 +235,18 @@ export function payrollSheetDisplayRow(numeric) {
   return {
     no: String(numeric.no ?? ""),
     name: numeric.name ?? "",
-    basic_salary: formatHrKesFull(numeric.basic_salary),
-    overtime: numeric.overtime > 0 ? formatHrKesFull(numeric.overtime) : "",
-    gross_salary: formatHrKesFull(numeric.gross_salary),
-    advance: numeric.advance > 0 ? formatHrKesFull(numeric.advance) : "",
-    nssf: formatHrKesFull(numeric.nssf),
-    shif: formatHrKesFull(numeric.shif),
-    housing: formatHrKesFull(numeric.housing),
-    paye: formatHrKesFull(numeric.paye),
-    absentism: numeric.absentism > 0 ? formatHrKesFull(numeric.absentism) : "",
-    damages: numeric.damages > 0 ? formatHrKesFull(numeric.damages) : "",
-    total_ded: formatHrKesFull(numeric.total_ded),
-    net_pay: formatHrKesFull(numeric.net_pay),
+    basic_salary: formatPayrollSheetDisplayAmount(numeric.basic_salary),
+    overtime: numeric.overtime > 0 ? formatPayrollSheetDisplayAmount(numeric.overtime) : "",
+    gross_salary: formatPayrollSheetDisplayAmount(numeric.gross_salary),
+    advance: numeric.advance > 0 ? formatPayrollSheetDisplayAmount(numeric.advance) : "",
+    nssf: formatPayrollSheetDisplayAmount(numeric.nssf),
+    shif: formatPayrollSheetDisplayAmount(numeric.shif),
+    housing: formatPayrollSheetDisplayAmount(numeric.housing),
+    paye: formatPayrollSheetDisplayAmount(numeric.paye),
+    absentism: numeric.absentism > 0 ? formatPayrollSheetDisplayAmount(numeric.absentism) : "",
+    damages: numeric.damages > 0 ? formatPayrollSheetDisplayAmount(numeric.damages) : "",
+    total_ded: formatPayrollSheetDisplayAmount(numeric.total_ded),
+    net_pay: formatPayrollSheetDisplayAmount(numeric.net_pay),
     account_number: numeric.account_number || "—",
   };
 }

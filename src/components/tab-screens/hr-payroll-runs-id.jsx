@@ -17,11 +17,13 @@ import {
   IconButton,
   PrimaryButton,
   PaginationBar,
+  SearchInput,
   StatCard,
   inputClassName,
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HrPageActions } from "@/components/hr/hr-list-toolbar";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   PayrollBreakdownPanel,
   PayrollRunStatusBadge,
@@ -63,6 +65,7 @@ import {
 } from "@/lib/payroll-sheet";
 
 const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
+const AUTO_PROCESS_CONSUMED_KEY = (id) => `payroll-auto-process-consumed-${id}`;
 const PAYROLL_SHEET_COL_COUNT = PAYROLL_SHEET_COLUMNS.length + 2;
 const SHEET_CELL = "border border-slate-200 px-2 py-2";
 
@@ -93,7 +96,7 @@ export function HrPayrollRunsIdScreen() {
   );
   const { runQueuedTask } = useQueuedTask("Generating payroll…");
   const { user, hasPermission, capabilities, organization, generalSettings } = useAuth();
-  const { enabled: tabWorkspaceEnabled, openTab, navigateToHref, closeTab, clearTabDirty } =
+  const { enabled: tabWorkspaceEnabled, openTab, closeTab, clearTabDirty } =
     useTabWorkspace();
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
@@ -122,6 +125,8 @@ export function HrPayrollRunsIdScreen() {
   const [selectedLineIds, setSelectedLineIds] = useState(() => new Set());
   const [linesPage, setLinesPage] = useState(1);
   const [linesPageSize, setLinesPageSize] = useState(50);
+  const [sheetSearch, setSheetSearch] = useState("");
+  const debouncedSheetSearch = useDebouncedValue(sheetSearch, 250);
   const autoProcessStarted = useRef(false);
   /** After delete (or known 404), stop reloads and leave this sheet. */
   const leftRunSheetRef = useRef(false);
@@ -217,23 +222,53 @@ export function HrPayrollRunsIdScreen() {
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
-    if (autoProcessStarted.current || !canProcess || !Number.isFinite(runId)) return;
+    if (!canProcess || !Number.isFinite(runId)) return;
     const shouldProcess = searchParams.get("process") === "1";
     if (!shouldProcess) return;
 
+    // Strip ?process=1 immediately so tab reopen / remount never re-triggers.
+    router.replace(`/hr/payroll/runs/${runId}`);
+
+    const consumedKey = AUTO_PROCESS_CONSUMED_KEY(runId);
+    try {
+      if (sessionStorage.getItem(consumedKey) === "1") return;
+    } catch {
+      /* ignore */
+    }
+    if (autoProcessStarted.current) return;
     autoProcessStarted.current = true;
-    setProcessing(true);
+
     let options = {};
     try {
       const raw = sessionStorage.getItem(AUTO_PROCESS_KEY(runId));
       if (raw) options = JSON.parse(raw);
       sessionStorage.removeItem(AUTO_PROCESS_KEY(runId));
+      sessionStorage.setItem(consumedKey, "1");
     } catch {
       /* ignore */
     }
-    router.replace(`/hr/payroll/runs/${runId}`);
-    void runAutoProcess(options);
-  }, [canProcess, runId, searchParams, router, runAutoProcess]);
+
+    void (async () => {
+      try {
+        const existing = await apiRequest(`/payroll-runs/${runId}`);
+        const status = String(existing?.status ?? "");
+        // Already generated — just show the sheet (revisiting must not reprocess).
+        if (["processed", "paid", "pending_approval", "approved"].includes(status)) {
+          await loadData();
+          return;
+        }
+        await runAutoProcess(options);
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        // Fall back to process only when we cannot confirm status.
+        if (e instanceof ApiError && e.status === 404) {
+          notifyError("Payroll run not found.");
+          return;
+        }
+        await runAutoProcess(options);
+      }
+    })();
+  }, [canProcess, runId, searchParams, router, runAutoProcess, loadData]);
 
   const period = run?.pay_period ?? run?.payPeriod ?? null;
 
@@ -252,11 +287,13 @@ export function HrPayrollRunsIdScreen() {
 
   const employeeCount = run?.employee_count ?? lines.length;
 
-  /** Open payroll reports in a new workspace tab — never replace this run tab. */
+  /** Open payroll reports in a new workspace tab — keep this run tab intact. */
   function openPayrollReportTab(href, title) {
     if (tabWorkspaceEnabled) {
       openTab(href, title);
-      navigateToHref(href);
+      // Prefer router.push so navigation is not skipped when openTab's store
+      // update has not flushed yet.
+      router.push(href);
       return;
     }
     router.push(href);
@@ -269,20 +306,29 @@ export function HrPayrollRunsIdScreen() {
     () => lines.filter((line) => selectedLineIds.has(String(line.id))),
     [lines, selectedLineIds],
   );
+  const filteredLines = useMemo(() => {
+    const q = debouncedSheetSearch.trim().toLowerCase();
+    if (!q) return lines;
+    return lines.filter((line) => {
+      const name = employeeNameFromLine(line).toLowerCase();
+      const code = String(line.employee?.employee_code ?? line.employee_code ?? "").toLowerCase();
+      return name.includes(q) || code.includes(q);
+    });
+  }, [lines, debouncedSheetSearch]);
   const payrollSheetDisplayRows = useMemo(
-    () => buildPayrollSheetRows(lines, employeeNameFromLine),
-    [lines],
+    () => buildPayrollSheetRows(filteredLines, employeeNameFromLine),
+    [filteredLines],
   );
   const payrollSheetTotals = useMemo(
     () => buildPayrollSheetFooter(lines, employeeNameFromLine),
     [lines],
   );
-  const linesTotalPages = Math.max(1, Math.ceil(lines.length / linesPageSize) || 1);
+  const linesTotalPages = Math.max(1, Math.ceil(filteredLines.length / linesPageSize) || 1);
   const safeLinesPage = Math.min(linesPage, linesTotalPages);
   const pagedLines = useMemo(() => {
     const start = (safeLinesPage - 1) * linesPageSize;
-    return lines.slice(start, start + linesPageSize);
-  }, [lines, safeLinesPage, linesPageSize]);
+    return filteredLines.slice(start, start + linesPageSize);
+  }, [filteredLines, safeLinesPage, linesPageSize]);
   const pagedDisplayRows = useMemo(() => {
     const start = (safeLinesPage - 1) * linesPageSize;
     return payrollSheetDisplayRows.slice(start, start + linesPageSize);
@@ -291,6 +337,10 @@ export function HrPayrollRunsIdScreen() {
     run && ["processed", "paid"].includes(run.status) && lines.length > 0;
   const canExcludeFromRun =
     canProcess && run && run.status !== "paid" && lines.length > 0;
+
+  useEffect(() => {
+    setLinesPage(1);
+  }, [debouncedSheetSearch]);
 
   function toggleLineSelected(lineId, checked) {
     const key = String(lineId);
@@ -388,6 +438,7 @@ export function HrPayrollRunsIdScreen() {
       subtitle: periodText ? `Pay period ${periodText}` : `Payroll run #${run?.id ?? runId}`,
       printedAt: reportPrintedAt(),
       extraLines: reportConstantHeaderForRun(),
+      orientation: "landscape",
     });
     try {
       printReportTable({
@@ -780,6 +831,7 @@ export function HrPayrollRunsIdScreen() {
                     disabled={emailing || processing || selectedCount === 0}
                     onClick={() => void emailSelectedReceipts()}
                     className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
+                    title="Email payslip receipts for the selected employees"
                   >
                     {emailing
                       ? "Emailing…"
@@ -866,6 +918,13 @@ export function HrPayrollRunsIdScreen() {
                   ? " To skip someone who should not be paid, select their row(s) and choose Exclude from run."
                   : ""}
               </p>
+              <div className="mt-3 max-w-sm">
+                <SearchInput
+                  value={sheetSearch}
+                  onChange={(e) => setSheetSearch(e.target.value)}
+                  placeholder="Search employee on this sheet…"
+                />
+              </div>
               {selectedCount > 0 ? (
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-700">
                   <span>{selectedCount} selected</span>
@@ -884,25 +943,6 @@ export function HrPayrollRunsIdScreen() {
                     >
                       Exclude from run ({selectedCount})
                     </button>
-                  ) : null}
-                  {canPrintOrEmailReceipts ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => printReceiptLines(selectedLines, "print")}
-                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50"
-                      >
-                        Print selected
-                      </button>
-                      <button
-                        type="button"
-                        disabled={emailing || processing}
-                        onClick={() => void emailSelectedReceipts()}
-                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        Email selected
-                      </button>
-                    </>
                   ) : null}
                 </p>
               ) : null}
@@ -944,6 +984,12 @@ export function HrPayrollRunsIdScreen() {
                     <tr>
                       <td colSpan={PAYROLL_SHEET_COL_COUNT} className={`${SHEET_CELL} py-12 text-center text-slate-500`}>
                         No payroll lines for this run.
+                      </td>
+                    </tr>
+                  ) : filteredLines.length === 0 ? (
+                    <tr>
+                      <td colSpan={PAYROLL_SHEET_COL_COUNT} className={`${SHEET_CELL} py-12 text-center text-slate-500`}>
+                        No employees match “{debouncedSheetSearch.trim()}”.
                       </td>
                     </tr>
                   ) : (
@@ -1025,11 +1071,11 @@ export function HrPayrollRunsIdScreen() {
                 ) : null}
               </table>
             </div>
-            {lines.length > linesPageSize ? (
+            {filteredLines.length > linesPageSize ? (
               <PaginationBar
                 page={safeLinesPage}
                 totalPages={linesTotalPages}
-                total={lines.length}
+                total={filteredLines.length}
                 pageSize={linesPageSize}
                 onChange={setLinesPage}
                 onPageSizeChange={(size) => {

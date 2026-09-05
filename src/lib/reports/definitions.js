@@ -236,7 +236,8 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle: "Sales totals by user for the selected period (booked → completed, incl. unpaid / partial)",
+    subtitle:
+      "Orders by cashier for the placed date (booked → completed). Gross includes unpaid/credit; Collected is amount paid on those orders (may include later debtor collections). Fully paid is closest to till cash sales.",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -254,11 +255,55 @@ export const REPORT_DEFINITIONS = {
         total: true,
       },
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
-      { key: "gross_sales", label: "Gross (incl VAT)", accessor: (r) => r.gross_sales, align: "right", total: true },
-      { key: "amount_collected", label: "Collected", accessor: (r) => r.amount_collected, align: "right", total: true },
+      {
+        key: "gross_sales",
+        label: "Gross (all orders)",
+        accessor: (r) => r.gross_sales,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "fully_paid_sales",
+        label: "Fully paid",
+        accessor: (r) => r.fully_paid_sales,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "amount_collected",
+        label: "Collected",
+        accessor: (r) => r.amount_collected,
+        align: "right",
+        total: true,
+      },
     ],
-    kpis: vatReportKpis("gross_sales", "total_vat"),
-    footerTotals: ["order_count", "net_ex_vat", "total_vat", "gross_sales", "amount_collected"],
+    kpis: [
+      ...vatReportKpis("gross_sales", "total_vat"),
+      {
+        id: "fully-paid",
+        label: "Fully paid",
+        compute: (rows, summary) => ({
+          value: kes(summary?.fully_paid_sales ?? sum(rows, "fully_paid_sales")),
+          hint: "Paid in full — closest to till cash sales",
+        }),
+      },
+      {
+        id: "collected",
+        label: "Collected",
+        compute: (rows, summary) => ({
+          value: kes(summary?.amount_collected ?? sum(rows, "amount_collected")),
+          hint: "Sum of amount paid (can be below Gross on credit)",
+        }),
+      },
+    ],
+    footerTotals: [
+      "order_count",
+      "net_ex_vat",
+      "total_vat",
+      "gross_sales",
+      "fully_paid_sales",
+      "amount_collected",
+    ],
     charts: [
       {
         type: "hbar",

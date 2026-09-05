@@ -12,13 +12,20 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
    * Zero @page margins on every page: Chrome/Edge/Firefox omit the print dialog
    * "Headers and footers" (URL, title, date, page numbers). Document spacing uses
    * body padding instead — never non-zero @page margins (those re-enable browser chrome).
+   *
+   * Do NOT set size on the default @page — that overrode document landscape rules
+   * (e.g. payroll sheet / wide reports). Orientation comes from the document or a
+   * named page (centrix-landscape / centrix-edge / centrix-thermal).
    */
   @page {
-    size: A4;
     margin: 0 !important;
   }
   @page centrix-edge {
     size: A4;
+    margin: 0 !important;
+  }
+  @page centrix-landscape {
+    size: A4 landscape;
     margin: 0 !important;
   }
   @page centrix-thermal {
@@ -37,6 +44,10 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
       page: centrix-edge;
       padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       box-sizing: border-box;
+    }
+    html.centrix-print-landscape,
+    body.centrix-print-landscape {
+      page: centrix-landscape;
     }
     body.centrix-print-thermal {
       page: centrix-thermal;

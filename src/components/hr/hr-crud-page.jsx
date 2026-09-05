@@ -24,6 +24,14 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { exportColumnsFromHrCrud } from "@/lib/catalog-list-exports";
 import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 /**
  * Lightweight HR list + create/edit sidebar drawer (Retail Package Manager pattern).
@@ -70,6 +78,12 @@ export function HrCrudPage({
   onCreated,
   /** Open this row's edit drawer when the list loads (notification deep link). */
   highlightRowId = null,
+  /** Row checkboxes + batch action bar (e.g. bulk delete). */
+  enableRowSelection = false,
+  /** Label used in bulk-delete confirm copy (singular). */
+  selectionEntityName = "record",
+  /** Extra batch buttons beside Delete selected. */
+  renderBatchActions = null,
 }) {
   const { user, capabilities } = useAuth();
   const confirm = useConfirm();
@@ -89,16 +103,26 @@ export function HrCrudPage({
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   // Keep loadExtra out of `load` identity — inline loadExtra from parents was
   // recreating load on every draft filter keystroke and refetching the list.
-  // Ref is synced in an effect (not during render). Extra is fetched in a
-  // separate effect so `load` never closes over a ref (react-hooks/refs).
+  // Ref is synced in an effect (not during render). Extra (e.g. employees for
+  // the form picker) loads once per mount/apiPath — not on every list page/
+  // search/filter change (that was making Overtime and similar pages slow).
   const loadExtraRef = useRef(loadExtra);
   useEffect(() => {
     loadExtraRef.current = loadExtra;
   }, [loadExtra]);
-  const [extraEpoch, setExtraEpoch] = useState(0);
 
   const listParamsKey = useMemo(
     () => JSON.stringify(listSearchParams ?? null),
@@ -107,7 +131,8 @@ export function HrCrudPage({
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, apiPath, listParamsKey]);
+    clearSelection();
+  }, [debouncedSearch, apiPath, listParamsKey, clearSelection]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -123,7 +148,6 @@ export function HrCrudPage({
       });
       setRows(res.data ?? []);
       setTotal(Number(res.meta?.total ?? res.total ?? res.data?.length ?? 0));
-      setExtraEpoch((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -134,7 +158,6 @@ export function HrCrudPage({
   }, [apiPath, listParamsKey, listSearchParams, page, pageSize, debouncedSearch]);
 
   useEffect(() => {
-    if (extraEpoch === 0) return undefined;
     let cancelled = false;
     (async () => {
       const extraFn = loadExtraRef.current;
@@ -152,7 +175,7 @@ export function HrCrudPage({
     return () => {
       cancelled = true;
     };
-  }, [extraEpoch]);
+  }, [apiPath]);
 
   const tableExtra = useMemo(
     () => ({ employees: [], ...extra }),
@@ -171,6 +194,28 @@ export function HrCrudPage({
   }, [rows, debouncedSearch, searchFilter]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const pageRowIds = useMemo(() => filtered.map((r) => getRowKey(r)), [filtered, getRowKey]);
+  const allOnPageSelected = enableRowSelection && isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = enableRowSelection && isSomeOnPageSelected(pageRowIds);
+
+  async function deleteSelected() {
+    if (!enableRowSelection || selectedCount === 0 || batchBusy) return;
+    setBatchBusy(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: selectionEntityName,
+        deleteItem: (id) => apiRequest(`${apiPath}/${id}`, { method: "DELETE" }),
+        clearSelection,
+        reload: load,
+        notifySuccess,
+        notifyError,
+      });
+    } finally {
+      setBatchBusy(false);
+    }
+  }
 
   function openCreate() {
     setEditing(null);
@@ -345,6 +390,13 @@ export function HrCrudPage({
           <table className="min-w-full text-sm">
             <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
+                {enableRowSelection ? (
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                  />
+                ) : null}
                 {columns.map((c) => (
                   <th key={c.key} className="px-4 py-3">
                     {c.label}
@@ -356,13 +408,23 @@ export function HrCrudPage({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-slate-500">
+                  <td
+                    colSpan={columns.length + 1 + (enableRowSelection ? 1 : 0)}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
                     {emptyLabel}
                   </td>
                 </tr>
               ) : (
                 filtered.map((row) => (
                   <tr key={getRowKey(row)} className={TABLE_BODY_ROW_CLASS}>
+                    {enableRowSelection ? (
+                      <TableRowSelectCell
+                        checked={selectedIds.has(String(getRowKey(row)))}
+                        onChange={() => toggleOne(getRowKey(row))}
+                        label={`Select ${selectionEntityName}`}
+                      />
+                    ) : null}
                     {columns.map((c) => (
                       <td key={c.key} className="px-4 py-3 text-slate-800">
                         {c.render ? c.render(row, tableExtra) : row[c.key] ?? "—"}
@@ -398,13 +460,40 @@ export function HrCrudPage({
         totalPages={totalPages}
         total={total}
         pageSize={pageSize}
-        onChange={setPage}
+        onChange={(next) => {
+          if (enableRowSelection) clearSelection();
+          setPage(next);
+        }}
         onPageSizeChange={(size) => {
+          if (enableRowSelection) clearSelection();
           setPageSize(size);
           setPage(1);
         }}
         pageSizeOptions={[10, 25, 50, 100]}
       />
+
+      {enableRowSelection ? (
+        <BatchActionBar count={selectedCount} onClear={clearSelection}>
+          {typeof renderBatchActions === "function"
+            ? renderBatchActions({
+                selectedIds,
+                selectedCount,
+                clearSelection,
+                reload: load,
+                batchBusy,
+                setBatchBusy,
+              })
+            : null}
+          <button
+            type="button"
+            disabled={batchBusy || selectedCount === 0}
+            onClick={() => void deleteSelected()}
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {batchBusy ? "Working…" : `Delete (${selectedCount})`}
+          </button>
+        </BatchActionBar>
+      ) : null}
 
       {form && (
         <FormDrawer

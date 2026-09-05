@@ -12,13 +12,15 @@ import { useAuth } from "@/contexts/auth-context";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
+  Field,
   PaginationBar,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
+  SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { HrPageActions } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterButton, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
 import {
   BatchActionBar,
   TableRowSelectCell,
@@ -26,6 +28,7 @@ import {
   runSequentialActions,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
+import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 const PENDING_OT_EXPORT_COLUMNS = [
   { key: "work_date", label: "Date" },
@@ -34,6 +37,12 @@ const PENDING_OT_EXPORT_COLUMNS = [
   { key: "amount", label: "Amount", align: "right" },
   { key: "notes", label: "Notes" },
 ];
+
+function daysAgo(days) {
+  const today = todayCalendarDate();
+  const ms = Date.parse(`${today}T12:00:00+03:00`) - days * 86_400_000;
+  return calendarDateInTimezone(new Date(ms)) ?? today;
+}
 
 export function HrPendingOvertimeScreen() {
   const { hasPermission } = useAuth();
@@ -46,10 +55,15 @@ export function HrPendingOvertimeScreen() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [fromDate, setFromDate] = useState(daysAgo(30));
+  const [toDate, setToDate] = useState(todayCalendarDate());
+  const [search, setSearch] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState(daysAgo(30));
+  const [appliedTo, setAppliedTo] = useState(todayCalendarDate());
+  const [appliedSearch, setAppliedSearch] = useState("");
   const {
     selectedIds,
     selectedCount,
@@ -60,18 +74,29 @@ export function HrPendingOvertimeScreen() {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
+  useEffect(() => {
+    setPage(1);
+    clearSelection();
+  }, [appliedFrom, appliedTo, appliedSearch, clearSelection]);
+
+  const listParams = useMemo(
+    () => ({
+      "filter[status]": "pending",
+      from_date: appliedFrom,
+      to_date: appliedTo,
+      ...(appliedSearch ? { q: appliedSearch } : {}),
+    }),
+    [appliedFrom, appliedTo, appliedSearch],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ot, emp] = await Promise.all([
-        apiRequest("/employee-overtime", {
-          searchParams: { "filter[status]": "pending", per_page: pageSize, page },
-        }),
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
-      ]);
+      const ot = await apiRequest("/employee-overtime", {
+        searchParams: { ...listParams, per_page: pageSize, page },
+      });
       setRows(ot.data ?? []);
       setTotal(Number(ot.meta?.total ?? ot.total ?? ot.data?.length ?? 0));
-      setEmployees(emp.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load pending overtime");
       setRows([]);
@@ -79,7 +104,7 @@ export function HrPendingOvertimeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [listParams, page, pageSize]);
 
   useTabAwareDataLoad(load);
 
@@ -98,8 +123,7 @@ export function HrPendingOvertimeScreen() {
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   function employeeName(row) {
-    const emp = employees.find((e) => e.id === row.employee_id) ?? row.employee;
-    return emp ? composeEmployeeDisplayName(emp) : "—";
+    return row.employee ? composeEmployeeDisplayName(row.employee) : "—";
   }
 
   async function fetchAllPendingRows() {
@@ -107,7 +131,7 @@ export function HrPendingOvertimeScreen() {
     let p = 1;
     for (;;) {
       const data = await apiRequest("/employee-overtime", {
-        searchParams: { "filter[status]": "pending", per_page: 200, page: p },
+        searchParams: { ...listParams, per_page: 200, page: p },
       });
       const batch = data.data ?? [];
       all.push(...batch);
@@ -263,11 +287,43 @@ export function HrPendingOvertimeScreen() {
           />
         </HrPageActions>
       }
+      toolbar={
+        <HrFilterToolbar>
+          <HrDateField label="From" value={fromDate} onChange={setFromDate} />
+          <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <Field label="Search">
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Employee, notes…"
+            />
+          </Field>
+          <HrFilterButton
+            loading={loading}
+            onClick={() => {
+              const nextSearch = search.trim();
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+              setAppliedSearch(nextSearch);
+              setPage(1);
+              if (
+                fromDate === appliedFrom &&
+                toDate === appliedTo &&
+                nextSearch === appliedSearch
+              ) {
+                void load();
+              }
+            }}
+          />
+        </HrFilterToolbar>
+      }
     >
       {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-600">No pending overtime.</p>
+        <p className="text-sm text-slate-600">
+          {appliedSearch ? "No pending overtime matches your filters." : "No pending overtime."}
+        </p>
       ) : (
         <div className={`overflow-x-auto ${loading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-left text-sm">

@@ -201,14 +201,25 @@ export function TabWorkspaceProvider({ children }) {
             return { ...current, activeHref: normalized, tabs: nextTabs };
           }
 
+          // Never evict the tab we just opened or the one the user was on —
+          // otherwise "open report from payroll" can close the payroll run tab.
+          const protectPaths = new Set([
+            pathKey,
+            pathOnlyFromHref(current.activeHref || ""),
+          ]);
           const sorted = [...nextTabs].sort(
             (a, b) => (a.lastActiveAt ?? 0) - (b.lastActiveAt ?? 0),
           );
-          const evicted = sorted[0]?.href;
+          const evicted = sorted.find(
+            (tab) => !protectPaths.has(pathOnlyFromHref(tab.href)),
+          );
+          if (!evicted) {
+            return { ...current, activeHref: normalized, tabs: nextTabs };
+          }
           return {
             ...current,
             activeHref: normalized,
-            tabs: nextTabs.filter((tab) => tab.href !== evicted),
+            tabs: nextTabs.filter((tab) => tab.href !== evicted.href),
           };
         }),
       );

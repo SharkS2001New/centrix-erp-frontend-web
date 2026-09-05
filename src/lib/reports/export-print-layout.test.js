@@ -83,6 +83,8 @@ describe("buildReportPrintHtml statement layout", () => {
     });
 
     expect(html).toContain("size: A4 landscape");
+    expect(html).toContain('class="centrix-print-landscape"');
+    expect(html).toMatch(/<html class="centrix-print-landscape"/);
     expect(html).toContain("overflow-wrap: anywhere");
     expect(html).toContain('class="wrap"');
     expect(html).toContain("UGBTQZ0GUY,UGBOIA0JBG");

@@ -14,7 +14,9 @@ export function HrAllowancesScreen() {
       drawerWide
       apiPath="/employee-allowances"
       loadExtra={async () => {
-        const res = await apiRequest("/employees", { searchParams: { per_page: 200 } });
+        const res = await apiRequest("/employees", {
+          searchParams: { per_page: 200, fields: "lean", is_active: 1 },
+        });
         return { employees: res.data ?? [] };
       }}
       columns={[
@@ -22,7 +24,7 @@ export function HrAllowancesScreen() {
           key: "employee_id",
           label: "Employee",
           render: (r, { employees = [] }) => {
-            const emp = employees.find((e) => e.id === r.employee_id);
+            const emp = r.employee ?? employees.find((e) => e.id === r.employee_id);
             return emp ? composeEmployeeDisplayName(emp) : "—";
           },
         },

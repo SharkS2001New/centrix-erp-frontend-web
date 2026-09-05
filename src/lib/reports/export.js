@@ -134,7 +134,7 @@ export function buildReportPrintHtml({
       : "table { font-size: 9px; } th, td { padding: 3px 4px; }"
     : "";
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
+  return `<!DOCTYPE html><html class="${landscape ? "centrix-print-landscape" : ""}"><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
 @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }
 ${reportDocumentStyles(generalSettings)}
@@ -145,7 +145,7 @@ th.num, td.num { white-space: nowrap; overflow-wrap: normal; word-break: normal;
 td.text, th.text { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: keep-all; overflow-wrap: normal; }
 td.wrap, th.wrap { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 ${compactTableCss}
-</style></head><body>
+</style></head><body class="${landscape ? "centrix-print-landscape" : ""}">
 ${watermarkHtml}
 ${orgHeaderHtml}
 <div class="meta">
@@ -196,9 +196,16 @@ ${footerText ? `<div class="doc-footer">${escapeHtml(footerText)}</div>` : ""}
 }
 
 export async function printReportTable(options) {
+  const landscape = resolveReportPrintLandscape({
+    tableColumns: normalizeExportColumns(options.columns ?? []).filter(
+      (col) => !col.printAsRow && !col.print_as_row,
+    ),
+    rows: options.rows ?? [],
+    orientation: options.meta?.orientation,
+  });
   const result = await printHtmlDocument(buildReportPrintHtml(options), {
     jobType: "report",
-    windowFeatures: "width=900,height=720",
+    windowFeatures: landscape ? "width=1100,height=720" : "width=900,height=720",
   });
   if (!result?.ok) {
     throw new Error(result?.error || PRINT_BLOCKED_MESSAGE);

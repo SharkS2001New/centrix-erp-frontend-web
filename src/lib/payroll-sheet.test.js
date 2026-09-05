@@ -38,11 +38,33 @@ describe("payroll-sheet", () => {
   it("orders columns like the legacy payroll sheet", () => {
     const row = buildPayrollSheetRows([sampleLine], () => "Alexandria Quincy")[0];
     expect(row.name).toBe("Alexandria Quincy");
-    expect(row.basic_salary).toContain("8,000");
-    expect(row.shif).toContain("300");
-    expect(row.advance).toContain("300");
-    expect(row.damages).toContain("200");
+    expect(row.basic_salary).toBe("KES 8,000");
+    expect(row.shif).toBe("KES 300");
+    expect(row.advance).toBe("KES 300");
+    expect(row.damages).toBe("KES 200");
     expect(row.account_number).toBe("1234567890");
+  });
+
+  it("hides .00 on whole amounts but keeps real cents", () => {
+    const line = {
+      ...sampleLine,
+      housing_levy: 157.5,
+      paye: 506.88,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        payroll: {
+          ...sampleLine.statutory_meta.payroll,
+          overtime: 380,
+        },
+      },
+      gross_pay: 8380,
+    };
+    const row = buildPayrollSheetRows([line], () => "Alex")[0];
+    expect(row.basic_salary).toBe("KES 8,000");
+    expect(row.overtime).toBe("KES 380");
+    expect(row.housing).toBe("KES 157.50");
+    expect(row.paye).toBe("KES 506.88");
+    expect(row.basic_salary).not.toMatch(/\.00$/);
   });
 
   it("totals numeric columns in the footer row", () => {
