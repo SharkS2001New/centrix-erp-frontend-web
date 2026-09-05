@@ -36,6 +36,15 @@ export function canApproveCashAdvances({ hasPermission = () => false, capabiliti
   );
 }
 
+/** Pending overtime approval — approver role or HR manage capability. */
+export function canApprovePendingOvertime({ hasPermission = () => false, capabilities } = {}) {
+  return (
+    approvalFlag(capabilities, "pending_overtime") ||
+    hasPermission(P.hr.pending_overtime.approve) ||
+    hasPermission(P.hr.manage)
+  );
+}
+
 /** Lateness waiver approval — dedicated approver, HR manage, or assigned manager via inbox. */
 export function canApproveLatenessWaivers({ hasPermission = () => false, capabilities } = {}) {
   return (

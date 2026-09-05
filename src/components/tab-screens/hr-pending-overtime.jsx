@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useConfirm } from "@/contexts/confirm-context";
@@ -37,6 +38,9 @@ const PENDING_OT_EXPORT_COLUMNS = [
 export function HrPendingOvertimeScreen() {
   const { hasPermission } = useAuth();
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
+  const highlightOvertimeId = searchParams.get("overtime_id");
+  const highlightOpenedRef = useRef(null);
   const canManage = hasPermission(P.hr.pending_overtime.approve) || hasPermission(P.hr.manage);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -78,6 +82,16 @@ export function HrPendingOvertimeScreen() {
   }, [page, pageSize]);
 
   useTabAwareDataLoad(load);
+
+  useEffect(() => {
+    if (!highlightOvertimeId || loading) return;
+    const key = String(highlightOvertimeId);
+    if (highlightOpenedRef.current === key) return;
+    const el = document.getElementById(`pending-ot-row-${key}`);
+    if (!el) return;
+    highlightOpenedRef.current = key;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightOvertimeId, loading, rows]);
 
   const pageRowIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
@@ -276,7 +290,15 @@ export function HrPendingOvertimeScreen() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100">
+                <tr
+                  key={r.id}
+                  id={`pending-ot-row-${r.id}`}
+                  className={`border-b border-slate-100 ${
+                    highlightOvertimeId && String(r.id) === String(highlightOvertimeId)
+                      ? "bg-amber-50"
+                      : ""
+                  }`}
+                >
                   {canManage ? (
                     <TableRowSelectCell
                       checked={selectedIds.has(String(r.id))}

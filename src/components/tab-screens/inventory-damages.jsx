@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
@@ -38,6 +39,8 @@ import { useConfirm } from "@/lib/use-confirm";
 
 export function InventoryDamagesScreen() {
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
+  const highlightDamageId = searchParams.get("damage_id");
   const { user } = useAuth();
   const branchId = user?.branch_id ?? 1;
   const initialRange = defaultDateRange(7);
@@ -55,6 +58,7 @@ export function InventoryDamagesScreen() {
   const { pageSize, setPageSize } = useListPageSize(15);
   const [deletingId, setDeletingId] = useState(null);
   const [editingDamage, setEditingDamage] = useState(null);
+  const highlightDamageOpenedRef = useRef(null);
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -96,6 +100,34 @@ export function InventoryDamagesScreen() {
   useTabAwareDataLoad(loadReferenceData);
 
   useTabAwareDataLoad(loadRows);
+
+  useEffect(() => {
+    if (!highlightDamageId || loading) return;
+    const key = String(highlightDamageId);
+    if (highlightDamageOpenedRef.current === key) return;
+
+    const fromList = rows.find((r) => String(r.id) === key);
+    if (fromList) {
+      highlightDamageOpenedRef.current = key;
+      setEditingDamage(fromList);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await apiRequest(`/damages/${encodeURIComponent(key)}`);
+        if (cancelled || !row?.id) return;
+        highlightDamageOpenedRef.current = key;
+        setEditingDamage(row);
+      } catch {
+        /* missing / no access */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightDamageId, loading, rows]);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 

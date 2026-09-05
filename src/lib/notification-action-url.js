@@ -26,6 +26,11 @@ export function normalizeNotificationActionUrl(actionUrl) {
     return `/expenses${suffix}`;
   }
 
+  // Legacy mobile-app path mistakenly used as a web deep link.
+  if (path === "/mobile/orders" || path.startsWith("/mobile/orders/")) {
+    return `/sales/orders/queues/editable${suffix}`;
+  }
+
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
