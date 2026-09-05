@@ -300,6 +300,10 @@ export function HrPayrollRunsIdScreen() {
   const lineIds = useMemo(() => lines.map((line) => String(line.id)), [lines]);
   const selectedCount = selectedLineIds.size;
   const allLinesSelected = lineIds.length > 0 && lineIds.every((id) => selectedLineIds.has(id));
+  const selectedLines = useMemo(
+    () => lines.filter((line) => selectedLineIds.has(String(line.id))),
+    [lines, selectedLineIds],
+  );
   const filteredLines = useMemo(() => {
     const q = debouncedSheetSearch.trim().toLowerCase();
     if (!q) return lines;
@@ -509,8 +513,8 @@ export function HrPayrollRunsIdScreen() {
     }
   }
 
-  async function emailAllReceipts() {
-    await emailReceiptLines(lines, { selected: false });
+  async function emailSelectedReceipts() {
+    await emailReceiptLines(selectedLines, { selected: true });
   }
 
   async function openLineDetail(line) {
@@ -805,22 +809,6 @@ export function HrPayrollRunsIdScreen() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => printReceiptLines(lines, "print")}
-                    className={SECONDARY_BTN_CLASS}
-                    title="Print employee payslip receipts for everyone on this run"
-                  >
-                    Print all receipts
-                  </button>
-                  <button
-                    type="button"
-                    disabled={emailing || processing}
-                    onClick={() => void emailAllReceipts()}
-                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
-                  >
-                    {emailing ? "Emailing…" : "Email all"}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() =>
                       openPayrollReportTab(
                         `/reports/bank-transfer?payroll_run_id=${run.id}`,
@@ -917,6 +905,25 @@ export function HrPayrollRunsIdScreen() {
                   >
                     Clear
                   </button>
+                  {canPrintOrEmailReceipts ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => printReceiptLines(selectedLines, "print")}
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50"
+                      >
+                        Print receipts ({selectedCount})
+                      </button>
+                      <button
+                        type="button"
+                        disabled={emailing || processing}
+                        onClick={() => void emailSelectedReceipts()}
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {emailing ? "Emailing…" : `Email receipts (${selectedCount})`}
+                      </button>
+                    </>
+                  ) : null}
                   {canExcludeFromRun ? (
                     <button
                       type="button"
