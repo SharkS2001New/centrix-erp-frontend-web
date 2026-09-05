@@ -12,7 +12,7 @@ export const PAYROLL_SHEET_COLUMNS = [
   { key: "shif", label: "Sha", align: "right" },
   { key: "housing", label: "Housing", align: "right" },
   { key: "paye", label: "Paye", align: "right" },
-  { key: "absentism", label: "Absentism", align: "right" },
+  { key: "absentism", label: "Absentism/Lateness", align: "right" },
   { key: "damages", label: "Damages", align: "right" },
   { key: "total_ded", label: "Total ded", align: "right" },
   { key: "net_pay", label: "Net pay", align: "right" },

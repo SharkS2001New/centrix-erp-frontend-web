@@ -68,6 +68,8 @@ export function HrCrudPage({
   getExportRows,
   /** Called after a successful create with the API response body (if any). */
   onCreated,
+  /** Open this row's edit drawer when the list loads (notification deep link). */
+  highlightRowId = null,
 }) {
   const { user, capabilities } = useAuth();
   const confirm = useConfirm();
@@ -183,6 +185,35 @@ export function HrCrudPage({
     setFormError(null);
     setDrawerOpen(true);
   }
+
+  const highlightOpenedRef = useRef(null);
+  useEffect(() => {
+    if (highlightRowId == null || String(highlightRowId).trim() === "" || loading) return;
+    const key = String(highlightRowId);
+    if (highlightOpenedRef.current === key) return;
+
+    const fromList = rows.find((r) => String(getRowKey(r)) === key);
+    if (fromList) {
+      highlightOpenedRef.current = key;
+      openEdit(fromList);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await apiRequest(`${apiPath}/${encodeURIComponent(key)}`);
+        if (cancelled || !row?.id) return;
+        highlightOpenedRef.current = key;
+        openEdit(row);
+      } catch {
+        /* row missing or no access — leave list as-is */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightRowId, loading, rows, apiPath]);
 
   async function save(e) {
     e.preventDefault();

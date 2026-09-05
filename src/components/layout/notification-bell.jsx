@@ -22,6 +22,8 @@ import { subscribeNotificationsChanged } from "@/lib/notification-events";
 
 const POLL_VISIBLE_MS = 60_000;
 const POLL_HIDDEN_MS = 90_000;
+/** Safety net when Reverb is configured but the socket stalls. */
+const POLL_REALTIME_BACKUP_MS = 120_000;
 
 function BellIcon({ className }) {
   return (
@@ -218,10 +220,12 @@ export function NotificationBell() {
         timer = null;
       }
       // Reverb pushes new notifications → notifyNotificationsChanged → fetchCount.
-      // Interval polling is only for orgs without Reverb env configured.
-      if (isRealtimeConfigured()) return;
-      const interval =
-        document.visibilityState === "visible" ? POLL_VISIBLE_MS : POLL_HIDDEN_MS;
+      // Still poll slowly when Reverb env is set in case the socket drops silently.
+      const interval = isRealtimeConfigured()
+        ? POLL_REALTIME_BACKUP_MS
+        : document.visibilityState === "visible"
+          ? POLL_VISIBLE_MS
+          : POLL_HIDDEN_MS;
       timer = setInterval(() => void fetchCount(), interval);
     };
 

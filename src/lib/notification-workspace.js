@@ -69,7 +69,9 @@ const BACKOFFICE_ONLY_REQUEST_TYPES = new Set([
   "stock_adjustment",
   "stock_transfer",
   "stock_take",
+  "stock_take_completion",
   "damage",
+  "damage_write_off",
 ]);
 
 function workspaceForActionPath(path) {

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/contexts/theme-context";
 import { PosSessionProvider } from "@/contexts/pos-session-context";
 import { ConfirmProvider } from "@/contexts/confirm-context";
 import { AppToaster } from "@/components/shared/app-toaster";
+import { BrowserEngagePrompts } from "@/components/pwa/browser-engage-prompts";
 import { NotificationRealtimeProvider } from "@/components/realtime/notification-realtime-provider";
 import { OrgThemeBridge } from "@/components/layout/org-theme-bridge";
 
@@ -20,6 +21,7 @@ export function Providers({ children }) {
                 <NotificationRealtimeProvider>
                   {children}
                   <AppToaster />
+                  <BrowserEngagePrompts />
                 </NotificationRealtimeProvider>
               </ConfirmProvider>
             </PosSessionProvider>

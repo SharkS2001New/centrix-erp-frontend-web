@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
@@ -54,6 +55,8 @@ function statusLabel(status) {
 }
 
 export function HrCashAdvancesScreen() {
+  const searchParams = useSearchParams();
+  const highlightAdvanceId = searchParams.get("advance_id");
   const { hasPermission, user, organization, generalSettings, capabilities } = useAuth();
   const canApprove = canApproveCashAdvances({ hasPermission });
   const defaultRange = useMemo(
@@ -132,6 +135,7 @@ export function HrCashAdvancesScreen() {
       drawerWide
       drawerCreateTitle="Request cash advance"
       apiPath="/employee-cash-advances"
+      highlightRowId={highlightAdvanceId}
       listSearchParams={listSearchParams}
       searchPlaceholder="Search employee, notes, status…"
       searchFilter={(r, q) => {

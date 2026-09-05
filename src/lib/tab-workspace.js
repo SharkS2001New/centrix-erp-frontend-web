@@ -18,7 +18,6 @@ export const TAB_SOFT_EVICT_ALWAYS = new Set([
   "inventory-stock",
   "inventory-stock-take-id",
   "products",
-  "hr-payroll-runs-id",
   "accounting-account-mappings",
 ]);
 

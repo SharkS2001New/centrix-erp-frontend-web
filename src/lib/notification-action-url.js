@@ -21,6 +21,11 @@ export function normalizeNotificationActionUrl(actionUrl) {
     return `/lpo/${legacyLpoMatch[1]}${suffix}`;
   }
 
+  // Legacy expense path from older notifications / emails.
+  if (path === "/accounting/expenses" || path.startsWith("/accounting/expenses/")) {
+    return `/expenses${suffix}`;
+  }
+
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 

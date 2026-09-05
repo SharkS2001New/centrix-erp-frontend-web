@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyNotificationsChanged } from "@/lib/notification-events";
 import { notifyError, notifyPriceUpdate } from "@/lib/notify";
+import { PRODUCT_SHORT_NAME } from "@/lib/branding";
+import { showBrowserNotification } from "@/lib/pwa-engage";
 import {
   createNotificationEcho,
   disconnectNotificationEcho,
@@ -13,6 +15,8 @@ import {
 /**
  * Subscribes to private user notification events over Reverb and refreshes the bell.
  * Price / markup updates toast immediately (same path as approval outcome popups).
+ * When browser notification permission is granted and the tab is hidden, also
+ * surfaces a system notification.
  * Falls back silently to polling when Reverb env vars are not configured.
  */
 export function NotificationRealtimeProvider({ children }) {
@@ -44,6 +48,18 @@ export function NotificationRealtimeProvider({ children }) {
 
           const type = String(payload?.type ?? "");
           const message = String(payload?.message ?? "").trim();
+          const title = String(payload?.title ?? PRODUCT_SHORT_NAME).trim() || PRODUCT_SHORT_NAME;
+          const url = String(payload?.url ?? payload?.action_url ?? "/notifications");
+
+          if (typeof document !== "undefined" && document.hidden && message) {
+            void showBrowserNotification({
+              title,
+              body: message,
+              url,
+              tag: `centrix-${type || "notif"}-${payload?.notification_id ?? payload?.id ?? Date.now()}`,
+            });
+          }
+
           if (type !== "catalog_pricing" || !message) return;
 
           const now = Date.now();

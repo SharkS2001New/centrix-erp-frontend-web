@@ -2,7 +2,6 @@
 
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -12,7 +11,17 @@ import { P } from "@/lib/permission-codes";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
-import { Field, DetailDrawer, IconButton, PrimaryButton, PaginationBar, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  Field,
+  DetailDrawer,
+  IconButton,
+  PrimaryButton,
+  PaginationBar,
+  StatCard,
+  inputClassName,
+  SECONDARY_BTN_CLASS,
+} from "@/components/catalog/catalog-shared";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import {
   PayrollBreakdownPanel,
   PayrollRunStatusBadge,
@@ -42,7 +51,7 @@ import { formatOrgDate } from "@/lib/format";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
-import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { useTabTitle, useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 import {
@@ -84,6 +93,8 @@ export function HrPayrollRunsIdScreen() {
   );
   const { runQueuedTask } = useQueuedTask("Generating payroll…");
   const { user, hasPermission, capabilities, organization, generalSettings } = useAuth();
+  const { enabled: tabWorkspaceEnabled, openTab, navigateToHref, closeTab, clearTabDirty } =
+    useTabWorkspace();
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
   const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
@@ -112,31 +123,66 @@ export function HrPayrollRunsIdScreen() {
   const [linesPage, setLinesPage] = useState(1);
   const [linesPageSize, setLinesPageSize] = useState(50);
   const autoProcessStarted = useRef(false);
+  /** After delete (or known 404), stop reloads and leave this sheet. */
+  const leftRunSheetRef = useRef(false);
+
+  const leavePayrollRunSheet = useCallback(() => {
+    leftRunSheetRef.current = true;
+    const sheetHref = `/hr/payroll/runs/${runId}`;
+    if (tabWorkspaceEnabled) clearTabDirty(sheetHref);
+    router.push("/hr/payroll");
+    if (tabWorkspaceEnabled) {
+      window.setTimeout(() => closeTab(sheetHref), 0);
+    }
+  }, [clearTabDirty, closeTab, router, runId, tabWorkspaceEnabled]);
 
   const loadData = useCallback(async () => {
+    if (leftRunSheetRef.current) return;
     setLoading(true);
     try {
-      const [runData, linesRows] = await Promise.all([
-        apiRequest(`/payroll-runs/${runId}`),
-        fetchAllPaginatedRowsSmart(
-          "/payroll-lines",
-          { "filter[payroll_run_id]": runId },
-          { perPage: 100, message: "Loading payroll lines…" },
-        ),
-      ]);
+      // Load the run first. Parallel Promise.all let a 404 on the run race with
+      // payroll-lines and surface as Uncaught (in promise) ApiError in the console.
+      let runData;
+      try {
+        runData = await apiRequest(`/payroll-runs/${runId}`, { reportIssues: false });
+      } catch (e) {
+        if (leftRunSheetRef.current) return;
+        const missingRun =
+          e instanceof ApiError &&
+          (e.status === 404 ||
+            e.body?.code === "payroll_run_not_found" ||
+            /payroll run not found/i.test(String(e.message ?? "")));
+        if (missingRun) {
+          notifyError("Payroll run not found. It may have been deleted.");
+          leavePayrollRunSheet();
+          return;
+        }
+        throw e;
+      }
+
+      if (leftRunSheetRef.current) return;
+
+      const linesRows = await fetchAllPaginatedRowsSmart(
+        "/payroll-lines",
+        { "filter[payroll_run_id]": runId },
+        { perPage: 100, message: "Loading payroll lines…" },
+      );
+      if (leftRunSheetRef.current) return;
       setRun(runData);
       setLines(linesRows ?? []);
       setSelectedLineIds(new Set());
       setLinesPage(1);
     } catch (e) {
+      if (leftRunSheetRef.current) return;
       notifyError(e instanceof Error ? e.message : "Failed to load payroll run");
     } finally {
-      setLoading(false);
+      if (!leftRunSheetRef.current) setLoading(false);
     }
-  }, [runId]);
+  }, [runId, leavePayrollRunSheet]);
 
   const runAutoProcess = useCallback(
     async (options = {}) => {
+      if (leftRunSheetRef.current) return;
       setProcessing(true);
       setLines([]);
       try {
@@ -152,15 +198,17 @@ export function HrPayrollRunsIdScreen() {
             maxIntervalMs: 1200,
           },
         );
+        if (leftRunSheetRef.current) return;
         await loadData();
         notifySuccess("Payroll generated.");
       } catch (e) {
+        if (leftRunSheetRef.current) return;
         if (e?.name !== "AbortError") {
           notifyError(e instanceof ApiError ? e.message : "Process failed");
           await loadData();
         }
       } finally {
-        setProcessing(false);
+        if (!leftRunSheetRef.current) setProcessing(false);
       }
     },
     [runId, runQueuedTask, loadData],
@@ -203,6 +251,16 @@ export function HrPayrollRunsIdScreen() {
   }, [run, lines]);
 
   const employeeCount = run?.employee_count ?? lines.length;
+
+  /** Open payroll reports in a new workspace tab — never replace this run tab. */
+  function openPayrollReportTab(href, title) {
+    if (tabWorkspaceEnabled) {
+      openTab(href, title);
+      navigateToHref(href);
+      return;
+    }
+    router.push(href);
+  }
 
   const lineIds = useMemo(() => lines.map((line) => String(line.id)), [lines]);
   const selectedCount = selectedLineIds.size;
@@ -527,6 +585,8 @@ export function HrPayrollRunsIdScreen() {
     });
     if (!ok) return;
     try {
+      // Stop concurrent sheet reloads before DELETE returns 404 on a follow-up GET.
+      leftRunSheetRef.current = true;
       await runBlockingTask(
         () => apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" }),
         {
@@ -535,8 +595,9 @@ export function HrPayrollRunsIdScreen() {
         },
       );
       notifySuccess("Payroll run deleted.");
-      router.push("/hr/payroll");
+      leavePayrollRunSheet();
     } catch (e) {
+      leftRunSheetRef.current = false;
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
   }
@@ -592,35 +653,64 @@ export function HrPayrollRunsIdScreen() {
         <p className="text-sm text-slate-500">Loading payroll run…</p>
       ) : run ? (
         <>
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-medium text-slate-900">
-                Payroll run — {periodLabel(period)}
-              </h1>
-              <div className="mt-2">
-                <PayrollRunStatusBadge status={run.status} />
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl font-medium text-slate-900">
+                  Payroll run — {periodLabel(period)}
+                </h1>
+                <div className="mt-2">
+                  <PayrollRunStatusBadge status={run.status} />
+                </div>
+                <div className="mt-3">
+                  <PayrollWorkflowSteps status={run.status} requireApproval={requireApproval} />
+                </div>
+                {(run.approved_at || run.paid_at) && (
+                  <dl className="mt-3 space-y-1 text-xs text-slate-500">
+                    {run.approved_at ? (
+                      <div>
+                        Approved {formatWorkflowDate(run.approved_at)}
+                        {approvedBy ? ` by ${approvedBy}` : ""}
+                      </div>
+                    ) : null}
+                    {run.paid_at ? (
+                      <div>
+                        Paid {formatWorkflowDate(run.paid_at)}
+                        {paidBy ? ` by ${paidBy}` : ""}
+                        {run.payment_reference ? ` · Ref ${run.payment_reference}` : ""}
+                      </div>
+                    ) : null}
+                  </dl>
+                )}
               </div>
-              <div className="mt-3">
-                <PayrollWorkflowSteps status={run.status} requireApproval={requireApproval} />
-              </div>
-              {(run.approved_at || run.paid_at) && (
-                <dl className="mt-3 space-y-1 text-xs text-slate-500">
-                  {run.approved_at ? (
-                    <div>
-                      Approved {formatWorkflowDate(run.approved_at)}
-                      {approvedBy ? ` by ${approvedBy}` : ""}
-                    </div>
-                  ) : null}
-                  {run.paid_at ? (
-                    <div>
-                      Paid {formatWorkflowDate(run.paid_at)}
-                      {paidBy ? ` by ${paidBy}` : ""}
-                      {run.payment_reference ? ` · Ref ${run.payment_reference}` : ""}
-                    </div>
-                  ) : null}
-                </dl>
-              )}
+              {canPrintOrEmailReceipts ? (
+                <HrPageActions>
+                  <button
+                    type="button"
+                    onClick={() => void loadData()}
+                    disabled={loading || processing}
+                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportPayrollSheetCsv()}
+                    className={SECONDARY_BTN_CLASS}
+                  >
+                    Export sheet CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => printPayrollSheet()}
+                    className={SECONDARY_BTN_CLASS}
+                  >
+                    Print / PDF sheet
+                  </button>
+                </HrPageActions>
+              ) : null}
             </div>
+
             <div className="flex flex-wrap gap-2">
               {run.status === "pending_approval" && canApprove ? (
                 <>
@@ -650,53 +740,38 @@ export function HrPayrollRunsIdScreen() {
                 <>
                   <button
                     type="button"
-                    onClick={() => void loadData()}
-                    disabled={loading || processing}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Refresh
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportPayrollSheetCsv()}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Export sheet CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => printPayrollSheet()}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Print / PDF sheet
-                  </button>
-                  <Link
-                    href={`/reports/statutory-deductions?payroll_run_id=${run.id}`}
-                    prefetch={false}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    onClick={() =>
+                      openPayrollReportTab(
+                        `/reports/statutory-deductions?payroll_run_id=${run.id}`,
+                        "Statutory deductions",
+                      )
+                    }
+                    className={SECONDARY_BTN_CLASS}
                   >
                     Statutory deductions
-                  </Link>
+                  </button>
                   <button
                     type="button"
                     onClick={() => printReceiptLines(lines, "print")}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className={SECONDARY_BTN_CLASS}
+                    title="Print employee payslip receipts for everyone on this run"
                   >
-                    Print all
+                    Print all receipts
                   </button>
                   <button
                     type="button"
                     disabled={selectedCount === 0}
                     onClick={() => printReceiptLines(selectedLines, "print")}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
+                    title="Print payslip receipts for the selected employees"
                   >
-                    Print selected{selectedCount > 0 ? ` (${selectedCount})` : ""}
+                    Print selected receipts{selectedCount > 0 ? ` (${selectedCount})` : ""}
                   </button>
                   <button
                     type="button"
                     disabled={emailing || processing}
                     onClick={() => void emailAllReceipts()}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
                   >
                     {emailing ? "Emailing…" : "Email all"}
                   </button>
@@ -704,33 +779,48 @@ export function HrPayrollRunsIdScreen() {
                     type="button"
                     disabled={emailing || processing || selectedCount === 0}
                     onClick={() => void emailSelectedReceipts()}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className={`${SECONDARY_BTN_CLASS} disabled:opacity-50`}
                   >
                     {emailing
                       ? "Emailing…"
                       : `Email selected${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
                   </button>
-                  <Link
-                    href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
-                    prefetch={false}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openPayrollReportTab(
+                        `/reports/bank-transfer?payroll_run_id=${run.id}`,
+                        "Bank transfer report",
+                      )
+                    }
+                    className={SECONDARY_BTN_CLASS}
                   >
                     Bank transfer report
-                  </Link>
-                  <Link
-                    href={`/reports/nssf-remittance?payroll_run_id=${run.id}`}
-                    prefetch={false}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openPayrollReportTab(
+                        `/reports/nssf-remittance?payroll_run_id=${run.id}`,
+                        "NSSF remittance",
+                      )
+                    }
+                    className={SECONDARY_BTN_CLASS}
                   >
                     NSSF remittance
-                  </Link>
-                  <Link
-                    href={`/reports/other-deductions?payroll_run_id=${run.id}`}
-                    prefetch={false}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openPayrollReportTab(
+                        `/reports/other-deductions?payroll_run_id=${run.id}`,
+                        "Other deductions",
+                      )
+                    }
+                    className={SECONDARY_BTN_CLASS}
                   >
                     Other deductions
-                  </Link>
+                  </button>
                 </>
               ) : null}
               {canDeletePayrollRuns && payrollRunCanDelete(run) ? (

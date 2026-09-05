@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -93,6 +93,7 @@ export function ExpensesScreen() {
   const searchParams = useSearchParams();
   const urlFromDate = searchParams.get("from_date") ?? "";
   const urlToDate = searchParams.get("to_date") ?? "";
+  const highlightExpenseId = searchParams.get("expense_id");
   const hasUrlDateRange = Boolean(urlFromDate && urlToDate);
   const monthRange = useMemo(() => defaultAccountingDateRange(), []);
 
@@ -282,6 +283,35 @@ export function ExpensesScreen() {
     setViewExpense(expense);
     setDrawerOpen(true);
   }
+
+  const highlightExpenseOpenedRef = useRef(null);
+  useEffect(() => {
+    if (!highlightExpenseId || loading) return;
+    const key = String(highlightExpenseId);
+    if (highlightExpenseOpenedRef.current === key) return;
+
+    const fromList = expenses.find((e) => String(e.id) === key);
+    if (fromList) {
+      highlightExpenseOpenedRef.current = key;
+      openViewDrawer(fromList);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await apiRequest(`/expenses/${encodeURIComponent(key)}`);
+        if (cancelled || !row?.id) return;
+        highlightExpenseOpenedRef.current = key;
+        openViewDrawer(row);
+      } catch {
+        /* missing / no access */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightExpenseId, loading, expenses]);
 
   function closeDrawer() {
     setDrawerOpen(false);
