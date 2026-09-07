@@ -276,6 +276,13 @@ export const REPORT_DEFINITIONS = {
         align: "right",
         total: true,
       },
+      {
+        key: "gross_profit",
+        label: "Gross profit",
+        accessor: (r) => r.gross_profit,
+        align: "right",
+        total: true,
+      },
     ],
     kpis: [
       ...vatReportKpis("gross_sales", "total_vat"),
@@ -295,6 +302,14 @@ export const REPORT_DEFINITIONS = {
           hint: "Sum of amount paid (can be below Gross on credit)",
         }),
       },
+      {
+        id: "gross_profit",
+        label: "Gross profit",
+        compute: (rows, summary) => ({
+          value: kes(summary?.gross_profit ?? sum(rows, "gross_profit")),
+          hint: "Gross sales − COGS",
+        }),
+      },
     ],
     footerTotals: [
       "order_count",
@@ -303,6 +318,7 @@ export const REPORT_DEFINITIONS = {
       "gross_sales",
       "fully_paid_sales",
       "amount_collected",
+      "gross_profit",
     ],
     charts: [
       {
