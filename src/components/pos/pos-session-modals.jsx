@@ -528,7 +528,7 @@ export function ZReportModal({
       footer={
         report?.sales || report?.expected_cash != null ? (
           <ReportModalFooter
-            onClose={() => void handleCloseAndFinish()}
+            onClose={() => void (signOutAfterFinish ? handleCloseAndFinish() : onClose())}
             onPrint={() => void handlePrint()}
             printLabel="Print Z report"
             closeLabel={signOutAfterFinish ? "Close session" : closeLabel}

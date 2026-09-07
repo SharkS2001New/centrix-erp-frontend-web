@@ -8,6 +8,7 @@ import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sal
 import { saleBalanceDue } from "@/lib/order-workflow";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { customerReturnReturnedByName } from "@/components/sales/customer-returns-shared";
 
 const CARD_CLASS =
   "flex min-w-[9.5rem] flex-col gap-0.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -55,6 +56,14 @@ function formatWhen(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function returnDateLabel(row) {
+  return formatWhen(row?.return_date || row?.created_at);
+}
+
+function returnedByLabel(row) {
+  return customerReturnReturnedByName(row) || "—";
 }
 
 function isMissingApiRouteError(error) {
@@ -314,7 +323,7 @@ function ReturnsModal({
       title="Returns"
       onClose={onClose}
       busy={Boolean(busy)}
-      widthClass="max-w-2xl"
+      widthClass="max-w-4xl"
       footer={
         tab === "pending" ? (
           <PendingDecisionFooter
@@ -376,6 +385,8 @@ function ReturnsModal({
                     <th className="px-3 py-2">Return</th>
                     <th className="px-3 py-2">Order</th>
                     <th className="px-3 py-2">Customer</th>
+                    <th className="px-3 py-2">Returned by</th>
+                    <th className="px-3 py-2">Date returned</th>
                     <th className="px-3 py-2">Items</th>
                     <th className="px-3 py-2">Approved</th>
                     <th className="px-3 py-2 text-right">Amount</th>
@@ -394,6 +405,10 @@ function ReturnsModal({
                         </td>
                         <td className="px-3 py-2 text-slate-700">
                           {saleCustomerLabel(row.sale ?? row)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{returnedByLabel(row)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                          {returnDateLabel(row)}
                         </td>
                         <td className="max-w-[12rem] truncate px-3 py-2 text-slate-600" title={itemSummary}>
                           {itemSummary || "—"}
@@ -425,6 +440,8 @@ function ReturnsModal({
                 <th className="px-3 py-2">Return</th>
                 <th className="px-3 py-2">Order</th>
                 <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Returned by</th>
+                <th className="px-3 py-2">Date returned</th>
                 <th className="px-3 py-2">Items</th>
                 <th className="px-3 py-2 text-right">Amount</th>
               </tr>
@@ -451,6 +468,10 @@ function ReturnsModal({
                     </td>
                     <td className="px-3 py-2 text-slate-700">
                       {saleCustomerLabel(row.sale ?? row)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{returnedByLabel(row)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                      {returnDateLabel(row)}
                     </td>
                     <td className="max-w-[12rem] truncate px-3 py-2 text-slate-600" title={itemSummary}>
                       {itemSummary || "—"}
