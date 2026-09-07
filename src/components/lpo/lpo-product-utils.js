@@ -107,6 +107,16 @@ export function formatFactor(value) {
     : n.toLocaleString("en-KE", { maximumFractionDigits: 3 });
 }
 
+/** Keep absent stock as null so offline/catalog rows still trigger live hydration. */
+function stockQtyOrNull(...candidates) {
+  for (const value of candidates) {
+    if (value == null || value === "") continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 /** @param {object} product @param {Map<number, object>} uomById @param {Map<number, object>} vatById */
 export function enrichProductForLpo(product, uomById, vatById) {
   const unitId = product.unit_id;
@@ -134,23 +144,19 @@ export function enrichProductForLpo(product, uomById, vatById) {
     uom_label: packName,
     vat_rate: vat?.vat_percentage != null ? Number(vat.vat_percentage) : 0,
     unit_price_display: Number(product.unit_price ?? 0),
-    stock_in_shop: Number(
-      product.stock_on_hand_shop ?? product.stock_in_shop ?? 0,
+    // Do not invent 0 for missing stock — stripped offline catalog rows must stay
+    // "unknown" so Create Order / POS hydrates live branch stock on pick.
+    stock_in_shop: stockQtyOrNull(product.stock_on_hand_shop, product.stock_in_shop),
+    stock_in_store: stockQtyOrNull(product.stock_on_hand_store, product.stock_in_store),
+    stock_available_shop: stockQtyOrNull(
+      product.stock_available_shop,
+      product.branch_stock?.shop_available,
+      product.stock_in_shop,
     ),
-    stock_in_store: Number(
-      product.stock_on_hand_store ?? product.stock_in_store ?? 0,
-    ),
-    stock_available_shop: Number(
-      product.stock_available_shop ??
-        product.branch_stock?.shop_available ??
-        product.stock_in_shop ??
-        0,
-    ),
-    stock_available_store: Number(
-      product.stock_available_store ??
-        product.branch_stock?.store_available ??
-        product.stock_in_store ??
-        0,
+    stock_available_store: stockQtyOrNull(
+      product.stock_available_store,
+      product.branch_stock?.store_available,
+      product.stock_in_store,
     ),
   };
 }

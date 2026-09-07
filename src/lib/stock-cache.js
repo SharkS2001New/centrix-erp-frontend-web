@@ -133,11 +133,15 @@ const PRODUCT_STOCK_OVERLAY_KEYS = [
   "store_quantity",
 ];
 
-/** True when the row never received branch stock (offline catalog strips these fields). */
+/**
+ * True when the row never received a live branch stock overlay.
+ * Offline catalog strips stock; inventing numeric 0 must still count as missing.
+ */
 export function productStockFieldsMissing(product) {
   if (!product) return true;
+  // Live product/show responses always attach branch_stock via BranchStockService.
   if (product.branch_stock && typeof product.branch_stock === "object") return false;
-  return PRODUCT_STOCK_OVERLAY_KEYS.every((key) => product[key] == null);
+  return true;
 }
 
 /** Prefer incoming live stock fields when updating an indexed/cached product row. */
@@ -164,9 +168,13 @@ export function mergeProductStockFields(existing, incoming) {
  * @param {object} product
  * @param {string | number | null | undefined} branchId
  * @param {(path: string, options?: object) => Promise<object>} request
+ * @param {{ force?: boolean }} [options]
  */
-export async function hydrateProductLiveStock(product, branchId, request) {
-  if (!product?.product_code || !productStockFieldsMissing(product)) {
+export async function hydrateProductLiveStock(product, branchId, request, options = {}) {
+  if (!product?.product_code) {
+    return product;
+  }
+  if (!options.force && !productStockFieldsMissing(product)) {
     return product;
   }
   try {

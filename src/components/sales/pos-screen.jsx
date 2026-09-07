@@ -7155,9 +7155,9 @@ export function PosScreen({ standalone = false }) {
   async function pickProduct(product) {
     if (!product) return;
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
-    if (productStockFieldsMissing(product)) {
-      product = await hydrateProductLiveStock(product, branchId, apiRequest);
-    }
+    // Always refresh live branch stock on select — offline catalog / enrich must not
+    // leave invent-0 shop qty that blocks retail sales against real shop stock.
+    product = await hydrateProductLiveStock(product, branchId, apiRequest, { force: true });
     setProductByCode((prev) => {
       const existing = prev[product.product_code];
       if (!existing) return { ...prev, [product.product_code]: product };
