@@ -1,0 +1,17 @@
+{
+  "centrixApiUrl": "https://your-centrix-host/api/v1",
+  "centrixToken": "REPLACE_FROM_FINANCE_DOWNLOAD",
+  "organizationId": 0,
+  "agentId": 0,
+  "comstoreBaseUrl": "http://localhost:4000",
+  "longPollMs": 2000,
+  "heartbeatIntervalSeconds": 60,
+  "commandTimeoutSeconds": 50,
+  "autoStartComstore": true,
+  "comstoreWindowsServiceNames": [],
+  "comstoreExecutablePath": "",
+  "comstoreExecutableArgs": "",
+  "comstoreStartCommand": "",
+  "comstoreStartWorkingDirectory": "",
+  "comstoreReadyTimeoutSeconds": 45
+}

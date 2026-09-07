@@ -1,0 +1,7 @@
+publish/
+config.json
+state.json
+**/bin/
+**/obj/
+*.user
+.vs/

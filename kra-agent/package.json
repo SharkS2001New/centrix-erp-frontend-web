@@ -1,0 +1,14 @@
+{
+  "name": "centrix-kra-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Centrix cloud → local Comstore KRA bridge",
+  "scripts": {
+    "start": "node agent.js",
+    "doctor": "node agent.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

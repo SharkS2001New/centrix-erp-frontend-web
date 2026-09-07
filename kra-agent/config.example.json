@@ -1,0 +1,10 @@
+{
+  "centrixApiUrl": "https://your-centrix-host/api/v1",
+  "centrixToken": "REPLACE_FROM_FINANCE_DOWNLOAD",
+  "organizationId": 0,
+  "agentId": 0,
+  "comstoreBaseUrl": "http://127.0.0.1:4000",
+  "pollIntervalSeconds": 1,
+  "heartbeatIntervalSeconds": 60,
+  "commandTimeoutSeconds": 50
+}

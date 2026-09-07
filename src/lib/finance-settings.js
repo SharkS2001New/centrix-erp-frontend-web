@@ -1,5 +1,6 @@
 const FINANCE_DEFAULTS = {
   enable_kra_device: false,
+  enable_kra_agent: false,
   kra_device_ip: "",
   kra_device_hardware_ip: "",
   kra_serial_number: "",
@@ -208,6 +209,7 @@ export function financeFormFromApi(res) {
   const quickbooks = finance.quickbooks ?? QUICKBOOKS_DEFAULTS;
   return {
     enable_kra_device: Boolean(finance.enable_kra_device),
+    enable_kra_agent: Boolean(finance.enable_kra_agent),
     kra_device_ip: String(finance.kra_device_ip ?? ""),
     kra_device_hardware_ip: String(finance.kra_device_hardware_ip ?? ""),
     kra_serial_number: String(finance.kra_serial_number ?? ""),
@@ -268,6 +270,7 @@ export function kraDeviceOpsPayloadFromForm(form) {
     kra_device_hardware_ip: String(form.kra_device_hardware_ip ?? "").trim(),
     kra_serial_number: String(form.kra_serial_number ?? "").trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
+    enable_kra_agent: Boolean(form.enable_kra_agent),
   };
 }
 
@@ -294,6 +297,7 @@ export function financePayloadFromForm(form, options = {}) {
 
   const payload = {
     enable_kra_device: Boolean(form.enable_kra_device),
+    enable_kra_agent: Boolean(form.enable_kra_agent),
     kra_device_ip: form.kra_device_ip.trim(),
     kra_device_hardware_ip: form.kra_device_hardware_ip.trim(),
     kra_serial_number: form.kra_serial_number.trim(),

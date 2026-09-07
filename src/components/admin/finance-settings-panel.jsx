@@ -84,6 +84,8 @@ export function FinanceSettingsPanel({
   const [kraHealthTesting, setKraHealthTesting] = useState(false);
   const [kraInitTesting, setKraInitTesting] = useState(false);
   const [kraRestartTesting, setKraRestartTesting] = useState(false);
+  const [kraAgentDownloading, setKraAgentDownloading] = useState(false);
+  const [kraAgentStatus, setKraAgentStatus] = useState(null);
   const [kraHealthResult, setKraHealthResult] = useState(null);
   const [activeTab, setActiveTab] = useState(() => {
     if (mode === "paybills") return "paybills";
@@ -219,10 +221,30 @@ export function FinanceSettingsPanel({
         url: res.url,
         deviceConnection: res.device_connection,
         apiService: res.api_service,
+        viaAgent: Boolean(res.via_agent),
+        manualStartRequired: Boolean(res.manual_start_required),
       });
+      if (form.enable_kra_agent) {
+        void refreshKraAgentStatus();
+      }
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "KRA device request failed.";
-      setKraHealthResult({ ok: false, message });
+      const body = e instanceof ApiError && e.body && typeof e.body === "object" ? e.body : null;
+      const message =
+        (body && typeof body.message === "string" && body.message) ||
+        (e instanceof ApiError ? e.message : "KRA device request failed.");
+      setKraHealthResult({
+        ok: false,
+        message,
+        httpStatus: body?.http_status ?? (e instanceof ApiError ? e.status : undefined),
+        url: body?.url,
+        deviceConnection: body?.device_connection,
+        apiService: body?.api_service,
+        viaAgent: Boolean(body?.via_agent),
+        manualStartRequired: Boolean(body?.manual_start_required),
+      });
+      if (form.enable_kra_agent) {
+        void refreshKraAgentStatus();
+      }
     } finally {
       setBusy(false);
     }
@@ -247,6 +269,45 @@ export function FinanceSettingsPanel({
     await runKraDeviceAction("/kra/device-restart", setKraRestartTesting);
   }
 
+  async function refreshKraAgentStatus() {
+    try {
+      const res = await apiRequest("/kra/agent/status", { loading: false, reportIssues: false });
+      setKraAgentStatus(res);
+    } catch {
+      setKraAgentStatus(null);
+    }
+  }
+
+  async function downloadKraAgent() {
+    setKraAgentDownloading(true);
+    setError(null);
+    try {
+      const issued = await apiRequest("/kra/agent-package", { method: "POST" });
+      const zipRes = await fetch("/api/kra-agent/package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: issued.config }),
+      });
+      if (!zipRes.ok) {
+        const err = await zipRes.json().catch(() => ({}));
+        throw new Error(err.message || "Could not package KRA agent zip.");
+      }
+      const blob = await zipRes.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "CentrixKraAgent.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+      notifySuccess("KRA agent package downloaded. Install it on the shop PC.");
+      await refreshKraAgentStatus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "KRA agent download failed.");
+    } finally {
+      setKraAgentDownloading(false);
+    }
+  }
+
   async function saveFinanceSettings() {
     setSaving(true);
     setError(null);
@@ -267,6 +328,7 @@ export function FinanceSettingsPanel({
       setForm({
         ...saved,
         enable_kra_device: Boolean(payload.enable_kra_device),
+        enable_kra_agent: Boolean(payload.enable_kra_agent),
         default_submit_kra: Boolean(payload.default_submit_kra),
         kra_device_test_mode: Boolean(payload.kra_device_test_mode),
         kra_bypass_above_amount:
@@ -351,19 +413,109 @@ export function FinanceSettingsPanel({
               <div className={`${mode === "all" ? "mt-3" : ""} space-y-3`}>
               <Toggle
                 label="KRA device configured"
-                description="Stores device IP, serial number, and shop PIN. Required before connection checks or PLU registration."
+                description="Stores device URL, serial number, and shop PIN. Required before connection checks or PLU registration."
                 checked={Boolean(form.enable_kra_device)}
                 onChange={(v) => setForm((f) => ({ ...f, enable_kra_device: v }))}
               />
               {form.enable_kra_device ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Device IP / URL">
+                  <div className="sm:col-span-2">
+                    <Toggle
+                      label="Use shop PC agent (cloud Centrix)"
+                      description="On: Centrix cloud talks to CentrixKraAgent on the till, which calls Comstore locally. Off: Centrix calls the Device IP / URL directly (previous method — use when the API can reach Comstore on the LAN or a tunnel)."
+                      checked={Boolean(form.enable_kra_agent)}
+                      onChange={(v) => {
+                        setForm((f) => ({
+                          ...f,
+                          enable_kra_agent: v,
+                          kra_device_ip:
+                            v && !String(f.kra_device_ip ?? "").trim()
+                              ? "http://localhost:4000"
+                              : f.kra_device_ip,
+                        }));
+                        if (v) void refreshKraAgentStatus();
+                      }}
+                    />
+                    {form.enable_kra_agent ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={kraAgentDownloading}
+                          onClick={() => void downloadKraAgent()}
+                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                        >
+                          {kraAgentDownloading ? "Preparing…" : "Download KRA agent (.NET)"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void refreshKraAgentStatus()}
+                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2`}
+                        >
+                          Refresh agent status
+                        </button>
+                        {kraAgentStatus ? (
+                          <div className="w-full space-y-1">
+                            <span className="theme-subtext text-xs">
+                              Agent {kraAgentStatus.online ? "online" : "offline"}
+                              {kraAgentStatus.last_seen_at
+                                ? ` · last seen ${kraAgentStatus.last_seen_at}`
+                                : ""}
+                              {kraAgentStatus.version ? ` · v${kraAgentStatus.version}` : ""}
+                              {kraAgentStatus.comstore_reachable === true
+                                ? " · Comstore reachable"
+                                : kraAgentStatus.comstore_reachable === false
+                                  ? " · Comstore down"
+                                  : ""}
+                            </span>
+                            {kraAgentStatus.manual_start_required ||
+                            kraAgentStatus.comstore_reachable === false ? (
+                              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                                <p className="font-medium">Start Comstore manually on the shop PC</p>
+                                <p className="mt-1 text-xs leading-relaxed">
+                                  {kraAgentStatus.message ||
+                                    kraAgentStatus.comstore_status_message ||
+                                    "The shop agent could not start Comstore automatically. Open the Comstore Windows service or app (usually http://localhost:4000), then click Test connection again."}
+                                </p>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="theme-subtext mt-2 text-xs">
+                        Direct mode is active. Leave the agent off if Centrix already reaches your fiscal middleware
+                        (LAN IP, hostname, or tunnel). No shop agent install needed.
+                      </p>
+                    )}
+                  </div>
+                  <Field
+                    label={
+                      form.enable_kra_agent
+                        ? "Local Comstore URL (on shop PC)"
+                        : "Device IP / URL (direct)"
+                    }
+                  >
                     <input
                       className={inputClassName()}
                       value={form.kra_device_ip}
                       onChange={(e) => setForm((f) => ({ ...f, kra_device_ip: e.target.value }))}
-                      placeholder="192.168.1.50:8010 or https://kramoonstores.example.com"
+                      placeholder={
+                        form.enable_kra_agent
+                          ? "http://localhost:4000 or http://127.0.0.1:4000"
+                          : "192.168.1.50:8010 or https://kra.example.com"
+                      }
                     />
+                    {form.enable_kra_agent ? (
+                      <p className="theme-subtext mt-1 text-xs">
+                        URL the shop agent uses for Comstore on the same PC.{" "}
+                        <code className="text-[11px]">localhost</code> and{" "}
+                        <code className="text-[11px]">127.0.0.1</code> are both allowed.
+                      </p>
+                    ) : (
+                      <p className="theme-subtext mt-1 text-xs">
+                        Centrix cloud calls this URL directly (must be reachable from the API server).
+                      </p>
+                    )}
                   </Field>
                   <Field label="Fiscal hardware IP (Smart VSCU)">
                     <input
@@ -434,17 +586,40 @@ export function FinanceSettingsPanel({
                       </button>
                     </div>
                     {kraHealthResult ? (
-                        <div className={`text-sm ${kraHealthResult.ok ? "text-emerald-700" : "text-red-700"}`}>
-                        <p>
-                          {kraHealthResult.message}
-                          {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
-                        </p>
-                        {kraHealthResult.deviceConnection ? (
-                          <p className="theme-subtext mt-1 text-xs">
-                            Device connection: {kraHealthResult.deviceConnection}
-                            {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
-                          </p>
-                        ) : null}
+                      <div
+                        className={`text-sm ${
+                          kraHealthResult.ok
+                            ? "text-emerald-700"
+                            : kraHealthResult.manualStartRequired
+                              ? "text-amber-950"
+                              : "text-red-700"
+                        }`}
+                      >
+                        {kraHealthResult.manualStartRequired ? (
+                          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                            <p className="font-medium">Start Comstore manually on the shop PC</p>
+                            <p className="mt-1 text-xs leading-relaxed">
+                              {kraHealthResult.message}
+                            </p>
+                            <p className="mt-2 text-xs text-amber-900/80">
+                              After Comstore is running, click <strong>Test connection</strong> again.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <p>
+                              {kraHealthResult.message}
+                              {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                              {kraHealthResult.viaAgent ? " · via shop agent" : ""}
+                            </p>
+                            {kraHealthResult.deviceConnection ? (
+                              <p className="theme-subtext mt-1 text-xs">
+                                Device connection: {kraHealthResult.deviceConnection}
+                                {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
+                              </p>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     ) : (
                       <p className="theme-subtext text-xs">
