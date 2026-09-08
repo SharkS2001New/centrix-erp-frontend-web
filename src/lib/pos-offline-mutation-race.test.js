@@ -141,7 +141,7 @@ describe("local cart mutation race", () => {
     expect(Number(polished[0].quantity)).toBe(90);
   });
 
-  it("does not update a different SKU when identity keys collide", async () => {
+  it("swaps product on the same update_no in place (LightStores UpdateItem)", async () => {
     const { upsertLocalPosCartLine, withLocalCartMutation, awaitLocalCartWrites } =
       await import("@/lib/pos-offline");
     const { idbGetLocalCart } = await import("@/lib/pos-offline-db");
@@ -152,37 +152,41 @@ describe("local cart mutation race", () => {
         offline: true,
         lines: [
           {
-            client_line_id: "shared-1",
+            client_line_id: "clu-1",
+            update_code: "clu-1",
             id: 1,
-            product_code: "1192003",
-            product_name: "KAMANDE LARGE 50KG",
-            quantity: 50,
-            unit_price: 125,
-            on_wholesale_retail: 0,
-            uom: "Bags(50)",
+            product_code: "1324005",
+            product_name: "BANJAB RICE 25KG",
+            quantity: 1,
+            unit_price: 160,
+            on_wholesale_retail: 1,
+            uom: "kg",
           },
         ],
       }),
       {
-        client_line_id: "shared-1",
+        client_line_id: "clu-1",
+        update_code: "clu-1",
         id: 1,
-        product_code: "9165878",
-        product_name: "SHIBE UGALI 1KG",
-        quantity: 1,
-        unit_price: 1470,
-        amount: 1470,
-        on_wholesale_retail: 0,
-        uom: "Bales",
+        product_code: "1300009",
+        product_name: "SUGAR 50 KG",
+        quantity: 12.5,
+        unit_price: 127.4,
+        amount: 1595,
+        on_wholesale_retail: 1,
+        uom: "kgs",
       },
       { combineIdenticalLines: true },
     );
     await awaitLocalCartWrites();
 
     const stored = await idbGetLocalCart("active");
-    const codes = (stored?.lines ?? []).map((l) => l.product_code).sort();
-    expect(codes).toEqual(["1192003", "9165878"]);
-    const kamande = stored.lines.find((l) => l.product_code === "1192003");
-    expect(Number(kamande.quantity)).toBe(50);
-    expect(Number(kamande.on_wholesale_retail)).toBe(0);
+    expect(stored?.lines ?? []).toHaveLength(1);
+    expect(String(stored.lines[0].product_code)).toBe("1300009");
+    expect(String(stored.lines[0].client_line_id)).toBe("clu-1");
+    expect(Number(stored.lines[0].quantity)).toBe(12.5);
+    expect(
+      (stored.lines ?? []).some((l) => String(l.product_code) === "1324005"),
+    ).toBe(false);
   });
 });

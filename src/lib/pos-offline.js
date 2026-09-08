@@ -1825,12 +1825,12 @@ export { collapseCombineableCartLines as collapseCombineableLocalLines } from "@
 
 /**
  * Upsert a line into the local offline cart.
- * When combine is on: merge by SKU + retail/wholesale (classic POS).
- * When combine is off: update the same identity (client_line_id / update_code / id);
- * otherwise append. Qty Enter and F12 edits must never append a twin.
- *
- * F12 bags↔kg: if this SKU appears exactly once in the opposite mode, update that
- * row in place (flip on_wholesale_retail) — never append a second row.
+ * Mirrors classic LightStores temp_order:
+ * - CreateAFreshNewItem → INSERT (append) when no matching update_no / client_line_id
+ * - UpdateItemAndQuantityBeforeSaving → UPDATE that same row in place
+ *   (qty edit AND product swap both change the same update_no; product_code may change)
+ * When combine is on and there is no identity: merge by SKU + retail/wholesale.
+ * F12 bags↔kg: sole opposite-mode SKU converts in place.
  */
 export async function upsertLocalPosCartLine(
   cart,
@@ -1843,36 +1843,23 @@ export async function upsertLocalPosCartLine(
       : nextLocalCartMutationSeq();
   const lines = [...(cart.lines ?? [])];
   const needleKeys = new Set(cartLineIdentityKeys(line));
-  const needleCode =
-    line?.product_code != null && String(line.product_code).trim() !== ""
-      ? String(line.product_code)
-      : null;
-  const sameSkuIdentity = (row) => {
-    if (!needleCode) return true;
-    const rowCode = row?.product_code;
-    if (rowCode == null || String(rowCode).trim() === "") return true;
-    return String(rowCode) === needleCode;
-  };
 
   let idx = -1;
+  // 1) Same update_no / client_line_id / id — always UPDATE in place (incl. swap).
   if (needleKeys.size) {
-    idx = lines.findIndex(
-      (row) =>
-        sameSkuIdentity(row) &&
-        cartLineIdentityKeys(row).some((key) => needleKeys.has(key)),
+    idx = lines.findIndex((row) =>
+      cartLineIdentityKeys(row).some((key) => needleKeys.has(key)),
     );
   }
   if (idx < 0 && line) {
-    idx = lines.findIndex(
-      (row) => sameSkuIdentity(row) && cartLinesShareIdentity(row, line),
-    );
+    idx = lines.findIndex((row) => cartLinesShareIdentity(row, line));
   }
+  // 2) Combine-identical: same SKU + retail/wholesale → bump that row.
   if (idx < 0 && combineIdenticalLines !== false) {
     const key = lineKey(line);
     idx = lines.findIndex((row) => lineKey(row) === key);
   }
-  // Sole SKU + opposite retail/wholesale (F12 kg↔bag): convert that row in place.
-  // Do not apply when modes match — combine-off must still allow a second same-mode line.
+  // 3) Sole SKU + opposite retail/wholesale (F12 kg↔bag): convert that row in place.
   if (idx < 0 && line?.product_code) {
     const code = String(line.product_code);
     const sameSkuIdxs = [];
@@ -1893,7 +1880,8 @@ export async function upsertLocalPosCartLine(
     lines[idx] = {
       ...lines[idx],
       ...line,
-      // Keep the first identity so qty/F12 edits update the same row.
+      // Keep the first identity so qty/F12/swap edits update the same row
+      // (LightStores: WHERE update_no=@UpdateCode AND user_id=@USERID).
       client_line_id: lines[idx].client_line_id ?? line.client_line_id,
       id: lines[idx].id ?? line.id,
       update_code: lines[idx].update_code ?? line.update_code,
@@ -1905,6 +1893,7 @@ export async function upsertLocalPosCartLine(
           : lines[idx].on_wholesale_retail,
     };
   } else {
+    // CreateAFreshNewItem — INSERT a new temp line.
     lines.push({
       ...line,
       client_line_id: line.client_line_id ?? newClientSaleUuid(),
