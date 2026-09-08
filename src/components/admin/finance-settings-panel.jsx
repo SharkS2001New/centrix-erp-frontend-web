@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   financeFormFromApi,
   financePayloadFromForm,
+  applyKraConnectionMethod,
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
   isPlatformEquityBankEnabled,
@@ -334,6 +335,9 @@ export function FinanceSettingsPanel({
         kra_bypass_above_amount:
           payload.kra_bypass_above_amount == null ? "" : String(payload.kra_bypass_above_amount),
         kra_device_ip: payload.kra_device_ip,
+        kra_direct_device_ip: payload.kra_direct_device_ip ?? saved.kra_direct_device_ip ?? "",
+        kra_agent_comstore_url:
+          payload.kra_agent_comstore_url ?? saved.kra_agent_comstore_url ?? "",
         kra_device_hardware_ip: payload.kra_device_hardware_ip,
         kra_serial_number: payload.kra_serial_number,
         kra_plu_register_path: payload.kra_plu_register_path,
@@ -419,25 +423,72 @@ export function FinanceSettingsPanel({
               />
               {form.enable_kra_device ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <Toggle
-                      label="Use shop PC agent (cloud Centrix)"
-                      description="On: Centrix cloud talks to CentrixKraAgent on the till, which calls Comstore locally. Off: Centrix calls the Device IP / URL directly (previous method — use when the API can reach Comstore on the LAN or a tunnel)."
-                      checked={Boolean(form.enable_kra_agent)}
-                      onChange={(v) => {
-                        setForm((f) => ({
-                          ...f,
-                          enable_kra_agent: v,
-                          kra_device_ip:
-                            v && !String(f.kra_device_ip ?? "").trim()
-                              ? "http://localhost:4000"
-                              : f.kra_device_ip,
-                        }));
-                        if (v) void refreshKraAgentStatus();
-                      }}
-                    />
+                  <div className="sm:col-span-2 space-y-3">
+                    <div>
+                      <p className="theme-heading text-sm font-medium">Connection method</p>
+                      <p className="theme-subtext mt-0.5 text-xs">
+                        Only one method is active at a time. Agent mode talks through CentrixKraAgent on
+                        the shop PC; direct mode has Centrix call the Device IP / URL itself.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="KRA connection method">
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
+                          form.enable_kra_agent
+                            ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
+                            : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          className="mt-1"
+                          name="kra-connection-method"
+                          checked={Boolean(form.enable_kra_agent)}
+                          onChange={() => {
+                            setForm((f) => applyKraConnectionMethod(f, true));
+                            void refreshKraAgentStatus();
+                          }}
+                        />
+                        <span>
+                          <span className="theme-heading block text-sm font-medium">
+                            Shop PC agent (CentrixKraAgent)
+                          </span>
+                          <span className="theme-subtext mt-0.5 block text-xs">
+                            Cloud Centrix → agent on the till → local Comstore. Use when the API cannot
+                            reach the fiscal middleware on the LAN.
+                          </span>
+                        </span>
+                      </label>
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
+                          !form.enable_kra_agent
+                            ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
+                            : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          className="mt-1"
+                          name="kra-connection-method"
+                          checked={!form.enable_kra_agent}
+                          onChange={() => {
+                            setForm((f) => applyKraConnectionMethod(f, false));
+                            setKraAgentStatus(null);
+                          }}
+                        />
+                        <span>
+                          <span className="theme-heading block text-sm font-medium">
+                            Direct Device IP / URL (legacy)
+                          </span>
+                          <span className="theme-subtext mt-0.5 block text-xs">
+                            Centrix calls Comstore / device URL directly (LAN IP, hostname, or tunnel). No
+                            shop agent. Inactive while agent mode is selected.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                     {form.enable_kra_agent ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           disabled={kraAgentDownloading}
@@ -482,41 +533,53 @@ export function FinanceSettingsPanel({
                         ) : null}
                       </div>
                     ) : (
-                      <p className="theme-subtext mt-2 text-xs">
-                        Direct mode is active. Leave the agent off if Centrix already reaches your fiscal middleware
-                        (LAN IP, hostname, or tunnel). No shop agent install needed.
+                      <p className="theme-subtext text-xs">
+                        Direct mode is active. Centrix will not use CentrixKraAgent until you switch back to
+                        agent mode.
                       </p>
                     )}
                   </div>
-                  <Field
-                    label={
-                      form.enable_kra_agent
-                        ? "Local Comstore URL (on shop PC)"
-                        : "Device IP / URL (direct)"
-                    }
-                  >
-                    <input
-                      className={inputClassName()}
-                      value={form.kra_device_ip}
-                      onChange={(e) => setForm((f) => ({ ...f, kra_device_ip: e.target.value }))}
-                      placeholder={
-                        form.enable_kra_agent
-                          ? "http://localhost:4000 or http://127.0.0.1:4000"
-                          : "192.168.1.50:8010 or https://kra.example.com"
-                      }
-                    />
-                    {form.enable_kra_agent ? (
+                  {form.enable_kra_agent ? (
+                    <Field label="Local Comstore URL (on shop PC)">
+                      <input
+                        className={inputClassName()}
+                        value={form.kra_device_ip}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            kra_device_ip: e.target.value,
+                            kra_agent_comstore_url: e.target.value,
+                          }))
+                        }
+                        placeholder="http://localhost:4000 or http://127.0.0.1:4000"
+                      />
                       <p className="theme-subtext mt-1 text-xs">
-                        URL the shop agent uses for Comstore on the same PC.{" "}
+                        URL the shop agent uses for Comstore on the same PC. Direct Device IP / URL is not
+                        used while agent mode is on.{" "}
                         <code className="text-[11px]">localhost</code> and{" "}
                         <code className="text-[11px]">127.0.0.1</code> are both allowed.
                       </p>
-                    ) : (
+                    </Field>
+                  ) : (
+                    <Field label="Device IP / URL (direct)">
+                      <input
+                        className={inputClassName()}
+                        value={form.kra_device_ip}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            kra_device_ip: e.target.value,
+                            kra_direct_device_ip: e.target.value,
+                          }))
+                        }
+                        placeholder="192.168.1.50:8010 or https://kra.example.com"
+                      />
                       <p className="theme-subtext mt-1 text-xs">
-                        Centrix cloud calls this URL directly (must be reachable from the API server).
+                        Centrix cloud calls this URL directly (must be reachable from the API server). Shop
+                        agent is not used in this mode.
                       </p>
-                    )}
-                  </Field>
+                    </Field>
+                  )}
                   <Field label="Fiscal hardware IP (Smart VSCU)">
                     <input
                       className={inputClassName()}
@@ -623,7 +686,8 @@ export function FinanceSettingsPanel({
                       </div>
                     ) : (
                       <p className="theme-subtext text-xs">
-                        <strong>Test connection</strong> calls{" "}
+                        <strong>Test connection</strong> uses the selected method only
+                        {form.enable_kra_agent ? " (via shop agent)" : " (direct HTTP)"}. Calls{" "}
                         <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
                         <strong>Initialize</strong> calls{" "}
                           <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/init</code> (serial + hardware

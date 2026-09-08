@@ -1,7 +1,13 @@
+export const KRA_AGENT_COMSTORE_DEFAULT = "http://localhost:4000";
+
 const FINANCE_DEFAULTS = {
   enable_kra_device: false,
   enable_kra_agent: false,
   kra_device_ip: "",
+  /** Stashed when agent mode is on — restored if the shop switches back to direct. */
+  kra_direct_device_ip: "",
+  /** Stashed when direct mode is on — restored if the shop switches back to agent. */
+  kra_agent_comstore_url: "",
   kra_device_hardware_ip: "",
   kra_serial_number: "",
   kra_pin_number: "",
@@ -202,15 +208,82 @@ export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null, o
   return true;
 }
 
+function looksLikeLocalComstoreUrl(raw) {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes("localhost") ||
+    s.includes("127.0.0.1") ||
+    s.includes("[::1]")
+  );
+}
+
+/**
+ * Exclusive connection method: agent XOR direct.
+ * Keeps the inactive method's URL so toggling does not wipe the other config.
+ */
+export function applyKraConnectionMethod(form, enableAgent) {
+  const next = Boolean(enableAgent);
+  const prev = Boolean(form.enable_kra_agent);
+  if (next === prev) {
+    return { ...form, enable_kra_agent: next };
+  }
+
+  const active = String(form.kra_device_ip ?? "").trim();
+  const stashedDirect = String(form.kra_direct_device_ip ?? "").trim();
+  const stashedAgent = String(form.kra_agent_comstore_url ?? "").trim();
+
+  if (next) {
+    // Switching to agent: stash non-local URL as direct; activate local Comstore URL.
+    const keepDirect =
+      active && !looksLikeLocalComstoreUrl(active) ? active : stashedDirect;
+    const agentUrl =
+      (active && looksLikeLocalComstoreUrl(active) ? active : null) ||
+      stashedAgent ||
+      KRA_AGENT_COMSTORE_DEFAULT;
+    return {
+      ...form,
+      enable_kra_agent: true,
+      kra_device_ip: agentUrl,
+      kra_direct_device_ip: keepDirect,
+      kra_agent_comstore_url: agentUrl,
+    };
+  }
+
+  // Switching to direct: stash local Comstore; restore previous device URL.
+  const keepAgent =
+    active && looksLikeLocalComstoreUrl(active)
+      ? active
+      : stashedAgent || KRA_AGENT_COMSTORE_DEFAULT;
+  const directUrl =
+    (active && !looksLikeLocalComstoreUrl(active) ? active : null) || stashedDirect || "";
+  return {
+    ...form,
+    enable_kra_agent: false,
+    kra_device_ip: directUrl,
+    kra_direct_device_ip: directUrl,
+    kra_agent_comstore_url: keepAgent,
+  };
+}
+
 export function financeFormFromApi(res) {
   const finance = mergeFinanceSettings({ finance: res?.finance ?? res });
   const mpesa = finance.mpesa ?? MPESA_DEFAULTS;
   const equity = finance.equity ?? EQUITY_DEFAULTS;
   const quickbooks = finance.quickbooks ?? QUICKBOOKS_DEFAULTS;
+  const agentOn = Boolean(finance.enable_kra_agent);
+  const activeIp = String(finance.kra_device_ip ?? "");
+  const directStash = String(finance.kra_direct_device_ip ?? "");
+  const agentStash = String(finance.kra_agent_comstore_url ?? "");
   return {
     enable_kra_device: Boolean(finance.enable_kra_device),
-    enable_kra_agent: Boolean(finance.enable_kra_agent),
-    kra_device_ip: String(finance.kra_device_ip ?? ""),
+    enable_kra_agent: agentOn,
+    kra_device_ip: activeIp,
+    kra_direct_device_ip: directStash || (!agentOn && activeIp ? activeIp : ""),
+    kra_agent_comstore_url:
+      agentStash ||
+      (agentOn && activeIp ? activeIp : "") ||
+      (agentOn ? KRA_AGENT_COMSTORE_DEFAULT : ""),
     kra_device_hardware_ip: String(finance.kra_device_hardware_ip ?? ""),
     kra_serial_number: String(finance.kra_serial_number ?? ""),
     kra_pin_number: String(finance.kra_pin_number ?? ""),
@@ -295,10 +368,19 @@ export function financePayloadFromForm(form, options = {}) {
 
   const kraPin = String(form.kra_pin_number ?? "").trim();
 
+  const agentOn = Boolean(form.enable_kra_agent);
+  const activeIp = String(form.kra_device_ip ?? "").trim();
   const payload = {
     enable_kra_device: Boolean(form.enable_kra_device),
-    enable_kra_agent: Boolean(form.enable_kra_agent),
-    kra_device_ip: form.kra_device_ip.trim(),
+    // Exactly one connection path: agent or direct cloud URL.
+    enable_kra_agent: agentOn,
+    kra_device_ip: activeIp,
+    kra_direct_device_ip: agentOn
+      ? String(form.kra_direct_device_ip ?? "").trim()
+      : activeIp,
+    kra_agent_comstore_url: agentOn
+      ? activeIp || KRA_AGENT_COMSTORE_DEFAULT
+      : String(form.kra_agent_comstore_url ?? "").trim() || KRA_AGENT_COMSTORE_DEFAULT,
     kra_device_hardware_ip: form.kra_device_hardware_ip.trim(),
     kra_serial_number: form.kra_serial_number.trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
