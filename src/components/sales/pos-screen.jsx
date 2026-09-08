@@ -171,7 +171,6 @@ import {
   preserveClientLineSkuAfterMutation,
   findCartLineIndexByRef,
   findMergeableCartLine,
-  findModeConvertibleCartLine,
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
   normalizeCartResponse,
@@ -7082,24 +7081,10 @@ export function PosScreen({ standalone = false }) {
     const computed = applyComputedPrice(product, "1", 0);
     if (computed.baseQty <= 0) return;
 
-    // Always serialize adds — rapid scan/click must merge qty, never duplicate lines.
+    // Always serialize adds — same-mode lines merge when combine is on.
+    // Opposite mode (Sugar bag + Sugar kg) must append a new row — never convert
+    // the sole existing SKU. Mode convert only happens on that line's qty Enter + F12.
     void enqueueCartCommit(async () => {
-      const nextRetailFlag = posLineWholesaleRetailFlag(
-        product,
-        sellWholesaleRef.current,
-        computed.isRetail,
-        posSalesConfig,
-      );
-      const convertTarget = findModeConvertibleCartLine(
-        cartRef.current?.lines,
-        product.product_code,
-        nextRetailFlag,
-        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-      );
-      if (convertTarget) {
-        await setCartLineEntryQuantity(convertTarget, "1");
-        return;
-      }
       const mergeTarget = findMergeableCartLine(
         cartRef.current?.lines,
         product.product_code,
@@ -8557,33 +8542,10 @@ export function PosScreen({ standalone = false }) {
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
 
-    // F12 flipped retail↔wholesale: convert the sole opposite-mode row in place
-    // (1 kg → 1 bag). When the SKU already has bag + kg rows, add a new line.
-    // Always key off the parked product — never stale lineForm.product_code
-    // (that wrongly converted Kamande while the cashier was adding Shibe).
+    // Mode convert (bag↔kg) only when Enter is pressed on an existing cart line
+    // with F12 flipped — never when adding a new parked line. Cashiers must be
+    // able to keep Sugar 1 bag and Sugar 25 kg as two rows.
     const addProductCode = String(productForAdd.product_code ?? "");
-    if (!editingLineId && addProductCode) {
-      const nextRetailFlag = posLineWholesaleRetailFlag(
-        productForAdd,
-        sellWholesale,
-        computed.isRetail,
-        posSalesConfig,
-      );
-      const convertTarget = findModeConvertibleCartLine(
-        cartRef.current?.lines ?? cart?.lines,
-        addProductCode,
-        nextRetailFlag,
-        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-      );
-      if (
-        convertTarget &&
-        String(convertTarget.product_code ?? "") === addProductCode
-      ) {
-        clearClassicEntryFields();
-        void setCartLineEntryQuantity(convertTarget, entryQtyRaw);
-        return;
-      }
-    }
 
     const run = async () => {
     try {

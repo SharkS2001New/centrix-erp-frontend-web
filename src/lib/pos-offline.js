@@ -1830,7 +1830,8 @@ export { collapseCombineableCartLines as collapseCombineableLocalLines } from "@
  * - UpdateItemAndQuantityBeforeSaving → UPDATE that same row in place
  *   (qty edit AND product swap both change the same update_no; product_code may change)
  * When combine is on and there is no identity: merge by SKU + retail/wholesale.
- * F12 bags↔kg: sole opposite-mode SKU converts in place.
+ * Opposite mode for the same SKU (bag vs kg) always appends — never converts the
+ * sole row (F12 convert happens only via qty Enter on that line).
  */
 export async function upsertLocalPosCartLine(
   cart,
@@ -1859,22 +1860,6 @@ export async function upsertLocalPosCartLine(
     const key = lineKey(line);
     idx = lines.findIndex((row) => lineKey(row) === key);
   }
-  // 3) Sole SKU + opposite retail/wholesale (F12 kg↔bag): convert that row in place.
-  if (idx < 0 && line?.product_code) {
-    const code = String(line.product_code);
-    const sameSkuIdxs = [];
-    for (let i = 0; i < lines.length; i += 1) {
-      if (String(lines[i]?.product_code ?? "") === code) sameSkuIdxs.push(i);
-    }
-    if (sameSkuIdxs.length === 1) {
-      const existing = lines[sameSkuIdxs[0]];
-      const existingRetail = Number(existing?.on_wholesale_retail) ? 1 : 0;
-      const nextRetail = Number(line?.on_wholesale_retail) ? 1 : 0;
-      if (existingRetail !== nextRetail) {
-        idx = sameSkuIdxs[0];
-      }
-    }
-  }
 
   if (idx >= 0) {
     lines[idx] = {
@@ -1893,7 +1878,7 @@ export async function upsertLocalPosCartLine(
           : lines[idx].on_wholesale_retail,
     };
   } else {
-    // CreateAFreshNewItem — INSERT a new temp line.
+    // CreateAFreshNewItem — INSERT a new temp line (incl. opposite bag/kg mode).
     lines.push({
       ...line,
       client_line_id: line.client_line_id ?? newClientSaleUuid(),

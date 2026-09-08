@@ -99,7 +99,7 @@ describe("local cart mutation race", () => {
     expect(Number(stored?.lines?.[0]?.quantity)).toBe(5);
   });
 
-  it("converts sole kg line to bag in place instead of appending a twin", async () => {
+  it("appends opposite-mode Sugar as a second line (bag + kg both allowed)", async () => {
     const { upsertLocalPosCartLine, withLocalCartMutation, awaitLocalCartWrites } =
       await import("@/lib/pos-offline");
     const { idbGetLocalCart } = await import("@/lib/pos-offline-db");
@@ -135,10 +135,8 @@ describe("local cart mutation race", () => {
 
     const stored = await idbGetLocalCart("active");
     const polished = (stored?.lines ?? []).filter((l) => l.product_code === "1261001");
-    expect(polished).toHaveLength(1);
-    expect(Number(polished[0].on_wholesale_retail)).toBe(0);
-    expect(String(polished[0].client_line_id)).toBe("polished-1");
-    expect(Number(polished[0].quantity)).toBe(90);
+    expect(polished).toHaveLength(2);
+    expect(polished.map((l) => Number(l.on_wholesale_retail)).sort()).toEqual([0, 1]);
   });
 
   it("swaps product on the same update_no in place (LightStores UpdateItem)", async () => {

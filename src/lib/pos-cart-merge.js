@@ -33,10 +33,9 @@ export function findMergeableCartLine(
 }
 
 /**
- * After F12 flips retail/wholesale, re-adding the same SKU must convert the
- * sole opposite-mode row in place — never spawn "1 bag" + "1 kg".
- * When that SKU already appears more than once (intentional bag + kg, or two
- * bag lines with combine off), leave them alone and let add create a new row.
+ * After F12 flips retail/wholesale on an *existing* line (qty Enter), helpers may
+ * still look up the sole opposite-mode row. New adds must NOT use this — bag + kg
+ * for the same SKU are intentional separate lines.
  */
 export function findModeConvertibleCartLine(
   cartLines,
