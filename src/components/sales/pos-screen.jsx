@@ -6020,6 +6020,8 @@ export function PosScreen({ standalone = false }) {
     keepOptimisticOnFailure = false,
     /** Frozen cart from an in-place swap — used to keep the new SKU if the server lags. */
     clientSkuSnapshot = null,
+    /** Persist before setCart — classic qty Enter waits on IndexedDB / TemporaryCart. */
+    skipOptimisticPaint = false,
   }) {
     // Background previous-order edit owns TemporaryCart — sell on a local workspace
     // so scans never merge into the edit being uploaded.
@@ -6440,6 +6442,8 @@ export function PosScreen({ standalone = false }) {
       );
 
     const paintOptimisticOn = (baseCart) => {
+      // Classic qty Enter persists first (skipOptimisticPaint) — do not flash UI early.
+      if (skipOptimisticPaint) return null;
       // Classic qty/F12 already painted this row — do not rebuild with a pending-*
       // token (that raced TemporaryCart merge and left Sugar as kg + bag).
       if (!baseCart?.id || needsLineDiscountApproval || lineAlreadyMatchesEdit) return null;
@@ -6787,7 +6791,8 @@ export function PosScreen({ standalone = false }) {
       return true;
     }
 
-    if (!painted) {
+    // When skipOptimisticPaint, TemporaryCart must succeed before setCart.
+    if (!painted && !skipOptimisticPaint) {
       cartRef.current = optimisticCart;
       setCart(optimisticCart);
     }
@@ -9242,8 +9247,8 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      // Classic / previous-order / offline: paint the typed qty immediately so Enter
-      // never snaps back to the old number while TemporaryCart is still catching up.
+      // Classic / previous-order / offline: build the next cart in memory, persist
+      // IndexedDB / TemporaryCart under the overlay, THEN update the UI.
       if (classicLayout || localDraftEdit) {
         const live = cartRef.current ?? activeCart;
         const skuLineCountBefore = (live?.lines ?? []).filter(
@@ -9271,14 +9276,9 @@ export function PosScreen({ standalone = false }) {
           product_vat: lineProductVat(product, computed.lineAmount),
           uom: computed.uomLabel || existing.uom || product.package_name,
         };
-        // F12 bags↔kg used to leave a same-mode twin on screen (two Bags rows)
-        // because this paint path skipped collapse — commitCartLine then skipped
-        // optimistic twin-drop once the painted row already matched the edit.
         let paintedLines = finalizeCartLineList(lines, {
           combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
         });
-        // Qty Enter / F12 on a single SKU row must never spawn a copy in offline DB
-        // or on screen — even when "combine identical" is off.
         paintedLines = dedupeSkuLinesAfterInPlaceEdit(paintedLines, {
           productCode: existing.product_code,
           keepLine: lines[idx],
@@ -9290,11 +9290,7 @@ export function PosScreen({ standalone = false }) {
             ? withEditDraftDirty({ ...live, lines: paintedLines })
             : { ...live, lines: paintedLines },
         );
-        cartRef.current = nextCart;
-        setCart(nextCart);
 
-        // After collapse, PATCH the surviving same-mode row (earlier twin may keep its id).
-        // Prefer the row that still carries the frozen TemporaryCart identity.
         const surviving =
           (frozenServerPatchRef
             ? paintedLines.find(
@@ -9331,11 +9327,13 @@ export function PosScreen({ standalone = false }) {
               }
             : computed;
 
-        if (isPreviousOrderEditSession(nextCart)) {
+        const finishQtyUi = () => {
           if (qtyActuallyChanged || modeActuallyChanged) {
-            await notePreviousOrderEditSuccess("qty", qtySuccessMsg);
-          } else {
-            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+            if (isPreviousOrderEditSession(cartRef.current)) {
+              void notePreviousOrderEditSuccess("qty", qtySuccessMsg);
+            } else {
+              announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
+            }
           }
           if (modeActuallyChanged) {
             setSelectedProduct(null);
@@ -9347,12 +9345,43 @@ export function PosScreen({ standalone = false }) {
           focusedCartQtyLineIdRef.current = null;
           setFocusedCartQtyLineId(null);
           focusScanAfterItemAdded();
+        };
+
+        if (isPreviousOrderEditSession(nextCart)) {
+          try {
+            // Persist draft first — notePreviousOrderEditSuccess would save cartRef (stale).
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+            if (nextCart.offline || nextCart.offline_client_sale_uuid) {
+              await awaitLocalCartWrites();
+            }
+            cartRef.current = nextCart;
+            setCart(nextCart);
+            if (qtyActuallyChanged || modeActuallyChanged) {
+              const msg = qtySuccessMsg || "Quantity updated successfully";
+              notifySuccess(msg);
+              setStatusMessage(msg);
+            }
+            if (modeActuallyChanged) {
+              setSelectedProduct(null);
+              selectedProductRef.current = null;
+              setSelectedProductCode(null);
+              setLineForm(EMPTY_LINE);
+            }
+            setSelectedLineId(null);
+            focusedCartQtyLineIdRef.current = null;
+            setFocusedCartQtyLineId(null);
+            focusScanAfterItemAdded();
+          } catch (e) {
+            setStatusMessage(
+              e instanceof ApiError ? e.message : "Could not save quantity. Try again.",
+            );
+          }
           return;
         }
 
         if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
-          if (usesLocalPosCartWorkspace(nextCart)) {
-            try {
+          try {
+            if (usesLocalPosCartWorkspace(nextCart)) {
               const saved = await saveLocalPosCart({
                 ...nextCart,
                 lines: (nextCart.lines ?? []).map((l) => ({
@@ -9360,6 +9389,7 @@ export function PosScreen({ standalone = false }) {
                   client_line_id: l.client_line_id ?? l.update_code ?? l.id,
                 })),
               });
+              await awaitLocalCartWrites();
               const presented = presentLocalOfflineCart(saved);
               const liveAfter = cartRef.current;
               if (
@@ -9371,44 +9401,22 @@ export function PosScreen({ standalone = false }) {
               }
               cartRef.current = presented;
               setCart(presented);
-            } catch {
-              /* keep in-memory qty */
+            } else {
+              cartRef.current = nextCart;
+              setCart(nextCart);
             }
+            finishQtyUi();
+          } catch (e) {
+            setStatusMessage(
+              e instanceof ApiError ? e.message : "Could not save quantity. Try again.",
+            );
           }
-          if (qtyActuallyChanged || modeActuallyChanged) {
-            announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
-          }
-          if (modeActuallyChanged) {
-            setSelectedProduct(null);
-            selectedProductRef.current = null;
-            setSelectedProductCode(null);
-            setLineForm(EMPTY_LINE);
-          }
-          setSelectedLineId(null);
-          focusedCartQtyLineIdRef.current = null;
-          setFocusedCartQtyLineId(null);
-          focusScanAfterItemAdded();
           return;
         }
 
-        // Live TemporaryCart: UI already shows the new qty — announce then sync.
-        // Never revert the painted qty if PATCH fails (stale update_no used to snap 1→2).
-        if (qtyActuallyChanged || modeActuallyChanged) {
-          announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
-        }
-        // Drop parked entry SKU after F12 convert so Scan Enter cannot POST a twin.
-        if (modeActuallyChanged) {
-          setSelectedProduct(null);
-          selectedProductRef.current = null;
-          setSelectedProductCode(null);
-          setLineForm(EMPTY_LINE);
-        }
-        setSelectedLineId(null);
-        focusedCartQtyLineIdRef.current = null;
-        setFocusedCartQtyLineId(null);
-        focusScanAfterItemAdded();
+        // Live TemporaryCart: PATCH first (no optimistic paint), then UI from response.
         try {
-          await commitCartLine({
+          const ok = await commitCartLine({
             product,
             computed: commitComputed,
             incrementBaseQty: commitComputed.baseQty,
@@ -9424,11 +9432,16 @@ export function PosScreen({ standalone = false }) {
             discount: perUnitDiscount,
             clearEntry: false,
             successMessage: null,
-            unlockUiEarly: true,
+            unlockUiEarly: false,
+            skipOptimisticPaint: true,
             lineRetailStockFlagOverride: sessionIsRetail,
-            keepOptimisticOnFailure: true,
+            keepOptimisticOnFailure: false,
           });
-          const afterCart = cartRef.current ?? nextCart;
+          if (!ok) {
+            setStatusMessage("Could not save quantity. Try again.");
+            return;
+          }
+          const afterCart = cartRef.current;
           const dedupedAfter = dedupeSkuLinesAfterInPlaceEdit(afterCart?.lines ?? [], {
             productCode: existing.product_code,
             keepLine: surviving,
@@ -9439,40 +9452,28 @@ export function PosScreen({ standalone = false }) {
             const cleaned = { ...afterCart, lines: dedupedAfter };
             cartRef.current = cleaned;
             setCart(cleaned);
-            if (usesLocalPosCartWorkspace(cleaned)) {
-              try {
-                const saved = await saveLocalPosCart({
-                  ...cleaned,
-                  lines: dedupedAfter.map((l) => ({
-                    ...l,
-                    client_line_id: l.client_line_id ?? l.update_code ?? l.id,
-                  })),
-                });
-                const presented = presentLocalOfflineCart(saved);
-                cartRef.current = presented;
-                setCart(presented);
-              } catch {
-                /* keep in-memory */
-              }
-            }
           }
           const after = (cartRef.current?.lines ?? []).find(
             (row) =>
               sameLineId(row.id, surviving.id) ||
               sameLineId(row.id, existing.id) ||
               String(cartLineRef(row)) ===
-                String(cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef),
+                String(cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef) ||
+              (frozenServerPatchRef &&
+                serverPersistedCartLineRef(row) === frozenServerPatchRef),
           );
           if (
             after &&
             Math.abs(Number(after.quantity ?? 0) - Number(commitComputed.baseQty)) > 0.0001
           ) {
-            // Server response lost the edit — re-apply the cashier's qty.
             const repaired = cartRef.current ?? nextCart;
             const repairedLines = [...(repaired.lines ?? [])];
             const repairIdx = findCartLineIndexByRef(
               repairedLines,
-              cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef,
+              frozenServerPatchRef ??
+                cartLineRef(surviving) ??
+                cartLineRef(existing) ??
+                lineRef,
             );
             if (repairIdx >= 0) {
               repairedLines[repairIdx] = {
@@ -9492,26 +9493,11 @@ export function PosScreen({ standalone = false }) {
               cartRef.current = fixed;
               setCart(fixed);
             }
-          } else {
-            // PATCH may return collapsed twins — always sanitize what we show.
-            const liveAfter = cartRef.current;
-            if (liveAfter?.lines?.length) {
-              const collapsed = finalizeCartLineList(liveAfter.lines, {
-                combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-              });
-              if (collapsed.length !== liveAfter.lines.length) {
-                const sanitized = { ...liveAfter, lines: collapsed };
-                cartRef.current = sanitized;
-                setCart(sanitized);
-              }
-            }
           }
+          finishQtyUi();
         } catch (e) {
-          // Qty already painted — keep it; tell the cashier sync can retry.
           setStatusMessage(
-            e instanceof ApiError
-              ? e.message
-              : `${qtySuccessMsg} — save may still be syncing.`,
+            e instanceof ApiError ? e.message : "Could not save quantity. Try again.",
           );
         }
         return;
@@ -9544,9 +9530,8 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    // Classic (and previous-order local drafts): paint + queued TemporaryCart/IDB
-    // sync under the same blocking overlay as delete — assumption is the save is
-    // queued, so the till waits until the queue finishes.
+    // Classic (and previous-order local drafts): persist IndexedDB / TemporaryCart
+    // under the blocking overlay first; UI updates only after the save succeeds.
     if (classicLayout || localDraftEdit) {
       void runWithLineSaveOverlay(
         async () => {
