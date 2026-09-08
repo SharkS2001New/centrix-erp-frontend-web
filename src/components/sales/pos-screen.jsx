@@ -6469,9 +6469,11 @@ export function PosScreen({ standalone = false }) {
     // Classic line qty/swap edits already have a TemporaryCart id on the workspace.
     // Calling ensureCart here rematerialized the server cart and snapped the qty
     // back (e.g. typed 1 → briefly/always 2) before PATCH could land.
+    // Persist-first (skipOptimisticPaint) must also skip ensureCart — otherwise the
+    // overlay waits on a rematerialized old qty and never paints the Entered value.
     const activeCart =
       intendedEdit &&
-      unlockUiEarly &&
+      (unlockUiEarly || skipOptimisticPaint) &&
       isServerPosCartId(liveCart?.id) &&
       !isFreshWorkspacePlaceholder(liveCart)
         ? liveCart
@@ -9448,14 +9450,43 @@ export function PosScreen({ standalone = false }) {
                 })),
               });
               await awaitLocalCartWrites();
-              const presented = presentLocalOfflineCart(saved);
-              const liveAfter = cartRef.current;
-              if (
-                liveAfter &&
-                Number(liveAfter._local_mutation_seq ?? 0) >
-                  Number(presented?._local_mutation_seq ?? 0)
-              ) {
-                return;
+              let presented = presentLocalOfflineCart(saved);
+              const qtyLanded = (presented?.lines ?? []).some(
+                (row) =>
+                  (cartLinesShareIdentity(row, existing) ||
+                    (String(row.product_code) === String(existing.product_code) &&
+                      Number(row.on_wholesale_retail ?? 0) ===
+                        Number(sessionIsRetail ? 1 : 0))) &&
+                  Math.abs(Number(row.quantity ?? 0) - Number(computed.baseQty)) < 0.0001,
+              );
+              if (!qtyLanded) {
+                // Stale IDB return (seq/epoch race) — force one more write then paint.
+                const forced = withLocalCartMutation({
+                  ...nextCart,
+                  lines: nextCart.lines,
+                });
+                const saved2 = await saveLocalPosCart({
+                  ...forced,
+                  lines: (forced.lines ?? []).map((l) => ({
+                    ...l,
+                    client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                  })),
+                });
+                await awaitLocalCartWrites();
+                presented = presentLocalOfflineCart(saved2);
+                const landed2 = (presented?.lines ?? []).some(
+                  (row) =>
+                    (cartLinesShareIdentity(row, existing) ||
+                      (String(row.product_code) === String(existing.product_code) &&
+                        Number(row.on_wholesale_retail ?? 0) ===
+                          Number(sessionIsRetail ? 1 : 0))) &&
+                    Math.abs(Number(row.quantity ?? 0) - Number(computed.baseQty)) <
+                      0.0001,
+                );
+                if (!landed2) {
+                  setStatusMessage("Could not save quantity. Try again.");
+                  return;
+                }
               }
               cartRef.current = presented;
               setCart(presented);
@@ -9472,7 +9503,8 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        // Live TemporaryCart: PATCH first (no optimistic paint), then UI from response.
+        // Live TemporaryCart: PATCH first (no optimistic paint), then force-paint the
+        // cashier's qty (merge alone often kept the old number after skipOptimisticPaint).
         try {
           const ok = await commitCartLine({
             product,
@@ -9499,59 +9531,23 @@ export function PosScreen({ standalone = false }) {
             setStatusMessage("Could not save quantity. Try again.");
             return;
           }
-          const afterCart = cartRef.current;
-          const dedupedAfter = dedupeSkuLinesAfterInPlaceEdit(afterCart?.lines ?? [], {
+          const liveAfter = cartRef.current;
+          let paintedLines = nextCart.lines ?? [];
+          paintedLines = dedupeSkuLinesAfterInPlaceEdit(paintedLines, {
             productCode: existing.product_code,
             keepLine: surviving,
             modeFlipped: switchingMode,
             skuLineCountBefore,
           });
-          if (dedupedAfter.length !== (afterCart?.lines ?? []).length) {
-            const cleaned = { ...afterCart, lines: dedupedAfter };
-            cartRef.current = cleaned;
-            setCart(cleaned);
-          }
-          const after = (cartRef.current?.lines ?? []).find(
-            (row) =>
-              sameLineId(row.id, surviving.id) ||
-              sameLineId(row.id, existing.id) ||
-              String(cartLineRef(row)) ===
-                String(cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef) ||
-              (frozenServerPatchRef &&
-                serverPersistedCartLineRef(row) === frozenServerPatchRef),
-          );
-          if (
-            after &&
-            Math.abs(Number(after.quantity ?? 0) - Number(commitComputed.baseQty)) > 0.0001
-          ) {
-            const repaired = cartRef.current ?? nextCart;
-            const repairedLines = [...(repaired.lines ?? [])];
-            const repairIdx = findCartLineIndexByRef(
-              repairedLines,
-              frozenServerPatchRef ??
-                cartLineRef(surviving) ??
-                cartLineRef(existing) ??
-                lineRef,
-            );
-            if (repairIdx >= 0) {
-              repairedLines[repairIdx] = {
-                ...repairedLines[repairIdx],
-                quantity: commitComputed.baseQty,
-                unit_price: commitComputed.unitPricePerBase,
-                display_unit_price: commitComputed.displayUnitPrice,
-                amount: commitComputed.lineAmount,
-                on_wholesale_retail: sessionIsRetail ? 1 : 0,
-              };
-              const fixed = {
-                ...repaired,
-                lines: finalizeCartLineList(repairedLines, {
-                  combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-                }),
-              };
-              cartRef.current = fixed;
-              setCart(fixed);
-            }
-          }
+          const presented = {
+            ...(liveAfter && String(liveAfter.id) === String(nextCart.id)
+              ? liveAfter
+              : nextCart),
+            lines: paintedLines,
+            update_no: liveAfter?.update_no ?? nextCart.update_no,
+          };
+          cartRef.current = presented;
+          setCart(presented);
           finishQtyUi();
         } catch (e) {
           setStatusMessage(
