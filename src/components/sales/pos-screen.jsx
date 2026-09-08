@@ -7434,28 +7434,25 @@ export function PosScreen({ standalone = false }) {
       updateSearchQuery(product.product_code ?? "");
       productSearchRef.current?.setDraftValue?.(product.product_code ?? "");
       setSearchResults([]);
-      setStatusMessage(`Changing to ${posProductDisplayName(product)}…`);
-      // Same qty (e.g. Sugar 2 bag → Kamande 2 bag): finish as soon as the
-      // replacement is chosen. On failure, park on qty so the cashier can retry.
-      void (async () => {
-        const ok = await completeSwapFromDraft(String(quantity));
-        if (ok) return;
-        let cancelled = false;
-        const focusSwapQty = () => {
-          if (cancelled) return;
-          const el = swapLineQtyRef.current;
-          if (!el) return false;
-          el.focus({ preventScroll: true });
-          el.select?.();
-          return typeof document !== "undefined" && document.activeElement === el;
-        };
+      setStatusMessage(
+        `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
+      );
+      // Park on line qty so the cashier confirms (or changes) qty before the swap saves.
+      let cancelled = false;
+      const focusSwapQty = () => {
+        if (cancelled) return;
+        const el = swapLineQtyRef.current;
+        if (!el) return false;
+        el.focus({ preventScroll: true });
+        el.select?.();
+        return typeof document !== "undefined" && document.activeElement === el;
+      };
+      window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => {
-            if (focusSwapQty()) return;
-            window.setTimeout(() => focusSwapQty(), 40);
-          });
+          if (focusSwapQty()) return;
+          window.setTimeout(() => focusSwapQty(), 40);
         });
-      })();
+      });
       return;
     }
 
