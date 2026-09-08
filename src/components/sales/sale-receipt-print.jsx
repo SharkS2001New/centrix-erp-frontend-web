@@ -39,6 +39,7 @@ import { buildThermalReceiptCss } from "@/lib/thermal-receipt-layout";
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
 import { resolveSaleReceiptChangeGiven, resolveSaleReceiptTopupAmount } from "@/lib/checkout-payment-splits";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
+import { resolveEnablePosCashRounding } from "@/lib/sales-settings";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -285,10 +286,12 @@ export function buildSaleReceiptHtml(
 
   const printPx = createOrgPrintPx(generalSettings, "thermal");
   const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
+  // Match till enablePosCashRounding — do not use merged sales default (false).
+  // Classic POS cash-rounds when the platform flag is unset.
   const applyCashRound =
     cashRound != null
       ? Boolean(cashRound)
-      : Boolean(salesSettings?.enable_pos_cash_rounding);
+      : resolveEnablePosCashRounding(moduleSettings ?? { sales: salesSettings });
 
   const rawItems = sale.items ?? [];
   // Always combine identical SKUs on the receipt. Cart "combine identical products"

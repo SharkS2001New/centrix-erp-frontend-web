@@ -20,6 +20,7 @@ import { fetchOrganizationLogoDataUrl } from "@/lib/organization-logo";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import {
   mergeSalesSettings,
+  resolveEnablePosCashRounding,
   resolveOrderPrintDocumentType,
 } from "@/lib/sales-settings";
 import {
@@ -586,6 +587,11 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       kraQrDataUrl,
       printWindow,
       salesSettings: sales,
+      // Same resolver as the till (classic defaults ON when flag unset).
+      cashRound:
+        options.cashRound != null
+          ? Boolean(options.cashRound)
+          : resolveEnablePosCashRounding(moduleSettings),
     };
 
     if (documentType === "invoice" || isProforma) {

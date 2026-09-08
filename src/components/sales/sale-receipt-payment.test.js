@@ -145,4 +145,30 @@ describe("sale receipt payment rows", () => {
     expect(tenders.cashAmount).toBe(40000);
     expect(tenders.tenderPaid).toBe(40000);
   });
+
+  it("cash-rounds line amounts on classic POS receipts (flag unset defaults on)", () => {
+    const sale = {
+      order_total: 1595,
+      amount_paid: 1595,
+      channel: "pos",
+      cash: 1595,
+      items: [
+        {
+          product_code: "1300009",
+          product_name: "SUGAR 50 KG",
+          quantity: 12.5,
+          amount: 1592,
+          display_unit_price: 127.4,
+          on_wholesale_retail: 1,
+        },
+      ],
+    };
+    const html = buildSaleReceiptHtml(sale, {
+      seller: { name: "Test Shop" },
+      branding: { showHeader: false, display: "name", organizationName: "Test Shop" },
+      moduleSettings: { sales: { external_pos_layout: "classic" } },
+    });
+    expect(html).toMatch(/1[,.]?595/);
+    expect(html).not.toMatch(/>1[,.]?592</);
+  });
 });
