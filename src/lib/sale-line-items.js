@@ -13,6 +13,10 @@ import {
   saleLineQtyPartsForPrint,
   uomConversionFactor,
 } from "@/lib/stock-uom";
+import {
+  finalizePosDisplayUnitPrice,
+  finalizePosLineAmount,
+} from "@/lib/pos-cash-round";
 
 export function saleLineUom(line, uomById) {
   const unitId = line?.product?.unit_id ?? line?.unit_id ?? null;
@@ -302,10 +306,13 @@ function saleLineRetailPackage(line) {
  * Receipt / thermal print columns — unit price prefers stored display_unit_price
  * (matches POS), else amount ÷ sold qty. Keep cents so qty × price can match amount
  * (Math.round to whole shillings made 152.5 → 153 while amount stayed 305).
+ *
+ * When `cashRound` is on (platform enable_pos_cash_rounding), line amounts use
+ * Light Stores cash rounding so the receipt matches the till screen (e.g. 1,592 → 1,595).
  */
 export function resolveSaleLinePrintColumns(
   line,
-  { uom = null, retailPackage = null, legacyPrint = false } = {},
+  { uom = null, retailPackage = null, legacyPrint = false, cashRound = false } = {},
 ) {
   if (legacyPrint) {
     const baseQty = Number(line?.quantity ?? 0);
@@ -321,7 +328,7 @@ export function resolveSaleLinePrintColumns(
       basePrice: unitPrice,
       markup: 0,
       discount,
-      amount: Math.round(amountAfterDisc * 100) / 100,
+      amount: finalizePosLineAmount(amountAfterDisc, { cashRound }),
     };
   }
 
@@ -348,12 +355,21 @@ export function resolveSaleLinePrintColumns(
         : 0;
 
   const storedDisplay = Number(line?.display_unit_price);
-  const unitPrice =
-    qty > 0 && (amountBeforeDisc > 0 || discount > 0)
-      ? Math.round((amountBeforeDisc / qty) * 100) / 100
-      : Number.isFinite(storedDisplay) && storedDisplay > 0
-        ? Math.round(storedDisplay * 100) / 100
-        : 0;
+  const hasStoredDisplay = Number.isFinite(storedDisplay) && storedDisplay > 0;
+  // Match till Price column: with cash rounding prefer stored display unit so
+  // amount÷qty after cash-round does not rewrite 127.4 into 127.6.
+  let unitPrice;
+  if (cashRound && hasStoredDisplay) {
+    unitPrice = finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
+  } else if (qty > 0 && (amountBeforeDisc > 0 || discount > 0)) {
+    unitPrice = Math.round((amountBeforeDisc / qty) * 100) / 100;
+  } else if (hasStoredDisplay) {
+    unitPrice = Math.round(storedDisplay * 100) / 100;
+  } else {
+    unitPrice = 0;
+  }
+
+  const printedAmount = finalizePosLineAmount(amountAfterDisc, { cashRound });
 
   if (isRetail) {
     const basePrice =
@@ -369,7 +385,7 @@ export function resolveSaleLinePrintColumns(
       basePrice,
       markup,
       discount,
-      amount: Math.round(amountAfterDisc * 100) / 100,
+      amount: printedAmount,
     };
   }
 
@@ -399,7 +415,7 @@ export function resolveSaleLinePrintColumns(
     basePrice,
     markup,
     discount,
-    amount: Math.round(amountAfterDisc * 100) / 100,
+    amount: printedAmount,
   };
 }
 

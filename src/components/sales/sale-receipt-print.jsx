@@ -278,12 +278,17 @@ export function buildSaleReceiptHtml(
     preparedBy = null,
     user = null,
     organization = null,
+    cashRound = null,
   } = {},
 ) {
   if (!sale) return "";
 
   const printPx = createOrgPrintPx(generalSettings, "thermal");
   const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
+  const applyCashRound =
+    cashRound != null
+      ? Boolean(cashRound)
+      : Boolean(salesSettings?.enable_pos_cash_rounding);
 
   const rawItems = sale.items ?? [];
   // Always combine identical SKUs on the receipt. Cart "combine identical products"
@@ -349,6 +354,7 @@ export function buildSaleReceiptHtml(
     layout: "thermal",
     legacyPrint: isLegacySale(sale),
     showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
+    cashRound: applyCashRound,
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,

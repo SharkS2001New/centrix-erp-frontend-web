@@ -345,4 +345,18 @@ describe("resolveSaleLinePrintColumns", () => {
     );
     expect(cols.unitPrice).toBe(152.5);
   });
+
+  it("applies Light Stores cash rounding to receipt line amount", () => {
+    const cols = resolveSaleLinePrintColumns(
+      {
+        quantity: 12.5,
+        amount: 1592,
+        on_wholesale_retail: 1,
+        display_unit_price: 127.4,
+      },
+      { cashRound: true },
+    );
+    expect(cols.amount).toBe(1595);
+    expect(cols.unitPrice).toBe(127.4);
+  });
 });

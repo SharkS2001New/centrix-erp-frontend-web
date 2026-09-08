@@ -277,6 +277,7 @@ export function buildSaleDocumentLineRows(
     layout = "thermal",
     legacyPrint = false,
     showFullPackageUomOnDocuments = false,
+    cashRound = false,
   } = {},
 ) {
   const rows = items ?? [];
@@ -297,6 +298,7 @@ export function buildSaleDocumentLineRows(
         const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, {
           uom,
           legacyPrint,
+          cashRound,
         });
         const { quantity, package: packageLabel } = saleLinePrintQtyPackage(
           line,
@@ -333,11 +335,15 @@ export function buildSaleDocumentLineRows(
       // Always derive from sold amount (markups included) — never bare catalog selling_price.
       const unitPrice = escapeHtml(
         formatPrintAmount(
-          resolveSaleLinePrintColumns(line, { uom, legacyPrint }).unitPrice,
+          resolveSaleLinePrintColumns(line, { uom, legacyPrint, cashRound }).unitPrice,
         ),
       );
       const discount = escapeHtml(formatPrintAmount(line.discount_given ?? 0));
-      const amount = escapeHtml(formatPrintAmount(line.amount ?? 0));
+      const amount = escapeHtml(
+        formatPrintAmount(
+          resolveSaleLinePrintColumns(line, { uom, legacyPrint, cashRound }).amount,
+        ),
+      );
 
       if (showDiscountColumn) {
         return `<tr>
