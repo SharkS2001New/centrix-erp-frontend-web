@@ -308,7 +308,7 @@ export function FinanceSettingsPanel({
       a.download = "CentrixKraAgent.zip";
       a.click();
       URL.revokeObjectURL(url);
-      notifySuccess("Centrix KRA Agent downloaded. Unzip on the shop PC and run INSTALL.bat as Administrator.");
+      notifySuccess("Centrix KRA Agent downloaded. Unzip on the shop PC and run BUILD-AND-INSTALL.bat as Administrator.");
       await refreshKraAgentStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "KRA agent download failed.");
@@ -447,9 +447,9 @@ export function FinanceSettingsPanel({
                     <div>
                       <p className="theme-heading text-sm font-medium">Centrix KRA Agent</p>
                       <p className="theme-subtext mt-0.5 text-xs">
-                        Download the installer (exe + INSTALL.bat — no source). Centrix cloud talks to the
-                        agent, which calls local Comstore / Smart VSCU. Start Comstore with Windows; the
-                        agent keeps pinging Centrix and the fiscal device.
+                        Download the agent package and run BUILD-AND-INSTALL.bat on the shop PC. Centrix
+                        cloud talks to the agent, which calls local Comstore / Smart VSCU. Start Comstore
+                        with Windows; the agent keeps pinging Centrix and the fiscal device.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

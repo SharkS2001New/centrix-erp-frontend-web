@@ -2,26 +2,14 @@
 
 Windows service that bridges **Centrix cloud** to **local Comstore** on the shop PC.
 
-## Shop install (binary only)
+## Shop install
 
-Finance → KRA → **Download Centrix KRA Agent** serves a zip with:
+Finance → KRA → **Download Centrix KRA Agent** zips this folder with a prefilled `config.json`.
 
-- `Centrix.KraAgent.exe` (self-contained)
-- `config.json` (org token, Comstore URL, hardware IP)
-- `INSTALL.bat` / `uninstall.bat`
-
-No source code and no .NET SDK on the shop PC. Run **INSTALL.bat** as Administrator.
-
-### Build the installer for the web host
-
-```bash
-cd kra-agent-dotnet
-./scripts/stage-release.sh
-```
-
-(On Windows: `.\scripts\stage-release.ps1`.)
-
-This writes `release/win-x64/` (exe + INSTALL.bat only). Deploy that folder with the Centrix web app, or set `KRA_AGENT_RELEASE_DIR`.
+1. Unzip on the shop PC.
+2. Right-click **BUILD-AND-INSTALL.bat** → Run as administrator (.NET 8 SDK required once).
+3. Start Comstore with Windows (its own service / startup).
+4. Open http://127.0.0.1:9261 → Test connection.
 
 ## Runtime behaviour
 
@@ -32,6 +20,10 @@ This writes `release/win-x64/` (exe + INSTALL.bat only). Deploy that folder with
 - Pings the Smart VSCU / fiscal hardware IP from Finance settings.
 - If Comstore is down, Finance shows “start Comstore manually”; the agent service stays up.
 
-## Dev (source) install
+## Optional: stage a binary-only release
 
-Developers with the .NET 8 SDK can still use `BUILD-AND-INSTALL.bat` from the source tree. Shops should only receive the staged release zip.
+```bash
+./scripts/stage-release.sh
+```
+
+Builds `release/win-x64/` for manual distribution. Finance download still packages the agent source tree by default.
