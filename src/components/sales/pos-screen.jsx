@@ -7436,8 +7436,26 @@ export function PosScreen({ standalone = false }) {
       setSearchResults([]);
       setStatusMessage(`Changing to ${posProductDisplayName(product)}…`);
       // Same qty (e.g. Sugar 2 bag → Kamande 2 bag): finish as soon as the
-      // replacement is chosen. Cashier can edit qty on the new line afterward.
-      void completeSwapFromDraft(String(quantity));
+      // replacement is chosen. On failure, park on qty so the cashier can retry.
+      void (async () => {
+        const ok = await completeSwapFromDraft(String(quantity));
+        if (ok) return;
+        let cancelled = false;
+        const focusSwapQty = () => {
+          if (cancelled) return;
+          const el = swapLineQtyRef.current;
+          if (!el) return false;
+          el.focus({ preventScroll: true });
+          el.select?.();
+          return typeof document !== "undefined" && document.activeElement === el;
+        };
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            if (focusSwapQty()) return;
+            window.setTimeout(() => focusSwapQty(), 40);
+          });
+        });
+      })();
       return;
     }
 
@@ -9208,27 +9226,10 @@ export function PosScreen({ standalone = false }) {
       }
       const retailPackage = getRetailPackage(liveLine.product_code);
 
-      // F12 with the same typed number: keep this line's stock (base qty) and only
-      // change the unit label (25 kg → 0.5 bag, 1 bag → 50 kg). Reinterpreting the
-      // field as the new unit (25 kg → 25 bags) blows stock checks and left the
-      // row stuck on kg. When the cashier also edits the number, use that entry
-      // in the new mode.
-      let pricingEntryQty = entryQty;
-      if (switchingMode && !qtyActuallyChanged) {
-        pricingEntryQty = Number(
-          parseDecimalInput(
-            posEntryQtyFromCartLine(
-              {
-                ...liveLine,
-                on_wholesale_retail: sessionIsRetail ? 1 : 0,
-              },
-              product,
-              retailPackage,
-            ),
-          ),
-        );
-        if (!(pricingEntryQty > 0)) pricingEntryQty = entryQty;
-      }
+      // Classic LightStores: the number in the qty field is the sold qty in the
+      // *current* F12 mode. F12 + Enter with "2" on a kg line → 2 bags (not 2 kg
+      // of stock re-expressed as a fraction of a bag).
+      const pricingEntryQty = entryQty;
 
       // When F12 session differs from the line's mode, reprice from catalog —
       // do not lock the old wholesale/retail unit.
@@ -9307,13 +9308,16 @@ export function PosScreen({ standalone = false }) {
           excludeLineId: liveLine?.id ?? liveLine?.update_code,
         });
         if (!stockCheck.ok) {
+          const stockMsg = posStockInsufficientMessage(stockCheck, {
+            product,
+            sellWholesale: !sessionIsRetail,
+            retailPackage,
+            posSalesConfig,
+          });
           setStatusMessage(
-            posStockInsufficientMessage(stockCheck, {
-              product,
-              sellWholesale: !sessionIsRetail,
-              retailPackage,
-              posSalesConfig,
-            }),
+            switchingMode
+              ? `${stockMsg} (F12 ${sessionIsRetail ? "kg" : "bags"} needs more stock for qty ${pricingEntryQty}.)`
+              : stockMsg,
           );
           return;
         }
@@ -17302,6 +17306,15 @@ export function PosScreen({ standalone = false }) {
                 }}
                 onSetQty={(line, value) => void setCartLineEntryQuantity(line, value)}
                 onQtyFocus={(line) => {
+                  // Incomplete swap (code clicked, no replacement yet) blocks qty
+                  // Enter with "finish swap first". Drop it when the cashier focuses
+                  // qty — they want to edit quantity, not swap.
+                  if (
+                    (replacingLineIdRef.current || replaceTargetSnapshotRef.current) &&
+                    !swapDraftRef.current?.product
+                  ) {
+                    clearSwapChrome();
+                  }
                   const id = cartLineRef(line) ?? line.id;
                   focusedCartQtyLineIdRef.current = id;
                   setFocusedCartQtyLineId(id);
