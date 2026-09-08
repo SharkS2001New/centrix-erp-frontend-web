@@ -1843,15 +1843,29 @@ export async function upsertLocalPosCartLine(
       : nextLocalCartMutationSeq();
   const lines = [...(cart.lines ?? [])];
   const needleKeys = new Set(cartLineIdentityKeys(line));
+  const needleCode =
+    line?.product_code != null && String(line.product_code).trim() !== ""
+      ? String(line.product_code)
+      : null;
+  const sameSkuIdentity = (row) => {
+    if (!needleCode) return true;
+    const rowCode = row?.product_code;
+    if (rowCode == null || String(rowCode).trim() === "") return true;
+    return String(rowCode) === needleCode;
+  };
 
   let idx = -1;
   if (needleKeys.size) {
-    idx = lines.findIndex((row) =>
-      cartLineIdentityKeys(row).some((key) => needleKeys.has(key)),
+    idx = lines.findIndex(
+      (row) =>
+        sameSkuIdentity(row) &&
+        cartLineIdentityKeys(row).some((key) => needleKeys.has(key)),
     );
   }
   if (idx < 0 && line) {
-    idx = lines.findIndex((row) => cartLinesShareIdentity(row, line));
+    idx = lines.findIndex(
+      (row) => sameSkuIdentity(row) && cartLinesShareIdentity(row, line),
+    );
   }
   if (idx < 0 && combineIdenticalLines !== false) {
     const key = lineKey(line);

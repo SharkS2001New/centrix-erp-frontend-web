@@ -140,4 +140,49 @@ describe("local cart mutation race", () => {
     expect(String(polished[0].client_line_id)).toBe("polished-1");
     expect(Number(polished[0].quantity)).toBe(90);
   });
+
+  it("does not update a different SKU when identity keys collide", async () => {
+    const { upsertLocalPosCartLine, withLocalCartMutation, awaitLocalCartWrites } =
+      await import("@/lib/pos-offline");
+    const { idbGetLocalCart } = await import("@/lib/pos-offline-db");
+
+    await upsertLocalPosCartLine(
+      withLocalCartMutation({
+        id: "active",
+        offline: true,
+        lines: [
+          {
+            client_line_id: "shared-1",
+            id: 1,
+            product_code: "1192003",
+            product_name: "KAMANDE LARGE 50KG",
+            quantity: 50,
+            unit_price: 125,
+            on_wholesale_retail: 0,
+            uom: "Bags(50)",
+          },
+        ],
+      }),
+      {
+        client_line_id: "shared-1",
+        id: 1,
+        product_code: "9165878",
+        product_name: "SHIBE UGALI 1KG",
+        quantity: 1,
+        unit_price: 1470,
+        amount: 1470,
+        on_wholesale_retail: 0,
+        uom: "Bales",
+      },
+      { combineIdenticalLines: true },
+    );
+    await awaitLocalCartWrites();
+
+    const stored = await idbGetLocalCart("active");
+    const codes = (stored?.lines ?? []).map((l) => l.product_code).sort();
+    expect(codes).toEqual(["1192003", "9165878"]);
+    const kamande = stored.lines.find((l) => l.product_code === "1192003");
+    expect(Number(kamande.quantity)).toBe(50);
+    expect(Number(kamande.on_wholesale_retail)).toBe(0);
+  });
 });

@@ -5811,9 +5811,17 @@ export function PosScreen({ standalone = false }) {
   function preserveUntouchedMutationLinePricing(
     prevCart,
     nextCart,
-    { targetLineRef = null } = {},
+    {
+      targetLineRef = null,
+      targetProductCode = null,
+      targetOnWholesaleRetailFlag = null,
+    } = {},
   ) {
-    return preserveUntouchedCartLines(prevCart, nextCart, { targetLineRef });
+    return preserveUntouchedCartLines(prevCart, nextCart, {
+      targetLineRef,
+      targetProductCode,
+      targetOnWholesaleRetailFlag,
+    });
   }
 
   const stockDisplayMode = useMemo(
@@ -8365,7 +8373,10 @@ export function PosScreen({ standalone = false }) {
 
     // F12 flipped retail↔wholesale: convert the sole opposite-mode row in place
     // (1 kg → 1 bag). When the SKU already has bag + kg rows, add a new line.
-    if (!editingLineId) {
+    // Always key off the parked product — never stale lineForm.product_code
+    // (that wrongly converted Kamande while the cashier was adding Shibe).
+    const addProductCode = String(productForAdd.product_code ?? "");
+    if (!editingLineId && addProductCode) {
       const nextRetailFlag = posLineWholesaleRetailFlag(
         productForAdd,
         sellWholesale,
@@ -8374,11 +8385,14 @@ export function PosScreen({ standalone = false }) {
       );
       const convertTarget = findModeConvertibleCartLine(
         cartRef.current?.lines ?? cart?.lines,
-        lineForm.product_code,
+        addProductCode,
         nextRetailFlag,
         { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
       );
-      if (convertTarget) {
+      if (
+        convertTarget &&
+        String(convertTarget.product_code ?? "") === addProductCode
+      ) {
         clearClassicEntryFields();
         void setCartLineEntryQuantity(convertTarget, entryQtyRaw);
         return;
@@ -8388,11 +8402,11 @@ export function PosScreen({ standalone = false }) {
     const run = async () => {
     try {
       const liveLines = cartRef.current?.lines;
-      const mergeTarget = editingLineId
+      const mergeCandidate = editingLineId
         ? null
         : findMergeableCartLine(
             liveLines,
-            lineForm.product_code,
+            addProductCode,
             computed,
             posSalesConfig,
             sellWholesale,
@@ -8400,6 +8414,11 @@ export function PosScreen({ standalone = false }) {
             productForAdd,
             { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
           );
+      const mergeTarget =
+        mergeCandidate &&
+        String(mergeCandidate.product_code ?? "") === addProductCode
+          ? mergeCandidate
+          : null;
       const ok = await commitCartLine({
         product: productForAdd,
         computed,

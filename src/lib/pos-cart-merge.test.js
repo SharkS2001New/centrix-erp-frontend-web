@@ -1154,6 +1154,46 @@ describe("preserveUntouchedCartLines", () => {
     expect(next.lines[3].on_wholesale_retail).toBe(1);
     expect(next.lines[3].amount).toBe(150);
   });
+
+  it("does not let an unscoped POST rewrite a different SKU sibling", () => {
+    const serverCart = {
+      ...mixedCart,
+      update_no: 5,
+      lines: [
+        {
+          ...mixedCart.lines[0],
+          quantity: 2,
+          unit_price: 134,
+          amount: 270,
+          on_wholesale_retail: 1,
+          uom: "kg",
+        },
+        ...mixedCart.lines.slice(1),
+        {
+          id: 99,
+          update_code: "CLU-SHIBE",
+          product_code: "SHIBE",
+          quantity: 1,
+          unit_price: 1470,
+          display_unit_price: 1470,
+          amount: 1470,
+          on_wholesale_retail: 0,
+          uom: "Bales",
+        },
+      ],
+    };
+    const next = preserveUntouchedCartLines(mixedCart, serverCart, {
+      targetProductCode: "SHIBE",
+      targetOnWholesaleRetailFlag: 0,
+    });
+    const sugar = next.lines.find((l) => l.product_code === "SUGAR");
+    const shibe = next.lines.find((l) => l.product_code === "SHIBE");
+    expect(sugar?.quantity).toBe(500);
+    expect(Number(sugar?.on_wholesale_retail)).toBe(0);
+    expect(sugar?.amount).toBe(60000);
+    expect(shibe?.quantity).toBe(1);
+    expect(shibe?.amount).toBe(1470);
+  });
 });
 
 describe("findModeConvertibleCartLine", () => {

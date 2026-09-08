@@ -529,11 +529,23 @@ export function preserveClientLineSkuAfterMutation(
  * After a single-line add/PATCH, keep every other cart row as the cashier left it.
  * TemporaryCart returns the full cart; F12 retail/wholesale on one line must not
  * rewrite sibling prices, qty, or on_wholesale_retail flags.
+ *
+ * @param {object|null} prevCart
+ * @param {object|null} nextCart
+ * @param {{
+ *   targetLineRef?: string|null,
+ *   targetProductCode?: string|null,
+ *   targetOnWholesaleRetailFlag?: boolean|number|null,
+ * }} [opts]
  */
 export function preserveUntouchedCartLines(
   prevCart,
   nextCart,
-  { targetLineRef = null } = {},
+  {
+    targetLineRef = null,
+    targetProductCode = null,
+    targetOnWholesaleRetailFlag = null,
+  } = {},
 ) {
   if (!prevCart?.lines?.length || !nextCart?.lines?.length) return nextCart;
 
@@ -548,10 +560,21 @@ export function preserveUntouchedCartLines(
     targetLineRef != null && String(targetLineRef).trim() !== ""
       ? String(targetLineRef)
       : null;
+  const targetCode =
+    targetProductCode != null && String(targetProductCode).trim() !== ""
+      ? String(targetProductCode)
+      : null;
+  const modeScoped = targetOnWholesaleRetailFlag != null;
+  const targetMode = modeScoped
+    ? Number(targetOnWholesaleRetailFlag) ? 1 : 0
+    : null;
 
   function isTargetLine(line) {
-    if (!target) return false;
-    return lineIdentityKeys(line).includes(target);
+    if (target) return lineIdentityKeys(line).includes(target);
+    if (!targetCode) return false;
+    if (String(line?.product_code ?? "") !== targetCode) return false;
+    if (!modeScoped) return true;
+    return (Number(line?.on_wholesale_retail ?? 0) ? 1 : 0) === targetMode;
   }
 
   const lines = (nextCart.lines ?? []).map((line) => {
@@ -560,9 +583,14 @@ export function preserveUntouchedCartLines(
       .map((key) => prevByKey.get(key))
       .find(Boolean);
     if (!prev) return line;
-    // POST/merge without a target ref: keep server row when qty actually changed.
+    // Scoped add/PATCH: never let TemporaryCart rewrite a non-target sibling
+    // (adding Shibe must not flip Kamande qty/mode).
+    if (target || targetCode) {
+      return restorePrevCartLineFields(line, prev);
+    }
+    // Unscoped full-cart sync: accept real qty changes from the server, but
+    // still restore pricing/mode when qty is unchanged.
     if (
-      !target &&
       Math.abs(Number(prev.quantity ?? 0) - Number(line.quantity ?? 0)) > 0.0001
     ) {
       return line;
