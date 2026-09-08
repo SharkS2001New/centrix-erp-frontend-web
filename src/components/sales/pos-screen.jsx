@@ -4865,7 +4865,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * Blocking overlay while a queued cart line save runs (qty / F12 / sync).
+   * Blocking overlay while a queued cart line save runs (qty / F12 / swap / delete).
    * Nested calls share one overlay so rapid Enter does not clear it early.
    */
   const lineSaveOverlayDepthRef = useRef(0);
@@ -4874,7 +4874,7 @@ export function PosScreen({ standalone = false }) {
     try {
       if (lineSaveOverlayDepthRef.current === 1) {
         return await runBlockingTask(task, {
-          message: "Updating quantity…",
+          message: "Updating cart…",
           detail: "Queued cart save — please wait until it finishes.",
           settleMs: 0,
           ...opts,
@@ -7276,8 +7276,34 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    if (standalone) {
-      return enqueueCartCommit(finishSwap);
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (classicLayout || localDraftEdit || standalone) {
+      try {
+        return await runWithLineSaveOverlay(
+          async () => {
+            let ok = false;
+            await enqueueCartCommit(async () => {
+              ok = Boolean(await finishSwap());
+            });
+            await waitForCartLineSavesToFinish();
+            if (
+              usesLocalPosCartWorkspace(cartRef.current) ||
+              !isServerPosCartId(cartRef.current?.id)
+            ) {
+              await awaitLocalCartWrites().catch(() => {});
+            }
+            return ok;
+          },
+          {
+            message: "Changing item…",
+            detail: "Saving swap — please wait until IndexedDB / cart sync finishes.",
+          },
+        );
+      } catch (e) {
+        swapCommitInFlightRef.current = false;
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to swap line");
+        return false;
+      }
     }
 
     setLineBusy(true);
@@ -7576,7 +7602,6 @@ export function PosScreen({ standalone = false }) {
 
     const fromItemName = posProductDisplayName(liveLine);
     const toItemName = posProductDisplayName(product);
-    const itemChangedMsg = formatItemChangedSuccess(fromItemName, toItemName);
 
     // Price the replacement with the current F12 session — do not inherit the old
     // line's retail flag (that forced "piece" UOM on bag products).
@@ -7587,8 +7612,8 @@ export function PosScreen({ standalone = false }) {
     }
     const isRetailLine = Boolean(computed.isRetail);
 
-    // Swap in place on the cart first so the UI never depends on TemporaryCart PATCH
-    // timing (that left the old SKU or reverted when the server response lagged).
+    // Build the swapped cart in memory first — paint only after IndexedDB / TemporaryCart
+    // persists (same persist-first rule as qty Enter / delete).
     const stockAsRetail = Boolean(isRetailLine);
     const stockCheck = posStockAvailability({
       product,
@@ -7625,11 +7650,6 @@ export function PosScreen({ standalone = false }) {
       liveLine.update_code ?? liveLine.client_line_id ?? liveLine.id;
     const replacedProductCode = String(liveLine.product_code ?? "").trim();
     const nextProductCode = String(product.product_code ?? "").trim();
-    // TemporaryCart often keeps the old SKU after swap PATCH — block it on merges
-    // until the server drops it (or the cashier intentionally adds it again).
-    if (replacedProductCode && replacedProductCode !== nextProductCode) {
-      registerSwappedAwayProductCode(replacedProductCode);
-    }
     const nextLine = {
       ...liveLine,
       id: preservedId,
@@ -7675,68 +7695,85 @@ export function PosScreen({ standalone = false }) {
       lines: swappedLines.map((line) => ({ ...line })),
       _replaced_product_code: replacedProductCode || null,
     };
-    cartRef.current = nextCart;
-    setCart(nextCart);
 
-    if (isPreviousOrderEditSession(nextCart)) {
-      clearSwapChrome();
-      await notePreviousOrderEditSuccess("swap", itemChangedMsg);
-      clearClassicEntryFields();
-      const collapsed = finalizeCartLineList(cartRef.current?.lines ?? nextCart.lines, {
-        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
-      });
-      if (collapsed.length !== (nextCart.lines ?? []).length) {
-        const repaired = { ...nextCart, lines: collapsed };
-        cartRef.current = repaired;
-        setCart(repaired);
-        await persistPreviousOrderLocalDraft(repaired);
+    const finishSwapUi = (presented) => {
+      // TemporaryCart often keeps the old SKU after swap PATCH — block it on merges
+      // only after the swap actually persisted.
+      if (replacedProductCode && replacedProductCode !== nextProductCode) {
+        registerSwappedAwayProductCode(replacedProductCode);
       }
-      return true;
-    }
-
-    // Offline / local workspace — cart is already the source of truth.
-        if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
-          if (usesLocalPosCartWorkspace(nextCart)) {
-            try {
-              const saved = await saveLocalPosCart({
-                ...nextCart,
-                lines: (nextCart.lines ?? []).map((l) => ({
-                  ...l,
-                  client_line_id: l.client_line_id ?? l.update_code ?? l.id,
-                })),
-              });
-              const presented = presentLocalOfflineCart(saved);
-              const liveAfter = cartRef.current;
-              if (
-                liveAfter &&
-                Number(liveAfter._local_mutation_seq ?? 0) >
-                  Number(presented?._local_mutation_seq ?? 0)
-              ) {
-                clearSwapChrome();
-                announceItemChanged(fromItemName, toItemName);
-                clearClassicEntryFields();
-                return true;
-              }
-              cartRef.current = presented;
-              setCart(presented);
-            } catch {
-              /* keep in-memory swap */
-            }
-          }
+      cartRef.current = presented;
+      setCart(presented);
       clearSwapChrome();
       announceItemChanged(fromItemName, toItemName);
       clearClassicEntryFields();
-      return true;
+    };
+
+    if (isPreviousOrderEditSession(nextCart)) {
+      try {
+        await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+        if (nextCart.offline || nextCart.offline_client_sale_uuid) {
+          await awaitLocalCartWrites();
+        }
+        const collapsed = finalizeCartLineList(nextCart.lines, {
+          combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
+        });
+        const presented =
+          collapsed.length !== (nextCart.lines ?? []).length
+            ? { ...nextCart, lines: collapsed }
+            : nextCart;
+        if (presented !== nextCart) {
+          await persistPreviousOrderLocalDraft(presented, { immediate: true });
+        }
+        finishSwapUi(presented);
+        return true;
+      } catch (e) {
+        setStatusMessage(
+          e instanceof ApiError ? e.message : "Could not save item change. Try again.",
+        );
+        return false;
+      }
     }
 
-    // Live TemporaryCart: swap is already painted — sync PATCH in the background.
-    clearSwapChrome();
-    announceItemChanged(fromItemName, toItemName);
-    clearClassicEntryFields();
+    // Offline / local workspace — persist IndexedDB before painting the swap.
+    if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
+      try {
+        if (usesLocalPosCartWorkspace(nextCart)) {
+          const saved = await saveLocalPosCart({
+            ...nextCart,
+            lines: (nextCart.lines ?? []).map((l) => ({
+              ...l,
+              client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+            })),
+          });
+          await awaitLocalCartWrites();
+          const presented = presentLocalOfflineCart(saved);
+          const liveAfter = cartRef.current;
+          if (
+            liveAfter &&
+            Number(liveAfter._local_mutation_seq ?? 0) >
+              Number(presented?._local_mutation_seq ?? 0)
+          ) {
+            return false;
+          }
+          finishSwapUi(presented);
+        } else {
+          finishSwapUi(nextCart);
+        }
+        return true;
+      } catch (e) {
+        setStatusMessage(
+          e instanceof ApiError ? e.message : "Could not save item change. Try again.",
+        );
+        return false;
+      }
+    }
+
+    // Live TemporaryCart: PATCH first (no optimistic paint), then UI from response.
     const lineRef = cartLineRef(nextLine);
     if (!lineRef) {
       setStatusMessage("Could not resolve the line to replace.");
-      return true;
+      return false;
     }
     try {
       const ok = await commitCartLine({
@@ -7749,11 +7786,16 @@ export function PosScreen({ standalone = false }) {
         override,
         clearEntry: false,
         successMessage: null,
-        unlockUiEarly: true,
-        keepOptimisticOnFailure: true,
+        unlockUiEarly: false,
+        skipOptimisticPaint: true,
+        keepOptimisticOnFailure: false,
         lineRetailStockFlagOverride: isRetailLine,
         clientSkuSnapshot: swapSyncSnapshot,
       });
+      if (!ok) {
+        setStatusMessage("Could not save item change. Try again.");
+        return false;
+      }
       let live = cartRef.current ?? nextCart;
       const after =
         findCartLineForEdit(live.lines, {
@@ -7773,23 +7815,17 @@ export function PosScreen({ standalone = false }) {
           }).lines ?? live.lines,
           { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
         );
-        const repaired = { ...live, lines: repairedLines };
-        cartRef.current = repaired;
-        setCart(repaired);
-        setStatusMessage(
-          `${itemChangedMsg} — server sync lagged. Line kept on screen.`,
-        );
+        live = { ...live, lines: repairedLines };
+        cartRef.current = live;
+        setCart(live);
       } else if (
         !(live.lines ?? []).some(
           (row) => String(row.product_code) === String(product.product_code),
         )
       ) {
-        const repaired = { ...live, lines: swapSyncSnapshot.lines };
-        cartRef.current = repaired;
-        setCart(repaired);
-        setStatusMessage(
-          `${itemChangedMsg} — server sync lagged. Line kept on screen.`,
-        );
+        live = { ...live, lines: swapSyncSnapshot.lines };
+        cartRef.current = live;
+        setCart(live);
       } else {
         const collapsed = finalizeCartLineList(live.lines, {
           combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
@@ -7799,20 +7835,20 @@ export function PosScreen({ standalone = false }) {
           cartRef.current = live;
           setCart(live);
         }
-        if (!ok) {
-          setStatusMessage(
-            `${itemChangedMsg} — could not reach server. Line kept on screen.`,
-          );
-        }
       }
+      if (replacedProductCode && replacedProductCode !== nextProductCode) {
+        registerSwappedAwayProductCode(replacedProductCode);
+      }
+      clearSwapChrome();
+      announceItemChanged(fromItemName, toItemName);
+      clearClassicEntryFields();
+      return true;
     } catch (e) {
       setStatusMessage(
-        e instanceof ApiError
-          ? `${itemChangedMsg} — ${e.message}`
-          : `${itemChangedMsg} — could not sync. Line kept on screen.`,
+        e instanceof ApiError ? e.message : "Could not save item change. Try again.",
       );
+      return false;
     }
-    return true;
   }
 
   useEffect(() => {
@@ -8461,24 +8497,46 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       const runReplace = async () => {
-      try {
-        const ok = await replaceCartLineWithProduct(
-          replaceLine,
-          productForAdd,
-          entryQtyRaw,
-          discount,
-          override,
-        );
-        if (ok) {
-          replaceTargetSnapshotRef.current = null;
-          replacingLineIdRef.current = null;
-          setReplacingLineId(null);
-          // replaceCartLineWithProduct already announces swap success.
-        }
-      } catch (e) {
-        setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+        try {
+          const ok = await replaceCartLineWithProduct(
+            replaceLine,
+            productForAdd,
+            entryQtyRaw,
+            discount,
+            override,
+          );
+          if (ok) {
+            replaceTargetSnapshotRef.current = null;
+            replacingLineIdRef.current = null;
+            setReplacingLineId(null);
+            // replaceCartLineWithProduct already announces swap success.
+          }
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
         }
       };
+      const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+      if (classicLayout || localDraftEdit || standalone) {
+        void runWithLineSaveOverlay(
+          async () => {
+            await enqueueCartCommit(runReplace);
+            await waitForCartLineSavesToFinish();
+            if (
+              usesLocalPosCartWorkspace(cartRef.current) ||
+              !isServerPosCartId(cartRef.current?.id)
+            ) {
+              await awaitLocalCartWrites().catch(() => {});
+            }
+          },
+          {
+            message: "Changing item…",
+            detail: "Saving swap — please wait until IndexedDB / cart sync finishes.",
+          },
+        ).catch((e) => {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+        });
+        return;
+      }
       void enqueueCartCommit(runReplace);
       return;
     }
@@ -8899,7 +8957,7 @@ export function PosScreen({ standalone = false }) {
       if (adjustCheck.willRemove || nextBaseQty <= 0) {
         const lineRef = cartLineRef(line);
         if (!lineRef && line?.id == null) return;
-        // Same optimistic path as Delete — instant local remove, background server sync.
+        // Same persist-first path as Delete — overlay until IndexedDB / TemporaryCart finishes.
         await removeCartLinesByIds([
           line.id ?? lineRef ?? line.client_line_id ?? line.update_code,
         ].filter((v) => v != null && String(v) !== ""));
@@ -9636,7 +9694,7 @@ export function PosScreen({ standalone = false }) {
       .filter((ref) => ref != null && String(ref).trim() !== "")
       .map(String);
 
-    // Instant UI: drop lines locally first — never wait on TemporaryCart DELETE.
+    // Build the next cart in memory — paint only after IndexedDB / TemporaryCart delete.
     const working = cartRef.current ?? liveCart;
     const nextLines = (working.lines ?? []).filter(
       (line) => !cartLineMatchesSelection(line, idSet),
@@ -9656,140 +9714,97 @@ export function PosScreen({ standalone = false }) {
         !isServerPosCartId(working.id) ||
         (standalone && offlineMode));
 
-    cartRef.current = nextCart;
-    setCart(nextCart);
-    if (clearsEditing) clearLineEntry();
-    clearClassicLineSelection();
-
     const removeWaitMessage =
       targets.length === 1 ? "Removing item…" : `Removing ${targets.length} items…`;
     const removeWaitDetail = isPreviousOrderEdit
       ? "Saving this previous order so the item does not come back."
       : "Saving this till so the item does not come back.";
 
-    if (isPreviousOrderEditSession(working)) {
-      const label =
-        targets.length === 1
-          ? targets[0]?.product_name || targets[0]?.product_code || "Item"
-          : `${targets.length} items`;
-      if (standalone && instantAutoEditSync) {
-        setStatusMessage(
-          `${label} removed from Cash Sales #${formatPosBrowseLabel(working)} — syncing…`,
-        );
-      } else if (!standalone) {
-        setStatusMessage(
-          `${label} removed from revised Cash Sales #${formatPosBrowseLabel(working)}. Saved locally — syncing…`,
-        );
-      }
-      if (onlinePreviousOrderDraft) {
-        try {
-          await runBlockingTask(
-            () => persistPreviousOrderLocalDraft(nextCart, { immediate: true }),
-            {
-              message: removeWaitMessage,
-              detail: removeWaitDetail,
-              settleMs: 0,
-            },
-          );
-        } catch (e) {
-          console.error("Failed to persist previous-order draft after line remove", e);
-          cartRef.current = working;
-          setCart(working);
-          setStatusMessage("Could not remove item from this order. Try again.");
-          notifyError("Could not remove item from this order. Try again.");
-        }
-        return;
-      }
-    }
+    const paintRemoved = (presented = nextCart) => {
+      cartRef.current = presented;
+      setCart(presented);
+      if (clearsEditing) clearLineEntry();
+      clearClassicLineSelection();
+    };
 
-    if (persistLocal) {
-      const snapshot = {
-        ...nextCart,
-        id: "active",
-        offline: true,
-        _local_mutation_seq: nextCart._local_mutation_seq,
-        lines: nextLines.map((l) => ({
-          ...l,
-          client_line_id: String(l.client_line_id ?? l.update_code ?? l.id ?? ""),
-        })),
-      };
-      try {
-        await runBlockingTask(
-          async () => {
+    try {
+      await runWithLineSaveOverlay(
+        async () => {
+          if (isPreviousOrderEditSession(working) && onlinePreviousOrderDraft) {
+            const label =
+              targets.length === 1
+                ? targets[0]?.product_name || targets[0]?.product_code || "Item"
+                : `${targets.length} items`;
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+            paintRemoved(nextCart);
+            if (standalone && instantAutoEditSync) {
+              setStatusMessage(
+                `${label} removed from Cash Sales #${formatPosBrowseLabel(working)} — syncing…`,
+              );
+            } else if (!standalone) {
+              setStatusMessage(
+                `${label} removed from revised Cash Sales #${formatPosBrowseLabel(working)}. Saved locally — syncing…`,
+              );
+            }
+            return;
+          }
+
+          if (persistLocal || (isPreviousOrderEditSession(working) && !onlinePreviousOrderDraft)) {
+            const snapshot = {
+              ...nextCart,
+              id: "active",
+              offline: true,
+              _local_mutation_seq: nextCart._local_mutation_seq,
+              lines: nextLines.map((l) => ({
+                ...l,
+                client_line_id: String(l.client_line_id ?? l.update_code ?? l.id ?? ""),
+              })),
+            };
             const saved = await saveLocalPosCart(snapshot);
+            await awaitLocalCartWrites();
             const presented = presentLocalOfflineCart(saved);
             const live = cartRef.current;
             const liveSeq = Number(live?._local_mutation_seq ?? 0);
             const savedSeq = Number(presented?._local_mutation_seq ?? 0);
             if (live && liveSeq > savedSeq) {
-              return presented;
+              return;
             }
-            if (
-              !live ||
-              usesLocalPosCartWorkspace(live) ||
-              !isServerPosCartId(live.id) ||
-              String(live.id) === "active"
-            ) {
-              cartRef.current = presented;
-              setCart(presented);
-            }
-            return presented;
-          },
-          {
-            message: removeWaitMessage,
-            detail: removeWaitDetail,
-            settleMs: 0,
-          },
-        );
-      } catch (e) {
-        console.error("Failed to persist local cart after line remove", e);
-        // Roll back UI — the line is still in IndexedDB.
-        cartRef.current = working;
-        setCart(working);
-        setStatusMessage("Could not remove item from this till. Try again.");
-        notifyError("Could not remove item from this till. Try again.");
-      }
-      return;
-    }
+            paintRemoved(presented);
+            return;
+          }
 
-    // Online TemporaryCart: for previous-order edits, wait (with overlay) so the line
-    // cannot reappear from a late cart refresh. New sales keep background DELETE.
-    if (serverCartId && serverLineRefs.length > 0 && !offlineMode) {
-      const cartIdAtRemove = serverCartId;
-      const runServerDeletes = async () => {
-        for (const lineRef of serverLineRefs) {
-          try {
-            await apiRequest(
-              `/sales/carts/${cartIdAtRemove}/lines/${encodeURIComponent(lineRef)}`,
-              {
-                method: "DELETE",
-                ...POS_CART_REQUEST,
-              },
-            );
-            const removedLine = targets.find((line) =>
-              cartLineIdentityKeys(line).includes(String(lineRef)),
-            );
-            if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
-            else pendingLineDeleteRefsRef.current.delete(String(lineRef));
-          } catch (e) {
-            if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
-              const removedLine = targets.find((line) =>
-                cartLineIdentityKeys(line).includes(String(lineRef)),
-              );
-              if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
-              else pendingLineDeleteRefsRef.current.delete(String(lineRef));
-              continue;
-            }
-            if (isPosNetworkDropError(e) || isMissingTemporaryCartError(e)) {
-              const current = cartRef.current;
-              if (!current || !standalone) break;
+          // Online TemporaryCart: DELETE first, then remove from the grid.
+          if (serverCartId && serverLineRefs.length > 0 && !offlineMode) {
+            const cartIdAtRemove = serverCartId;
+            for (const lineRef of serverLineRefs) {
               try {
-                const local = presentLocalOfflineCart(
-                  await continueOpenCartThroughOutage(current, offlineOutageSeed()),
+                await apiRequest(
+                  `/sales/carts/${cartIdAtRemove}/lines/${encodeURIComponent(lineRef)}`,
+                  {
+                    method: "DELETE",
+                    ...POS_CART_REQUEST,
+                  },
                 );
-                if (cartRef.current && String(cartRef.current.id) === String(current.id)) {
-                  cartRef.current = local;
-                  setCart(local);
+                const removedLine = targets.find((line) =>
+                  cartLineIdentityKeys(line).includes(String(lineRef)),
+                );
+                if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
+                else pendingLineDeleteRefsRef.current.delete(String(lineRef));
+              } catch (e) {
+                if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
+                  const removedLine = targets.find((line) =>
+                    cartLineIdentityKeys(line).includes(String(lineRef)),
+                  );
+                  if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
+                  else pendingLineDeleteRefsRef.current.delete(String(lineRef));
+                  continue;
+                }
+                if (isPosNetworkDropError(e) || isMissingTemporaryCartError(e)) {
+                  const current = nextCart;
+                  if (!standalone) throw e;
+                  const local = presentLocalOfflineCart(
+                    await continueOpenCartThroughOutage(current, offlineOutageSeed()),
+                  );
                   await saveLocalPosCart({
                     ...local,
                     id: "active",
@@ -9800,41 +9815,44 @@ export function PosScreen({ standalone = false }) {
                         l.client_line_id ?? l.update_code ?? l.id ?? "",
                       ),
                     })),
-                  }).catch(() => {});
+                  });
+                  await awaitLocalCartWrites().catch(() => {});
+                  paintRemoved(local);
+                  return;
                 }
-              } catch (migrateErr) {
-                console.error(
-                  "Line remove: continued locally after network drop",
-                  migrateErr,
-                );
+                throw e;
               }
-              break;
             }
-            console.error("Background cart line DELETE failed", e);
-            if (isPreviousOrderEdit) throw e;
+            paintRemoved(nextCart);
+            return;
           }
-        }
-      };
 
-      if (isPreviousOrderEdit) {
-        try {
-          await runBlockingTask(runServerDeletes, {
-            message: removeWaitMessage,
-            detail: removeWaitDetail,
-            settleMs: 0,
-          });
-        } catch (e) {
-          cartRef.current = working;
-          setCart(working);
-          setStatusMessage("Could not remove item from this order. Try again.");
-          notifyError(
-            e instanceof ApiError ? e.message : "Could not remove item from this order. Try again.",
-          );
-        }
-        return;
+          paintRemoved(nextCart);
+        },
+        {
+          message: removeWaitMessage,
+          detail: removeWaitDetail,
+        },
+      );
+    } catch (e) {
+      console.error("Failed to remove cart line(s)", e);
+      for (const line of targets) {
+        clearPendingLineDeleteKeysForLine(line);
       }
-
-      void runServerDeletes();
+      setStatusMessage(
+        e instanceof ApiError
+          ? e.message
+          : isPreviousOrderEdit
+            ? "Could not remove item from this order. Try again."
+            : "Could not remove item from this till. Try again.",
+      );
+      notifyError(
+        e instanceof ApiError
+          ? e.message
+          : isPreviousOrderEdit
+            ? "Could not remove item from this order. Try again."
+            : "Could not remove item from this till. Try again.",
+      );
     }
   }
 
@@ -9886,77 +9904,88 @@ export function PosScreen({ standalone = false }) {
         !isServerPosCartId(working.id) ||
         (standalone && offlineMode));
 
-    cartRef.current = nextCart;
-    setCart(nextCart);
-    clearLineEntry();
-    setSelectedLineId(null);
-    setStatusMessage(
-      isPreviousOrderEditSession(working)
-        ? instantAutoEditSync
-          ? "Lines cleared — recording full return and cancelling order…"
-          : "Lines cleared — enter the return, then Alt+P to cancel this order."
-        : "Cart cleared.",
-    );
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-    });
+    const paintCleared = (presented = nextCart) => {
+      cartRef.current = presented;
+      setCart(presented);
+      clearLineEntry();
+      setSelectedLineId(null);
+      setStatusMessage(
+        isPreviousOrderEditSession(working)
+          ? instantAutoEditSync
+            ? "Lines cleared — recording full return and cancelling order…"
+            : "Lines cleared — enter the return, then Alt+P to cancel this order."
+          : "Cart cleared.",
+      );
+      window.requestAnimationFrame(() => {
+        searchInputRef.current?.focus({ preventScroll: true });
+      });
+    };
 
-    if (onlinePreviousOrderDraft) {
-      await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
-      return;
-    }
-
-    if (persistLocal || !serverCartId || offlineMode) {
-      void saveLocalPosCart({
-        ...nextCart,
-        id: "active",
-        offline: true,
-        lines: [],
-      })
-        .then((saved) => {
-          const presented = presentLocalOfflineCart(saved);
-          if (cartRef.current && (cartRef.current.lines ?? []).length === 0) {
-            cartRef.current = presented;
-            setCart(presented);
+    try {
+      await runWithLineSaveOverlay(
+        async () => {
+          if (onlinePreviousOrderDraft) {
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+            paintCleared(nextCart);
+            return;
           }
-        })
-        .catch((e) => {
-          console.error("Failed to persist local cart after clear", e);
-        });
-      return;
-    }
 
-    // Background clear TemporaryCart — UI already empty.
-    void apiRequest(`/sales/carts/${serverCartId}/lines`, {
-      method: "DELETE",
-      ...POS_CART_REQUEST,
-    }).catch((e) => {
+          if (persistLocal || !serverCartId || offlineMode) {
+            const saved = await saveLocalPosCart({
+              ...nextCart,
+              id: "active",
+              offline: true,
+              lines: [],
+            });
+            await awaitLocalCartWrites();
+            paintCleared(presentLocalOfflineCart(saved));
+            return;
+          }
+
+          await apiRequest(`/sales/carts/${serverCartId}/lines`, {
+            method: "DELETE",
+            ...POS_CART_REQUEST,
+          });
+          paintCleared(nextCart);
+        },
+        {
+          message: "Clearing cart…",
+          detail: "Saving this till so cleared lines do not come back.",
+        },
+      );
+    } catch (e) {
       if (
         isPosNetworkDropError(e) ||
         isMissingTemporaryCartError(e) ||
         (e instanceof ApiError && (e.status === 404 || e.status === 410))
       ) {
-        const current = cartRef.current ?? nextCart;
-        if (!standalone) return;
-        void continueOpenCartThroughOutage(current, offlineOutageSeed())
-          .then((local) => {
-            const presented = presentLocalOfflineCart(local);
-            cartRef.current = presented;
-            setCart(presented);
-            return saveLocalPosCart({
-              ...presented,
+        if (standalone) {
+          try {
+            const local = presentLocalOfflineCart(
+              await continueOpenCartThroughOutage(nextCart, offlineOutageSeed()),
+            );
+            await saveLocalPosCart({
+              ...local,
               id: "active",
               offline: true,
               lines: [],
             });
-          })
-          .catch((migrateErr) => {
+            await awaitLocalCartWrites().catch(() => {});
+            paintCleared(local);
+            return;
+          } catch (migrateErr) {
             console.error("Clear cart: continued locally after network drop", migrateErr);
-          });
-        return;
+          }
+        }
       }
-      console.error("Background clear cart failed", e);
-    });
+      console.error("Failed to clear cart", e);
+      setStatusMessage(
+        e instanceof ApiError ? e.message : "Could not clear the cart. Try again.",
+      );
+      notifyError(
+        e instanceof ApiError ? e.message : "Could not clear the cart. Try again.",
+      );
+    }
   }
 
   function clearLineEntry() {

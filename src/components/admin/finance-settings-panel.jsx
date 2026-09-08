@@ -300,7 +300,7 @@ export function FinanceSettingsPanel({
       a.download = "CentrixKraAgent.zip";
       a.click();
       URL.revokeObjectURL(url);
-      notifySuccess("KRA agent package downloaded. Install it on the shop PC.");
+      notifySuccess("Centrix KRA Agent downloaded. Install it on the shop PC.");
       await refreshKraAgentStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "KRA agent download failed.");
@@ -427,8 +427,8 @@ export function FinanceSettingsPanel({
                     <div>
                       <p className="theme-heading text-sm font-medium">Connection method</p>
                       <p className="theme-subtext mt-0.5 text-xs">
-                        Only one method is active at a time. Agent mode talks through CentrixKraAgent on
-                        the shop PC; direct mode has Centrix call the Device IP / URL itself.
+                        Only one method is active at a time. Agent mode uses Centrix KRA Agent on the shop
+                        PC; direct mode has Centrix call the Device IP / URL itself.
                       </p>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="KRA connection method">
@@ -451,11 +451,11 @@ export function FinanceSettingsPanel({
                         />
                         <span>
                           <span className="theme-heading block text-sm font-medium">
-                            Shop PC agent (CentrixKraAgent)
+                            Centrix KRA Agent
                           </span>
                           <span className="theme-subtext mt-0.5 block text-xs">
-                            Cloud Centrix → agent on the till → local Comstore. Use when the API cannot
-                            reach the fiscal middleware on the LAN.
+                            Install the agent on the shop PC. Centrix cloud talks to the agent, which calls
+                            local Comstore. Use when the API cannot reach fiscal middleware on the LAN.
                           </span>
                         </span>
                       </label>
@@ -495,7 +495,7 @@ export function FinanceSettingsPanel({
                           onClick={() => void downloadKraAgent()}
                           className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
                         >
-                          {kraAgentDownloading ? "Preparing…" : "Download KRA agent (.NET)"}
+                          {kraAgentDownloading ? "Preparing…" : "Download Centrix KRA Agent"}
                         </button>
                         <button
                           type="button"
@@ -534,13 +534,13 @@ export function FinanceSettingsPanel({
                       </div>
                     ) : (
                       <p className="theme-subtext text-xs">
-                        Direct mode is active. Centrix will not use CentrixKraAgent until you switch back to
-                        agent mode.
+                        Direct mode is active. Centrix will not use the Centrix KRA Agent until you switch
+                        back to agent mode.
                       </p>
                     )}
                   </div>
                   {form.enable_kra_agent ? (
-                    <Field label="Local Comstore URL (on shop PC)">
+                    <Field label="Agent Comstore URL">
                       <input
                         className={inputClassName()}
                         value={form.kra_device_ip}
@@ -554,10 +554,10 @@ export function FinanceSettingsPanel({
                         placeholder="http://localhost:4000 or http://127.0.0.1:4000"
                       />
                       <p className="theme-subtext mt-1 text-xs">
-                        URL the shop agent uses for Comstore on the same PC. Direct Device IP / URL is not
-                        used while agent mode is on.{" "}
+                        Written into the agent config as the local Comstore address on the shop PC.
+                        Usually <code className="text-[11px]">http://localhost:4000</code> — both{" "}
                         <code className="text-[11px]">localhost</code> and{" "}
-                        <code className="text-[11px]">127.0.0.1</code> are both allowed.
+                        <code className="text-[11px]">127.0.0.1</code> work.
                       </p>
                     </Field>
                   ) : (
@@ -580,7 +580,13 @@ export function FinanceSettingsPanel({
                       </p>
                     </Field>
                   )}
-                  <Field label="Fiscal hardware IP (Smart VSCU)">
+                  <Field
+                    label={
+                      form.enable_kra_agent
+                        ? "Fiscal hardware IP (for agent)"
+                        : "Fiscal hardware IP (Smart VSCU)"
+                    }
+                  >
                     <input
                       className={inputClassName()}
                       value={form.kra_device_hardware_ip}
@@ -588,31 +594,53 @@ export function FinanceSettingsPanel({
                       placeholder="192.168.1.39"
                     />
                     <p className="theme-subtext mt-1 text-xs">
-                      LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a
-                      hostname, not an IP.
+                      {form.enable_kra_agent
+                        ? "LAN address of the Smart VSCU. The agent passes this to Comstore for Initialize / Restart."
+                        : "LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a hostname, not an IP."}
                     </p>
                   </Field>
-                  <Field label="Device serial number (SN)">
+                  <Field
+                    label={
+                      form.enable_kra_agent ? "Device serial (agent / Comstore)" : "Device serial number (SN)"
+                    }
+                  >
                     <input
                       className={inputClassName()}
                       value={form.kra_serial_number}
                       onChange={(e) => setForm((f) => ({ ...f, kra_serial_number: e.target.value }))}
                     />
+                    {form.enable_kra_agent ? (
+                      <p className="theme-subtext mt-1 text-xs">
+                        Fiscal device serial used when the agent runs Initialize through Comstore.
+                      </p>
+                    ) : null}
                   </Field>
-                  <Field label="Shop KRA PIN">
+                  <Field label={form.enable_kra_agent ? "Shop KRA PIN (agent)" : "Shop KRA PIN"}>
                     <input
                       className={inputClassName()}
                       value={form.kra_pin_number}
                       onChange={(e) => setForm((f) => ({ ...f, kra_pin_number: e.target.value.toUpperCase() }))}
                     />
+                    {form.enable_kra_agent ? (
+                      <p className="theme-subtext mt-1 text-xs">
+                        Taxpayer PIN for fiscalization. Sent with sales the agent submits to Comstore.
+                      </p>
+                    ) : null}
                   </Field>
-                  <Field label="PLU register path">
+                  <Field
+                    label={form.enable_kra_agent ? "PLU path (via agent)" : "PLU register path"}
+                  >
                     <input
                       className={inputClassName()}
                       value={form.kra_plu_register_path}
                       onChange={(e) => setForm((f) => ({ ...f, kra_plu_register_path: e.target.value }))}
                       placeholder="/api/upload-plu-data"
                     />
+                    {form.enable_kra_agent ? (
+                      <p className="theme-subtext mt-1 text-xs">
+                        Comstore API path the agent uses when uploading / registering products.
+                      </p>
+                    ) : null}
                   </Field>
                   <div className="flex flex-col gap-2 sm:col-span-2">
                     <div className="flex flex-wrap items-end gap-2">

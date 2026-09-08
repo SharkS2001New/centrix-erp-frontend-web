@@ -12,7 +12,7 @@ function sourceRoot() {
 }
 
 function installReadme() {
-  return `# Centrix KRA Agent (.NET)
+  return `# Centrix KRA Agent
 
 Preconfigured from Centrix → Finance → KRA device.
 
@@ -25,7 +25,7 @@ Preconfigured from Centrix → Finance → KRA device.
    - Builds a self-contained Windows exe (no Node.js at runtime).
    - Installs the CentrixKraAgent Windows service.
 4. Open http://127.0.0.1:9261 → Test connection.
-5. In Centrix Finance, enable "Use shop PC agent" and Test connection.
+5. In Centrix Finance, enable Centrix KRA Agent and Test connection.
 
 Comstore default: http://127.0.0.1:4000 (config.json comstoreBaseUrl).
 autoStartComstore=true starts the Comstore Windows service/exe if /api/health fails.
