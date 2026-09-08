@@ -88,7 +88,7 @@ function missingReleaseResponse() {
   return Response.json(
     {
       message:
-        "Centrix KRA Agent installer is not on this server yet. On a Windows PC run kra-agent-dotnet\\scripts\\stage-release.ps1, then copy release\\win-x64 onto the web host (or set KRA_AGENT_RELEASE_DIR).",
+        "Centrix KRA Agent installer is not on this server yet. From the frontend repo run: kra-agent-dotnet/scripts/stage-release.sh (needs .NET 8 SDK), then retry Download. For production, deploy release/win-x64 with the web app or set KRA_AGENT_RELEASE_DIR.",
       available: false,
     },
     { status: 404 },

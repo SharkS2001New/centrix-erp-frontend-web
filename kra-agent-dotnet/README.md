@@ -12,14 +12,16 @@ Finance → KRA → **Download Centrix KRA Agent** serves a zip with:
 
 No source code and no .NET SDK on the shop PC. Run **INSTALL.bat** as Administrator.
 
-### Build the installer for the web host (once, on Windows)
+### Build the installer for the web host
 
-```powershell
+```bash
 cd kra-agent-dotnet
-.\scripts\stage-release.ps1
+./scripts/stage-release.sh
 ```
 
-Copy `release\win-x64\` onto the Centrix web host (or set `KRA_AGENT_RELEASE_DIR`).
+(On Windows: `.\scripts\stage-release.ps1`.)
+
+This writes `release/win-x64/` (exe + INSTALL.bat only). Deploy that folder with the Centrix web app, or set `KRA_AGENT_RELEASE_DIR`.
 
 ## Runtime behaviour
 
