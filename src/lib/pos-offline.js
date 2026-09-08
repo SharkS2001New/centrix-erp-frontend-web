@@ -814,14 +814,43 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
  */
 let localCartWriteEpoch = 0;
 let localCartWriteChain = Promise.resolve();
+/** Monotonic seq for delete/qty/swap/add — drops older full-cart puts still in the queue. */
+let localCartMutationSeq = 0;
+let lastWrittenMutationSeq = 0;
 
 export function invalidateStaleLocalCartWrites() {
   localCartWriteEpoch += 1;
+  // Wipes/holds supersede every in-flight lined mutation.
+  lastWrittenMutationSeq = Math.max(lastWrittenMutationSeq, localCartMutationSeq);
   return localCartWriteEpoch;
 }
 
 export function currentLocalCartWriteEpoch() {
   return localCartWriteEpoch;
+}
+
+/** Allocate the next cart mutation sequence (stamp before any await). */
+export function nextLocalCartMutationSeq() {
+  localCartMutationSeq += 1;
+  return localCartMutationSeq;
+}
+
+export function currentLocalCartMutationSeq() {
+  return localCartMutationSeq;
+}
+
+/** Stamp a cart snapshot so later stale saves lose to newer mutations. */
+export function withLocalCartMutation(cart, seq = nextLocalCartMutationSeq()) {
+  if (!cart || typeof cart !== "object") return cart;
+  return { ...cart, _local_mutation_seq: seq };
+}
+
+/** Wait until all queued IndexedDB cart writes have settled. */
+export function awaitLocalCartWrites() {
+  return localCartWriteChain.then(
+    () => undefined,
+    () => undefined,
+  );
 }
 
 function enqueueLocalCartWrite(task) {
@@ -832,10 +861,17 @@ function enqueueLocalCartWrite(task) {
 
 export async function saveLocalPosCart(cart) {
   const epochAtEntry = localCartWriteEpoch;
+  const mutationSeq = Number(cart?._local_mutation_seq ?? 0);
   const hasLines = (cart?.lines?.length ?? 0) > 0;
   return enqueueLocalCartWrite(async () => {
+    // Newer delete/update/swap already won — do not resurrect older line lists.
+    if (mutationSeq > 0 && mutationSeq < lastWrittenMutationSeq) {
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
+    }
     if (hasLines && localCartWriteEpoch !== epochAtEntry) {
-      return cart;
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
     }
     // Guard: if the outbox row for this cart is already pending/syncing/synced it means
     // checkout was completed. Late autosave calls (edit timer, optimistic line flush)
@@ -861,15 +897,28 @@ export async function saveLocalPosCart(cart) {
       }
     }
 
+    if (mutationSeq > 0 && mutationSeq < lastWrittenMutationSeq) {
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
+    }
     if (hasLines && localCartWriteEpoch !== epochAtEntry) {
-      return cart;
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
     }
 
     const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
+    if (mutationSeq > 0 && mutationSeq < lastWrittenMutationSeq) {
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
+    }
     if (hasLines && localCartWriteEpoch !== epochAtEntry) {
-      return cart;
+      const existing = await idbGetLocalCart().catch(() => null);
+      return existing ?? cart;
     }
     await idbPutLocalCart(next);
+    if (mutationSeq >= lastWrittenMutationSeq) {
+      lastWrittenMutationSeq = mutationSeq;
+    }
     if (next.offline_client_sale_uuid) {
       const row = await idbGetOutboxSale(String(next.offline_client_sale_uuid)).catch(() => null);
       if (row?.sync_status === "editing") {
@@ -1785,6 +1834,10 @@ export async function upsertLocalPosCartLine(
   line,
   { combineIdenticalLines = true } = {},
 ) {
+  const mutationSeq =
+    Number(cart?._local_mutation_seq ?? 0) > 0
+      ? Number(cart._local_mutation_seq)
+      : nextLocalCartMutationSeq();
   const lines = [...(cart.lines ?? [])];
   const needleKeys = new Set(cartLineIdentityKeys(line));
 
@@ -1821,7 +1874,7 @@ export async function upsertLocalPosCartLine(
       unit_price: Number(line.unit_price),
     });
   }
-  return saveLocalPosCart({ ...cart, lines });
+  return saveLocalPosCart({ ...cart, lines, _local_mutation_seq: mutationSeq });
 }
 
 export async function removeLocalPosCartLine(cart, clientLineId) {

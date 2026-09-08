@@ -279,6 +279,9 @@ import {
   saveLocalPosCart,
   emptyLocalPosCart,
   invalidateStaleLocalCartWrites,
+  awaitLocalCartWrites,
+  withLocalCartMutation,
+  nextLocalCartMutationSeq,
   savePreviousOrderEditDraft,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
@@ -3685,10 +3688,19 @@ export function PosScreen({ standalone = false }) {
     enableVouchers,
   ]);
 
-  cartRef.current = cart;
   cartSummaryRef.current = cartSummary;
   productByCodeRef.current = productByCode;
   sellWholesaleRef.current = sellWholesale;
+
+  // Keep cartRef in sync with React state without clobbering a newer mutation
+  // that already painted cartRef (fast delete/qty/swap before re-render).
+  useLayoutEffect(() => {
+    const liveSeq = Number(cartRef.current?._local_mutation_seq ?? 0);
+    const stateSeq = Number(cart?._local_mutation_seq ?? 0);
+    if (stateSeq >= liveSeq) {
+      cartRef.current = cart;
+    }
+  }, [cart]);
 
   // Publish live TemporaryCart occupancy so outbox sync defers instead of wiping
   // an online mid-sale (IDB active cart is often empty for TemporaryCart tills).
@@ -6122,6 +6134,8 @@ export function PosScreen({ standalone = false }) {
         usesLocalPosCartWorkspace(liveCart) ||
         (hasPendingOutboxQueue && !isPreviousOrderEditSession(liveCart)))
     ) {
+      // Stamp before any await so a later delete/qty/swap wins the IDB race.
+      const localMutationSeq = nextLocalCartMutationSeq();
       // Continue the open sale in place — never rebuild/copy TemporaryCart lines here.
       const live = cartRef.current ?? liveCart;
       const activeCart =
@@ -6233,6 +6247,7 @@ export function PosScreen({ standalone = false }) {
         {
           id: "active",
           offline: true,
+          _local_mutation_seq: localMutationSeq,
           lines: (working?.lines ?? []).map((l) => ({
             ...l,
             client_line_id: l.client_line_id ?? l.update_code ?? l.id,
@@ -6277,6 +6292,15 @@ export function PosScreen({ standalone = false }) {
         { combineIdenticalLines: combineIdenticalLinesRef.current },
       );
       const presented = presentLocalOfflineCart(nextLocal);
+      const liveAfter = cartRef.current;
+      const liveSeq = Number(liveAfter?._local_mutation_seq ?? 0);
+      const presentedSeq = Number(presented?._local_mutation_seq ?? localMutationSeq);
+      // A faster delete/qty/swap already painted a newer cart — keep it.
+      if (liveAfter && liveSeq > presentedSeq) {
+        if (clearEntry) clearClassicEntryFields();
+        void refreshOfflineCounts();
+        return true;
+      }
       cartRef.current = presented;
       setCart(presented);
       setStatusMessage(
@@ -7508,9 +7532,11 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Could not resolve the line to replace. Try selecting the line again.");
       return false;
     }
-    const nextCart = isPreviousOrderEditSession(activeCart)
-      ? withEditDraftDirty({ ...activeCart, lines: swappedLines })
-      : { ...activeCart, lines: swappedLines };
+    const nextCart = withLocalCartMutation(
+      isPreviousOrderEditSession(activeCart)
+        ? withEditDraftDirty({ ...activeCart, lines: swappedLines })
+        : { ...activeCart, lines: swappedLines },
+    );
     const swapSyncSnapshot = {
       ...nextCart,
       lines: swappedLines.map((line) => ({ ...line })),
@@ -7535,23 +7561,34 @@ export function PosScreen({ standalone = false }) {
     }
 
     // Offline / local workspace — cart is already the source of truth.
-    if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
-      if (usesLocalPosCartWorkspace(nextCart)) {
-        try {
-          const saved = await saveLocalPosCart({
-            ...nextCart,
-            lines: (nextCart.lines ?? []).map((l) => ({
-              ...l,
-              client_line_id: l.client_line_id ?? l.update_code ?? l.id,
-            })),
-          });
-          const presented = presentLocalOfflineCart(saved);
-          cartRef.current = presented;
-          setCart(presented);
-        } catch {
-          /* keep in-memory swap */
-        }
-      }
+        if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
+          if (usesLocalPosCartWorkspace(nextCart)) {
+            try {
+              const saved = await saveLocalPosCart({
+                ...nextCart,
+                lines: (nextCart.lines ?? []).map((l) => ({
+                  ...l,
+                  client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                })),
+              });
+              const presented = presentLocalOfflineCart(saved);
+              const liveAfter = cartRef.current;
+              if (
+                liveAfter &&
+                Number(liveAfter._local_mutation_seq ?? 0) >
+                  Number(presented?._local_mutation_seq ?? 0)
+              ) {
+                clearSwapChrome();
+                announceItemChanged(fromItemName, toItemName);
+                clearClassicEntryFields();
+                return true;
+              }
+              cartRef.current = presented;
+              setCart(presented);
+            } catch {
+              /* keep in-memory swap */
+            }
+          }
       clearSwapChrome();
       announceItemChanged(fromItemName, toItemName);
       clearClassicEntryFields();
@@ -9097,9 +9134,11 @@ export function PosScreen({ standalone = false }) {
           modeFlipped: switchingMode,
           skuLineCountBefore,
         });
-        const nextCart = isPreviousOrderEditSession(live)
-          ? withEditDraftDirty({ ...live, lines: paintedLines })
-          : { ...live, lines: paintedLines };
+        const nextCart = withLocalCartMutation(
+          isPreviousOrderEditSession(live)
+            ? withEditDraftDirty({ ...live, lines: paintedLines })
+            : { ...live, lines: paintedLines },
+        );
         cartRef.current = nextCart;
         setCart(nextCart);
 
@@ -9162,6 +9201,14 @@ export function PosScreen({ standalone = false }) {
                 })),
               });
               const presented = presentLocalOfflineCart(saved);
+              const liveAfter = cartRef.current;
+              if (
+                liveAfter &&
+                Number(liveAfter._local_mutation_seq ?? 0) >
+                  Number(presented?._local_mutation_seq ?? 0)
+              ) {
+                return;
+              }
               cartRef.current = presented;
               setCart(presented);
             } catch {
@@ -9428,7 +9475,9 @@ export function PosScreen({ standalone = false }) {
     const nextLines = (working.lines ?? []).filter(
       (line) => !cartLineMatchesSelection(line, idSet),
     );
-    let nextCart = withEditDraftDirty({ ...working, lines: nextLines });
+    let nextCart = withLocalCartMutation(
+      withEditDraftDirty({ ...working, lines: nextLines }),
+    );
     const onlinePreviousOrderDraft =
       isPreviousOrderEditSession(working) &&
       isServerPosCartId(working.id) &&
@@ -9446,6 +9495,12 @@ export function PosScreen({ standalone = false }) {
     if (clearsEditing) clearLineEntry();
     clearClassicLineSelection();
 
+    const removeWaitMessage =
+      targets.length === 1 ? "Removing item…" : `Removing ${targets.length} items…`;
+    const removeWaitDetail = isPreviousOrderEdit
+      ? "Saving this previous order so the item does not come back."
+      : "Saving this till so the item does not come back.";
+
     if (isPreviousOrderEditSession(working)) {
       const label =
         targets.length === 1
@@ -9461,7 +9516,22 @@ export function PosScreen({ standalone = false }) {
         );
       }
       if (onlinePreviousOrderDraft) {
-        await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+        try {
+          await runBlockingTask(
+            () => persistPreviousOrderLocalDraft(nextCart, { immediate: true }),
+            {
+              message: removeWaitMessage,
+              detail: removeWaitDetail,
+              settleMs: 0,
+            },
+          );
+        } catch (e) {
+          console.error("Failed to persist previous-order draft after line remove", e);
+          cartRef.current = working;
+          setCart(working);
+          setStatusMessage("Could not remove item from this order. Try again.");
+          notifyError("Could not remove item from this order. Try again.");
+        }
         return;
       }
     }
@@ -9471,39 +9541,56 @@ export function PosScreen({ standalone = false }) {
         ...nextCart,
         id: "active",
         offline: true,
+        _local_mutation_seq: nextCart._local_mutation_seq,
         lines: nextLines.map((l) => ({
           ...l,
           client_line_id: String(l.client_line_id ?? l.update_code ?? l.id ?? ""),
         })),
       };
-      // IDB write in background — UI already updated.
-      void saveLocalPosCart(snapshot)
-        .then((saved) => {
-          const presented = presentLocalOfflineCart(saved);
-          const live = cartRef.current;
-          if (!live) return;
-          // Only reconcile when the cart is still this local remove (same line count).
-          if ((live.lines ?? []).length !== (presented.lines ?? []).length) return;
-          if (
-            usesLocalPosCartWorkspace(live) ||
-            !isServerPosCartId(live.id) ||
-            String(live.id) === "active"
-          ) {
-            cartRef.current = presented;
-            setCart(presented);
-          }
-        })
-        .catch((e) => {
-          console.error("Failed to persist local cart after line remove", e);
-        });
+      try {
+        await runBlockingTask(
+          async () => {
+            const saved = await saveLocalPosCart(snapshot);
+            const presented = presentLocalOfflineCart(saved);
+            const live = cartRef.current;
+            const liveSeq = Number(live?._local_mutation_seq ?? 0);
+            const savedSeq = Number(presented?._local_mutation_seq ?? 0);
+            if (live && liveSeq > savedSeq) {
+              return presented;
+            }
+            if (
+              !live ||
+              usesLocalPosCartWorkspace(live) ||
+              !isServerPosCartId(live.id) ||
+              String(live.id) === "active"
+            ) {
+              cartRef.current = presented;
+              setCart(presented);
+            }
+            return presented;
+          },
+          {
+            message: removeWaitMessage,
+            detail: removeWaitDetail,
+            settleMs: 0,
+          },
+        );
+      } catch (e) {
+        console.error("Failed to persist local cart after line remove", e);
+        // Roll back UI — the line is still in IndexedDB.
+        cartRef.current = working;
+        setCart(working);
+        setStatusMessage("Could not remove item from this till. Try again.");
+        notifyError("Could not remove item from this till. Try again.");
+      }
       return;
     }
 
-    // Online TemporaryCart: release reservations in the background. Never block or toast
-    // "Request failed" — the line is already gone from the till.
+    // Online TemporaryCart: for previous-order edits, wait (with overlay) so the line
+    // cannot reappear from a late cart refresh. New sales keep background DELETE.
     if (serverCartId && serverLineRefs.length > 0 && !offlineMode) {
       const cartIdAtRemove = serverCartId;
-      void (async () => {
+      const runServerDeletes = async () => {
         for (const lineRef of serverLineRefs) {
           try {
             await apiRequest(
@@ -9558,9 +9645,30 @@ export function PosScreen({ standalone = false }) {
               break;
             }
             console.error("Background cart line DELETE failed", e);
+            if (isPreviousOrderEdit) throw e;
           }
         }
-      })();
+      };
+
+      if (isPreviousOrderEdit) {
+        try {
+          await runBlockingTask(runServerDeletes, {
+            message: removeWaitMessage,
+            detail: removeWaitDetail,
+            settleMs: 0,
+          });
+        } catch (e) {
+          cartRef.current = working;
+          setCart(working);
+          setStatusMessage("Could not remove item from this order. Try again.");
+          notifyError(
+            e instanceof ApiError ? e.message : "Could not remove item from this order. Try again.",
+          );
+        }
+        return;
+      }
+
+      void runServerDeletes();
     }
   }
 
@@ -12606,9 +12714,12 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // Hold parks IndexedDB from the live workspace — do not wait on line POSTs
-    // (that only matters for server checkout / save-order).
-    if (!hold) {
+    // Hold parks IndexedDB from the live workspace — drain local cart writes first
+    // so a just-deleted line cannot sneak into the held park from a stale IDB put.
+    if (hold) {
+      await awaitLocalCartWrites();
+      await waitForCartLineSavesToFinish();
+    } else {
       await waitForCartLineSavesToFinish();
     }
 
@@ -12616,7 +12727,7 @@ export function PosScreen({ standalone = false }) {
     setSaveOrderError(null);
     setStatusMessage(null);
     try {
-      const activeCart = hold ? activeCartEarly : cartRef.current ?? cart;
+      const activeCart = cartRef.current ?? cart;
       if (!(activeCart?.lines?.length > 0)) {
         const message = hold
           ? "Add items before holding this order."
