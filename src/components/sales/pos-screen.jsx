@@ -420,6 +420,28 @@ function isLocalCartLineId(id) {
   return s.startsWith("pending-") || s.startsWith("opt-");
 }
 
+/**
+ * TemporaryCart PATCH/DELETE identity — prefer CLU- / numeric id over client_line_id.
+ * cartLineRef() prefers client_line_id when update_code is blank, which made qty Enter
+ * (e.g. 2 → 12.7) fail with "Could not sync the line change".
+ */
+function serverPersistedCartLineRef(line) {
+  if (!line) return null;
+  for (const candidate of [line.update_code, line.id]) {
+    if (candidate == null || String(candidate).trim() === "") continue;
+    if (isLocalCartLineId(candidate)) continue;
+    const s = String(candidate);
+    if (/^\d+$/.test(s) || /^CLU-/i.test(s)) return s;
+  }
+  return null;
+}
+
+/** True when the TemporaryCart already owns this line on the server (safe to PATCH/DELETE). */
+function isServerPersistedCartLine(line) {
+  return serverPersistedCartLineRef(line) != null;
+}
+
+
 /** Previous-order edits with real cashier changes (qty / swap / add / remove) — not F12-only touch. */
 function editedOrderHasLocalDraftChanges(cart) {
   if (!cart?.held_order_num) return false;
@@ -584,18 +606,6 @@ function usesPosLocalDraftLineEdits(cart) {
  */
 function usesLocalPosCartWorkspace(cart) {
   return Boolean(cart?.offline || cart?.offline_client_sale_uuid);
-}
-
-/** True when the TemporaryCart already owns this line on the server (safe to PATCH/DELETE). */
-function isServerPersistedCartLine(line) {
-  if (!line) return false;
-  // Optimistic paint on an existing TemporaryCart row keeps the real id / CLU- ref.
-  // Do NOT treat `_optimistic` as "not persisted" — that forced merge adds to POST a
-  // second Sugar line while the first row already showed qty 2.
-  const ref = cartLineRef(line);
-  if (ref == null || isLocalCartLineId(ref)) return false;
-  const s = String(ref);
-  return /^\d+$/.test(s) || /^CLU-/i.test(s);
 }
 
 /** Workspace still shows the sale that just completed (bootstrap did not clear held restore). */
@@ -4854,6 +4864,28 @@ export function PosScreen({ standalone = false }) {
     return cartCommitChainRef.current;
   }
 
+  /**
+   * Blocking overlay while a queued cart line save runs (qty / F12 / sync).
+   * Nested calls share one overlay so rapid Enter does not clear it early.
+   */
+  const lineSaveOverlayDepthRef = useRef(0);
+  async function runWithLineSaveOverlay(task, opts = {}) {
+    lineSaveOverlayDepthRef.current += 1;
+    try {
+      if (lineSaveOverlayDepthRef.current === 1) {
+        return await runBlockingTask(task, {
+          message: "Updating quantity…",
+          detail: "Queued cart save — please wait until it finishes.",
+          settleMs: 0,
+          ...opts,
+        });
+      }
+      return await task();
+    } finally {
+      lineSaveOverlayDepthRef.current = Math.max(0, lineSaveOverlayDepthRef.current - 1);
+    }
+  }
+
   /** Flip dirty only after a real qty / swap / add / remove — never on F12-only reprice. */
   function markPreviousOrderDraftDirtyNow() {
     const current = cartRef.current;
@@ -6066,13 +6098,21 @@ export function PosScreen({ standalone = false }) {
       resolvedMergeTarget != null && !intendedEdit
         ? Number(resolvedMergeTarget.quantity ?? 0)
         : null;
-    let targetLineRef = cartLineRef(
-      editingRef != null || editingId != null
-        ? { update_code: editingRef, id: editingId }
-        : resolvedMergeTarget,
-    );
+    let targetLineRef =
+      serverPersistedCartLineRef(
+        editingRef != null || editingId != null
+          ? { update_code: editingRef, id: editingId }
+          : resolvedMergeTarget,
+      ) ??
+      cartLineRef(
+        editingRef != null || editingId != null
+          ? { update_code: editingRef, id: editingId }
+          : resolvedMergeTarget,
+      );
     if (!targetLineRef && resolvedMergeTarget) {
-      targetLineRef = cartLineRef(resolvedMergeTarget);
+      targetLineRef =
+        serverPersistedCartLineRef(resolvedMergeTarget) ??
+        cartLineRef(resolvedMergeTarget);
     }
 
     if (intendedEdit && !targetLineRef) {
@@ -6111,7 +6151,11 @@ export function PosScreen({ standalone = false }) {
       !intendedEdit &&
       resolvedMergeTarget &&
       isServerPersistedCartLine(resolvedMergeTarget)
-        ? String(cartLineRef(resolvedMergeTarget) ?? "")
+        ? String(
+            serverPersistedCartLineRef(resolvedMergeTarget) ??
+              cartLineRef(resolvedMergeTarget) ??
+              "",
+          )
         : "";
 
     const stockAsRetail =
@@ -6494,7 +6538,11 @@ export function PosScreen({ standalone = false }) {
         resolvedMergeTarget = serverMergeTarget;
         targetLineRef = cartLineRef(serverMergeTarget);
         if (isServerPersistedCartLine(serverMergeTarget)) {
-          mergePatchRef = String(cartLineRef(serverMergeTarget) ?? mergePatchRef);
+          mergePatchRef = String(
+            serverPersistedCartLineRef(serverMergeTarget) ??
+              cartLineRef(serverMergeTarget) ??
+              mergePatchRef,
+          );
         }
         // Always merge from the pre-paint qty — painted rows already include incrementBaseQty.
         const baseBefore =
@@ -6533,21 +6581,51 @@ export function PosScreen({ standalone = false }) {
     const persistedPatchRef = (() => {
       if (mergePatchRef) return mergePatchRef;
       if (resolvedMergeTarget && isServerPersistedCartLine(resolvedMergeTarget)) {
-        return cartLineRef(resolvedMergeTarget);
+        return serverPersistedCartLineRef(resolvedMergeTarget);
       }
       // Classic F12 mode convert / qty edit: mergeTarget is null, but editingRef
       // still points at the TemporaryCart row that must be PATCHed (not POSTed).
-      if (intendedEdit && targetLineRef != null) {
-        const liveEditLine =
-          (liveCart?.lines ?? []).find((line) => cartLineMatchesRef(line, targetLineRef)) ??
-          (cartRef.current?.lines ?? []).find((line) =>
-            cartLineMatchesRef(line, targetLineRef),
-          );
-        if (liveEditLine && isServerPersistedCartLine(liveEditLine)) {
-          return cartLineRef(liveEditLine) ?? String(targetLineRef);
+      if (intendedEdit) {
+        const needleRefs = [targetLineRef, editingRef, editingId].filter(
+          (v) => v != null && String(v).trim() !== "",
+        );
+        const liveLines = [
+          ...(cartRef.current?.lines ?? []),
+          ...(liveCart?.lines ?? []),
+          ...(activeCart?.lines ?? []),
+        ];
+        for (const row of liveLines) {
+          if (
+            needleRefs.some((needle) => cartLineMatchesRef(row, needle)) ||
+            (editingId != null && sameLineId(row.id, editingId))
+          ) {
+            const ref = serverPersistedCartLineRef(row);
+            if (ref) return ref;
+          }
         }
-        if (editingId != null && !String(editingId).startsWith("pending-") && !String(editingId).startsWith("opt-")) {
-          return cartLineRef({ update_code: editingRef, id: editingId }) ?? String(targetLineRef);
+        const fromEditArgs = serverPersistedCartLineRef({
+          update_code: editingRef,
+          id: editingId,
+        });
+        if (fromEditArgs) return fromEditArgs;
+        for (const needle of needleRefs) {
+          if (needle == null || isLocalCartLineId(needle)) continue;
+          const s = String(needle);
+          if (/^\d+$/.test(s) || /^CLU-/i.test(s)) return s;
+        }
+        // Last resort: sole same-SKU+mode TemporaryCart row (identity reminted mid-await).
+        if (product?.product_code) {
+          const code = String(product.product_code);
+          const mode = Number(onWholesaleRetailFlag ? 1 : 0);
+          const sameMode = (cartRef.current?.lines ?? liveCart?.lines ?? []).filter(
+            (row) =>
+              String(row?.product_code ?? "") === code &&
+              (Number(row?.on_wholesale_retail ?? 0) ? 1 : 0) === mode &&
+              isServerPersistedCartLine(row),
+          );
+          if (sameMode.length === 1) {
+            return serverPersistedCartLineRef(sameMode[0]);
+          }
         }
       }
       return null;
@@ -6770,6 +6848,12 @@ export function PosScreen({ standalone = false }) {
         }
       } else if (intendedEdit) {
         // Swap / in-place edit must never POST a second row when the line ref is missing.
+        // Classic qty Enter already painted the grid — keep that qty instead of alarming.
+        if (keepOptimisticOnFailure && unlockUiEarly) {
+          setCartLineSaveFailed(false);
+          if (clearEntry) focusScanAfterItemAdded();
+          return true;
+        }
         setStatusMessage("Could not sync the line change — try the qty Enter again.");
         setCartLineSaveFailed(true);
         if (clearEntry && !unlockUiEarly) clearClassicEntryFields();
@@ -8996,8 +9080,19 @@ export function PosScreen({ standalone = false }) {
         findCartLineForEdit(activeCart?.lines, line, {
           preferProductCode: line.product_code,
         }) ?? line;
-      const lineRef = cartLineRef(liveLine);
-      if (!lineRef) {
+      // Freeze TemporaryCart identity BEFORE any await (product load / retail package).
+      // Otherwise a parallel merge can remint ids and qty Enter intermittently fails
+      // with "Could not sync the line change".
+      const frozenServerPatchRef =
+        serverPersistedCartLineRef(liveLine) ??
+        serverPersistedCartLineRef(line);
+      const frozenEditingId = liveLine.id ?? line.id ?? null;
+      const frozenEditingRef =
+        frozenServerPatchRef ??
+        cartLineRef(liveLine) ??
+        cartLineRef(line);
+      const lineRef = frozenEditingRef;
+      if (!lineRef && !frozenServerPatchRef) {
         setStatusMessage("Could not resolve the cart line to update.");
         return;
       }
@@ -9199,7 +9294,16 @@ export function PosScreen({ standalone = false }) {
         setCart(nextCart);
 
         // After collapse, PATCH the surviving same-mode row (earlier twin may keep its id).
+        // Prefer the row that still carries the frozen TemporaryCart identity.
         const surviving =
+          (frozenServerPatchRef
+            ? paintedLines.find(
+                (row) =>
+                  serverPersistedCartLineRef(row) === frozenServerPatchRef ||
+                  cartLineMatchesRef(row, frozenServerPatchRef),
+              )
+            : null) ??
+          paintedLines.find((row) => cartLinesShareIdentity(row, existing)) ??
           paintedLines.find(
             (row) =>
               String(row.product_code) === String(existing.product_code) &&
@@ -9308,8 +9412,15 @@ export function PosScreen({ standalone = false }) {
             product,
             computed: commitComputed,
             incrementBaseQty: commitComputed.baseQty,
-            editingId: surviving.id,
-            editingRef: cartLineRef(surviving) ?? cartLineRef(existing) ?? lineRef,
+            editingId: frozenEditingId ?? surviving.id,
+            editingRef:
+              frozenServerPatchRef ??
+              serverPersistedCartLineRef(surviving) ??
+              serverPersistedCartLineRef(existing) ??
+              frozenEditingRef ??
+              cartLineRef(surviving) ??
+              cartLineRef(existing) ??
+              lineRef,
             discount: perUnitDiscount,
             clearEntry: false,
             successMessage: null,
@@ -9410,8 +9521,8 @@ export function PosScreen({ standalone = false }) {
         product,
         computed,
         incrementBaseQty: computed.baseQty,
-        editingId: liveLine.id,
-        editingRef: lineRef,
+        editingId: frozenEditingId ?? liveLine.id,
+        editingRef: frozenServerPatchRef ?? frozenEditingRef ?? lineRef,
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
@@ -9433,15 +9544,29 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    // Classic (and previous-order local drafts): same as scan-add — optimistic paint,
-    // do not freeze the qty grid behind lineBusy / PATCH.
+    // Classic (and previous-order local drafts): paint + queued TemporaryCart/IDB
+    // sync under the same blocking overlay as delete — assumption is the save is
+    // queued, so the till waits until the queue finishes.
     if (classicLayout || localDraftEdit) {
-      void enqueueCartCommit(async () => {
-        try {
-          await run();
-        } catch (e) {
-          setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
-        }
+      void runWithLineSaveOverlay(
+        async () => {
+          await enqueueCartCommit(async () => {
+            await run();
+          });
+          await waitForCartLineSavesToFinish();
+          if (
+            usesLocalPosCartWorkspace(cartRef.current) ||
+            !isServerPosCartId(cartRef.current?.id)
+          ) {
+            await awaitLocalCartWrites().catch(() => {});
+          }
+        },
+        {
+          message: modeActuallyChanged ? "Updating line…" : "Updating quantity…",
+          detail: "Queued cart save — please wait until it finishes.",
+        },
+      ).catch((e) => {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
       });
       return;
     }
