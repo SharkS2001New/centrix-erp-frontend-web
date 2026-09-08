@@ -13,5 +13,6 @@
   "comstoreExecutableArgs": "",
   "comstoreStartCommand": "",
   "comstoreStartWorkingDirectory": "",
-  "comstoreReadyTimeoutSeconds": 45
+  "comstoreReadyTimeoutSeconds": 45,
+  "deviceHardwareIp": ""
 }

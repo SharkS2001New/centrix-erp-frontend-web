@@ -77,6 +77,38 @@ public sealed class ConfigStore
         }
     }
 
+    public void ApplyRuntimeOverrides(string? comstoreBaseUrl = null, string? deviceHardwareIp = null)
+    {
+        lock (_gate)
+        {
+            var changed = false;
+            if (!string.IsNullOrWhiteSpace(comstoreBaseUrl))
+            {
+                var next = comstoreBaseUrl.Trim().TrimEnd('/');
+                if (!string.Equals(_config.ComstoreBaseUrl, next, StringComparison.OrdinalIgnoreCase))
+                {
+                    _config.ComstoreBaseUrl = next;
+                    changed = true;
+                }
+            }
+
+            if (deviceHardwareIp != null)
+            {
+                var next = deviceHardwareIp.Trim();
+                if (!string.Equals(_config.DeviceHardwareIp, next, StringComparison.OrdinalIgnoreCase))
+                {
+                    _config.DeviceHardwareIp = next;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                _config.Normalize();
+            }
+        }
+    }
+
     private static string? ResolveExisting(string startDir, string fileName)
     {
         var dir = startDir;

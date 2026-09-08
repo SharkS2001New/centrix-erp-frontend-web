@@ -13,27 +13,32 @@ public sealed class KraWorker : BackgroundService
     private readonly CentrixClient _centrix;
     private readonly ComstoreClient _comstore;
     private readonly ComstoreEnsureService _ensure;
+    private readonly DeviceReachabilityProbe _deviceProbe;
 
     private int _commandsHandled;
     private string? _lastError;
     private string? _lastComstoreEnsureNote;
+    private string? _lastDeviceMessage;
     private DateTimeOffset? _lastHeartbeatAt;
     private DateTimeOffset? _lastPollAt;
     private bool _online;
     private bool _comstoreHealthy;
+    private bool? _deviceReachable;
 
     public KraWorker(
         ILogger<KraWorker> log,
         ConfigStore config,
         CentrixClient centrix,
         ComstoreClient comstore,
-        ComstoreEnsureService ensure)
+        ComstoreEnsureService ensure,
+        DeviceReachabilityProbe deviceProbe)
     {
         _log = log;
         _config = config;
         _centrix = centrix;
         _comstore = comstore;
         _ensure = ensure;
+        _deviceProbe = deviceProbe;
     }
 
     public object StatusSnapshot()
@@ -48,6 +53,10 @@ public sealed class KraWorker : BackgroundService
             missing = cfg.MissingFields(),
             online = _online,
             comstore_healthy = _comstoreHealthy,
+            manual_start_required = !_comstoreHealthy,
+            device_reachable = _deviceReachable,
+            device_hardware_ip = cfg.DeviceHardwareIp,
+            last_device_status = _lastDeviceMessage,
             auto_start_comstore = cfg.AutoStartComstore,
             last_comstore_ensure = _lastComstoreEnsureNote ?? _ensure.LastStartNote,
             last_heartbeat_at = _lastHeartbeatAt?.ToString("o"),
@@ -58,10 +67,19 @@ public sealed class KraWorker : BackgroundService
             centrix_api_url = cfg.CentrixApiUrl,
             long_poll_ms = cfg.LongPollMs,
             status_url = $"http://127.0.0.1:{AgentConstants.StatusPort}",
+            note = _comstoreHealthy
+                ? (_deviceReachable == false
+                    ? "Agent running; fiscal device not reachable on the LAN."
+                    : null)
+                : "Agent Windows service stays running; start Comstore manually. Heartbeats keep reporting until Comstore is up.",
         };
     }
 
-    public async Task TestConnectionsAsync(CancellationToken ct)
+    /// <summary>
+    /// Probe Centrix + Comstore. Never stops the service when Comstore is down —
+    /// returns manual_start_required so Centrix / the status page can show the amber signal.
+    /// </summary>
+    public async Task<object> TestConnectionsAsync(CancellationToken ct)
     {
         _config.Reload();
         var config = _config.Current;
@@ -74,23 +92,47 @@ public sealed class KraWorker : BackgroundService
         _comstoreHealthy = ok;
         _lastComstoreEnsureNote = detail;
 
+        var comstoreMessage = ok
+            ? detail
+            : $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage}";
+
+        var device = await _deviceProbe.ProbeAsync(config, ok, ct);
+        _deviceReachable = device.Reachable;
+        _lastDeviceMessage = device.Message;
+
         await _centrix.PostHeartbeatAsync(
             config,
             ct,
             comstoreHealthy: ok,
-            comstoreMessage: ok
-                ? detail
-                : $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage}");
+            comstoreMessage: comstoreMessage,
+            deviceReachable: device.Reachable,
+            deviceMessage: device.Message,
+            deviceHardwareIp: device.HardwareIp,
+            deviceConnection: device.DeviceConnection);
 
         _online = true;
         _lastHeartbeatAt = DateTimeOffset.UtcNow;
+        _lastError = ok ? null : comstoreMessage;
 
-        if (!ok)
+        return new
         {
-            throw new InvalidOperationException(
-                $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage} "
-                + $"({config.ComstoreBaseUrl}: {detail ?? "unreachable"})");
-        }
+            ok = ok && device.Reachable,
+            agent_ok = true,
+            comstore_ok = ok,
+            device_ok = device.Reachable,
+            manual_start_required = !ok,
+            device_unreachable = !device.Reachable,
+            message = !ok
+                ? AgentConstants.ComstoreManualStartUserMessage
+                : !device.Reachable
+                    ? device.Message
+                    : $"{AgentConstants.AgentName} reached Centrix, Comstore, and the fiscal device.",
+            detail = detail,
+            device_status = device.Message,
+            device_hardware_ip = device.HardwareIp,
+            device_connection = device.DeviceConnection,
+            comstore_base_url = config.ComstoreBaseUrl,
+        };
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -134,7 +176,11 @@ public sealed class KraWorker : BackgroundService
             _lastComstoreEnsureNote = detail;
             if (!ok)
             {
-                _log.LogWarning("Comstore not ready at startup: {Detail}", detail);
+                // Service keeps running — only warn. Heartbeats will keep signalling manual start.
+                _log.LogWarning(
+                    "Comstore not ready at startup ({Detail}). {Agent} stays running and will keep reporting until Comstore is started manually.",
+                    detail,
+                    AgentConstants.AgentName);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -165,14 +211,36 @@ public sealed class KraWorker : BackgroundService
                     var comstoreMessage = ok
                         ? detail
                         : $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage}";
+
+                    var device = await _deviceProbe.ProbeAsync(config, ok, ct);
+                    _deviceReachable = device.Reachable;
+                    _lastDeviceMessage = device.Message;
+
                     await _centrix.PostHeartbeatAsync(
                         config,
                         ct,
                         comstoreHealthy: ok,
-                        comstoreMessage: comstoreMessage);
+                        comstoreMessage: comstoreMessage,
+                        deviceReachable: device.Reachable,
+                        deviceMessage: device.Message,
+                        deviceHardwareIp: device.HardwareIp,
+                        deviceConnection: device.DeviceConnection);
                     _online = true;
                     _lastHeartbeatAt = DateTimeOffset.UtcNow;
-                    _lastError = ok ? null : comstoreMessage;
+                    _lastError = !ok
+                        ? comstoreMessage
+                        : !device.Reachable
+                            ? device.Message
+                            : null;
+                    if (!ok)
+                    {
+                        _log.LogWarning(
+                            "Comstore still down — agent service continues; signalling manual start to Centrix.");
+                    }
+                    else if (!device.Reachable)
+                    {
+                        _log.LogWarning("Fiscal device not reachable: {Detail}", device.Message);
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -225,13 +293,9 @@ public sealed class KraWorker : BackgroundService
         if (!config.IsReady) return;
 
         _lastPollAt = DateTimeOffset.UtcNow;
-        var (commands, comstoreUrl) = await _centrix.PullCommandsAsync(config, ct);
-        if (!string.IsNullOrWhiteSpace(comstoreUrl) &&
-            !string.Equals(config.ComstoreBaseUrl, comstoreUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-        {
-            // Runtime override from Centrix (finance Device IP / URL).
-            config.ComstoreBaseUrl = comstoreUrl.Trim().TrimEnd('/');
-        }
+        var (commands, comstoreUrl, hardwareIp) = await _centrix.PullCommandsAsync(config, ct);
+        _config.ApplyRuntimeOverrides(comstoreUrl, hardwareIp);
+        config = _config.Current;
 
         if (commands.Count == 0)
         {

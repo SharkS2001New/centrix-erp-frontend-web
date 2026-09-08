@@ -129,6 +129,7 @@ export async function POST(request) {
         Number(config.comstoreReadyTimeoutSeconds) > 0
           ? Number(config.comstoreReadyTimeoutSeconds)
           : 45,
+      deviceHardwareIp: String(config.deviceHardwareIp || "").trim(),
     };
 
     const body = await zipDirectoryStore(root, ZIP_ROOT, {

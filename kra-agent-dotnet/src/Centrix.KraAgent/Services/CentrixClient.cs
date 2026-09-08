@@ -66,7 +66,11 @@ public sealed class CentrixClient
         AgentConfig config,
         CancellationToken ct,
         bool? comstoreHealthy = null,
-        string? comstoreMessage = null)
+        string? comstoreMessage = null,
+        bool? deviceReachable = null,
+        string? deviceMessage = null,
+        string? deviceHardwareIp = null,
+        string? deviceConnection = null)
     {
         var url = $"{KraBase(config)}/agent/heartbeat";
         using var req = Request(config, HttpMethod.Post, url, new
@@ -75,6 +79,12 @@ public sealed class CentrixClient
             comstore_base_url = config.ComstoreBaseUrl,
             comstore_healthy = comstoreHealthy,
             comstore_message = Truncate(comstoreMessage, 400),
+            device_reachable = deviceReachable,
+            device_status_message = Truncate(deviceMessage, 400),
+            device_hardware_ip = string.IsNullOrWhiteSpace(deviceHardwareIp)
+                ? config.DeviceHardwareIp
+                : deviceHardwareIp,
+            device_connection = deviceConnection,
         });
         using var res = await SendAsync(req, 15, ct);
         if (!res.IsSuccessStatusCode)
@@ -84,7 +94,7 @@ public sealed class CentrixClient
         }
     }
 
-    public async Task<(IReadOnlyList<AgentCommand> Commands, string? ComstoreBaseUrl)> PullCommandsAsync(
+    public async Task<(IReadOnlyList<AgentCommand> Commands, string? ComstoreBaseUrl, string? DeviceHardwareIp)> PullCommandsAsync(
         AgentConfig config,
         CancellationToken ct)
     {
@@ -125,7 +135,13 @@ public sealed class CentrixClient
             comstore = cs.GetString();
         }
 
-        return (commands, comstore);
+        string? hardwareIp = null;
+        if (root.TryGetProperty("device_hardware_ip", out var hip) && hip.ValueKind == JsonValueKind.String)
+        {
+            hardwareIp = hip.GetString();
+        }
+
+        return (commands, comstore, hardwareIp);
     }
 
     public async Task SubmitCommandResultAsync(AgentConfig config, string commandId, CommandResult result, CancellationToken ct)

@@ -33,6 +33,7 @@ builder.Services.AddSingleton<ConfigStore>();
 builder.Services.AddSingleton<CentrixClient>();
 builder.Services.AddSingleton<ComstoreClient>();
 builder.Services.AddSingleton<ComstoreEnsureService>();
+builder.Services.AddSingleton<DeviceReachabilityProbe>();
 builder.Services.AddSingleton<KraWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KraWorker>());
 
@@ -83,16 +84,21 @@ app.MapPost("/api/test-connection", async (KraWorker worker, CancellationToken c
 {
     try
     {
-        await worker.TestConnectionsAsync(ct);
-        return Results.Json(new
-        {
-            ok = true,
-            message = $"{AgentConstants.AgentName} reached Centrix and Comstore on this PC.",
-        });
+        var result = await worker.TestConnectionsAsync(ct);
+        // Always 200 when the agent reached Centrix — Comstore-down is a signal, not a crash.
+        return Results.Json(result);
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message }, statusCode: StatusCodes.Status502BadGateway);
+        return Results.Json(new
+        {
+            ok = false,
+            agent_ok = false,
+            comstore_ok = false,
+            manual_start_required = false,
+            error = ex.Message,
+            message = ex.Message,
+        }, statusCode: StatusCodes.Status502BadGateway);
     }
 });
 
@@ -125,12 +131,12 @@ static string StatusHtml() => """
   <div class="wrap">
     <div style="color:#e2e8f0;font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px;">Centrix ERP</div>
     <h1>KRA Agent</h1>
-    <p class="lead">.NET Windows service — bridges Centrix cloud to local Comstore (localhost:4000). Starts Comstore if it is down.</p>
+    <p class="lead">.NET Windows service — always stays running. Bridges Centrix cloud to local Comstore. If Comstore is down, the agent keeps signalling that it must be started manually.</p>
     <div class="card">
       <div id="banner" class="banner warn">Loading status…</div>
       <button id="refreshBtn" type="button" style="margin-bottom:10px;background:#334155">Refresh status</button>
       <button id="testBtn" type="button">Test connection</button>
-      <p class="muted">Uses config.json from your Centrix Finance download. Keep CentrixKraAgent on Automatic. With autoStartComstore=true the agent starts the Comstore Windows service or exe when /api/health fails.</p>
+      <p class="muted">Keep CentrixKraAgent on Automatic startup. Comstore being offline does <strong>not</strong> stop this service — heartbeats keep telling Centrix to start Comstore manually until /api/health succeeds.</p>
       <pre id="detail"></pre>
     </div>
   </div>
@@ -145,12 +151,19 @@ static string StatusHtml() => """
         const res = await fetch("/api/status");
         if (!res.ok) throw new Error("CentrixKraAgent returned HTTP " + res.status);
         const data = await res.json();
-        if (data.ready) {
-          banner.className = "banner ok";
-          banner.textContent = "Ready → " + (data.comstore_base_url || "");
-        } else {
+        const st = data.status || {};
+        if (!data.ready) {
           banner.className = "banner warn";
           banner.textContent = "Config incomplete: " + (data.missing || []).join(", ");
+        } else if (st.comstore_healthy === false || st.manual_start_required) {
+          banner.className = "banner warn";
+          banner.textContent = "Agent running · Comstore down — start Comstore manually (service keeps running)";
+        } else if (st.comstore_healthy === true) {
+          banner.className = "banner ok";
+          banner.textContent = "Agent running · Comstore reachable → " + (data.comstore_base_url || "");
+        } else {
+          banner.className = "banner ok";
+          banner.textContent = "Agent running → " + (data.comstore_base_url || "");
         }
         detail.textContent = JSON.stringify(data, null, 2);
       } catch (e) {
@@ -168,8 +181,13 @@ static string StatusHtml() => """
       try {
         const res = await fetch("/api/test-connection", { method: "POST" });
         const data = await res.json();
-        banner.className = data.ok ? "banner ok" : "banner err";
-        banner.textContent = data.ok ? (data.message || "OK") : (data.error || "Failed");
+        if (data.agent_ok && data.manual_start_required) {
+          banner.className = "banner warn";
+          banner.textContent = data.message || "Agent OK — start Comstore manually";
+        } else {
+          banner.className = data.ok ? "banner ok" : "banner err";
+          banner.textContent = data.ok ? (data.message || "OK") : (data.error || data.message || "Failed");
+        }
       } catch (e) {
         banner.className = "banner err";
         banner.textContent = String(e);
@@ -179,6 +197,7 @@ static string StatusHtml() => """
       }
     });
     refresh();
+    setInterval(() => void refresh(), 15000);
   </script>
 </body>
 </html>

@@ -57,6 +57,10 @@ public sealed class AgentConfig
     [JsonPropertyName("comstoreReadyTimeoutSeconds")]
     public int ComstoreReadyTimeoutSeconds { get; set; } = 45;
 
+    /// <summary>Smart VSCU / fiscal hardware LAN IP (from Centrix Finance). Used for ICMP/TCP reachability.</summary>
+    [JsonPropertyName("deviceHardwareIp")]
+    public string DeviceHardwareIp { get; set; } = "";
+
     public IReadOnlyList<string> MissingFields()
     {
         var missing = new List<string>();
@@ -88,6 +92,7 @@ public sealed class AgentConfig
         ComstoreExecutableArgs = (ComstoreExecutableArgs ?? "").Trim();
         ComstoreStartCommand = (ComstoreStartCommand ?? "").Trim();
         ComstoreStartWorkingDirectory = (ComstoreStartWorkingDirectory ?? "").Trim();
+        DeviceHardwareIp = (DeviceHardwareIp ?? "").Trim();
         ComstoreWindowsServiceNames ??= new List<string>();
         ComstoreWindowsServiceNames = ComstoreWindowsServiceNames
             .Where(n => !string.IsNullOrWhiteSpace(n))

@@ -2,6 +2,24 @@
 
 Windows service (same model as Centrix Attendance Agent) that bridges **Centrix cloud** to **local Comstore** (`http://127.0.0.1:4000`).
 
+## Comstore down ≠ agent stop
+
+**CentrixKraAgent always keeps running** as a Windows service when Comstore is offline.
+
+- It tries to auto-start Comstore when configured (`autoStartComstore`).
+- If that fails, the **only** difference is ongoing heartbeats/signals:
+  `COMSTORE_MANUAL_START_REQUIRED` → Centrix Finance shows “start Comstore manually”.
+- Fiscal commands fail until Comstore is up; the agent does **not** exit or stop the service.
+
+## Fiscal device LAN ping
+
+On each heartbeat the agent also checks the Smart VSCU:
+
+1. **ICMP ping** (with TCP fallback) of `deviceHardwareIp` from Centrix Finance → Fiscal hardware IP.
+2. Comstore `GET /api/health` → `deviceConnection` when Comstore is up.
+
+Results are sent to Centrix (`device_reachable` / `device_status_message`). Finance shows **Device network error** when the agent is online but the hardware IP does not respond.
+
 ## Latency
 
 - Agent **long-polls** Centrix (`wait_ms=2000`) and wakes as soon as a fiscal command is queued (~50–150ms + internet RTT).
@@ -19,12 +37,13 @@ When `autoStartComstore` is `true` (default), the agent:
    - `comstoreExecutablePath` (or common install paths under `C:\Comstore`, Program Files, …)
    - optional `comstoreStartCommand` (`cmd /c …`)
 3. Waits up to `comstoreReadyTimeoutSeconds` for health to succeed, then retries the fiscal call.
+4. If still down → keeps the service up and keeps reporting **manual start required**.
 
 Set an explicit service name or exe path in `config.json` if discovery misses your install.
 
 ## Install
 
-1. Centrix → Finance → KRA: enable device + **Use shop PC agent**, set Comstore URL, **Download KRA agent**.
+1. Centrix → Finance → KRA: enable device + **Centrix KRA Agent**, set Comstore URL, **Download Centrix KRA Agent**.
 2. Unzip on the shop PC.
 3. Right-click **BUILD-AND-INSTALL.bat** → Run as administrator  
    (needs .NET 8 SDK once to publish; installs a self-contained Windows service — no Node.js).

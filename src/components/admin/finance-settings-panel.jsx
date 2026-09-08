@@ -507,7 +507,7 @@ export function FinanceSettingsPanel({
                         {kraAgentStatus ? (
                           <div className="w-full space-y-1">
                             <span className="theme-subtext text-xs">
-                              Agent {kraAgentStatus.online ? "online" : "offline"}
+                              Agent service {kraAgentStatus.online ? "online" : "offline"}
                               {kraAgentStatus.last_seen_at
                                 ? ` · last seen ${kraAgentStatus.last_seen_at}`
                                 : ""}
@@ -515,18 +515,44 @@ export function FinanceSettingsPanel({
                               {kraAgentStatus.comstore_reachable === true
                                 ? " · Comstore reachable"
                                 : kraAgentStatus.comstore_reachable === false
-                                  ? " · Comstore down"
+                                  ? " · Comstore needs manual start"
+                                  : ""}
+                              {kraAgentStatus.device_reachable === true
+                                ? " · Device online"
+                                : kraAgentStatus.device_reachable === false
+                                  ? " · Device network error"
                                   : ""}
                             </span>
                             {kraAgentStatus.manual_start_required ||
                             kraAgentStatus.comstore_reachable === false ? (
                               <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                                <p className="font-medium">Start Comstore manually on the shop PC</p>
+                                <p className="font-medium">
+                                  Agent is still running — start Comstore manually
+                                </p>
                                 <p className="mt-1 text-xs leading-relaxed">
                                   {kraAgentStatus.message ||
                                     kraAgentStatus.comstore_status_message ||
-                                    "The shop agent could not start Comstore automatically. Open the Comstore Windows service or app (usually http://localhost:4000), then click Test connection again."}
+                                    "CentrixKraAgent keeps running as a Windows service. It could not start Comstore automatically and will keep signalling until you open the Comstore service/app (usually http://localhost:4000), then click Test connection again."}
                                 </p>
+                              </div>
+                            ) : kraAgentStatus.device_network_error ||
+                              kraAgentStatus.device_reachable === false ? (
+                              <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+                                <p className="font-medium">Fiscal device network error</p>
+                                <p className="mt-1 text-xs leading-relaxed">
+                                  {kraAgentStatus.device_status_message ||
+                                    kraAgentStatus.message ||
+                                    `Agent is online but cannot reach the Smart VSCU${
+                                      kraAgentStatus.device_hardware_ip
+                                        ? ` at ${kraAgentStatus.device_hardware_ip}`
+                                        : ""
+                                    }. Check power, LAN, and Fiscal hardware IP below.`}
+                                </p>
+                                {kraAgentStatus.device_connection ? (
+                                  <p className="mt-1 text-xs text-rose-900/80">
+                                    Comstore deviceConnection: {kraAgentStatus.device_connection}
+                                  </p>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
@@ -595,7 +621,7 @@ export function FinanceSettingsPanel({
                     />
                     <p className="theme-subtext mt-1 text-xs">
                       {form.enable_kra_agent
-                        ? "LAN address of the Smart VSCU. The agent passes this to Comstore for Initialize / Restart."
+                        ? "LAN address of the Smart VSCU. The agent pings this IP on each heartbeat and shows a device network error in Centrix when it is unreachable. Also used for Initialize / Restart."
                         : "LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a hostname, not an IP."}
                     </p>
                   </Field>
@@ -688,12 +714,16 @@ export function FinanceSettingsPanel({
                       >
                         {kraHealthResult.manualStartRequired ? (
                           <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-                            <p className="font-medium">Start Comstore manually on the shop PC</p>
+                            <p className="font-medium">
+                              Agent is still running — start Comstore manually
+                            </p>
                             <p className="mt-1 text-xs leading-relaxed">
                               {kraHealthResult.message}
                             </p>
                             <p className="mt-2 text-xs text-amber-900/80">
-                              After Comstore is running, click <strong>Test connection</strong> again.
+                              CentrixKraAgent keeps running as a service and will keep signalling until
+                              Comstore is up. After Comstore is running, click{" "}
+                              <strong>Test connection</strong> again.
                             </p>
                           </div>
                         ) : (
