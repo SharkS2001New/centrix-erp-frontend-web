@@ -6,7 +6,9 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   financeFormFromApi,
   financePayloadFromForm,
-  applyKraConnectionMethod,
+  ensureKraAgentMode,
+  kraAgentSettingsFingerprint,
+  canDownloadKraAgent,
   isPlatformKraIntegrationEnabled,
   isPlatformMpesaStkEnabled,
   isPlatformEquityBankEnabled,
@@ -87,6 +89,7 @@ export function FinanceSettingsPanel({
   const [kraRestartTesting, setKraRestartTesting] = useState(false);
   const [kraAgentDownloading, setKraAgentDownloading] = useState(false);
   const [kraAgentStatus, setKraAgentStatus] = useState(null);
+  const [kraSavedFingerprint, setKraSavedFingerprint] = useState(null);
   const [kraHealthResult, setKraHealthResult] = useState(null);
   const [activeTab, setActiveTab] = useState(() => {
     if (mode === "paybills") return "paybills";
@@ -113,7 +116,12 @@ export function FinanceSettingsPanel({
     getSettings("finance")
       .then((res) => {
         if (cancelled || !res) return;
-        setForm(financeFormFromApi(res));
+        const next = financeFormFromApi(res);
+        setForm(next);
+        setKraSavedFingerprint(kraAgentSettingsFingerprint(next));
+        if (next.enable_kra_device) {
+          void refreshKraAgentStatus();
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load finance settings");
@@ -225,9 +233,7 @@ export function FinanceSettingsPanel({
         viaAgent: Boolean(res.via_agent),
         manualStartRequired: Boolean(res.manual_start_required),
       });
-      if (form.enable_kra_agent) {
-        void refreshKraAgentStatus();
-      }
+      void refreshKraAgentStatus();
     } catch (e) {
       const body = e instanceof ApiError && e.body && typeof e.body === "object" ? e.body : null;
       const message =
@@ -243,9 +249,7 @@ export function FinanceSettingsPanel({
         viaAgent: Boolean(body?.via_agent),
         manualStartRequired: Boolean(body?.manual_start_required),
       });
-      if (form.enable_kra_agent) {
-        void refreshKraAgentStatus();
-      }
+      void refreshKraAgentStatus();
     } finally {
       setBusy(false);
     }
@@ -280,6 +284,10 @@ export function FinanceSettingsPanel({
   }
 
   async function downloadKraAgent() {
+    if (!canDownloadKraAgent(form, kraSavedFingerprint)) {
+      setError("Save KRA settings first (Comstore URL, serial, and PIN), then download the agent.");
+      return;
+    }
     setKraAgentDownloading(true);
     setError(null);
     try {
@@ -326,10 +334,10 @@ export function FinanceSettingsPanel({
         body: payload,
       });
       const saved = financeFormFromApi(res);
-      setForm({
+      const nextForm = {
         ...saved,
         enable_kra_device: Boolean(payload.enable_kra_device),
-        enable_kra_agent: Boolean(payload.enable_kra_agent),
+        enable_kra_agent: true,
         default_submit_kra: Boolean(payload.default_submit_kra),
         kra_device_test_mode: Boolean(payload.kra_device_test_mode),
         kra_bypass_above_amount:
@@ -341,7 +349,12 @@ export function FinanceSettingsPanel({
         kra_device_hardware_ip: payload.kra_device_hardware_ip,
         kra_serial_number: payload.kra_serial_number,
         kra_plu_register_path: payload.kra_plu_register_path,
-      });
+      };
+      setForm(nextForm);
+      setKraSavedFingerprint(kraAgentSettingsFingerprint(nextForm));
+      if (nextForm.enable_kra_device) {
+        void refreshKraAgentStatus();
+      }
 
       if (afterSave) await afterSave();
       setAccountsRefreshKey((k) => k + 1);
@@ -417,94 +430,55 @@ export function FinanceSettingsPanel({
               <div className={`${mode === "all" ? "mt-3" : ""} space-y-3`}>
               <Toggle
                 label="KRA device configured"
-                description="Stores device URL, serial number, and shop PIN. Required before connection checks or PLU registration."
+                description="Stores Centrix KRA Agent settings (Comstore URL, serial, and shop PIN). Required before connection checks or PLU registration."
                 checked={Boolean(form.enable_kra_device)}
-                onChange={(v) => setForm((f) => ({ ...f, enable_kra_device: v }))}
+                onChange={(v) => {
+                  setForm((f) => {
+                    if (!v) return { ...f, enable_kra_device: false };
+                    return ensureKraAgentMode({ ...f, enable_kra_device: true });
+                  });
+                  if (v) void refreshKraAgentStatus();
+                  else setKraAgentStatus(null);
+                }}
               />
               {form.enable_kra_device ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2 space-y-3">
                     <div>
-                      <p className="theme-heading text-sm font-medium">Connection method</p>
+                      <p className="theme-heading text-sm font-medium">Centrix KRA Agent</p>
                       <p className="theme-subtext mt-0.5 text-xs">
-                        Only one method is active at a time. Agent mode uses Centrix KRA Agent on the shop
-                        PC; direct mode has Centrix call the Device IP / URL itself.
+                        Install Centrix KRA Agent on the shop PC. Centrix cloud talks to the agent, which
+                        calls local Comstore / Smart VSCU on the LAN.
                       </p>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="KRA connection method">
-                      <label
-                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
-                          form.enable_kra_agent
-                            ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
-                            : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
-                        }`}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={kraAgentDownloading || !canDownloadKraAgent(form, kraSavedFingerprint)}
+                        onClick={() => void downloadKraAgent()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                        title={
+                          canDownloadKraAgent(form, kraSavedFingerprint)
+                            ? "Download Centrix KRA Agent"
+                            : "Save KRA settings first, then download"
+                        }
                       >
-                        <input
-                          type="radio"
-                          className="mt-1"
-                          name="kra-connection-method"
-                          checked={Boolean(form.enable_kra_agent)}
-                          onChange={() => {
-                            setForm((f) => applyKraConnectionMethod(f, true));
-                            void refreshKraAgentStatus();
-                          }}
-                        />
-                        <span>
-                          <span className="theme-heading block text-sm font-medium">
-                            Centrix KRA Agent
-                          </span>
-                          <span className="theme-subtext mt-0.5 block text-xs">
-                            Install the agent on the shop PC. Centrix cloud talks to the agent, which calls
-                            local Comstore. Use when the API cannot reach fiscal middleware on the LAN.
-                          </span>
-                        </span>
-                      </label>
-                      <label
-                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
-                          !form.enable_kra_agent
-                            ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
-                            : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
-                        }`}
+                        {kraAgentDownloading ? "Preparing…" : "Download Centrix KRA Agent"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void refreshKraAgentStatus()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2`}
                       >
-                        <input
-                          type="radio"
-                          className="mt-1"
-                          name="kra-connection-method"
-                          checked={!form.enable_kra_agent}
-                          onChange={() => {
-                            setForm((f) => applyKraConnectionMethod(f, false));
-                            setKraAgentStatus(null);
-                          }}
-                        />
-                        <span>
-                          <span className="theme-heading block text-sm font-medium">
-                            Direct Device IP / URL (legacy)
-                          </span>
-                          <span className="theme-subtext mt-0.5 block text-xs">
-                            Centrix calls Comstore / device URL directly (LAN IP, hostname, or tunnel). No
-                            shop agent. Inactive while agent mode is selected.
-                          </span>
-                        </span>
-                      </label>
-                    </div>
-                    {form.enable_kra_agent ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={kraAgentDownloading}
-                          onClick={() => void downloadKraAgent()}
-                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
-                        >
-                          {kraAgentDownloading ? "Preparing…" : "Download Centrix KRA Agent"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void refreshKraAgentStatus()}
-                          className={`${SECONDARY_BTN_CLASS} px-3.5 py-2`}
-                        >
-                          Refresh agent status
-                        </button>
-                        {kraAgentStatus ? (
+                        Refresh agent status
+                      </button>
+                      {!canDownloadKraAgent(form, kraSavedFingerprint) ? (
+                        <p className="theme-subtext w-full text-xs">
+                          Save KRA settings (Comstore URL, serial, and PIN) before downloading Centrix KRA
+                          Agent.
+                        </p>
+                      ) : null}
+                      {kraAgentStatus ? (
                           <div className="w-full space-y-1">
                             <p className="text-xs">
                               <span
@@ -567,16 +541,9 @@ export function FinanceSettingsPanel({
                             ) : null}
                           </div>
                         ) : null}
-                      </div>
-                    ) : (
-                      <p className="theme-subtext text-xs">
-                        Direct mode is active. Centrix will not use the Centrix KRA Agent until you switch
-                        back to agent mode.
-                      </p>
-                    )}
+                    </div>
                   </div>
-                  {form.enable_kra_agent ? (
-                    <Field label="Agent Comstore URL">
+                  <Field label="Agent Comstore URL">
                       <input
                         className={inputClassName()}
                         value={form.kra_device_ip}
@@ -596,33 +563,7 @@ export function FinanceSettingsPanel({
                         <code className="text-[11px]">127.0.0.1</code> work.
                       </p>
                     </Field>
-                  ) : (
-                    <Field label="Device IP / URL (direct)">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_device_ip}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            kra_device_ip: e.target.value,
-                            kra_direct_device_ip: e.target.value,
-                          }))
-                        }
-                        placeholder="192.168.1.50:8010 or https://kra.example.com"
-                      />
-                      <p className="theme-subtext mt-1 text-xs">
-                        Centrix cloud calls this URL directly (must be reachable from the API server). Shop
-                        agent is not used in this mode.
-                      </p>
-                    </Field>
-                  )}
-                  <Field
-                    label={
-                      form.enable_kra_agent
-                        ? "Fiscal hardware IP (for agent)"
-                        : "Fiscal hardware IP (Smart VSCU)"
-                    }
-                  >
+                  <Field label="Fiscal hardware IP (for agent)">
                     <input
                       className={inputClassName()}
                       value={form.kra_device_hardware_ip}
@@ -630,53 +571,41 @@ export function FinanceSettingsPanel({
                       placeholder="192.168.1.39"
                     />
                     <p className="theme-subtext mt-1 text-xs">
-                      {form.enable_kra_agent
-                        ? "LAN address of the Smart VSCU. The agent pings this IP on each heartbeat and shows a device network error in Centrix when it is unreachable. Also used for Initialize / Restart."
-                        : "LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a hostname, not an IP."}
+                      LAN address of the Smart VSCU. Centrix KRA Agent pings this IP on each heartbeat and
+                      shows a device network error in Centrix when it is unreachable. Also used for
+                      Initialize / Restart.
                     </p>
                   </Field>
-                  <Field
-                    label={
-                      form.enable_kra_agent ? "Device serial (agent / Comstore)" : "Device serial number (SN)"
-                    }
-                  >
+                  <Field label="Device serial (agent / Comstore)">
                     <input
                       className={inputClassName()}
                       value={form.kra_serial_number}
                       onChange={(e) => setForm((f) => ({ ...f, kra_serial_number: e.target.value }))}
                     />
-                    {form.enable_kra_agent ? (
-                      <p className="theme-subtext mt-1 text-xs">
-                        Fiscal device serial used when the agent runs Initialize through Comstore.
-                      </p>
-                    ) : null}
+                    <p className="theme-subtext mt-1 text-xs">
+                      Fiscal device serial used when Centrix KRA Agent runs Initialize through Comstore.
+                    </p>
                   </Field>
-                  <Field label={form.enable_kra_agent ? "Shop KRA PIN (agent)" : "Shop KRA PIN"}>
+                  <Field label="Shop KRA PIN (agent)">
                     <input
                       className={inputClassName()}
                       value={form.kra_pin_number}
                       onChange={(e) => setForm((f) => ({ ...f, kra_pin_number: e.target.value.toUpperCase() }))}
                     />
-                    {form.enable_kra_agent ? (
-                      <p className="theme-subtext mt-1 text-xs">
-                        Taxpayer PIN for fiscalization. Sent with sales the agent submits to Comstore.
-                      </p>
-                    ) : null}
+                    <p className="theme-subtext mt-1 text-xs">
+                      Taxpayer PIN for fiscalization. Sent with sales Centrix KRA Agent submits to Comstore.
+                    </p>
                   </Field>
-                  <Field
-                    label={form.enable_kra_agent ? "PLU path (via agent)" : "PLU register path"}
-                  >
+                  <Field label="PLU path (via agent)">
                     <input
                       className={inputClassName()}
                       value={form.kra_plu_register_path}
                       onChange={(e) => setForm((f) => ({ ...f, kra_plu_register_path: e.target.value }))}
                       placeholder="/api/upload-plu-data"
                     />
-                    {form.enable_kra_agent ? (
-                      <p className="theme-subtext mt-1 text-xs">
-                        Comstore API path the agent uses when uploading / registering products.
-                      </p>
-                    ) : null}
+                    <p className="theme-subtext mt-1 text-xs">
+                      Comstore API path Centrix KRA Agent uses when uploading / registering products.
+                    </p>
                   </Field>
                   <div className="flex flex-col gap-2 sm:col-span-2">
                     <div className="flex flex-wrap items-end gap-2">
@@ -741,7 +670,7 @@ export function FinanceSettingsPanel({
                             <p>
                               {kraHealthResult.message}
                               {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
-                              {kraHealthResult.viaAgent ? " · via shop agent" : ""}
+                              {kraHealthResult.viaAgent ? " · via Centrix KRA Agent" : ""}
                             </p>
                             {kraHealthResult.deviceConnection ? (
                               <p className="theme-subtext mt-1 text-xs">
@@ -754,8 +683,7 @@ export function FinanceSettingsPanel({
                       </div>
                     ) : (
                       <p className="theme-subtext text-xs">
-                        <strong>Test connection</strong> uses the selected method only
-                        {form.enable_kra_agent ? " (via shop agent)" : " (direct HTTP)"}. Calls{" "}
+                        <strong>Test connection</strong> runs via Centrix KRA Agent. Calls{" "}
                         <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
                         <strong>Initialize</strong> calls{" "}
                           <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/init</code> (serial + hardware
