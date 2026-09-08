@@ -138,6 +138,8 @@ export function PosCartPaymentOptions({
   onMessage,
   onPaymentApplied,
   onCompleteOrder,
+  /** When true, completing checkout waits on KRA — show fiscalization copy. */
+  kraFiscalize = false,
 }) {
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState("");
@@ -805,14 +807,18 @@ export function PosCartPaymentOptions({
                       : mpesaPhase === "applying"
                         ? "Applying payment…"
                         : mpesaPhase === "completing"
-                          ? "Completing sale…"
+                          ? kraFiscalize
+                            ? "Fiscalizing receipt with KRA…"
+                            : "Completing sale…"
                           : "Please wait…"}
                 </p>
                 <p className="theme-text-muted mt-2 text-xs">
                   {mpesaPhase === "waiting_pin"
                     ? "Ask the customer to enter their M-Pesa PIN."
                     : mpesaPhase === "completing"
-                      ? "Saving the order and preparing the receipt."
+                      ? kraFiscalize
+                        ? "Submitting this receipt to KRA. Please wait."
+                        : "Saving the order and preparing the receipt."
                       : "Please wait."}
                 </p>
                 {mpesaPhase === "waiting_pin" ? (

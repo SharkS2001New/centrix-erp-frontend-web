@@ -11909,9 +11909,9 @@ export function PosScreen({ standalone = false }) {
       // "Use KRA device for sales" is on even if this till's cached capabilities
       // still think KRA is off (previously that raced a short timeout and failed).
       let sale = await runBlockingTask(checkoutRequest, {
-            message: "Completing sale…",
+        message: submitKra ? "Fiscalizing receipt with KRA…" : "Completing sale…",
         detail: submitKra
-          ? "Submitting receipt to the KRA device. Please wait."
+          ? "Submitting this receipt to KRA. Please wait — do not close this screen."
           : "Please wait.",
         settleMs: 0,
       });
@@ -17006,6 +17006,7 @@ export function PosScreen({ standalone = false }) {
                   onCompleteOrder={(updatedCart, options) =>
                     void handleMpesaOrderComplete(updatedCart, options)
                   }
+                  kraFiscalize={kraFiscalizeOnPosCheckout}
                 />
               </div>
             ) : null}
@@ -17972,6 +17973,7 @@ export function PosScreen({ standalone = false }) {
         onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
         cashOnlyOffline={posNetworkPaymentsBlocked}
+        kraFiscalize={kraFiscalizeOnPosCheckout}
       />
 
       <PosSaveOrderDialog

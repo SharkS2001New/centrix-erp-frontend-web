@@ -257,6 +257,8 @@ export function PosPaymentPanel({
   embedded = false,
   /** Offline / outage: STK and network prompts off; cashier still enters all tender methods manually. */
   cashOnlyOffline = false,
+  /** When true, checkout waits on KRA fiscalization — show that clearly while saving. */
+  kraFiscalize = false,
   /** KRA-on previous-order edit: collect only the top-up / return delta. */
   previousOrderEditAdjustment = null,
   /** Loaded previous receipt (browse / pending sync) — never ask walk-in name on F10. */
@@ -1991,8 +1993,10 @@ export function PosPaymentPanel({
       case "completing":
         return {
           title: "COMPLETING ORDER",
-          heading: "Completing sale…",
-          detail: "Saving the order and preparing the receipt.",
+          heading: kraFiscalize ? "Fiscalizing with KRA…" : "Completing sale…",
+          detail: kraFiscalize
+            ? "Saving the sale and submitting the receipt to KRA. Please wait."
+            : "Saving the order and preparing the receipt.",
         };
       default:
         return null;
@@ -2049,7 +2053,7 @@ export function PosPaymentPanel({
   const savingOverlay =
     step === "saving" ? (
       <PosNestedDialog
-        title="COMPLETING ORDER"
+        title={kraFiscalize ? "KRA FISCALIZATION" : "COMPLETING ORDER"}
         titleId="saving-order-title"
         role="status"
         ariaLive="polite"
@@ -2079,12 +2083,20 @@ export function PosPaymentPanel({
               aria-hidden
             />
             <p className="text-sm font-semibold">
-              {stkPhase === "completing" ? "Completing M-Pesa sale…" : "Saving…"}
+              {stkPhase === "completing"
+                ? kraFiscalize
+                  ? "Fiscalizing M-Pesa sale with KRA…"
+                  : "Completing M-Pesa sale…"
+                : kraFiscalize
+                  ? "Fiscalizing receipt with KRA…"
+                  : "Saving…"}
             </p>
             <p className="theme-text-muted mt-2 text-sm">
-              {stkPhase === "completing"
-                ? "Please wait while the order is saved and the receipt is prepared."
-                : "Please wait."}
+              {kraFiscalize
+                ? "Centrix is submitting this receipt to KRA (via the shop agent when enabled). Please wait — do not close this screen."
+                : stkPhase === "completing"
+                  ? "Please wait while the order is saved and the receipt is prepared."
+                  : "Please wait."}
             </p>
           </div>
         )}
