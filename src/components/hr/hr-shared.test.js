@@ -85,10 +85,12 @@ describe("payroll attendance breakdown copy", () => {
     use_attendance_proration: true,
     paid_work_days: 26,
     expected_work_days: 30,
+    scheduled_work_days: 26,
     late_minutes_total: 312,
     attendance: {
       paid_days: 26,
       expected_days: 30,
+      scheduled_work_days: 26,
       rest_days_off: 5,
       absent_days: 4,
       clock_in_late_minutes_total: 312,
@@ -96,7 +98,7 @@ describe("payroll attendance breakdown copy", () => {
     },
   };
 
-  it("uses full scheduled workday hint for HR payment breakdown", () => {
+  it("shows fixed-30 payable days (Sundays included) and only workday absents", () => {
     const sections = payrollBreakdownSections(
       {
         gross_pay: 50000,
@@ -104,16 +106,58 @@ describe("payroll attendance breakdown copy", () => {
       },
       null,
     );
-    expect(sections.earnings[1].label).toBe("Payable amount (26 of 30 scheduled workdays)");
+    // 30 − 4 absents = 26 payable days on the month basis
+    expect(sections.earnings[1].label).toBe("Payable amount (26 of 30 payable days)");
     expect(buildPayrollAttendanceNote(payroll)).toBe(
-      "26 of 30 scheduled workdays · 5 off days (not scheduled — not absent) · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
+      "26 of 30 payable days · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
+    );
+  });
+
+  it("shows 30 of 30 when all workdays are present (Sundays credited, no rest-day offs listed)", () => {
+    const perfect = {
+      use_attendance_proration: true,
+      paid_work_days: 26,
+      expected_work_days: 30,
+      scheduled_work_days: 26,
+      attendance: {
+        paid_days: 26,
+        expected_days: 30,
+        scheduled_work_days: 26,
+        rest_days_off: 5,
+        absent_days: 0,
+      },
+    };
+    expect(payableAmountDaysHint(perfect)).toBe("30 of 30 payable days");
+    expect(buildPayrollAttendanceNote(perfect)).toBeNull();
+  });
+
+  it("lists requested offs on workdays, not weekly rest", () => {
+    const withRequestedOff = {
+      use_attendance_proration: true,
+      paid_work_days: 25,
+      expected_work_days: 30,
+      scheduled_work_days: 26,
+      attendance: {
+        paid_days: 25,
+        expected_days: 30,
+        scheduled_work_days: 26,
+        rest_days_off: 5,
+        absent_days: 0,
+        unpaid_leave_days: 1,
+        deductible_off_days: 1,
+        non_deductible_off_days: 0,
+      },
+    };
+    expect(payableAmountDaysHint(withRequestedOff)).toBe("29 of 30 payable days");
+    expect(buildPayrollAttendanceNote(withRequestedOff)).toBe(
+      "29 of 30 payable days · 1 unpaid / requested off",
     );
   });
 
   it("uses compact copy on payslip receipts only", () => {
     expect(payableAmountDaysHint(payroll, { forReceipt: true })).toBe("26 workdays");
     expect(buildPayrollAttendanceNote(payroll, { forReceipt: true })).toBe(
-      "26 Payable workdays · 5 off days (not scheduled — not absent) · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
+      "26 Payable workdays · 4 absent days deducted · 312 min late clock-in · 312 min late overall",
     );
     const sections = payrollBreakdownSections(
       {

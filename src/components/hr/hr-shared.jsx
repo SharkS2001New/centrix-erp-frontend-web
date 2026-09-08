@@ -824,64 +824,112 @@ function formatPayrollDays(value) {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
+/**
+ * Actual shift workdays in the period (excludes weekly rest e.g. Sundays).
+ * Used for attendance math; payable display may credit rest days into the month basis (fixed 30).
+ */
+export function resolveScheduledWorkDays(payroll) {
+  if (!payroll) return 0;
+  const attendance = payroll.attendance ?? {};
+  const explicit = Number(
+    payroll.scheduled_work_days ?? attendance.scheduled_work_days ?? 0,
+  );
+  if (explicit > 0) return explicit;
+
+  const paid = Number(payroll.paid_work_days ?? attendance.paid_days ?? 0);
+  const absent = Number(payroll.absent_days ?? attendance.absent_days ?? 0);
+  const unpaid = Number(payroll.unpaid_leave_days ?? attendance.unpaid_leave_days ?? 0);
+  const remaining = Number(payroll.remaining_days ?? attendance.remaining_days ?? 0);
+  const reconstructed = paid + absent + unpaid + remaining;
+  if (reconstructed > 0) return reconstructed;
+
+  return Number(payroll.expected_work_days ?? attendance.expected_days ?? 0);
+}
+
+/**
+ * Payable day counts for labels: full month basis (e.g. 30/30) when pay uses fixed-30,
+ * crediting weekly rest days. Absents / unpaid offs reduce the paid count.
+ * "Off" in the UI means requested offs on workdays — not Sundays.
+ */
+export function resolvePayableDaysDisplay(payroll) {
+  if (!payroll) return { paid: 0, expected: 0, creditsRestDays: false };
+  const attendance = payroll.attendance ?? {};
+  const expected = Number(payroll.expected_work_days ?? attendance.expected_days ?? 0);
+  const scheduled = resolveScheduledWorkDays(payroll);
+  const attendedPaid = Number(payroll.paid_work_days ?? attendance.paid_days ?? 0);
+  const absent = Number(payroll.absent_days ?? attendance.absent_days ?? 0);
+  const unpaid = Number(payroll.unpaid_leave_days ?? attendance.unpaid_leave_days ?? 0);
+
+  // Pay basis (fixed_30) is larger than shift workdays — include rest days in the 30/30 view.
+  if (expected > 0 && scheduled > 0 && expected > scheduled + 0.001) {
+    return {
+      paid: Math.max(0, Math.round((expected - absent - unpaid) * 100) / 100),
+      expected,
+      creditsRestDays: true,
+    };
+  }
+
+  return {
+    paid: attendedPaid,
+    expected: scheduled > 0 ? scheduled : expected,
+    creditsRestDays: false,
+  };
+}
+
 /** Short hint for Payable amount label — full schedule detail for HR; compact on receipts. */
 export function payableAmountDaysHint(payroll, { forReceipt = false } = {}) {
   if (!payroll?.use_attendance_proration) return null;
-  const paidDays = Number(payroll.paid_work_days ?? payroll.attendance?.paid_days ?? 0);
-  const expectedDays = Number(
-    payroll.expected_work_days ?? payroll.attendance?.expected_days ?? 0,
-  );
+  const { paid, expected } = resolvePayableDaysDisplay(payroll);
   if (forReceipt) {
-    if (paidDays <= 0) return null;
-    return `${formatPayrollDays(paidDays)} workdays`;
+    if (paid <= 0) return null;
+    return `${formatPayrollDays(paid)} workdays`;
   }
-  if (expectedDays > 0) {
-    return `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays`;
+  if (expected > 0) {
+    return `${formatPayrollDays(paid)} of ${formatPayrollDays(expected)} payable days`;
   }
-  if (paidDays <= 0) return null;
-  return `${formatPayrollDays(paidDays)} workdays`;
+  if (paid <= 0) return null;
+  return `${formatPayrollDays(paid)} workdays`;
 }
 
-/** Attendance summary — HR sees scheduled-day context; receipts use employee-friendly wording. */
+/** Attendance summary — HR sees payable-day context; receipts use employee-friendly wording. */
 export function buildPayrollAttendanceNote(payroll, { forReceipt = false } = {}) {
   if (!payroll?.use_attendance_proration) return null;
   const attendance = payroll.attendance;
   if (!attendance) return null;
 
-  const paidDays = Number(payroll.paid_work_days ?? attendance.paid_days ?? 0);
-  const expectedDays = Number(payroll.expected_work_days ?? attendance.expected_days ?? 0);
+  const { paid, expected } = resolvePayableDaysDisplay(payroll);
   const remainingDays = Number(payroll.remaining_days ?? attendance.remaining_days ?? 0);
-  const restDaysOff = Number(attendance.rest_days_off ?? 0);
-  const absentDays = Number(attendance.absent_days ?? 0);
-  const unpaidLeave = Number(attendance.unpaid_leave_days ?? 0);
+  const absentDays = Number(attendance.absent_days ?? payroll.absent_days ?? 0);
+  const unpaidLeave = Number(attendance.unpaid_leave_days ?? payroll.unpaid_leave_days ?? 0);
   const nonDeductibleOff = Number(attendance.non_deductible_off_days ?? 0);
+  const deductibleOff = Number(attendance.deductible_off_days ?? 0);
   const lateMinutes = Number(payroll.late_minutes_total ?? attendance.late_minutes_total ?? 0);
 
   const parts = [];
   if (forReceipt) {
-    if (paidDays > 0) {
-      parts.push(`${formatPayrollDays(paidDays)} Payable workdays`);
+    if (paid > 0) {
+      parts.push(`${formatPayrollDays(paid)} Payable workdays`);
     }
-  } else if (expectedDays > 0) {
-    parts.push(
-      `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays`,
-    );
-  } else if (paidDays > 0) {
-    parts.push(`${formatPayrollDays(paidDays)} Payable workdays`);
+  } else if (expected > 0) {
+    parts.push(`${formatPayrollDays(paid)} of ${formatPayrollDays(expected)} payable days`);
+  } else if (paid > 0) {
+    parts.push(`${formatPayrollDays(paid)} Payable workdays`);
   }
-  if (restDaysOff > 0) {
-    parts.push(`${formatPayrollDays(restDaysOff)} off days (not scheduled — not absent)`);
-  }
+  // Weekly rest (Sundays) is included in payable days — never listed as "off".
+  // Only requested / assigned offs on workdays appear here.
   if (absentDays > 0) {
     parts.push(
       `${formatPayrollDays(absentDays)} absent day${absentDays === 1 ? "" : "s"} deducted`,
     );
   }
   if (unpaidLeave > 0) {
-    parts.push(`${formatPayrollDays(unpaidLeave)} unpaid / deductible off`);
+    parts.push(`${formatPayrollDays(unpaidLeave)} unpaid / requested off`);
+  }
+  if (deductibleOff > 0 && unpaidLeave <= 0) {
+    parts.push(`${formatPayrollDays(deductibleOff)} requested off (deductible)`);
   }
   if (nonDeductibleOff > 0) {
-    parts.push(`${formatPayrollDays(nonDeductibleOff)} non-deductible off`);
+    parts.push(`${formatPayrollDays(nonDeductibleOff)} requested off (paid)`);
   }
   if (remainingDays > 0) {
     parts.push(
@@ -898,6 +946,22 @@ export function buildPayrollAttendanceNote(payroll, { forReceipt = false } = {})
     }
     lateParts.push(`${lateMinutes} min late overall`);
     parts.push(lateParts.join(" · "));
+  }
+
+  // Full payable month with nothing else to report — label already shows "30 of 30".
+  if (
+    !forReceipt &&
+    parts.length === 1 &&
+    expected > 0 &&
+    paid === expected &&
+    absentDays <= 0 &&
+    unpaidLeave <= 0 &&
+    deductibleOff <= 0 &&
+    nonDeductibleOff <= 0 &&
+    remainingDays <= 0 &&
+    lateMinutes <= 0
+  ) {
+    return null;
   }
 
   return parts.length ? parts.join(" · ") : null;

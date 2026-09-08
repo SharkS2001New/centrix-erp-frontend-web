@@ -276,7 +276,6 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       receipts: [sample],
       organization: organizationForPrint,
       generalSettings: general,
-      single: true,
       documentFooterText: resolvePrintFooter(general, "payroll_receipt"),
     });
   }

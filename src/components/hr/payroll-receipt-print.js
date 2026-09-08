@@ -21,6 +21,9 @@ import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 const PAYROLL_PRINT_VARIANT = "payroll_receipt";
 const PAYROLL_DOCUMENT_TITLE = "Salary Payment Receipt";
 
+/** Fixed 2×2 layout: every slip is one quarter of an A4 page. */
+const RECEIPTS_PER_PAGE = 4;
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -86,7 +89,6 @@ function buildReceiptHtml(line, employee, options) {
     generalSettings,
     paidAt,
     paymentReference,
-    compact = true,
     documentFooterText = "",
   } = options;
 
@@ -103,7 +105,7 @@ function buildReceiptHtml(line, employee, options) {
       sections.totalDeductions,
     ],
     generalSettings,
-    { hideZero: compact },
+    { hideZero: true },
   );
 
   const paidNote =
@@ -166,57 +168,52 @@ function chunkReceipts(items, size) {
   return chunks;
 }
 
-/** Batch print: 2 readable slips per A4 page (side by side). */
-const BATCH_RECEIPTS_PER_PAGE = 2;
-
-function buildReceiptPages(receiptsHtml, { single = false } = {}) {
-  if (single) {
-    return receiptsHtml
-      .map(
-        (html) => `<div class="page page-single">
-      <div class="single-wrap">${html}</div>
-    </div>`,
-      )
-      .join("");
-  }
-
-  return chunkReceipts(receiptsHtml, BATCH_RECEIPTS_PER_PAGE)
+/**
+ * Always lay out receipts in a 2×2 grid. Empty cells keep the same quarter-page
+ * footprint so 1–3 slips still print as if four were expected.
+ */
+function buildReceiptPages(receiptsHtml) {
+  return chunkReceipts(receiptsHtml, RECEIPTS_PER_PAGE)
     .map((pageReceipts) => {
       const cells = [];
-      for (let i = 0; i < BATCH_RECEIPTS_PER_PAGE; i += 1) {
-        cells.push(pageReceipts[i] ?? `<div class="receipt receipt-empty" aria-hidden="true"></div>`);
+      for (let i = 0; i < RECEIPTS_PER_PAGE; i += 1) {
+        cells.push(
+          pageReceipts[i] ?? `<div class="receipt receipt-empty" aria-hidden="true"></div>`,
+        );
       }
-      return `<div class="page page-grid">
-        ${cells.join("")}
-      </div>`;
+      return `<div class="page page-grid">${cells.join("")}</div>`;
     })
     .join("");
 }
 
-function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
+function payrollReceiptPrintStyles(generalSettings) {
   const variant = PAYROLL_PRINT_VARIANT;
   const font = orgPrintFontFamilyFromSettings(generalSettings, variant);
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant, print });
   const ink = orgPrintInkStyles(generalSettings, variant);
 
-  // Readable floors — single slip is larger; batch (2-up) still stays ≥ ~10–11px.
-  const body = single ? px(12) : px(11);
-  const org = single ? px(16) : px(13);
-  const title = single ? px(14) : px(12);
-  const period = single ? px(11) : px(10);
-  const employee = single ? px(13) : px(12);
-  const meta = single ? px(11) : px(10);
-  const section = single ? px(10) : px(9);
-  const note = single ? px(10) : px(9);
-  const net = single ? px(14) : px(12);
-  const cut = single ? px(8) : px(8);
-  const footer = single ? px(10) : px(9);
+  // Sized for a quarter-page slip (readable floors ~9–12px).
+  const body = px(10);
+  const org = px(12);
+  const title = px(11);
+  const period = px(9);
+  const employee = px(11);
+  const meta = px(9);
+  const section = px(8);
+  const note = px(8);
+  const net = px(11);
+  const cut = px(7);
+  const footer = px(8);
 
   return `
-    @page { size: A4; margin: 8mm; }
+    @page { size: A4; margin: 6mm; }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+    body {
       font-family: ${font};
       color: #0f172a;
       -webkit-print-color-adjust: exact;
@@ -225,54 +222,52 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     }
     .page {
       width: 100%;
-      min-height: 281mm;
+      height: 285mm;
       page-break-after: always;
+      break-after: page;
     }
-    .page:last-child { page-break-after: auto; }
+    .page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
     .page-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr;
+      grid-template-rows: 1fr 1fr;
       gap: 0;
       width: 100%;
-      height: 281mm;
-    }
-    .page-single {
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding-top: 10mm;
-    }
-    .single-wrap {
-      width: 110mm;
-      max-width: 100%;
+      height: 100%;
+      min-height: 285mm;
     }
     .receipt {
       border: 1px dashed #64748b;
-      padding: ${single ? "14px 16px 12px" : "12px 14px 10px"};
+      padding: 8px 10px 6px;
+      width: 100%;
+      height: 100%;
       min-height: 0;
+      max-height: 100%;
       overflow: hidden;
       font-size: ${body};
-      line-height: 1.4;
+      line-height: 1.3;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
     .receipt-empty {
       border-color: transparent;
       visibility: hidden;
     }
-    .receipt-head { text-align: center; }
+    .receipt-head { text-align: center; flex-shrink: 0; }
     .org {
       font-size: ${org};
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: #0f172a;
       font-weight: 700;
-      line-height: 1.25;
+      line-height: 1.2;
     }
     h2 {
-      margin: 4px 0 0;
+      margin: 2px 0 0;
       font-size: ${title};
       font-weight: 700;
       text-transform: uppercase;
@@ -280,11 +275,11 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       color: #0f172a;
     }
     .period {
-      margin: 3px 0 0;
+      margin: 2px 0 0;
       font-size: ${period};
       color: #1e293b;
     }
-    .employee { margin-top: 4px; }
+    .employee { margin-top: 2px; flex-shrink: 0; }
     .employee-name {
       font-size: ${employee};
       font-weight: 700;
@@ -293,17 +288,18 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     .employee-meta {
       font-size: ${meta};
       color: #475569;
-      margin-top: 2px;
+      margin-top: 1px;
     }
+    section { flex-shrink: 1; min-height: 0; }
     section h3 {
-      margin: 6px 0 3px;
+      margin: 4px 0 2px;
       font-size: ${section};
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: #334155;
       border-bottom: 1px solid #cbd5e1;
-      padding-bottom: 2px;
+      padding-bottom: 1px;
     }
     .amt-table {
       width: 100%;
@@ -311,12 +307,12 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       font-size: ${body};
     }
     .amt-table td {
-      padding: 2px 0;
+      padding: 1px 0;
       vertical-align: top;
     }
     .amt-table .label {
       color: #1e293b;
-      padding-right: 8px;
+      padding-right: 6px;
     }
     .amt-table .amt {
       text-align: right;
@@ -335,8 +331,9 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     }
     .net-section {
       margin-top: auto;
+      flex-shrink: 0;
       border-top: 1.5px solid #64748b;
-      padding-top: 6px;
+      padding-top: 4px;
     }
     .net .label,
     .net .amt {
@@ -344,33 +341,34 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       font-weight: 700;
     }
     .note {
-      margin: 0 0 2px;
+      margin: 0 0 1px;
       font-size: ${note};
       color: #475569;
-      line-height: 1.35;
+      line-height: 1.3;
     }
     .note.paid { color: #0f766e; font-weight: 600; }
     .doc-footer {
-      margin-top: 6px;
-      padding-top: 6px;
+      margin-top: 4px;
+      padding-top: 4px;
       border-top: 1px solid #cbd5e1;
       font-size: ${footer};
       color: #475569;
-      line-height: 1.35;
+      line-height: 1.3;
       text-align: center;
+      flex-shrink: 0;
     }
-    .doc-footer p { margin: 0 0 2px; }
+    .doc-footer p { margin: 0 0 1px; }
     .receipt-head.branded .org-header {
-      margin-bottom: 4px;
-      padding-bottom: 4px;
+      margin-bottom: 2px;
+      padding-bottom: 2px;
       border-bottom: 1px solid #cbd5e1;
       text-align: center;
     }
     .receipt-head.branded .org-logo {
       display: block;
-      margin: 0 auto 4px;
-      max-height: ${single ? "36px" : "28px"};
-      max-width: 180px;
+      margin: 0 auto 2px;
+      max-height: 22px;
+      max-width: 140px;
       width: auto;
       object-fit: contain;
     }
@@ -378,25 +376,30 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       font-size: ${org};
       font-weight: var(--print-w-header, 700);
       margin: 0;
-      line-height: 1.2;
+      line-height: 1.15;
       color: #0f172a;
     }
     .cut-hint {
-      margin-top: 4px;
+      margin-top: 2px;
       text-align: center;
       font-size: ${cut};
       color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      flex-shrink: 0;
     }
-    .page-single .cut-hint { display: none; }
     @media print {
-      .receipt { font-size: ${single ? px(12, true) : px(11, true)}; }
-      .org { font-size: ${single ? px(16, true) : px(13, true)}; }
-      h2 { font-size: ${single ? px(14, true) : px(12, true)}; }
-      .employee-name { font-size: ${single ? px(13, true) : px(12, true)}; }
+      html, body { height: auto; }
+      .page {
+        height: 285mm;
+        overflow: hidden;
+      }
+      .receipt { font-size: ${px(10, true)}; }
+      .org { font-size: ${px(12, true)}; }
+      h2 { font-size: ${px(11, true)}; }
+      .employee-name { font-size: ${px(11, true)}; }
       .net .label,
-      .net .amt { font-size: ${single ? px(14, true) : px(12, true)}; }
+      .net .amt { font-size: ${px(11, true)}; }
     }
     @media screen {
       body { background: #f1f5f9; padding: 12px; }
@@ -415,7 +418,8 @@ export function buildPayrollReceiptDocument({
   receipts,
   organization,
   generalSettings,
-  single = false,
+  /** @deprecated Always uses 2×2 quarter-page layout; kept for callers. */
+  single: _single = false,
   documentFooterText = null,
 }) {
   const branding = brandingWithDocumentLogo(
@@ -442,19 +446,19 @@ export function buildPayrollReceiptDocument({
       generalSettings,
       paidAt: r.paidAt,
       paymentReference: r.paymentReference,
-      compact: !single,
       documentFooterText: footerText,
     }),
   );
-  const pages = buildReceiptPages(receiptsHtml, { single });
-  const title = single ? PAYROLL_DOCUMENT_TITLE : `${PAYROLL_DOCUMENT_TITLE}s`;
+  const pages = buildReceiptPages(receiptsHtml);
+  const title =
+    receipts.length === 1 ? PAYROLL_DOCUMENT_TITLE : `${PAYROLL_DOCUMENT_TITLE}s`;
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
-  <style>${payrollReceiptPrintStyles(generalSettings, { single })}</style>
+  <style>${payrollReceiptPrintStyles(generalSettings)}</style>
 </head>
 <body>
   ${pages}
@@ -506,7 +510,7 @@ function normalizeReceiptInput({ line, employee, run, period }) {
   };
 }
 
-/** Print all employee receipts for a payroll run (2 per A4 page). */
+/** Print employee receipts for a payroll run (4 per A4 page, 2×2). */
 export async function printPayrollReceipts({
   lines,
   run,
@@ -523,7 +527,6 @@ export async function printPayrollReceipts({
     receipts: items,
     organization,
     generalSettings,
-    single: false,
   });
   return printHtmlDocument(html, {
     jobType: "payroll_receipt",
@@ -532,7 +535,7 @@ export async function printPayrollReceipts({
   });
 }
 
-/** Print a single employee payroll receipt (full page). */
+/** Print a single employee payroll receipt (still one quadrant of A4). */
 export async function printPayrollReceipt({
   line,
   employee,
@@ -547,11 +550,10 @@ export async function printPayrollReceipt({
     receipts: [normalizeReceiptInput({ line, employee, run, period })],
     organization,
     generalSettings,
-    single: true,
   });
   return printHtmlDocument(html, {
     jobType: "payroll_receipt",
     documentId: line?.id ?? employee?.id ?? run?.id ?? null,
-    windowFeatures: "width=560,height=780",
+    windowFeatures: "width=900,height=1000",
   });
 }
