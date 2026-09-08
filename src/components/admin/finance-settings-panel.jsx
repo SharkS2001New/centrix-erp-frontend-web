@@ -308,7 +308,7 @@ export function FinanceSettingsPanel({
       a.download = "CentrixKraAgent.zip";
       a.click();
       URL.revokeObjectURL(url);
-      notifySuccess("Centrix KRA Agent downloaded. Install it on the shop PC.");
+      notifySuccess("Centrix KRA Agent downloaded. Unzip on the shop PC and run INSTALL.bat as Administrator.");
       await refreshKraAgentStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "KRA agent download failed.");
@@ -447,8 +447,9 @@ export function FinanceSettingsPanel({
                     <div>
                       <p className="theme-heading text-sm font-medium">Centrix KRA Agent</p>
                       <p className="theme-subtext mt-0.5 text-xs">
-                        Install Centrix KRA Agent on the shop PC. Centrix cloud talks to the agent, which
-                        calls local Comstore / Smart VSCU on the LAN.
+                        Download the installer (exe + INSTALL.bat — no source). Centrix cloud talks to the
+                        agent, which calls local Comstore / Smart VSCU. Start Comstore with Windows; the
+                        agent keeps pinging Centrix and the fiscal device.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -516,7 +517,7 @@ export function FinanceSettingsPanel({
                                 <p className="mt-1 text-xs leading-relaxed">
                                   {kraAgentStatus.message ||
                                     kraAgentStatus.comstore_status_message ||
-                                    "CentrixKraAgent keeps running as a Windows service. It could not start Comstore automatically and will keep signalling until you open the Comstore service/app (usually http://localhost:4000), then click Test connection again."}
+                                    "CentrixKraAgent keeps running as a Windows service. Start Comstore via Windows startup or its own service (usually http://localhost:4000). The agent keeps pinging Centrix and the fiscal device until Comstore is up — then click Test connection again."}
                                 </p>
                               </div>
                             ) : kraAgentStatus.device_network_error ||
@@ -661,7 +662,7 @@ export function FinanceSettingsPanel({
                             </p>
                             <p className="mt-2 text-xs text-amber-900/80">
                               CentrixKraAgent keeps running as a service and will keep signalling until
-                              Comstore is up. After Comstore is running, click{" "}
+                              Comstore is up (start Comstore with Windows). After Comstore is running, click{" "}
                               <strong>Test connection</strong> again.
                             </p>
                           </div>

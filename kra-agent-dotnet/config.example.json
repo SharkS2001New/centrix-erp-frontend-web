@@ -7,7 +7,7 @@
   "longPollMs": 2000,
   "heartbeatIntervalSeconds": 60,
   "commandTimeoutSeconds": 50,
-  "autoStartComstore": true,
+  "autoStartComstore": false,
   "comstoreWindowsServiceNames": [],
   "comstoreExecutablePath": "",
   "comstoreExecutableArgs": "",

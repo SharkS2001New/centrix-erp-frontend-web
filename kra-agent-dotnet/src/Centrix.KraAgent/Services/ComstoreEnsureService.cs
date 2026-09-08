@@ -84,7 +84,7 @@ public sealed class ComstoreEnsureService
 
         if (!config.AutoStartComstore)
         {
-            return (false, $"Comstore not reachable at {config.ComstoreBaseUrl} (auto-start disabled).");
+            return (false, $"Comstore not reachable at {config.ComstoreBaseUrl}. Start Comstore with Windows; agent keeps pinging.");
         }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

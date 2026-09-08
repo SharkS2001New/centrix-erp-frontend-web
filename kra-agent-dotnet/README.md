@@ -1,54 +1,35 @@
 # Centrix KRA Agent (.NET)
 
-Windows service (same model as Centrix Attendance Agent) that bridges **Centrix cloud** to **local Comstore** (`http://127.0.0.1:4000`).
+Windows service that bridges **Centrix cloud** to **local Comstore** on the shop PC.
 
-## Comstore down ≠ agent stop
+## Shop install (binary only)
 
-**CentrixKraAgent always keeps running** as a Windows service when Comstore is offline.
+Finance → KRA → **Download Centrix KRA Agent** serves a zip with:
 
-- It tries to auto-start Comstore when configured (`autoStartComstore`).
-- If that fails, the **only** difference is ongoing heartbeats/signals:
-  `COMSTORE_MANUAL_START_REQUIRED` → Centrix Finance shows “start Comstore manually”.
-- Fiscal commands fail until Comstore is up; the agent does **not** exit or stop the service.
+- `Centrix.KraAgent.exe` (self-contained)
+- `config.json` (org token, Comstore URL, hardware IP)
+- `INSTALL.bat` / `uninstall.bat`
 
-## Fiscal device LAN ping
+No source code and no .NET SDK on the shop PC. Run **INSTALL.bat** as Administrator.
 
-On each heartbeat the agent also checks the Smart VSCU:
+### Build the installer for the web host (once, on Windows)
 
-1. **ICMP ping** (with TCP fallback) of `deviceHardwareIp` from Centrix Finance → Fiscal hardware IP.
-2. Comstore `GET /api/health` → `deviceConnection` when Comstore is up.
+```powershell
+cd kra-agent-dotnet
+.\scripts\stage-release.ps1
+```
 
-Results are sent to Centrix (`device_reachable` / `device_status_message`). Finance shows **Device network error** when the agent is online but the hardware IP does not respond.
+Copy `release\win-x64\` onto the Centrix web host (or set `KRA_AGENT_RELEASE_DIR`).
 
-## Latency
+## Runtime behaviour
 
-- Agent **long-polls** Centrix (`wait_ms=2000`) and wakes as soon as a fiscal command is queued (~50–150ms + internet RTT).
-- Cloud waiter polls the DB every **50ms**.
-- When the agent is online, checkout **skips the extra health probe** and goes straight to `complete-workflow` (one round-trip).
-- Warm path does **not** re-probe Comstore before each fiscal command; auto-start only runs when Comstore is known down or a call fails as unreachable.
+**CentrixKraAgent always keeps running** as a Windows service.
 
-## Comstore auto-start
+- Heartbeats Centrix on an interval and long-polls for fiscal commands.
+- Probes Comstore `GET /api/health` (does **not** start Comstore — configure Windows to start Comstore).
+- Pings the Smart VSCU / fiscal hardware IP from Finance settings.
+- If Comstore is down, Finance shows “start Comstore manually”; the agent service stays up.
 
-When `autoStartComstore` is `true` (default), the agent:
+## Dev (source) install
 
-1. Probes `GET /api/health` on startup, on heartbeat, and after connection failures.
-2. If down, starts Comstore via (first success wins):
-   - Windows service names in `comstoreWindowsServiceNames` (or built-in names + any service whose name contains `comstore` / `vscu`)
-   - `comstoreExecutablePath` (or common install paths under `C:\Comstore`, Program Files, …)
-   - optional `comstoreStartCommand` (`cmd /c …`)
-3. Waits up to `comstoreReadyTimeoutSeconds` for health to succeed, then retries the fiscal call.
-4. If still down → keeps the service up and keeps reporting **manual start required**.
-
-Set an explicit service name or exe path in `config.json` if discovery misses your install.
-
-## Install
-
-1. Centrix → Finance → KRA: enable device + **Centrix KRA Agent**, set Comstore URL, **Download Centrix KRA Agent**.
-2. Unzip on the shop PC.
-3. Right-click **BUILD-AND-INSTALL.bat** → Run as administrator  
-   (needs .NET 8 SDK once to publish; installs a self-contained Windows service — no Node.js).
-4. Open http://127.0.0.1:9261 → Test connection.
-
-## Uninstall
-
-`uninstall-windows.bat` (Administrator).
+Developers with the .NET 8 SDK can still use `BUILD-AND-INSTALL.bat` from the source tree. Shops should only receive the staged release zip.

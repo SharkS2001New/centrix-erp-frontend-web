@@ -4,7 +4,7 @@ namespace Centrix.KraAgent.Services;
 
 /// <summary>
 /// Fast fiscal bridge: long-poll Centrix for commands, proxy to local Comstore.
-/// Starts Comstore automatically when it is down (configurable).
+/// Keeps pinging Centrix + fiscal hardware; does not start Comstore (Windows does).
 /// </summary>
 public sealed class KraWorker : BackgroundService
 {

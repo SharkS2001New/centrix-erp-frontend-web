@@ -1,4 +1,5 @@
 publish/
+release/win-x64/
 config.json
 state.json
 **/bin/

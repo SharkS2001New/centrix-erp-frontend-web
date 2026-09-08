@@ -7,12 +7,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$sourceDir = Split-Path -Parent $PSScriptRoot
-$publishDir = Join-Path $sourceDir "publish"
-$exe = Join-Path $publishDir "Centrix.KraAgent.exe"
+# Release zip layout: this script sits next to Centrix.KraAgent.exe
+# Dev layout: this script is under scripts\, binaries in ..\publish
+$here = $PSScriptRoot
+if (Test-Path (Join-Path $here "Centrix.KraAgent.exe")) {
+    $publishDir = $here
+    $configSearch = @((Join-Path $here "config.json"))
+} else {
+    $sourceDir = Split-Path -Parent $here
+    $publishDir = Join-Path $sourceDir "publish"
+    $configSearch = @(
+        (Join-Path $sourceDir "config.json"),
+        (Join-Path $publishDir "config.json")
+    )
+}
 
+$exe = Join-Path $publishDir "Centrix.KraAgent.exe"
 if (-not (Test-Path $exe)) {
-    Write-Host "Publish folder not found. Run scripts\publish.ps1 first." -ForegroundColor Yellow
+    Write-Host "Centrix.KraAgent.exe not found next to this installer (or in publish\)." -ForegroundColor Yellow
+    Write-Host "Re-download CentrixKraAgent.zip from Centrix Finance → KRA." -ForegroundColor Yellow
     exit 1
 }
 
@@ -25,7 +38,7 @@ if ($existing) {
     Start-Sleep -Seconds 2
 }
 
-# Stop legacy Node kra-agent if still bound to 9261.
+# Stop anything still bound to the local status port.
 try {
     $listeners = Get-NetTCPConnection -LocalPort 9261 -State Listen -ErrorAction SilentlyContinue
     foreach ($l in $listeners) {
@@ -40,13 +53,9 @@ try {
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -Path (Join-Path $publishDir "*") -Destination $InstallDir -Recurse -Force
 
-$configCandidates = @(
-    (Join-Path $sourceDir "config.json"),
-    (Join-Path $publishDir "config.json"),
-    (Join-Path $InstallDir "config.json")
-)
 $configCopied = $false
-foreach ($candidate in $configCandidates) {
+$configSearch += (Join-Path $InstallDir "config.json")
+foreach ($candidate in $configSearch) {
     if (Test-Path $candidate) {
         Copy-Item $candidate (Join-Path $InstallDir "config.json") -Force
         $configCopied = $true
@@ -80,4 +89,5 @@ Write-Host "  $installedExe"
 Write-Host "  Service: $ServiceName ($($svc.Status))"
 Write-Host "  Status page: http://127.0.0.1:9261"
 Write-Host ""
-Write-Host "No Node.js required. Keep config.json private (contains a Centrix API token)."
+Write-Host "Start Comstore via Windows (startup / its own service). This agent only monitors Centrix + device."
+Write-Host "Keep config.json private (contains a Centrix API token)."

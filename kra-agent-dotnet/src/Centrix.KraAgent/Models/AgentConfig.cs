@@ -31,9 +31,9 @@ public sealed class AgentConfig
     [JsonPropertyName("longPollMs")]
     public int LongPollMs { get; set; } = 2000;
 
-    /// <summary>When true, agent starts Comstore (Windows service / exe / command) if /api/health fails.</summary>
+    /// <summary>When true, agent starts Comstore if /api/health fails. Default false — start Comstore via Windows.</summary>
     [JsonPropertyName("autoStartComstore")]
-    public bool AutoStartComstore { get; set; } = true;
+    public bool AutoStartComstore { get; set; } = false;
 
     /// <summary>Preferred Windows service names to start (first match wins). Empty = built-in defaults + discovery.</summary>
     [JsonPropertyName("comstoreWindowsServiceNames")]
