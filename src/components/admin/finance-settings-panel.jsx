@@ -506,23 +506,33 @@ export function FinanceSettingsPanel({
                         </button>
                         {kraAgentStatus ? (
                           <div className="w-full space-y-1">
-                            <span className="theme-subtext text-xs">
-                              Agent service {kraAgentStatus.online ? "online" : "offline"}
-                              {kraAgentStatus.last_seen_at
-                                ? ` · last seen ${kraAgentStatus.last_seen_at}`
-                                : ""}
-                              {kraAgentStatus.version ? ` · v${kraAgentStatus.version}` : ""}
-                              {kraAgentStatus.comstore_reachable === true
-                                ? " · Comstore reachable"
-                                : kraAgentStatus.comstore_reachable === false
-                                  ? " · Comstore needs manual start"
+                            <p className="text-xs">
+                              <span
+                                className={
+                                  kraAgentStatus.online
+                                    ? "font-medium text-emerald-700"
+                                    : "font-medium text-red-700"
+                                }
+                              >
+                                Agent service {kraAgentStatus.online ? "online" : "offline"}
+                              </span>
+                              <span className="theme-subtext">
+                                {kraAgentStatus.last_seen_at
+                                  ? ` · last seen ${kraAgentStatus.last_seen_at}`
                                   : ""}
-                              {kraAgentStatus.device_reachable === true
-                                ? " · Device online"
-                                : kraAgentStatus.device_reachable === false
-                                  ? " · Device network error"
-                                  : ""}
-                            </span>
+                                {kraAgentStatus.version ? ` · v${kraAgentStatus.version}` : ""}
+                                {kraAgentStatus.comstore_reachable === true
+                                  ? " · Comstore reachable"
+                                  : kraAgentStatus.comstore_reachable === false
+                                    ? " · Comstore needs manual start"
+                                    : ""}
+                                {kraAgentStatus.device_reachable === true
+                                  ? " · Device online"
+                                  : kraAgentStatus.device_reachable === false
+                                    ? " · Device network error"
+                                    : ""}
+                              </span>
+                            </p>
                             {kraAgentStatus.manual_start_required ||
                             kraAgentStatus.comstore_reachable === false ? (
                               <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">

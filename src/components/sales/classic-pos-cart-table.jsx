@@ -556,7 +556,19 @@ export function ClassicPosCartTable({
                       ? "classic-pos-cart-row--selected"
                       : undefined
                 }
-                onClick={() => onSelectLine?.(line.id)}
+                title={
+                  replacing || busy
+                    ? undefined
+                    : "Click this line to swap the item — then search or scan the replacement"
+                }
+                onClick={() => {
+                  onSelectLine?.(line.id);
+                  // Whole row starts swap (not only the scan-code cell) so
+                  // "click Sugar → search Kamande" works as cashiers expect.
+                  if (!replacing && !busy) {
+                    onScanCodeClick?.(cartLineRef(line) ?? line.id);
+                  }
+                }}
               >
                 <td className="classic-pos-col-num classic-pos-cart-rownum">{index + 1}</td>
                 <td
@@ -566,7 +578,7 @@ export function ClassicPosCartTable({
                   title={
                     replacing
                       ? undefined
-                      : "Swap this item — click here, then search or scan the replacement product"
+                      : "Swap this item — click the line, then search or scan the replacement product"
                   }
                   onClick={(e) => {
                     e.stopPropagation();

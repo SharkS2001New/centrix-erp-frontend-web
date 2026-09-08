@@ -7317,6 +7317,16 @@ export function PosScreen({ standalone = false }) {
 
   async function pickProduct(product) {
     if (!product) return;
+    // Freeze swap intent BEFORE any await. hydrateProductLiveStock / retail package
+    // can yield long enough for remounts or cart sync to clear replacingLineIdRef,
+    // which parked Kamande as a new line instead of swapping Sugar.
+    const frozenReplacingId = replacingLineIdRef.current;
+    const frozenSnap = replaceTargetSnapshotRef.current
+      ? { ...replaceTargetSnapshotRef.current }
+      : null;
+    const frozenDraft = swapDraftRef.current;
+    const swapIntent = Boolean(frozenReplacingId || frozenSnap || frozenDraft?.line);
+
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
     // Always refresh live branch stock on select — offline catalog / enrich must not
     // leave invent-0 shop qty that blocks retail sales against real shop stock.
@@ -7332,10 +7342,33 @@ export function PosScreen({ standalone = false }) {
       product,
     ) ?? product;
 
-    const activeReplacingId = replacingLineIdRef.current;
+    if (
+      swapIntent &&
+      !replacingLineIdRef.current &&
+      !replaceTargetSnapshotRef.current &&
+      !swapDraftRef.current
+    ) {
+      if (frozenSnap) replaceTargetSnapshotRef.current = frozenSnap;
+      const restoredId =
+        frozenReplacingId ??
+        (frozenSnap ? cartLineRef(frozenSnap) ?? frozenSnap.id : null) ??
+        frozenDraft?.lineId ??
+        null;
+      if (restoredId != null) {
+        replacingLineIdRef.current = restoredId;
+        setReplacingLineId(restoredId);
+      }
+      if (frozenDraft?.line && !swapDraftRef.current) {
+        swapDraftRef.current = frozenDraft;
+        setSwapDraft(frozenDraft);
+      }
+    }
+
+    const activeReplacingId = replacingLineIdRef.current ?? frozenReplacingId;
     const activeCart = cartRef.current ?? cart;
     const isSwap = Boolean(
-      activeReplacingId ||
+      swapIntent ||
+        activeReplacingId ||
         replaceTargetSnapshotRef.current ||
         swapDraftRef.current,
     );
@@ -7348,9 +7381,10 @@ export function PosScreen({ standalone = false }) {
 
     const replaceNeedle =
       replaceTargetSnapshotRef.current ??
+      frozenSnap ??
       (activeReplacingId
         ? { id: activeReplacingId, update_code: activeReplacingId, client_line_id: activeReplacingId }
-        : null);
+        : frozenDraft?.line ?? null);
     const replaceLine = replaceNeedle
       ? findCartLineForEdit(activeCart?.lines, replaceNeedle, {
           preferProductCode: replaceNeedle.product_code,
@@ -7400,25 +7434,10 @@ export function PosScreen({ standalone = false }) {
       updateSearchQuery(product.product_code ?? "");
       productSearchRef.current?.setDraftValue?.(product.product_code ?? "");
       setSearchResults([]);
-      setStatusMessage(
-        `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
-      );
-      // Wait for ClassicLineQtyCell to mount + assign swapLineQtyRef.
-      let cancelled = false;
-      const focusSwapQty = () => {
-        if (cancelled) return;
-        const el = swapLineQtyRef.current;
-        if (!el) return false;
-        el.focus({ preventScroll: true });
-        el.select?.();
-        return typeof document !== "undefined" && document.activeElement === el;
-      };
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          if (focusSwapQty()) return;
-          window.setTimeout(() => focusSwapQty(), 40);
-        });
-      });
+      setStatusMessage(`Changing to ${posProductDisplayName(product)}…`);
+      // Same qty (e.g. Sugar 2 bag → Kamande 2 bag): finish as soon as the
+      // replacement is chosen. Cashier can edit qty on the new line afterward.
+      void completeSwapFromDraft(String(quantity));
       return;
     }
 
@@ -7590,14 +7609,22 @@ export function PosScreen({ standalone = false }) {
     const fromItemName = posProductDisplayName(liveLine);
     const toItemName = posProductDisplayName(product);
 
-    // Price the replacement with the current F12 session — do not inherit the old
-    // line's retail flag (that forced "piece" UOM on bag products).
-    const computed = applyComputedPrice(product, entryQty, discount, override);
+    // Keep the replaced line's bag/kg mode for the carried qty (Sugar 2 bag →
+    // Kamande 2 bag). F12 session alone used to reprice bags as kg/pieces.
+    const lineIsRetail = cartLineRetailStockFlag(liveLine);
+    const computed = applyComputedPrice(
+      product,
+      entryQty,
+      discount,
+      override,
+      lineIsRetail,
+      !lineIsRetail,
+    );
     if (computed.baseQty <= 0) {
       setStatusMessage("Enter a valid quantity.");
       return false;
     }
-    const isRetailLine = Boolean(computed.isRetail);
+    const isRetailLine = Boolean(lineIsRetail && productSellsRetail(product));
 
     // Build the swapped cart in memory first — paint only after IndexedDB / TemporaryCart
     // persists (same persist-first rule as qty Enter / delete).
@@ -7628,8 +7655,8 @@ export function PosScreen({ standalone = false }) {
 
     const onWholesaleRetailFlag = posLineWholesaleRetailFlag(
       product,
-      sellWholesale,
-      computed.isRetail,
+      !isRetailLine,
+      isRetailLine,
       posSalesConfig,
     );
     const preservedId = liveLine.id;
@@ -7741,6 +7768,9 @@ export function PosScreen({ standalone = false }) {
             Number(liveAfter._local_mutation_seq ?? 0) >
               Number(presented?._local_mutation_seq ?? 0)
           ) {
+            setStatusMessage(
+              "Could not save item change — cart was updated again. Try the swap once more.",
+            );
             return false;
           }
           finishSwapUi(presented);
@@ -9021,15 +9051,16 @@ export function PosScreen({ standalone = false }) {
     // Only the line being swapped — never match by product_code alone (that stole
     // normal qty Enter into completeSwapFromDraft and left the qty unchanged).
     const swapTargetsThisLine =
-      Boolean(swapDraft) &&
-      (cartLineMatchesRef(line, swapDraft.lineId) ||
-        cartLineMatchesRef(line, swapDraft.line) ||
-        cartLineMatchesRef(line, replaceTargetSnapshotRef.current) ||
-        sameLineId(swapDraft.line?.update_code, line.update_code) ||
-        sameLineId(swapDraft.line?.update_code, line.id) ||
-        sameLineId(swapDraft.lineId, line.update_code) ||
-        sameLineId(swapDraft.line?.client_line_id, line.id) ||
-        sameLineId(swapDraft.line?.client_line_id, line.update_code));
+      cartLineMatchesRef(line, replacingLineIdRef.current) ||
+      cartLineMatchesRef(line, replaceTargetSnapshotRef.current) ||
+      (Boolean(swapDraft) &&
+        (cartLineMatchesRef(line, swapDraft.lineId) ||
+          cartLineMatchesRef(line, swapDraft.line) ||
+          sameLineId(swapDraft.line?.update_code, line.update_code) ||
+          sameLineId(swapDraft.line?.update_code, line.id) ||
+          sameLineId(swapDraft.lineId, line.update_code) ||
+          sameLineId(swapDraft.line?.client_line_id, line.id) ||
+          sameLineId(swapDraft.line?.client_line_id, line.update_code)));
     if (swapDraft?.product || replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
       if (!swapTargetsThisLine) {
         setStatusMessage("Finish or press Esc to cancel the item swap first.");
@@ -9177,8 +9208,27 @@ export function PosScreen({ standalone = false }) {
       }
       const retailPackage = getRetailPackage(liveLine.product_code);
 
-      // Always price from the cashier-facing number in the qty field.
-      const pricingEntryQty = entryQty;
+      // F12 with the same typed number: keep this line's stock (base qty) and only
+      // change the unit label (25 kg → 0.5 bag, 1 bag → 50 kg). Reinterpreting the
+      // field as the new unit (25 kg → 25 bags) blows stock checks and left the
+      // row stuck on kg. When the cashier also edits the number, use that entry
+      // in the new mode.
+      let pricingEntryQty = entryQty;
+      if (switchingMode && !qtyActuallyChanged) {
+        pricingEntryQty = Number(
+          parseDecimalInput(
+            posEntryQtyFromCartLine(
+              {
+                ...liveLine,
+                on_wholesale_retail: sessionIsRetail ? 1 : 0,
+              },
+              product,
+              retailPackage,
+            ),
+          ),
+        );
+        if (!(pricingEntryQty > 0)) pricingEntryQty = entryQty;
+      }
 
       // When F12 session differs from the line's mode, reprice from catalog —
       // do not lock the old wholesale/retail unit.
@@ -9954,10 +10004,7 @@ export function PosScreen({ standalone = false }) {
     setUnitPriceTouched(false);
     setEditingLineId(null);
     setEditingLineRef(null);
-    setReplacingLineId(null);
-    replacingLineIdRef.current = null;
-    swapDraftRef.current = null;
-    setSwapDraft(null);
+    clearSwapChrome();
     swapCommitInFlightRef.current = false;
   }
 
