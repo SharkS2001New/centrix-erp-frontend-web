@@ -1828,6 +1828,9 @@ export { collapseCombineableCartLines as collapseCombineableLocalLines } from "@
  * When combine is on: merge by SKU + retail/wholesale (classic POS).
  * When combine is off: update the same identity (client_line_id / update_code / id);
  * otherwise append. Qty Enter and F12 edits must never append a twin.
+ *
+ * F12 bags↔kg: if this SKU appears exactly once in the opposite mode, update that
+ * row in place (flip on_wholesale_retail) — never append a second row.
  */
 export async function upsertLocalPosCartLine(
   cart,
@@ -1854,6 +1857,23 @@ export async function upsertLocalPosCartLine(
     const key = lineKey(line);
     idx = lines.findIndex((row) => lineKey(row) === key);
   }
+  // Sole SKU + opposite retail/wholesale (F12 kg↔bag): convert that row in place.
+  // Do not apply when modes match — combine-off must still allow a second same-mode line.
+  if (idx < 0 && line?.product_code) {
+    const code = String(line.product_code);
+    const sameSkuIdxs = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      if (String(lines[i]?.product_code ?? "") === code) sameSkuIdxs.push(i);
+    }
+    if (sameSkuIdxs.length === 1) {
+      const existing = lines[sameSkuIdxs[0]];
+      const existingRetail = Number(existing?.on_wholesale_retail) ? 1 : 0;
+      const nextRetail = Number(line?.on_wholesale_retail) ? 1 : 0;
+      if (existingRetail !== nextRetail) {
+        idx = sameSkuIdxs[0];
+      }
+    }
+  }
 
   if (idx >= 0) {
     lines[idx] = {
@@ -1865,6 +1885,10 @@ export async function upsertLocalPosCartLine(
       update_code: lines[idx].update_code ?? line.update_code,
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
+      on_wholesale_retail:
+        line.on_wholesale_retail != null
+          ? line.on_wholesale_retail
+          : lines[idx].on_wholesale_retail,
     };
   } else {
     lines.push({

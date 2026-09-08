@@ -98,4 +98,46 @@ describe("local cart mutation race", () => {
     const stored = await idbGetLocalCart("active");
     expect(Number(stored?.lines?.[0]?.quantity)).toBe(5);
   });
+
+  it("converts sole kg line to bag in place instead of appending a twin", async () => {
+    const { upsertLocalPosCartLine, withLocalCartMutation, awaitLocalCartWrites } =
+      await import("@/lib/pos-offline");
+    const { idbGetLocalCart } = await import("@/lib/pos-offline-db");
+
+    await upsertLocalPosCartLine(
+      withLocalCartMutation({
+        id: "active",
+        offline: true,
+        lines: [
+          {
+            client_line_id: "polished-1",
+            product_code: "1261001",
+            product_name: "POLISHED 90KG",
+            quantity: 1,
+            unit_price: 100,
+            on_wholesale_retail: 1,
+            uom: "kg",
+          },
+        ],
+      }),
+      {
+        product_code: "1261001",
+        product_name: "POLISHED 90KG",
+        quantity: 90,
+        unit_price: 8800 / 90,
+        amount: 8800,
+        on_wholesale_retail: 0,
+        uom: "Bags(90)",
+      },
+      { combineIdenticalLines: true },
+    );
+    await awaitLocalCartWrites();
+
+    const stored = await idbGetLocalCart("active");
+    const polished = (stored?.lines ?? []).filter((l) => l.product_code === "1261001");
+    expect(polished).toHaveLength(1);
+    expect(Number(polished[0].on_wholesale_retail)).toBe(0);
+    expect(String(polished[0].client_line_id)).toBe("polished-1");
+    expect(Number(polished[0].quantity)).toBe(90);
+  });
 });
