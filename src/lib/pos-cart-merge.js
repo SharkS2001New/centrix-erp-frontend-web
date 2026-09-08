@@ -304,10 +304,18 @@ function replaceCartLineInPlace(lines, idx, optimisticLine) {
 export function mergePreservedOptimisticLines(
   serverLines,
   prevLines,
-  { combineIdenticalLines = true, excludedLineRefs = null } = {},
+  { combineIdenticalLines = true, excludedLineRefs = null, excludedProductCodes = null } = {},
 ) {
-  const lines = filterCartLinesExcludedRefs(serverLines, excludedLineRefs);
-  const optimisticPrev = (prevLines ?? []).filter((line) => line?._optimistic);
+  const lines = filterCartLinesExcludedProductCodes(
+    filterCartLinesExcludedRefs(serverLines, excludedLineRefs),
+    excludedProductCodes,
+  );
+  const optimisticPrev = (prevLines ?? []).filter((line) => {
+    if (!line?._optimistic) return false;
+    if (!excludedProductCodes?.size) return true;
+    const code = String(line?.product_code ?? "").trim();
+    return !code || !excludedProductCodes.has(code);
+  });
   if (optimisticPrev.length === 0) {
     return collapseCombineableCartLines(lines, { combineIdenticalLines });
   }
@@ -450,6 +458,20 @@ export function filterCartLinesExcludedRefs(lines, excludedRefSet) {
   });
 }
 
+/**
+ * Drop TemporaryCart rows for SKUs the cashier already swapped away.
+ * Swap paints Sugar in place, but the server may keep Banjab until a later
+ * response — without this, the next add resurrects Banjab.
+ */
+export function filterCartLinesExcludedProductCodes(lines, excludedProductCodes) {
+  if (!excludedProductCodes?.size) return Array.isArray(lines) ? lines : [];
+  return (Array.isArray(lines) ? lines : []).filter((line) => {
+    const code = String(line?.product_code ?? "").trim();
+    if (!code) return true;
+    return !excludedProductCodes.has(code);
+  });
+}
+
 function pruneConfirmedLineDeleteRefs(excludedRefSet, serverLines) {
   if (!excludedRefSet?.size) return;
   const stillOnServer = new Set();
@@ -461,6 +483,21 @@ function pruneConfirmedLineDeleteRefs(excludedRefSet, serverLines) {
   for (const key of [...excludedRefSet]) {
     if (!stillOnServer.has(key)) {
       excludedRefSet.delete(key);
+    }
+  }
+}
+
+/** Keep swapped-away codes until the server no longer returns that SKU. */
+function pruneConfirmedSwappedAwayProductCodes(excludedProductCodes, serverLines) {
+  if (!excludedProductCodes?.size) return;
+  const stillOnServer = new Set(
+    (serverLines ?? [])
+      .map((line) => String(line?.product_code ?? "").trim())
+      .filter(Boolean),
+  );
+  for (const code of [...excludedProductCodes]) {
+    if (!stillOnServer.has(code)) {
+      excludedProductCodes.delete(code);
     }
   }
 }
@@ -489,9 +526,14 @@ function restorePrevCartLineFields(line, prev) {
 export function preserveClientLineSkuAfterMutation(
   prevCart,
   nextCart,
-  { targetLineRef = null, expectedProductCode = null } = {},
+  {
+    targetLineRef = null,
+    expectedProductCode = null,
+    replacedProductCode = null,
+  } = {},
 ) {
   const expected = String(expectedProductCode ?? "").trim();
+  const replaced = String(replacedProductCode ?? "").trim();
   if (!expected || !prevCart?.lines?.length || !nextCart?.lines?.length) {
     return nextCart;
   }
@@ -511,17 +553,24 @@ export function preserveClientLineSkuAfterMutation(
       update_code: prevLine.update_code,
       client_line_id: prevLine.client_line_id,
     }) ?? findCartLineForEdit(nextCart.lines, needle);
-  if (!serverLine || String(serverLine.product_code) === expected) return nextCart;
 
-  const lines = (nextCart.lines ?? []).map((row) => {
-    if (!cartLineMatchesRef(row, serverLine)) return row;
-    return {
-      ...prevLine,
-      id: row.id,
-      update_code: row.update_code ?? prevLine.update_code,
-      client_line_id: row.client_line_id ?? prevLine.client_line_id,
-    };
-  });
+  let lines = nextCart.lines ?? [];
+  if (serverLine && String(serverLine.product_code) !== expected) {
+    lines = lines.map((row) => {
+      if (!cartLineMatchesRef(row, serverLine)) return row;
+      return {
+        ...prevLine,
+        id: row.id,
+        update_code: row.update_code ?? prevLine.update_code,
+        client_line_id: row.client_line_id ?? prevLine.client_line_id,
+      };
+    });
+  }
+  // TemporaryCart may keep the old SKU as a separate row after a failed swap PATCH.
+  if (replaced) {
+    lines = lines.filter((row) => String(row?.product_code ?? "") !== replaced);
+  }
+  if (lines === nextCart.lines) return nextCart;
   return { ...nextCart, lines };
 }
 
@@ -609,12 +658,17 @@ export function applyCartMutationResponse(
     extraPosTickets = [],
     combineIdenticalLines = true,
     excludedLineRefs = null,
+    excludedProductCodes = null,
   } = {},
 ) {
   const normalized = normalizeCartResponse(res);
   if (normalized) {
-    const serverLines = filterCartLinesExcludedRefs(normalized.lines, excludedLineRefs);
+    const serverLines = filterCartLinesExcludedProductCodes(
+      filterCartLinesExcludedRefs(normalized.lines, excludedLineRefs),
+      excludedProductCodes,
+    );
     pruneConfirmedLineDeleteRefs(excludedLineRefs, normalized.lines);
+    pruneConfirmedSwappedAwayProductCodes(excludedProductCodes, normalized.lines);
     const nextPos = raisePosNextTicketNumber(
       normalized.next_pos_order_num,
       prevCart?.next_pos_order_num,
@@ -625,6 +679,8 @@ export function applyCartMutationResponse(
       ...normalized,
       lines: mergePreservedOptimisticLines(serverLines, prevCart?.lines, {
         combineIdenticalLines,
+        excludedLineRefs,
+        excludedProductCodes,
       }),
       // Line mutations used to omit next_order_num → caption became "New Order - —".
       next_order_num: normalized.next_order_num ?? prevCart?.next_order_num ?? null,

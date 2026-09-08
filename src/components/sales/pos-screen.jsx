@@ -165,6 +165,7 @@ import {
   cartLinesShareIdentity,
   dedupeSkuLinesAfterInPlaceEdit,
   filterCartLinesExcludedRefs,
+  filterCartLinesExcludedProductCodes,
   finalizeCartLineList,
   findCartLineForEdit,
   preserveClientLineSkuAfterMutation,
@@ -2412,6 +2413,11 @@ export function PosScreen({ standalone = false }) {
   const combineIdenticalLinesRef = useRef(true);
   /** Line refs removed locally while TemporaryCart DELETE is still in flight. */
   const pendingLineDeleteRefsRef = useRef(new Set());
+  /**
+   * Product codes swapped away locally while TemporaryCart may still return the
+   * old SKU (Banjab→Sugar then add Kamande must not resurrect Banjab).
+   */
+  const pendingSwappedAwayProductCodesRef = useRef(new Set());
   uomByIdRef.current = uomById;
   vatByIdRef.current = vatById;
   offlineModeRef.current = offlineMode;
@@ -2434,6 +2440,7 @@ export function PosScreen({ standalone = false }) {
     return {
       combineIdenticalLines: combineIdenticalLinesRef.current,
       excludedLineRefs: pendingLineDeleteRefsRef.current,
+      excludedProductCodes: pendingSwappedAwayProductCodesRef.current,
       ...extra,
     };
   }
@@ -2446,6 +2453,16 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  function registerSwappedAwayProductCode(productCode) {
+    const code = String(productCode ?? "").trim();
+    if (code) pendingSwappedAwayProductCodesRef.current.add(code);
+  }
+
+  function clearSwappedAwayProductCode(productCode) {
+    const code = String(productCode ?? "").trim();
+    if (code) pendingSwappedAwayProductCodesRef.current.delete(code);
+  }
+
   function clearPendingLineDeleteKeysForLine(line) {
     for (const key of cartLineIdentityKeys(line)) {
       pendingLineDeleteRefsRef.current.delete(key);
@@ -2453,7 +2470,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   function filterServerCartLines(lines) {
-    return filterCartLinesExcludedRefs(lines, pendingLineDeleteRefsRef.current);
+    return filterCartLinesExcludedProductCodes(
+      filterCartLinesExcludedRefs(lines, pendingLineDeleteRefsRef.current),
+      pendingSwappedAwayProductCodesRef.current,
+    );
   }
   function markServerCartConsumed(cartId) {
     if (!isServerPosCartId(cartId)) return;
@@ -2490,6 +2510,7 @@ export function PosScreen({ standalone = false }) {
     cartRef.current = placeholder;
     setCart(placeholder);
     pendingLineDeleteRefsRef.current.clear();
+    pendingSwappedAwayProductCodesRef.current.clear();
     setEditOrderNo(peekNextPos != null ? String(peekNextPos) : "");
     return placeholder;
   }
@@ -6017,6 +6038,10 @@ export function PosScreen({ standalone = false }) {
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
     const intendedEdit = editingId != null || editingRef != null;
+    // Cashier intentionally adding this SKU again after a swap — allow it back.
+    if (!intendedEdit && product?.product_code) {
+      clearSwappedAwayProductCode(product.product_code);
+    }
     const combineIdentical = combineIdenticalLinesRef.current !== false;
     // Always re-resolve merge against the live cart. Classic Qty-Enter queues
     // commits with a stale mergeTarget from React state — during an outage that
@@ -6730,6 +6755,8 @@ export function PosScreen({ standalone = false }) {
             {
               targetLineRef: persistedPatchRef,
               expectedProductCode: product.product_code,
+              replacedProductCode:
+                clientSkuSnapshot?._replaced_product_code ?? null,
             },
           );
         }
@@ -6821,6 +6848,8 @@ export function PosScreen({ standalone = false }) {
                   {
                     targetLineRef: persistedPatchRef,
                     expectedProductCode: product.product_code,
+                    replacedProductCode:
+                      clientSkuSnapshot?._replaced_product_code ?? null,
                   },
                 );
               }
@@ -7505,6 +7534,13 @@ export function PosScreen({ standalone = false }) {
     const preservedId = liveLine.id;
     const preservedRef =
       liveLine.update_code ?? liveLine.client_line_id ?? liveLine.id;
+    const replacedProductCode = String(liveLine.product_code ?? "").trim();
+    const nextProductCode = String(product.product_code ?? "").trim();
+    // TemporaryCart often keeps the old SKU after swap PATCH — block it on merges
+    // until the server drops it (or the cashier intentionally adds it again).
+    if (replacedProductCode && replacedProductCode !== nextProductCode) {
+      registerSwappedAwayProductCode(replacedProductCode);
+    }
     const nextLine = {
       ...liveLine,
       id: preservedId,
@@ -7548,6 +7584,7 @@ export function PosScreen({ standalone = false }) {
     const swapSyncSnapshot = {
       ...nextCart,
       lines: swappedLines.map((line) => ({ ...line })),
+      _replaced_product_code: replacedProductCode || null,
     };
     cartRef.current = nextCart;
     setCart(nextCart);

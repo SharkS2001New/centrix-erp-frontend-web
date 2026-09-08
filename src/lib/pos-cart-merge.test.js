@@ -9,6 +9,7 @@ import {
   collapseCombineableCartLines,
   dedupeSkuLinesAfterInPlaceEdit,
   filterCartLinesExcludedRefs,
+  filterCartLinesExcludedProductCodes,
   findCartLineForEdit,
   findModeConvertibleCartLine,
   mergePreservedOptimisticLines,
@@ -1038,10 +1039,76 @@ describe("preserveClientLineSkuAfterMutation", () => {
     next = preserveClientLineSkuAfterMutation(swapSyncSnapshot, next, {
       targetLineRef: "CLU-A",
       expectedProductCode: "NEW-SKU",
+      replacedProductCode: "OLD-SKU",
     });
+    expect(next.lines).toHaveLength(1);
     expect(next.lines[0].product_code).toBe("NEW-SKU");
     expect(next.lines[0].product_name).toBe("New item");
     expect(next.lines[0].amount).toBe(200);
+  });
+
+  it("drops the swapped-away SKU when TemporaryCart keeps it beside the new line", () => {
+    const swapSyncSnapshot = {
+      id: 1,
+      lines: [
+        {
+          id: 20,
+          update_code: "CLU-B",
+          product_code: "SUGAR",
+          product_name: "SUGAR 50 KG",
+          quantity: 12.5,
+          amount: 1595,
+          on_wholesale_retail: 1,
+        },
+      ],
+    };
+    const afterKamandeAdd = {
+      id: 1,
+      update_no: 6,
+      lines: [
+        {
+          id: 10,
+          update_code: "CLU-A",
+          product_code: "BANJAB",
+          product_name: "BANJAB RICE 25KG",
+          quantity: 1,
+          amount: 160,
+          on_wholesale_retail: 1,
+        },
+        {
+          id: 20,
+          update_code: "CLU-B",
+          product_code: "SUGAR",
+          product_name: "SUGAR 50 KG",
+          quantity: 12.5,
+          amount: 1595,
+          on_wholesale_retail: 1,
+        },
+        {
+          id: 30,
+          update_code: "CLU-C",
+          product_code: "KAMANDE",
+          product_name: "KAMANDE LARGE 50KG",
+          quantity: 1,
+          amount: 140,
+          on_wholesale_retail: 1,
+        },
+      ],
+    };
+    const excludedProductCodes = new Set(["BANJAB"]);
+    const next = applyCartMutationResponse(swapSyncSnapshot, afterKamandeAdd, {
+      excludedProductCodes,
+    });
+    expect(next.lines.map((l) => l.product_code).sort()).toEqual([
+      "KAMANDE",
+      "SUGAR",
+    ]);
+    expect(
+      filterCartLinesExcludedProductCodes(
+        afterKamandeAdd.lines,
+        excludedProductCodes,
+      ).map((l) => l.product_code),
+    ).toEqual(["SUGAR", "KAMANDE"]);
   });
 });
 
