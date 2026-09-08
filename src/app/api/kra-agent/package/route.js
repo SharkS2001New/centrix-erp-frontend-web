@@ -46,7 +46,7 @@ function normalizeConfig(config) {
     heartbeatIntervalSeconds:
       Number(config.heartbeatIntervalSeconds) > 0 ? Number(config.heartbeatIntervalSeconds) : 60,
     commandTimeoutSeconds:
-      Number(config.commandTimeoutSeconds) > 0 ? Number(config.commandTimeoutSeconds) : 50,
+      Number(config.commandTimeoutSeconds) > 0 ? Number(config.commandTimeoutSeconds) : 25,
     autoStartComstore: false,
     comstoreWindowsServiceNames: Array.isArray(config.comstoreWindowsServiceNames)
       ? config.comstoreWindowsServiceNames.map((n) => String(n).trim()).filter(Boolean)

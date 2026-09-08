@@ -885,7 +885,8 @@ function formatItemChangedSuccess(fromName, toName) {
 }
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
-const POS_CHECKOUT_TIMEOUT_MS = 90_000;
+/** Slightly above server KRA soft-skip budget (~25s) so the UI never hangs forever. */
+const POS_CHECKOUT_TIMEOUT_MS = 32_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
 const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 30_000;
 
@@ -1294,6 +1295,33 @@ function withPosCheckoutTimeout(promise, message) {
       window.setTimeout(() => reject(new Error(message)), POS_CHECKOUT_TIMEOUT_MS);
     }),
   ]);
+}
+
+function checkoutApiRequest(path, body) {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    controller && typeof window !== "undefined"
+      ? window.setTimeout(() => {
+          try {
+            controller.abort();
+          } catch {
+            /* ignore */
+          }
+        }, POS_CHECKOUT_TIMEOUT_MS)
+      : null;
+  const request = apiRequest(path, {
+    method: "POST",
+    body,
+    signal: controller?.signal,
+    loading: false,
+    reportIssues: false,
+  });
+  return withPosCheckoutTimeout(
+    request.finally(() => {
+      if (timer) window.clearTimeout(timer);
+    }),
+    "Checkout took too long. If the sale was saved, reopen it from Cash Sales / Held orders.",
+  );
 }
 
 function sellableSearchResults(products) {
@@ -11902,13 +11930,11 @@ export function PosScreen({ standalone = false }) {
         return null;
       }
       const checkoutRequest = () =>
-        apiRequest(`/sales/carts/${checkoutCart.id}/checkout`, {
-          method: "POST",
-          body: checkoutBody,
-        });
+        checkoutApiRequest(`/sales/carts/${checkoutCart.id}/checkout`, checkoutBody);
       // Always use the blocking wait for online checkout. Server fiscalizes when
       // "Use KRA device for sales" is on even if this till's cached capabilities
       // still think KRA is off (previously that raced a short timeout and failed).
+      // Client aborts at ~35s so a stuck KRA path cannot freeze POS indefinitely.
       let sale = await runBlockingTask(checkoutRequest, {
         message: submitKra ? "Fiscalizing receipt with KRA…" : "Completing sale…",
         detail: submitKra
@@ -11944,10 +11970,11 @@ export function PosScreen({ standalone = false }) {
       if (kraSoftFailed) {
         sale = { ...sale, _skip_kra_qr: true };
         const kraMsg =
+          sale.kra_error_detail ||
           sale.kra_warning ||
           (kraStatus === "skipped"
             ? "Sale created without KRA (skipped)."
-            : "Sale created without KRA due to an error with KRA device.");
+            : "Sale created without KRA — check that Comstore is running on the shop PC.");
         setStatusMessage(kraMsg);
         notifyError(kraMsg);
       }
@@ -12057,12 +12084,28 @@ export function PosScreen({ standalone = false }) {
           /* fall through */
         }
       }
+      const rawMessage = String(e?.message ?? "");
+      const timedOutCheckout =
+        isAbortError(e) ||
+        /took too long|aborted|signal is aborted|The user aborted/i.test(rawMessage);
+      // Proxy/client timeouts during KRA wait often surface as generic "internet" ApiErrors.
+      const looksLikeConnectivityNoise =
+        (e instanceof ApiError && e.body?.code === "network_unavailable") ||
+        /please check your internet connection|network_unavailable|failed to fetch/i.test(
+          rawMessage,
+        );
+      const kraComstoreTimeoutMsg =
+        "KRA / Comstore did not respond in time. Start Comstore on the shop PC if it is stopped. If the sale saved, reopen it from Cash Sales.";
       const message =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof TypeError && /fetch/i.test(e.message)
-            ? "Cannot reach the server. Check your connection and that the API is running."
-            : "Checkout failed";
+        submitKra && (timedOutCheckout || looksLikeConnectivityNoise)
+          ? kraComstoreTimeoutMsg
+          : e instanceof ApiError
+            ? e.message
+            : e instanceof TypeError && /fetch/i.test(rawMessage)
+              ? "Cannot reach the server. Check your connection and that the API is running."
+              : timedOutCheckout
+                ? rawMessage || "Checkout took too long. Try again."
+                : rawMessage || "Checkout failed";
       setPaymentError(message);
       if (standalone) {
         notifyError(message);

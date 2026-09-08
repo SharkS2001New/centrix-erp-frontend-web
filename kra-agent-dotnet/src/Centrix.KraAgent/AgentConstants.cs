@@ -17,7 +17,7 @@ public static class AgentConstants
     public const int MaxHeartbeatSeconds = 120;
 
     public const int ComstoreConnectTimeoutSeconds = 5;
-    public const int ComstoreRequestTimeoutSeconds = 50;
+    public const int ComstoreRequestTimeoutSeconds = 25;
 
     /// <summary>Cheap /api/health probe used before auto-start (keep low for speed path).</summary>
     public const int ComstoreHealthTimeoutSeconds = 3;

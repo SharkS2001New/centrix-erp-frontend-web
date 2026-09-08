@@ -2093,7 +2093,7 @@ export function PosPaymentPanel({
             </p>
             <p className="theme-text-muted mt-2 text-sm">
               {kraFiscalize
-                ? "Centrix is submitting this receipt to KRA via Centrix KRA Agent. Please wait — do not close this screen."
+                ? "Centrix is submitting this receipt to KRA. Please wait — do not close this screen."
                 : stkPhase === "completing"
                   ? "Please wait while the order is saved and the receipt is prepared."
                   : "Please wait."}

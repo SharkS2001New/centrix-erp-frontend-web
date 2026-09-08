@@ -6,7 +6,7 @@
   "comstoreBaseUrl": "http://localhost:4000",
   "longPollMs": 2000,
   "heartbeatIntervalSeconds": 60,
-  "commandTimeoutSeconds": 50,
+  "commandTimeoutSeconds": 25,
   "autoStartComstore": false,
   "comstoreWindowsServiceNames": [],
   "comstoreExecutablePath": "",
