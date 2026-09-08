@@ -150,7 +150,6 @@ function buildReceiptHtml(line, employee, options) {
       </section>
       ${paidNote}
       ${footerHtml(documentFooterText)}
-      <footer class="cut-hint">Cut along dashed border</footer>
     </article>`;
 }
 
@@ -202,7 +201,6 @@ function payrollReceiptPrintStyles(generalSettings) {
   const section = px(8);
   const note = px(8);
   const net = px(11);
-  const cut = px(7);
   const footer = px(8);
 
   return `
@@ -378,15 +376,6 @@ function payrollReceiptPrintStyles(generalSettings) {
       margin: 0;
       line-height: 1.15;
       color: #0f172a;
-    }
-    .cut-hint {
-      margin-top: 2px;
-      text-align: center;
-      font-size: ${cut};
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      flex-shrink: 0;
     }
     @media print {
       html, body { height: auto; }
