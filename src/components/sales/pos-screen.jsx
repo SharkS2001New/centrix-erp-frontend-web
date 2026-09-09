@@ -2595,7 +2595,7 @@ export function PosScreen({ standalone = false }) {
 
     const cached = retailByCodeRef.current[code];
     // Fast path: use memory / product embed immediately; soft-refresh in background
-    // so select/add are not blocked on /retail-package-settings every time.
+    // so select/Enter→add are never blocked on /retail-package-settings.
     if (!force && cached !== undefined) {
       void ensureRetailPackages([code], { force: true }).catch(() => {});
       return cached;
@@ -2606,7 +2606,13 @@ export function PosScreen({ standalone = false }) {
       return product.retail_package;
     }
 
-    await ensureRetailPackages([code], { force: Boolean(force) });
+    // Cold miss: do not await the network on the typing/Enter path.
+    if (!force) {
+      void ensureRetailPackages([code]).catch(() => {});
+      return getRetailPackage(code);
+    }
+
+    await ensureRetailPackages([code], { force: true });
     const fromApi = retailByCodeRef.current[code];
     if (fromApi) return fromApi;
     if (product.retail_package) {
@@ -6077,51 +6083,6 @@ export function PosScreen({ standalone = false }) {
     /** Persist before setCart — classic qty Enter waits on IndexedDB / TemporaryCart. */
     skipOptimisticPaint = false,
   }) {
-    // Background previous-order edit owns TemporaryCart — sell on a local workspace
-    // so scans never merge into the edit being uploaded.
-    if (
-      standalone &&
-      isBackgroundPreviousOrderEditSyncActive() &&
-      !isPreviousOrderEditSession(cartRef.current) &&
-      !isActiveOfflineEditSession(cartRef.current)
-    ) {
-      await ensureCart();
-    }
-    // Failed sync must never own the till — detach before merge/add so old lines
-    // cannot be recopied into the next Cash Sales #.
-    if (
-      standalone &&
-      cartRef.current &&
-      (await cartHasStaleFailedOutboxAttachment(cartRef.current))
-    ) {
-      await clearLocalPosCart().catch(() => {});
-      const stale = cartRef.current;
-      if (isServerPosCartId(stale?.id)) {
-        markServerCartConsumed(stale.id);
-        await wipeTemporaryCartLines(stale).catch(() => {});
-      }
-      const nextPos = resolveFreshWorkspacePosNum(
-        stripOfflineSaleMarkers(stale),
-        sessionPosOrders,
-        null,
-        null,
-        floatSessionId,
-      );
-      applyFreshWorkspacePlaceholder(stale, nextPos);
-      const bootstrapped = await loadCashierCart({
-        skipEditDraftRestore: true,
-        forceEmpty: true,
-      }).catch(() => null);
-      if (bootstrapped) {
-        const merged = mergeFreshWorkspaceCart(
-          stripOfflineSaleMarkers(stripPreviousOrderEditSession(bootstrapped)),
-          nextPos,
-        );
-        cartRef.current = merged;
-        setCart(merged);
-      }
-    }
-
     const liveCart = cartRef.current ?? cart;
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
@@ -6256,6 +6217,110 @@ export function PosScreen({ standalone = false }) {
         }),
       );
       return false;
+    }
+
+    // Paint the cart line BEFORE IndexedDB / TemporaryCart awaits so Search→Select→Enter
+    // feels instant. Persistence continues below on the same commit.
+    const needsLineDiscountApproval =
+      discountApprovalActive &&
+      !canAutoApproveDiscount &&
+      !finalComputed.autoProductDiscount &&
+      Number(
+        allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
+      ) > 0;
+    const lineAlreadyMatchesEdit =
+      intendedEdit &&
+      targetLineRef != null &&
+      (liveCart?.lines ?? []).some(
+        (line) =>
+          cartLineMatchesRef(line, targetLineRef) &&
+          String(line.product_code) === String(product.product_code) &&
+          Math.abs(Number(line.quantity ?? 0) - Number(finalComputed.baseQty)) < 0.0001 &&
+          Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
+      );
+    let lineBody = {
+      product_code: product.product_code,
+      quantity: finalComputed.baseQty,
+      unit_price: finalComputed.unitPricePerBase,
+      display_unit_price: finalComputed.displayUnitPrice,
+      uom: finalComputed.uomLabel || product.package_name,
+      on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
+      discount_given:
+        allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
+      product_vat: lineProductVat(product, finalComputed.lineAmount),
+      amount: finalComputed.lineAmount,
+    };
+
+    const paintOptimisticOn = (baseCart) => {
+      if (skipOptimisticPaint) return null;
+      if (!baseCart?.id || needsLineDiscountApproval || lineAlreadyMatchesEdit) return null;
+      const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
+      const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
+        mergeTarget: resolvedMergeTarget,
+        editingRef: intendedEdit ? targetLineRef : null,
+        editingId: intendedEdit ? editingId : null,
+        combineIdenticalLines: combineIdentical,
+      });
+      cartRef.current = optimisticCart;
+      setCart(optimisticCart);
+      return { optimisticLine, optimisticCart };
+    };
+
+    let painted =
+      unlockUiEarly && !skipOptimisticPaint && !needsLineDiscountApproval
+        ? paintOptimisticOn(liveCart)
+        : null;
+    if (painted && unlockUiEarly && clearEntry) {
+      clearClassicEntryFields();
+    }
+
+    // Background previous-order edit owns TemporaryCart — sell on a local workspace
+    // so scans never merge into the edit being uploaded.
+    if (
+      standalone &&
+      isBackgroundPreviousOrderEditSyncActive() &&
+      !isPreviousOrderEditSession(cartRef.current) &&
+      !isActiveOfflineEditSession(cartRef.current)
+    ) {
+      await ensureCart();
+    }
+    // Failed sync must never own the till — detach before merge/add so old lines
+    // cannot be recopied into the next Cash Sales #.
+    if (
+      standalone &&
+      cartRef.current &&
+      (await cartHasStaleFailedOutboxAttachment(cartRef.current))
+    ) {
+      await clearLocalPosCart().catch(() => {});
+      const stale = cartRef.current;
+      if (isServerPosCartId(stale?.id)) {
+        markServerCartConsumed(stale.id);
+        await wipeTemporaryCartLines(stale).catch(() => {});
+      }
+      const nextPos = resolveFreshWorkspacePosNum(
+        stripOfflineSaleMarkers(stale),
+        sessionPosOrders,
+        null,
+        null,
+        floatSessionId,
+      );
+      applyFreshWorkspacePlaceholder(stale, nextPos);
+      const bootstrapped = await loadCashierCart({
+        skipEditDraftRestore: true,
+        forceEmpty: true,
+      }).catch(() => null);
+      if (bootstrapped) {
+        const merged = mergeFreshWorkspaceCart(
+          stripOfflineSaleMarkers(stripPreviousOrderEditSession(bootstrapped)),
+          nextPos,
+        );
+        cartRef.current = merged;
+        setCart(merged);
+        // Re-paint onto the fresh workspace if we already showed a line.
+        if (painted && unlockUiEarly) {
+          painted = paintOptimisticOn(merged) ?? painted;
+        }
+      }
     }
 
     // Local workspace: true offline/slow, OR mid-sale cart kept local after reconnect,
@@ -6447,9 +6512,8 @@ export function PosScreen({ standalone = false }) {
       return true;
     }
 
-    // Build the priced line body first, then paint the cart row immediately
-    // (before TemporaryCart / POST) so markup is already on the row — no blank gap.
-    let lineBody = {
+    // Refresh priced body after offline merge adjustments (same shape as early paint).
+    lineBody = {
       product_code: product.product_code,
       quantity: finalComputed.baseQty,
       unit_price: finalComputed.unitPricePerBase,
@@ -6465,11 +6529,6 @@ export function PosScreen({ standalone = false }) {
     };
 
     const discountAmount = Number(lineBody.discount_given ?? 0);
-    const needsLineDiscountApproval =
-      discountApprovalActive &&
-      !canAutoApproveDiscount &&
-      !finalComputed.autoProductDiscount &&
-      discountAmount > 0;
 
     // Snapshot the pre-edit row before optimistic paint so failed PATCHes can restore it.
     const previousLineSnapshot =
@@ -6484,40 +6543,13 @@ export function PosScreen({ standalone = false }) {
         : null;
     const serverUpdateNo = liveCart?.update_no;
     const preservePosTickets = [editOrderNo, offlineNextPosOrderNum];
-    const lineAlreadyMatchesEdit =
-      intendedEdit &&
-      targetLineRef != null &&
-      (liveCart?.lines ?? []).some(
-        (line) =>
-          cartLineMatchesRef(line, targetLineRef) &&
-          String(line.product_code) === String(product.product_code) &&
-          Math.abs(Number(line.quantity ?? 0) - Number(finalComputed.baseQty)) < 0.0001 &&
-          Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
-      );
 
-    const paintOptimisticOn = (baseCart) => {
-      // Classic qty Enter persists first (skipOptimisticPaint) — do not flash UI early.
-      if (skipOptimisticPaint) return null;
-      // Classic qty/F12 already painted this row — do not rebuild with a pending-*
-      // token (that raced TemporaryCart merge and left Sugar as kg + bag).
-      if (!baseCart?.id || needsLineDiscountApproval || lineAlreadyMatchesEdit) return null;
-      const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
-      const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
-        mergeTarget: resolvedMergeTarget,
-        // Only pass editing refs for true in-place edits — merges must use mergeTarget
-        // so we never confuse "update qty on existing SKU" with "new line".
-        editingRef: intendedEdit ? targetLineRef : null,
-        editingId: intendedEdit ? editingId : null,
-        combineIdenticalLines: combineIdentical,
-      });
-      cartRef.current = optimisticCart;
-      setCart(optimisticCart);
-      return { optimisticLine, optimisticCart };
-    };
-
-    let painted = paintOptimisticOn(liveCart);
-    if (painted && unlockUiEarly && clearEntry) {
-      clearClassicEntryFields();
+    // Already painted for unlockUiEarly Enter→add — only paint now if we skipped earlier.
+    if (!painted) {
+      painted = paintOptimisticOn(liveCart);
+      if (painted && unlockUiEarly && clearEntry) {
+        clearClassicEntryFields();
+      }
     }
 
     // Classic line qty/swap edits already have a TemporaryCart id on the workspace.
@@ -8592,7 +8624,14 @@ export function PosScreen({ standalone = false }) {
       setLineForm((p) => ({ ...p, quantity: String(entryQtyRaw) }));
     }
 
-    await ensureRetailPackageForProduct(productForAdd);
+    // Enter→add must not await network. Seed embed sync; soft-refresh in background.
+    if (
+      productForAdd.retail_package &&
+      retailByCodeRef.current[productForAdd.product_code] == null
+    ) {
+      retailByCodeRef.current[productForAdd.product_code] = productForAdd.retail_package;
+    }
+    void ensureRetailPackageForProduct(productForAdd).catch(() => {});
 
     const discount = parseDecimalInput(lineForm.discount);
     const retailPackage = getRetailPackage(productForAdd.product_code);
