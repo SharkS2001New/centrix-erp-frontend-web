@@ -13,6 +13,10 @@ public sealed class ConfigStore
 
     private readonly object _gate = new();
     private AgentConfig _config = new();
+    private DateTimeOffset _lastReloadAt = DateTimeOffset.MinValue;
+
+    /// <summary>Avoid disk JSON parse on every command poll / heartbeat tick.</summary>
+    private static readonly TimeSpan ReloadMinInterval = TimeSpan.FromSeconds(5);
 
     public string ConfigPath { get; private set; }
     public string ExamplePath { get; private set; }
@@ -22,9 +26,10 @@ public sealed class ConfigStore
         var root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         ConfigPath = ResolveExisting(root, "config.json") ?? Path.Combine(root, "config.json");
         ExamplePath = ResolveExisting(root, "config.example.json") ?? Path.Combine(root, "config.example.json");
-        Reload();
+        Reload(force: true);
     }
 
+    /// <summary>Snapshot of current config (cheap field copy — hot path safe).</summary>
     public AgentConfig Current
     {
         get
@@ -33,10 +38,17 @@ public sealed class ConfigStore
         }
     }
 
-    public void Reload()
+    public void Reload() => Reload(force: false);
+
+    public void Reload(bool force)
     {
         lock (_gate)
         {
+            if (!force && (DateTimeOffset.UtcNow - _lastReloadAt) < ReloadMinInterval)
+            {
+                return;
+            }
+
             var root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var found = ResolveExisting(root, "config.json");
             if (found != null) ConfigPath = found;
@@ -61,6 +73,7 @@ public sealed class ConfigStore
             if (!File.Exists(ConfigPath))
             {
                 _config = new AgentConfig();
+                _lastReloadAt = DateTimeOffset.UtcNow;
                 return;
             }
 
@@ -74,6 +87,8 @@ public sealed class ConfigStore
             {
                 _config = new AgentConfig();
             }
+
+            _lastReloadAt = DateTimeOffset.UtcNow;
         }
     }
 
@@ -125,9 +140,28 @@ public sealed class ConfigStore
 
     private static AgentConfig Clone(AgentConfig source)
     {
-        var json = JsonSerializer.Serialize(source, JsonOptions);
-        var clone = JsonSerializer.Deserialize<AgentConfig>(json, JsonOptions) ?? new AgentConfig();
-        clone.Normalize();
-        return clone;
+        // Field copy — avoid JSON round-trip on every poll/heartbeat.
+        return new AgentConfig
+        {
+            CentrixApiUrl = source.CentrixApiUrl,
+            CentrixToken = source.CentrixToken,
+            OrganizationId = source.OrganizationId,
+            AgentId = source.AgentId,
+            ComstoreBaseUrl = source.ComstoreBaseUrl,
+            PollIntervalSeconds = source.PollIntervalSeconds,
+            HeartbeatIntervalSeconds = source.HeartbeatIntervalSeconds,
+            CommandTimeoutSeconds = source.CommandTimeoutSeconds,
+            LongPollMs = source.LongPollMs,
+            AutoStartComstore = source.AutoStartComstore,
+            ComstoreWindowsServiceNames = source.ComstoreWindowsServiceNames is { Count: > 0 }
+                ? new List<string>(source.ComstoreWindowsServiceNames)
+                : new List<string>(),
+            ComstoreExecutablePath = source.ComstoreExecutablePath,
+            ComstoreExecutableArgs = source.ComstoreExecutableArgs,
+            ComstoreStartCommand = source.ComstoreStartCommand,
+            ComstoreStartWorkingDirectory = source.ComstoreStartWorkingDirectory,
+            ComstoreReadyTimeoutSeconds = source.ComstoreReadyTimeoutSeconds,
+            DeviceHardwareIp = source.DeviceHardwareIp,
+        };
     }
 }

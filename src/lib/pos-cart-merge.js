@@ -471,19 +471,16 @@ export function filterCartLinesExcludedProductCodes(lines, excludedProductCodes)
   });
 }
 
-function pruneConfirmedLineDeleteRefs(excludedRefSet, serverLines) {
-  if (!excludedRefSet?.size) return;
-  const stillOnServer = new Set();
-  for (const line of serverLines ?? []) {
-    for (const key of cartLineIdentityKeys(line)) {
-      stillOnServer.add(key);
-    }
-  }
-  for (const key of [...excludedRefSet]) {
-    if (!stillOnServer.has(key)) {
-      excludedRefSet.delete(key);
-    }
-  }
+/**
+ * Do not prune delete exclusions from a single TemporaryCart payload.
+ *
+ * Out-of-order responses: DELETE lands (line gone) then an older in-flight POST
+ * returns the pre-delete cart and would resurrect the row if we cleared the
+ * exclusion early. Exclusions are cleared when the till workspace is replaced
+ * (new order / clear / failed remove rollback).
+ */
+function pruneConfirmedLineDeleteRefs(_excludedRefSet, _serverLines) {
+  // Intentionally a no-op — see registerPendingLineDeletes in pos-screen.
 }
 
 /** Keep swapped-away codes until the server no longer returns that SKU. */
@@ -662,6 +659,24 @@ export function applyCartMutationResponse(
 ) {
   const normalized = normalizeCartResponse(res);
   if (normalized) {
+    // Ignore older TemporaryCart snapshots (delete/qty already advanced update_no).
+    if (
+      prevCart?.id != null &&
+      normalized.id != null &&
+      String(prevCart.id) === String(normalized.id)
+    ) {
+      const prevNo = Number(prevCart.update_no);
+      const nextNo = Number(normalized.update_no);
+      if (
+        Number.isFinite(prevNo) &&
+        Number.isFinite(nextNo) &&
+        prevNo > 0 &&
+        nextNo > 0 &&
+        nextNo < prevNo
+      ) {
+        return prevCart;
+      }
+    }
     const serverLines = filterCartLinesExcludedProductCodes(
       filterCartLinesExcludedRefs(normalized.lines, excludedLineRefs),
       excludedProductCodes,

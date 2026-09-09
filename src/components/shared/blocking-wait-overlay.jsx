@@ -16,6 +16,18 @@ export function BlockingWaitOverlay({ open, message, detail, progress = 0 }) {
       className="fixed inset-0 z-[180] flex items-center justify-center bg-black/40 p-4"
       aria-live="polite"
       aria-busy="true"
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={message || "Please wait"}
+      // Capture scanner / keyboard so POS cannot add lines while delete/save runs.
+      onKeyDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onKeyUp={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       <div className="w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
         <p className="text-sm font-semibold text-slate-900">{message}</p>

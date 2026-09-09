@@ -85,7 +85,7 @@ public sealed class KraWorker : BackgroundService
     /// </summary>
     public async Task<object> TestConnectionsAsync(CancellationToken ct)
     {
-        _config.Reload();
+        _config.Reload(force: true);
         var config = _config.Current;
         if (!config.IsReady)
         {

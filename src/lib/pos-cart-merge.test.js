@@ -391,22 +391,70 @@ describe("applyCartMutationResponse", () => {
     };
     const next = applyCartMutationResponse(prev, res, { excludedLineRefs: excluded });
     expect(next.lines.map((line) => line.product_code)).toEqual(["A"]);
-    // Server still lists B — keep exclusion until DELETE confirms.
+    // Keep exclusion even if a stale POST still lists B — otherwise add-after-delete
+    // resurrects the removed row.
     expect(excluded.size).toBe(2);
   });
 
-  it("clears exclusion refs once the server cart no longer has the deleted line", () => {
+  it("keeps delete exclusions after the server cart no longer has the deleted line", () => {
     const excluded = new Set(["CLU-B", "2"]);
     const prev = {
       id: 10,
+      update_no: 5,
       lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
     };
     const res = {
       id: 10,
+      update_no: 6,
       lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
     };
     applyCartMutationResponse(prev, res, { excludedLineRefs: excluded });
-    expect(excluded.size).toBe(0);
+    expect(excluded.size).toBe(2);
+  });
+
+  it("ignores TemporaryCart payloads with an older update_no", () => {
+    const prev = {
+      id: 10,
+      update_no: 8,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        { id: 3, update_code: "CLU-C", product_code: "C", on_wholesale_retail: 0, amount: 40 },
+      ],
+    };
+    const stale = {
+      id: 10,
+      update_no: 7,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        { id: 2, update_code: "CLU-B", product_code: "B", on_wholesale_retail: 0, amount: 50 },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, stale);
+    expect(next.lines.map((line) => line.product_code)).toEqual(["A", "C"]);
+    expect(next.update_no).toBe(8);
+  });
+
+  it("blocks a stale add from resurrecting a deleted line after DELETE advanced update_no", () => {
+    const excluded = new Set(["CLU-B", "2"]);
+    const afterDelete = {
+      id: 10,
+      update_no: 6,
+      lines: [{ id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 }],
+    };
+    const staleAdd = {
+      id: 10,
+      update_no: 5,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        { id: 2, update_code: "CLU-B", product_code: "B", on_wholesale_retail: 0, amount: 50 },
+        { id: 9, update_code: "CLU-NEW", product_code: "NEW", on_wholesale_retail: 0, amount: 20 },
+      ],
+    };
+    const next = applyCartMutationResponse(afterDelete, staleAdd, {
+      excludedLineRefs: excluded,
+    });
+    expect(next.lines.map((line) => line.product_code)).toEqual(["A"]);
+    expect(next.update_no).toBe(6);
   });
 
   it("keeps separate lines for the same SKU when combine is off (Sugar 2kg vs 10kg)", () => {

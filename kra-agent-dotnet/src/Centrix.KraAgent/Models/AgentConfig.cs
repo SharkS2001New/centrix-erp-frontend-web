@@ -29,7 +29,7 @@ public sealed class AgentConfig
     public int CommandTimeoutSeconds { get; set; } = 22;
 
     [JsonPropertyName("longPollMs")]
-    public int LongPollMs { get; set; } = 750;
+    public int LongPollMs { get; set; } = 400;
 
     /// <summary>When true, agent starts Comstore if /api/health fails. Default false — start Comstore via Windows.</summary>
     [JsonPropertyName("autoStartComstore")]

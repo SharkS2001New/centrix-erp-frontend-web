@@ -1572,7 +1572,11 @@ export function PosScreen({ standalone = false }) {
     () => mergeGeneralSettings(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
-  const { runBlockingTask, overlayNode: checkoutWaitOverlay } = useBlockingWait(
+  const {
+    runBlockingTask,
+    overlayNode: checkoutWaitOverlay,
+    busy: cartLineSaveWaitBusy,
+  } = useBlockingWait(
     "Completing sale…",
   );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
@@ -2441,6 +2445,8 @@ export function PosScreen({ standalone = false }) {
   const heldRestoreGenerationRef = useRef(0);
   const cartSummaryRef = useRef(null);
   const lineBusyRef = useRef(false);
+  /** True while runWithLineSaveOverlay / BlockingWait is up (delete, qty, swap). */
+  const cartLineSaveWaitBusyRef = useRef(false);
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
   const applyLiveCartCatalogPricesRef = useRef(null);
@@ -3437,6 +3443,10 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     lineBusyRef.current = lineBusy;
   }, [lineBusy]);
+
+  useEffect(() => {
+    cartLineSaveWaitBusyRef.current = cartLineSaveWaitBusy;
+  }, [cartLineSaveWaitBusy]);
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
@@ -4894,12 +4904,25 @@ export function PosScreen({ standalone = false }) {
   /**
    * Blocking overlay while a queued cart line save runs (qty / F12 / swap / delete).
    * Nested calls share one overlay so rapid Enter does not clear it early.
+   * While open, scan/add/shortcuts must wait — otherwise delete→add races revive lines.
    */
   const lineSaveOverlayDepthRef = useRef(0);
+  function isCartLineSaveBlocking() {
+    return (
+      lineSaveOverlayDepthRef.current > 0 ||
+      cartLineSaveWaitBusyRef.current ||
+      cartLineSaveWaitBusy
+    );
+  }
   async function runWithLineSaveOverlay(task, opts = {}) {
     lineSaveOverlayDepthRef.current += 1;
+    const outer = lineSaveOverlayDepthRef.current === 1;
+    if (outer) {
+      lineBusyRef.current = true;
+      setLineBusy(true);
+    }
     try {
-      if (lineSaveOverlayDepthRef.current === 1) {
+      if (outer) {
         return await runBlockingTask(task, {
           message: "Updating cart…",
           detail: "Queued cart save — please wait until it finishes.",
@@ -4910,6 +4933,10 @@ export function PosScreen({ standalone = false }) {
       return await task();
     } finally {
       lineSaveOverlayDepthRef.current = Math.max(0, lineSaveOverlayDepthRef.current - 1);
+      if (lineSaveOverlayDepthRef.current === 0) {
+        lineBusyRef.current = false;
+        setLineBusy(false);
+      }
     }
   }
 
@@ -7078,6 +7105,10 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing cart update before adding items.");
+      return;
+    }
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
@@ -7180,6 +7211,10 @@ export function PosScreen({ standalone = false }) {
 
   async function handleBarcodeEnter(code) {
     if (!enableBarcodeScanner) return false;
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing cart update before adding items.");
+      return true;
+    }
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return false;
 
@@ -7345,6 +7380,10 @@ export function PosScreen({ standalone = false }) {
 
   async function pickProduct(product) {
     if (!product) return;
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing cart update before adding items.");
+      return;
+    }
     // Freeze swap intent BEFORE any await. hydrateProductLiveStock / retail package
     // can yield long enough for remounts or cart sync to clear replacingLineIdRef,
     // which parked Kamande as a new line instead of swapping Sugar.
@@ -9698,6 +9737,10 @@ export function PosScreen({ standalone = false }) {
     const ids = [...new Set((rawIds ?? []).map(String))].filter(Boolean);
     const liveCart = cartRef.current ?? cart;
     if (!liveCart?.id || !liveCart?.lines?.length || !ids.length) return;
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing the previous cart update first.");
+      return;
+    }
 
     const idSet = new Set(ids);
     const targets = (liveCart.lines ?? []).filter((line) =>
@@ -9725,11 +9768,14 @@ export function PosScreen({ standalone = false }) {
     setStatusMessage(null);
     const clearsEditing = targets.some((line) => sameLineId(editingLineId, line.id));
     const serverCartId = isServerPosCartId(liveCart.id) ? liveCart.id : null;
-    const serverLineRefs = targets
-      .filter((line) => isServerPersistedCartLine(line))
-      .map((line) => cartLineRef(line))
-      .filter((ref) => ref != null && String(ref).trim() !== "")
-      .map(String);
+    const serverLineRefs = [
+      ...new Set(
+        targets
+          .map((line) => serverPersistedCartLineRef(line))
+          .filter((ref) => ref != null && String(ref).trim() !== "")
+          .map(String),
+      ),
+    ];
 
     // Build the next cart in memory — paint only after IndexedDB / TemporaryCart delete.
     const working = cartRef.current ?? liveCart;
@@ -9813,31 +9859,35 @@ export function PosScreen({ standalone = false }) {
           // Online TemporaryCart: DELETE first, then remove from the grid.
           if (serverCartId && serverLineRefs.length > 0 && !offlineMode) {
             const cartIdAtRemove = serverCartId;
+            let presented = nextCart;
             for (const lineRef of serverLineRefs) {
               try {
-                await apiRequest(
+                const updated = await apiRequest(
                   `/sales/carts/${cartIdAtRemove}/lines/${encodeURIComponent(lineRef)}`,
                   {
                     method: "DELETE",
                     ...POS_CART_REQUEST,
                   },
                 );
-                const removedLine = targets.find((line) =>
-                  cartLineIdentityKeys(line).includes(String(lineRef)),
-                );
-                if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
-                else pendingLineDeleteRefsRef.current.delete(String(lineRef));
+                // Keep pendingLineDeleteRefs until the workspace is replaced —
+                // clearing here let in-flight POSTs resurrect the deleted row.
+                if (updated && typeof updated === "object") {
+                  presented = withLocalCartMutation(
+                    applyCartMutationResponse(
+                      cartRef.current ?? presented,
+                      updated,
+                      cartMergeOptions(),
+                    ),
+                  );
+                }
               } catch (e) {
                 if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
-                  const removedLine = targets.find((line) =>
-                    cartLineIdentityKeys(line).includes(String(lineRef)),
-                  );
-                  if (removedLine) clearPendingLineDeleteKeysForLine(removedLine);
-                  else pendingLineDeleteRefsRef.current.delete(String(lineRef));
+                  // Already gone on the server — keep exclusion keys so a stale
+                  // sibling response cannot paint the row back.
                   continue;
                 }
                 if (isPosNetworkDropError(e) || isMissingTemporaryCartError(e)) {
-                  const current = nextCart;
+                  const current = presented;
                   if (!standalone) throw e;
                   const local = presentLocalOfflineCart(
                     await continueOpenCartThroughOutage(current, offlineOutageSeed()),
@@ -9860,7 +9910,12 @@ export function PosScreen({ standalone = false }) {
                 throw e;
               }
             }
-            paintRemoved(nextCart);
+            // Belt-and-suspenders: never paint excluded refs even if merge missed one.
+            presented = {
+              ...presented,
+              lines: filterServerCartLines(presented.lines ?? []),
+            };
+            paintRemoved(presented);
             return;
           }
 
@@ -15842,6 +15897,7 @@ export function PosScreen({ standalone = false }) {
     cartStockBlocked,
     checkoutBlocked,
     activeSession: Boolean(activeSession),
+    cartLineSaveWaitBusy,
   };
   posShortcutActionsRef.current = {
     flashPosShortcutMessage,
@@ -15926,6 +15982,7 @@ export function PosScreen({ standalone = false }) {
         || state.previousOrderLoading
         || state.autoHeldBusy
         || state.editAdjustmentDialogOpen
+        || state.cartLineSaveWaitBusy
         || isConfirmDialogOpen()
       );
     }
