@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Centrix.KraAgent.Models;
 
 namespace Centrix.KraAgent.Services;
@@ -353,8 +354,12 @@ public sealed class KraWorker : BackgroundService
             CommandResult result;
             try
             {
-                result = await _comstore.ExecuteAsync(config, command, ct);
-                if (!result.Success && ComstoreClient.LooksLikeUnreachable(result) && config.AutoStartComstore)
+                result = await ExecuteLocalOrComstoreAsync(config, command, ct);
+                if (IsAgentLocalPath(command.Path))
+                {
+                    // Local agent probes — do not wrap with Comstore manual-start messaging.
+                }
+                else if (!result.Success && ComstoreClient.LooksLikeUnreachable(result) && config.AutoStartComstore)
                 {
                     var (ok, detail) = await _ensure.EnsureRunningAsync(config, ct, forceStartAttempt: true);
                     _comstoreHealthy = ok;
@@ -401,6 +406,104 @@ public sealed class KraWorker : BackgroundService
                 _log.LogWarning(ex, "Failed to post result for command {Id}", command.Id);
             }
         }
+    }
+
+    private static bool IsAgentLocalPath(string? path)
+    {
+        var p = (path ?? "").Trim();
+        if (!p.StartsWith('/')) p = "/" + p;
+        return p.Equals("/agent/ping", StringComparison.OrdinalIgnoreCase)
+            || p.Equals("/agent/device-probe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<CommandResult> ExecuteLocalOrComstoreAsync(
+        AgentConfig config,
+        AgentCommand command,
+        CancellationToken ct)
+    {
+        var path = (command.Path ?? "").Trim();
+        if (!path.StartsWith('/')) path = "/" + path;
+
+        if (path.Equals("/agent/device-probe", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteDeviceProbeAsync(config, command, ct);
+        }
+
+        return await _comstore.ExecuteAsync(config, command, ct);
+    }
+
+    private async Task<CommandResult> ExecuteDeviceProbeAsync(
+        AgentConfig config,
+        AgentCommand command,
+        CancellationToken ct)
+    {
+        string? hardwareOverride = null;
+        try
+        {
+            if (command.Body is JsonElement el && el.ValueKind == JsonValueKind.Object)
+            {
+                if (el.TryGetProperty("hardware_ip", out var hip) && hip.ValueKind == JsonValueKind.String)
+                {
+                    hardwareOverride = hip.GetString();
+                }
+                else if (el.TryGetProperty("device_hardware_ip", out var hip2) && hip2.ValueKind == JsonValueKind.String)
+                {
+                    hardwareOverride = hip2.GetString();
+                }
+            }
+        }
+        catch
+        {
+            // ignore body parse issues — fall back to config IP
+        }
+
+        if (!string.IsNullOrWhiteSpace(hardwareOverride))
+        {
+            _config.ApplyRuntimeOverrides(deviceHardwareIp: hardwareOverride);
+            config = _config.Current;
+        }
+
+        // Prefer live Comstore health; still ping hardware IP when Comstore is down.
+        var comstoreOk = _comstoreHealthy;
+        try
+        {
+            var (ok, _) = await _ensure.EnsureRunningAsync(config, ct);
+            comstoreOk = ok;
+            _comstoreHealthy = ok;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogDebug(ex, "Comstore probe during device-probe failed");
+            comstoreOk = false;
+            _comstoreHealthy = false;
+        }
+
+        var device = await _deviceProbe.ProbeAsync(config, comstoreOk, ct, hardwareOverride);
+        _deviceReachable = device.Reachable;
+        _lastDeviceMessage = device.Message;
+
+        var payload = new
+        {
+            success = device.Reachable,
+            reachable = device.Reachable,
+            hardware_ip = device.HardwareIp,
+            device_connection = device.DeviceConnection,
+            ping_ok = device.PingOk,
+            comstore_healthy = comstoreOk,
+            message = device.Message,
+        };
+
+        return new CommandResult
+        {
+            Success = device.Reachable,
+            Status = 200,
+            Body = System.Text.Json.JsonSerializer.Serialize(payload),
+            Error = device.Reachable ? null : device.Message,
+            Headers = new Dictionary<string, string[]>
+            {
+                ["content-type"] = ["application/json"],
+            },
+        };
     }
 
     private static CommandResult ManualStartRequiredResult(

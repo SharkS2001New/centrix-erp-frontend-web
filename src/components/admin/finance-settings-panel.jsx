@@ -222,32 +222,64 @@ export function FinanceSettingsPanel({
       const res = await apiRequest(path, {
         method: "POST",
         body: kraDeviceOpsPayloadFromForm(form),
+        loading: false,
+        reportIssues: false,
       });
+      const message = String(
+        res.message ||
+          res.detail ||
+          res.device_status_message ||
+          (res.success ? "Request completed." : "KRA device request failed."),
+      ).trim();
       setKraHealthResult({
         ok: Boolean(res.success),
-        message: res.message ?? (res.success ? "Request completed." : "KRA device request failed."),
+        message,
+        detail: typeof res.detail === "string" ? res.detail : null,
         httpStatus: res.http_status,
         url: res.url,
         deviceConnection: res.device_connection,
         apiService: res.api_service,
         viaAgent: Boolean(res.via_agent),
         manualStartRequired: Boolean(res.manual_start_required),
+        comstoreOk: res.comstore_ok,
+        deviceOk: res.device_ok,
+        deviceHardwareIp: res.device_hardware_ip || form.kra_device_hardware_ip || null,
+        devicePingOk: res.device_ping_ok,
+        deviceStatusMessage: res.device_status_message || null,
       });
       void refreshKraAgentStatus();
     } catch (e) {
       const body = e instanceof ApiError && e.body && typeof e.body === "object" ? e.body : null;
-      const message =
-        (body && typeof body.message === "string" && body.message) ||
-        (e instanceof ApiError ? e.message : "KRA device request failed.");
+      const fromBody =
+        (body && typeof body.message === "string" && body.message.trim()) ||
+        (body && typeof body.detail === "string" && body.detail.trim()) ||
+        "";
+      // Never show the generic Centrix-cloud DNS toast as if it were a Comstore error.
+      const isCloudNetwork =
+        (e instanceof ApiError && e.body?.code === "network_unavailable") ||
+        /please check your internet connection/i.test(String(e?.message ?? ""));
+      const message = fromBody
+        ? fromBody
+        : isCloudNetwork
+          ? "Could not reach the Centrix API (network/DNS). This is not a Comstore error — check internet on this computer, then retry Test connection."
+          : e instanceof ApiError
+            ? e.message
+            : "KRA device request failed.";
       setKraHealthResult({
         ok: false,
         message,
+        detail: typeof body?.detail === "string" ? body.detail : null,
         httpStatus: body?.http_status ?? (e instanceof ApiError ? e.status : undefined),
         url: body?.url,
         deviceConnection: body?.device_connection,
         apiService: body?.api_service,
         viaAgent: Boolean(body?.via_agent),
         manualStartRequired: Boolean(body?.manual_start_required),
+        comstoreOk: body?.comstore_ok,
+        deviceOk: body?.device_ok,
+        deviceHardwareIp: body?.device_hardware_ip || form.kra_device_hardware_ip || null,
+        devicePingOk: body?.device_ping_ok,
+        deviceStatusMessage: body?.device_status_message || null,
       });
       void refreshKraAgentStatus();
     } finally {
@@ -673,10 +705,39 @@ export function FinanceSettingsPanel({
                               {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
                               {kraHealthResult.viaAgent ? " · via Centrix KRA Agent" : ""}
                             </p>
+                            {kraHealthResult.detail &&
+                            kraHealthResult.detail !== kraHealthResult.message ? (
+                              <p className="theme-subtext mt-1 text-xs whitespace-pre-wrap">
+                                Technical detail: {kraHealthResult.detail}
+                              </p>
+                            ) : null}
                             {kraHealthResult.deviceConnection ? (
                               <p className="theme-subtext mt-1 text-xs">
                                 Device connection: {kraHealthResult.deviceConnection}
                                 {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
+                              </p>
+                            ) : null}
+                            {kraHealthResult.deviceHardwareIp ||
+                            kraHealthResult.deviceStatusMessage ||
+                            kraHealthResult.devicePingOk != null ? (
+                              <p className="theme-subtext mt-1 text-xs">
+                                Fiscal hardware
+                                {kraHealthResult.deviceHardwareIp
+                                  ? ` (${kraHealthResult.deviceHardwareIp})`
+                                  : ""}
+                                {kraHealthResult.devicePingOk === true
+                                  ? " · ping OK"
+                                  : kraHealthResult.devicePingOk === false
+                                    ? " · ping failed"
+                                    : ""}
+                                {kraHealthResult.deviceOk === false
+                                  ? " · not reachable"
+                                  : kraHealthResult.deviceOk === true
+                                    ? " · reachable"
+                                    : ""}
+                                {kraHealthResult.deviceStatusMessage
+                                  ? ` — ${kraHealthResult.deviceStatusMessage}`
+                                  : ""}
                               </p>
                             ) : null}
                           </>
@@ -684,9 +745,12 @@ export function FinanceSettingsPanel({
                       </div>
                     ) : (
                       <p className="theme-subtext text-xs">
-                        <strong>Test connection</strong> runs via Centrix KRA Agent. Calls{" "}
-                        <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
-                        <strong>Initialize</strong> calls{" "}
+                        <strong>Test connection</strong> runs via Centrix KRA Agent: Comstore{" "}
+                        <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>
+                        {form.kra_device_hardware_ip?.trim()
+                          ? " plus a LAN ping of Fiscal hardware IP"
+                          : " (set Fiscal hardware IP to also ping the Smart VSCU)"}
+                        . <strong>Initialize</strong> calls{" "}
                           <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/init</code> (serial + hardware
                           IP). <strong>Restart</strong> calls{" "}
                         <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/restart-device</code>.

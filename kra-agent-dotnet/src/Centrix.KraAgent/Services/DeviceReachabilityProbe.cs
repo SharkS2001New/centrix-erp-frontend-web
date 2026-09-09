@@ -23,9 +23,11 @@ public sealed class DeviceReachabilityProbe
     public async Task<DeviceReachabilityResult> ProbeAsync(
         AgentConfig config,
         bool comstoreHealthy,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? hardwareIpOverride = null)
     {
-        var hardwareIp = NormalizeHost(config.DeviceHardwareIp);
+        var hardwareIp = NormalizeHost(
+            !string.IsNullOrWhiteSpace(hardwareIpOverride) ? hardwareIpOverride : config.DeviceHardwareIp);
         bool? pingOk = null;
         string? pingDetail = null;
 
