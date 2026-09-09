@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Centrix.KraAgent</RootNamespace>
     <AssemblyName>Centrix.KraAgent</AssemblyName>
-    <Version>1.3.4</Version>
+    <Version>1.3.5</Version>
     <Description>Centrix ERP shop-PC bridge to local Comstore / KRA fiscal device (Windows service)</Description>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>

@@ -25,6 +25,8 @@ public sealed class KraWorker : BackgroundService
     private bool _online;
     private bool _comstoreHealthy;
     private bool? _deviceReachable;
+    /// <summary>True while a Comstore fiscal command is in flight — heartbeat must not probe the busy device.</summary>
+    private int _fiscalBusyDepth;
 
     public KraWorker(
         ILogger<KraWorker> log,
@@ -64,6 +66,7 @@ public sealed class KraWorker : BackgroundService
             last_poll_at = _lastPollAt?.ToString("o"),
             last_error = _lastError,
             commands_handled = _commandsHandled,
+            fiscal_busy = _fiscalBusyDepth > 0,
             comstore_base_url = cfg.ComstoreBaseUrl,
             centrix_api_url = cfg.CentrixApiUrl,
             long_poll_ms = cfg.LongPollMs,
@@ -237,43 +240,74 @@ public sealed class KraWorker : BackgroundService
                 var config = _config.Current;
                 if (config.IsReady)
                 {
-                    // Keep Comstore alive across reboots / crashes without slowing the poll loop.
-                    var (ok, detail) = await _ensure.EnsureRunningAsync(config, ct);
-                    _comstoreHealthy = ok;
-                    if (detail != null) _lastComstoreEnsureNote = detail;
+                    // While complete-workflow is running, do not hammer Comstore/device with health+ICMP.
+                    // That contention looks like "agent stopped" and soft-skips the next sales.
+                    var busy = Volatile.Read(ref _fiscalBusyDepth) > 0;
+                    bool ok;
+                    string? detail;
+                    if (busy)
+                    {
+                        ok = _comstoreHealthy;
+                        detail = _lastComstoreEnsureNote;
+                    }
+                    else
+                    {
+                        (ok, detail) = await _ensure.EnsureRunningAsync(config, ct);
+                        _comstoreHealthy = ok;
+                        if (detail != null) _lastComstoreEnsureNote = detail;
+                    }
 
                     var comstoreMessage = ok
                         ? detail
                         : $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage}";
 
-                    var device = await _deviceProbe.ProbeAsync(config, ok, ct);
-                    _deviceReachable = device.Reachable;
-                    _lastDeviceMessage = device.Message;
+                    bool? deviceReachable;
+                    string? deviceMessage;
+                    string? deviceHardwareIp;
+                    string? deviceConnection;
+                    if (busy)
+                    {
+                        deviceReachable = _deviceReachable;
+                        deviceMessage = _lastDeviceMessage
+                            ?? "Fiscal device probe deferred — CentrixKraAgent is busy fiscalizing.";
+                        deviceHardwareIp = config.DeviceHardwareIp;
+                        deviceConnection = null;
+                    }
+                    else
+                    {
+                        var device = await _deviceProbe.ProbeAsync(config, ok, ct);
+                        _deviceReachable = device.Reachable;
+                        _lastDeviceMessage = device.Message;
+                        deviceReachable = device.Reachable;
+                        deviceMessage = device.Message;
+                        deviceHardwareIp = device.HardwareIp;
+                        deviceConnection = device.DeviceConnection;
+                    }
 
                     await _centrix.PostHeartbeatAsync(
                         config,
                         ct,
                         comstoreHealthy: ok,
                         comstoreMessage: comstoreMessage,
-                        deviceReachable: device.Reachable,
-                        deviceMessage: device.Message,
-                        deviceHardwareIp: device.HardwareIp,
-                        deviceConnection: device.DeviceConnection);
+                        deviceReachable: deviceReachable,
+                        deviceMessage: deviceMessage,
+                        deviceHardwareIp: deviceHardwareIp,
+                        deviceConnection: deviceConnection);
                     _online = true;
                     _lastHeartbeatAt = DateTimeOffset.UtcNow;
                     _lastError = !ok
                         ? comstoreMessage
-                        : !device.Reachable
-                            ? device.Message
+                        : deviceReachable == false
+                            ? deviceMessage
                             : null;
                     if (!ok)
                     {
                         _log.LogWarning(
                             "Comstore still down — agent service continues; signalling manual start to Centrix.");
                     }
-                    else if (!device.Reachable)
+                    else if (!busy && deviceReachable == false)
                     {
-                        _log.LogWarning("Fiscal device not reachable: {Detail}", device.Message);
+                        _log.LogWarning("Fiscal device not reachable: {Detail}", deviceMessage);
                     }
                 }
             }
@@ -351,11 +385,17 @@ public sealed class KraWorker : BackgroundService
 
         foreach (var command in commands)
         {
+            var isLocal = IsAgentLocalPath(command.Path);
+            if (!isLocal)
+            {
+                Interlocked.Increment(ref _fiscalBusyDepth);
+            }
+
             CommandResult result;
             try
             {
                 result = await ExecuteLocalOrComstoreAsync(config, command, ct);
-                if (IsAgentLocalPath(command.Path))
+                if (isLocal)
                 {
                     // Local agent probes — do not wrap with Comstore manual-start messaging.
                 }
@@ -392,6 +432,13 @@ public sealed class KraWorker : BackgroundService
                     Body = "",
                     Error = ex.Message,
                 };
+            }
+            finally
+            {
+                if (!isLocal)
+                {
+                    Interlocked.Decrement(ref _fiscalBusyDepth);
+                }
             }
 
             try

@@ -26,7 +26,7 @@ public sealed class AgentConfig
     public int HeartbeatIntervalSeconds { get; set; } = 30;
 
     [JsonPropertyName("commandTimeoutSeconds")]
-    public int CommandTimeoutSeconds { get; set; } = 25;
+    public int CommandTimeoutSeconds { get; set; } = 22;
 
     [JsonPropertyName("longPollMs")]
     public int LongPollMs { get; set; } = 750;
@@ -106,7 +106,7 @@ public sealed class AgentConfig
             HeartbeatIntervalSeconds = 120;
         }
 
-        if (CommandTimeoutSeconds < 10) CommandTimeoutSeconds = 25;
+        if (CommandTimeoutSeconds < 10) CommandTimeoutSeconds = 22;
         if (CommandTimeoutSeconds > 55) CommandTimeoutSeconds = 55;
         if (LongPollMs < 0) LongPollMs = 0;
         if (LongPollMs > 10_000) LongPollMs = 10_000;

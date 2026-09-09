@@ -3,9 +3,12 @@ namespace Centrix.KraAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixKraAgent";
-    public const string Version = "1.3.4";
+    public const string Version = "1.3.5";
     public const string ServiceName = "CentrixKraAgent";
     public const int StatusPort = 9261;
+
+    /// <summary>Pull one fiscal command at a time so checkout waiters are not starved by a claimed batch.</summary>
+    public const int CommandPullLimit = 1;
 
     /// <summary>Long-poll hold on Centrix pending commands (ms). Shorter = faster fiscal pickup.</summary>
     public const int CommandLongPollMs = 750;
@@ -17,7 +20,8 @@ public static class AgentConstants
     public const int MaxHeartbeatSeconds = 120;
 
     public const int ComstoreConnectTimeoutSeconds = 5;
-    public const int ComstoreRequestTimeoutSeconds = 25;
+    /// <summary>Must stay under Centrix checkout wait (~28–30s) so results are not discarded.</summary>
+    public const int ComstoreRequestTimeoutSeconds = 22;
 
     /// <summary>Cheap /api/health probe used before auto-start (keep low for speed path).</summary>
     public const int ComstoreHealthTimeoutSeconds = 3;

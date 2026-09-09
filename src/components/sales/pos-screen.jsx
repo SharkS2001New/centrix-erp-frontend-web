@@ -886,7 +886,7 @@ function formatItemChangedSuccess(fromName, toName) {
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 /** Slightly above server KRA soft-skip budget (~22s) so the UI never hangs forever. */
-const POS_CHECKOUT_TIMEOUT_MS = 28_000;
+const POS_CHECKOUT_TIMEOUT_MS = 35_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
 const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 30_000;
 

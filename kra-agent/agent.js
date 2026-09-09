@@ -90,7 +90,7 @@ async function heartbeat(config) {
 }
 
 async function pullCommands(config) {
-  const url = `${centrixBase(config)}/kra/agent/commands/pending?limit=5&agent_version=${encodeURIComponent(AGENT_VERSION)}`;
+  const url = `${centrixBase(config)}/kra/agent/commands/pending?limit=1&agent_version=${encodeURIComponent(AGENT_VERSION)}`;
   const res = await fetchWithTimeout(url, { headers: centrixHeaders(config) }, 15_000);
   if (!res.ok) {
     const text = await res.text();

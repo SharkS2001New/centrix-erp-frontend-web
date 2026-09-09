@@ -101,7 +101,7 @@ public sealed class CentrixClient
         var waitMs = Math.Max(0, config.LongPollMs);
         var url =
             $"{KraBase(config)}/agent/commands/pending" +
-            $"?limit=5&wait_ms={waitMs}&agent_version={Uri.EscapeDataString(AgentConstants.Version)}";
+            $"?limit={AgentConstants.CommandPullLimit}&wait_ms={waitMs}&agent_version={Uri.EscapeDataString(AgentConstants.Version)}";
         using var req = Request(config, HttpMethod.Get, url);
         var timeout = Math.Max(15, 8 + (waitMs / 1000));
         using var res = await SendAsync(req, timeout, ct);
