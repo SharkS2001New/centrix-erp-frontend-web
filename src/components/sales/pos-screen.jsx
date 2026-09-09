@@ -2530,11 +2530,27 @@ export function PosScreen({ standalone = false }) {
     return isServerPosCartId(cartId) && consumedServerCartIdsRef.current.has(Number(cartId));
   }
 
+  /** Live till adopted this TemporaryCart again (F8 wipe often reuses the same id). */
+  function adoptLiveServerCart(cartId) {
+    if (!isServerPosCartId(cartId)) return;
+    consumedServerCartIdsRef.current.delete(Number(cartId));
+  }
+
   /**
    * After F8 / checkout abandons a TemporaryCart, ignore late line POST/PATCH
    * responses so they cannot repaint the cleared workspace (felt like needing F8 twice).
+   * If firstOrCreate returns the wiped cart as the new workspace, mutations must apply.
    */
   function shouldApplyServerCartMutation(fromCartId) {
+    const liveId = cartRef.current?.id;
+    if (
+      fromCartId != null &&
+      isServerPosCartId(liveId) &&
+      Number(liveId) === Number(fromCartId) &&
+      !isFreshWorkspacePlaceholder(cartRef.current)
+    ) {
+      return true;
+    }
     if (fromCartId != null && isServerCartConsumed(fromCartId)) return false;
     if (isFreshWorkspacePlaceholder(cartRef.current)) return false;
     return true;
@@ -4845,11 +4861,13 @@ export function PosScreen({ standalone = false }) {
             ...bootstrapped,
             lines: mergePreservedOptimisticLines(bootstrapped.lines, pendingOptimistic, cartMergeOptions()),
           };
+          adoptLiveServerCart(merged.id);
           cartRef.current = merged;
           setCart(merged);
           return merged;
         }
         if (bootstrapped) {
+          adoptLiveServerCart(bootstrapped.id);
           cartRef.current = bootstrapped;
           setCart(bootstrapped);
         }
@@ -6349,6 +6367,7 @@ export function PosScreen({ standalone = false }) {
           stripOfflineSaleMarkers(stripPreviousOrderEditSession(bootstrapped)),
           nextPos,
         );
+        adoptLiveServerCart(merged?.id);
         cartRef.current = merged;
         setCart(merged);
         // Re-paint onto the fresh workspace if we already showed a line.
@@ -10364,6 +10383,7 @@ export function PosScreen({ standalone = false }) {
         }
 
         const merged = mergeFreshWorkspaceCart(cleaned, quickPeek);
+        adoptLiveServerCart(merged?.id);
         cartRef.current = merged;
         setCart(merged);
         if (merged.next_pos_order_num != null) {
@@ -11186,6 +11206,7 @@ export function PosScreen({ standalone = false }) {
               lines: mergePreservedOptimisticLines(merged.lines, live.lines, cartMergeOptions()),
             };
           }
+          adoptLiveServerCart(merged?.id);
           cartRef.current = merged;
           setCart(merged);
           const displayPos =
@@ -11223,6 +11244,7 @@ export function PosScreen({ standalone = false }) {
                   stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
                   peekNextPos,
                 );
+                adoptLiveServerCart(merged?.id);
                 cartRef.current = merged;
                 setCart(merged);
                 report(100);
@@ -12929,6 +12951,7 @@ export function PosScreen({ standalone = false }) {
           nextPos,
         );
         if (generation !== freshWorkspaceGenerationRef.current) return;
+        adoptLiveServerCart(merged?.id);
         cartRef.current = merged;
         setCart(merged);
         const displayPos =
@@ -13644,6 +13667,7 @@ export function PosScreen({ standalone = false }) {
         };
       }
       const merged = mergeFreshWorkspaceCart(cleaned, peekNextPos);
+      adoptLiveServerCart(merged?.id);
       cartRef.current = merged;
       setCart(merged);
       orderNoUserEditedRef.current = false;
@@ -13764,6 +13788,7 @@ export function PosScreen({ standalone = false }) {
                         }
                       : stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered));
                     const merged = mergeFreshWorkspaceCart(blank, peekNextPos);
+                    adoptLiveServerCart(merged?.id);
                     cartRef.current = merged;
                     setCart(merged);
                     report(100);
@@ -13846,6 +13871,7 @@ export function PosScreen({ standalone = false }) {
                   }
                 : stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered));
               const merged = mergeFreshWorkspaceCart(blank, peekNextPos);
+              adoptLiveServerCart(merged?.id);
               cartRef.current = merged;
               setCart(merged);
               return merged;
