@@ -247,6 +247,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     }
   }, [hasActiveQuery, draftQuery]);
 
+  // Parent overlays (payment, cart save/delete/swap wait) — force the panel shut.
+  useEffect(() => {
+    if (!dropdownSuppressed) return;
+    setOpen(false);
+    setHighlight(-1);
+  }, [dropdownSuppressed]);
+
   useEffect(() => {
     if (visibleResults.length === 0) {
       setHighlight(-1);

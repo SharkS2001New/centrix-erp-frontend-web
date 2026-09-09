@@ -3466,6 +3466,11 @@ export function PosScreen({ standalone = false }) {
   }, [cartLineSaveWaitBusy]);
 
   useEffect(() => {
+    if (!cartLineSaveWaitBusy) return;
+    productSearchRef.current?.closeDropdown?.();
+  }, [cartLineSaveWaitBusy]);
+
+  useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
     void loadCompletedPosOrders();
   }, [enablePosOrderEdit, standalone, loadCompletedPosOrders]);
@@ -4010,7 +4015,9 @@ export function PosScreen({ standalone = false }) {
     Boolean(ticketSyncConflict) ||
     preparingNextOpen ||
     (previousOrderLoading && !previousOrderLoadingSoft) ||
-    Boolean(autoHeldBusy);
+    Boolean(autoHeldBusy) ||
+    // Hide Find/scan dropdown while qty / swap / delete blocking overlay is up.
+    cartLineSaveWaitBusy;
 
   /** Block switching to Accounts / other applications while outbox sales are uploading. */
   const blocksWorkspaceSwitch = useMemo(() => {
@@ -5152,11 +5159,24 @@ export function PosScreen({ standalone = false }) {
 
   async function waitForCartLineSavesToFinish() {
     await cartCommitChainRef.current.catch(() => {});
-    if (!lineBusyRef.current) return;
+    // Callers inside runWithLineSaveOverlay must not invoke this — lineBusy is held
+    // by that overlay until finally (polling it burned ~5s after classic qty/swap).
+    if (
+      !lineBusyRef.current &&
+      cartCommitPendingRef.current <= 0 &&
+      lineSaveOverlayDepthRef.current <= 0
+    ) {
+      return;
+    }
     await new Promise((resolve) => {
       const startedAt = Date.now();
       const tick = () => {
-        if (!lineBusyRef.current || Date.now() - startedAt > 5000) {
+        if (
+          (!lineBusyRef.current &&
+            cartCommitPendingRef.current <= 0 &&
+            lineSaveOverlayDepthRef.current <= 0) ||
+          Date.now() - startedAt > 5000
+        ) {
           resolve();
           return;
         }
@@ -7364,16 +7384,12 @@ export function PosScreen({ standalone = false }) {
         return await runWithLineSaveOverlay(
           async () => {
             let ok = false;
+            // enqueueCartCommit already awaits this swap's persist — do not call
+            // waitForCartLineSavesToFinish here (it polls lineBusy held by this
+            // overlay and burned ~5s after every save).
             await enqueueCartCommit(async () => {
               ok = Boolean(await finishSwap());
             });
-            await waitForCartLineSavesToFinish();
-            if (
-              usesLocalPosCartWorkspace(cartRef.current) ||
-              !isServerPosCartId(cartRef.current?.id)
-            ) {
-              await awaitLocalCartWrites().catch(() => {});
-            }
             return ok;
           },
           {
@@ -7872,10 +7888,7 @@ export function PosScreen({ standalone = false }) {
 
     if (isPreviousOrderEditSession(nextCart)) {
       try {
-        await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
-        if (nextCart.offline || nextCart.offline_client_sale_uuid) {
-          await awaitLocalCartWrites();
-        }
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
         const collapsed = finalizeCartLineList(nextCart.lines, {
           combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
         });
@@ -7907,7 +7920,7 @@ export function PosScreen({ standalone = false }) {
               client_line_id: l.client_line_id ?? l.update_code ?? l.id,
             })),
           });
-          await awaitLocalCartWrites();
+          // saveLocalPosCart already awaited this put — skip full-queue drain.
           const presented = presentLocalOfflineCart(saved);
           const liveAfter = cartRef.current;
           if (
@@ -8690,14 +8703,8 @@ export function PosScreen({ standalone = false }) {
       if (classicLayout || localDraftEdit || standalone) {
         void runWithLineSaveOverlay(
           async () => {
+            // See swap Enter path — enqueue awaits persist; skip lineBusy poll.
             await enqueueCartCommit(runReplace);
-            await waitForCartLineSavesToFinish();
-            if (
-              usesLocalPosCartWorkspace(cartRef.current) ||
-              !isServerPosCartId(cartRef.current?.id)
-            ) {
-              await awaitLocalCartWrites().catch(() => {});
-            }
           },
           {
             message: "Changing item…",
@@ -9563,9 +9570,6 @@ export function PosScreen({ standalone = false }) {
           try {
             // Persist draft first — notePreviousOrderEditSuccess would save cartRef (stale).
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
-            if (nextCart.offline || nextCart.offline_client_sale_uuid) {
-              await awaitLocalCartWrites();
-            }
             cartRef.current = nextCart;
             setCart(nextCart);
             if (qtyActuallyChanged || modeActuallyChanged) {
@@ -9740,16 +9744,12 @@ export function PosScreen({ standalone = false }) {
     if (classicLayout || localDraftEdit) {
       void runWithLineSaveOverlay(
         async () => {
+          // enqueueCartCommit awaits the IndexedDB / TemporaryCart save.
+          // Do not waitForCartLineSavesToFinish here — that polls lineBusy which
+          // this overlay holds until finally, so it always hit the ~5s timeout.
           await enqueueCartCommit(async () => {
             await run();
           });
-          await waitForCartLineSavesToFinish();
-          if (
-            usesLocalPosCartWorkspace(cartRef.current) ||
-            !isServerPosCartId(cartRef.current?.id)
-          ) {
-            await awaitLocalCartWrites().catch(() => {});
-          }
         },
         {
           message: modeActuallyChanged ? "Updating line…" : "Updating quantity…",
@@ -10101,7 +10101,7 @@ export function PosScreen({ standalone = false }) {
               offline: true,
               lines: [],
             });
-            await awaitLocalCartWrites();
+            // saveLocalPosCart already awaited this put — skip full-queue drain.
             paintCleared(presentLocalOfflineCart(saved));
             return;
           }
