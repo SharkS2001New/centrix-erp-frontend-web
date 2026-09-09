@@ -2589,13 +2589,24 @@ export function PosScreen({ standalone = false }) {
   }
 
   /** Ensure this SKU's retail_package_settings row is loaded before pricing. */
-  async function ensureRetailPackageForProduct(product) {
+  async function ensureRetailPackageForProduct(product, { force = false } = {}) {
     const code = product?.product_code;
     if (!code) return null;
-    // Always refresh from retail-package-settings so tier edits (e.g. 45kg+ zero
-    // markup) are not shadowed by a stale product-list embed or prior POS cache.
-    delete retailByCodeRef.current[code];
-    await ensureRetailPackages([code], { force: true });
+
+    const cached = retailByCodeRef.current[code];
+    // Fast path: use memory / product embed immediately; soft-refresh in background
+    // so select/add are not blocked on /retail-package-settings every time.
+    if (!force && cached !== undefined) {
+      void ensureRetailPackages([code], { force: true }).catch(() => {});
+      return cached;
+    }
+    if (!force && product.retail_package) {
+      retailByCodeRef.current[code] = product.retail_package;
+      void ensureRetailPackages([code], { force: true }).catch(() => {});
+      return product.retail_package;
+    }
+
+    await ensureRetailPackages([code], { force: Boolean(force) });
     const fromApi = retailByCodeRef.current[code];
     if (fromApi) return fromApi;
     if (product.retail_package) {
@@ -5648,10 +5659,14 @@ export function PosScreen({ standalone = false }) {
           /* fall through to API */
         }
 
-        // Any local hits: merge API in background so typing stays snappy.
-        // (Previously required 8+ hits — short queries still waited on the network.)
+        // Solid local hits: skip background /products — it contended with select/add
+        // and made typing + pick feel slow on busy tills. API still runs when local misses.
         const localReady = localPaint.length > 0;
-        const apiPromise = apiRequest("/products", {
+        if (localReady) {
+          return;
+        }
+
+        const res = await apiRequest("/products", {
           searchParams: {
             per_page: 40,
             q: trimmed,
@@ -5663,17 +5678,6 @@ export function PosScreen({ standalone = false }) {
           loading: false,
           reportIssues: false,
         });
-
-        if (localReady) {
-          void apiPromise
-            .then((res) => applyRemoteMerge(res.data))
-            .catch((err) => {
-              if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
-            });
-          return;
-        }
-
-        const res = await apiPromise;
         if (seq !== searchSeq.current || abort.signal.aborted) return;
         applyRemoteMerge(res.data);
       } catch (err) {
@@ -7395,9 +7399,38 @@ export function PosScreen({ standalone = false }) {
     const swapIntent = Boolean(frozenReplacingId || frozenSnap || frozenDraft?.line);
 
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
-    // Always refresh live branch stock on select — offline catalog / enrich must not
-    // leave invent-0 shop qty that blocks retail sales against real shop stock.
-    product = await hydrateProductLiveStock(product, branchId, apiRequest, { force: true });
+    // Only block select when stock fields are missing. Always force-refreshing
+    // /products/{code} made every search pick feel multi-second on slow links.
+    if (productStockFieldsMissing(product)) {
+      product = await hydrateProductLiveStock(product, branchId, apiRequest);
+    } else {
+      const parkedCode = product.product_code;
+      void hydrateProductLiveStock(product, branchId, apiRequest, { force: true })
+        .then((fresh) => {
+          if (!fresh?.product_code || String(fresh.product_code) !== String(parkedCode)) return;
+          setProductByCode((prev) => {
+            const existing = prev[fresh.product_code] ?? product;
+            const merged = mergeProductStockFields(existing, fresh);
+            if (merged === existing) return prev;
+            return { ...prev, [fresh.product_code]: merged };
+          });
+          productByCodeRef.current[fresh.product_code] =
+            mergeProductStockFields(productByCodeRef.current[fresh.product_code] ?? product, fresh) ??
+            fresh;
+          if (
+            String(selectedProductRef.current?.product_code ?? "") === String(parkedCode)
+          ) {
+            selectedProductRef.current =
+              mergeProductStockFields(selectedProductRef.current, fresh) ?? fresh;
+            setSelectedProduct((prev) =>
+              prev && String(prev.product_code) === String(parkedCode)
+                ? mergeProductStockFields(prev, fresh) ?? fresh
+                : prev,
+            );
+          }
+        })
+        .catch(() => {});
+    }
     setProductByCode((prev) => {
       const existing = prev[product.product_code];
       if (!existing) return { ...prev, [product.product_code]: product };
@@ -9529,7 +9562,7 @@ export function PosScreen({ standalone = false }) {
                   client_line_id: l.client_line_id ?? l.update_code ?? l.id,
                 })),
               });
-              await awaitLocalCartWrites();
+              // saveLocalPosCart already awaited this write — skip draining the full queue.
               let presented = presentLocalOfflineCart(saved);
               const qtyLanded = (presented?.lines ?? []).some(
                 (row) =>
@@ -9552,7 +9585,6 @@ export function PosScreen({ standalone = false }) {
                     client_line_id: l.client_line_id ?? l.update_code ?? l.id,
                   })),
                 });
-                await awaitLocalCartWrites();
                 presented = presentLocalOfflineCart(saved2);
                 const landed2 = (presented?.lines ?? []).some(
                   (row) =>
@@ -9844,7 +9876,8 @@ export function PosScreen({ standalone = false }) {
               })),
             };
             const saved = await saveLocalPosCart(snapshot);
-            await awaitLocalCartWrites();
+            // saveLocalPosCart already waited on the write queue for this put —
+            // do not awaitLocalCartWrites() again (that waited on unrelated backlog).
             const presented = presentLocalOfflineCart(saved);
             const live = cartRef.current;
             const liveSeq = Number(live?._local_mutation_seq ?? 0);
