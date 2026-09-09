@@ -538,7 +538,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       enablePosCashRounding,
                     );
                     const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
-                    const negative = Number(qty) <= 0;
                     return (
                       <tr
                         key={product.product_code}
@@ -553,9 +552,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                           e.preventDefault();
                         }}
                         onClick={() => pick(product)}
-                        className={`${negative ? "classic-pos-find-row--negative" : ""} ${
-                          keyboardActive ? "classic-pos-find-row--active" : ""
-                        }`}
+                        className={keyboardActive ? "classic-pos-find-row--active" : undefined}
                       >
                         <td>{product.product_code}</td>
                         <td>
@@ -564,11 +561,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         <td className="classic-pos-find-num classic-pos-find-price">
                           {Number(price).toLocaleString()}
                         </td>
-                        <td
-                          className={`classic-pos-find-num classic-pos-find-stock ${
-                            negative ? "classic-pos-neg" : ""
-                          }`}
-                        >
+                        <td className="classic-pos-find-num classic-pos-find-stock">
                           {formatStockQty(qty, product)}
                         </td>
                       </tr>
@@ -685,13 +678,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     routeMarkupPerUnit,
                     enablePosCashRounding,
                   );
-                  const availQty = availableQty(
-                    product,
-                    sellFromShop,
-                    posSalesConfig,
-                    sellWholesale,
-                  );
-                  const negative = Number(availQty) <= 0;
                   const stockMode = posSalesConfig
                     ? productCartStockDisplayMode(product, posSalesConfig, sellWholesale)
                     : null;
@@ -710,53 +696,31 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       }}
                       onClick={() => pick(product)}
                       className={`theme-table-row cursor-pointer border-b border-[var(--theme-border)] ${
-                        negative
-                          ? "bg-red-600/90 text-white hover:bg-red-600"
-                          : keyboardActive
-                            ? "bg-[var(--theme-primary-subtle)] ring-1 ring-inset ring-[var(--theme-primary)]"
-                            : selected
-                              ? "bg-[var(--theme-primary-muted)]"
-                              : "hover:bg-[var(--theme-hover)]"
+                        keyboardActive
+                          ? "bg-[var(--theme-primary-subtle)] ring-1 ring-inset ring-[var(--theme-primary)]"
+                          : selected
+                            ? "bg-[var(--theme-primary-muted)]"
+                            : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
-                      <td
-                        className={`px-2 py-1.5 font-mono text-[10px] tabular-nums ${
-                          negative ? "text-white" : "text-slate-600"
-                        }`}
-                      >
+                      <td className="px-2 py-1.5 font-mono text-[10px] tabular-nums text-slate-600">
                         {product.product_code}
                       </td>
-                      <td
-                        className={`px-2 py-1.5 font-medium ${
-                          negative ? "text-white" : "text-slate-900"
-                        }`}
-                      >
+                      <td className="px-2 py-1.5 font-medium text-slate-900">
                         {product.product_name}
                       </td>
-                      <td
-                        className={`px-2 py-1.5 text-right tabular-nums font-bold ${
-                          negative ? "text-white" : ""
-                        }`}
-                      >
+                      <td className="px-2 py-1.5 text-right tabular-nums font-bold">
                         {Number(price).toLocaleString()}
                       </td>
                       {showShopStock ? (
-                        <td
-                          className={`px-2 py-1.5 text-right tabular-nums ${
-                            negative ? "text-white font-bold" : "text-slate-600"
-                          }`}
-                        >
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
                           {stockMode === "store"
                             ? "—"
                             : formatStockQty(productStockAtLocation(product, "shop"), product)}
                         </td>
                       ) : null}
                       {showStoreStock ? (
-                        <td
-                          className={`px-2 py-1.5 text-right tabular-nums ${
-                            negative ? "text-white font-bold" : "text-slate-600"
-                          }`}
-                        >
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
                           {formatStockQty(productStockAtLocation(product, "store"), product)}
                         </td>
                       ) : null}

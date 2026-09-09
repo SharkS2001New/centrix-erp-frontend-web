@@ -2834,21 +2834,6 @@ html[data-theme="dark"] .pos-workspace-classic {
   color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
 }
 
-.classic-pos-find-row--negative,
-.classic-pos-find-row--negative td {
-  background: var(--classic-accent, #fe0300) !important;
-  color: #fff !important;
-}
-
-.classic-pos-find-row--negative:hover td,
-.classic-pos-find-row--negative.classic-pos-find-row--active td {
-  background: #d90200 !important;
-}
-
-.classic-pos-neg {
-  font-weight: 700;
-}
-
 .classic-pos-find-empty {
   text-align: center;
   padding: 1.5rem 0.75rem !important;
