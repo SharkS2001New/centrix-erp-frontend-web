@@ -211,7 +211,10 @@ export function fetchUsersCached(organizationId, { path = "/reference/users", se
   });
 }
 
-/** Users who can sell: POS, backoffice sales create, or mobile field sales. */
+/**
+ * Users who can create orders / sell: backoffice create order, POS checkout,
+ * hotel POS, or mobile field sales — filtered server-side by permissions.
+ */
 export function fetchSalesCapableUsersCached(organizationId) {
   return fetchUsersCached(organizationId, {
     searchParams: { sales_capable: 1 },

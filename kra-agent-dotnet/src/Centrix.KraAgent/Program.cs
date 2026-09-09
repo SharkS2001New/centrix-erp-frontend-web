@@ -18,6 +18,13 @@ builder.Host.UseWindowsService(options =>
     options.ServiceName = AgentConstants.ServiceName;
 });
 
+// Never tear down the Windows service because a worker loop faulted
+// (e.g. transient Centrix/Comstore errors). Comstore-off is expected.
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(AgentConstants.StatusPort);

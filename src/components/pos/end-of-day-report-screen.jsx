@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { filterByOrganization } from "@/lib/admin";
-import { fetchBranchesCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { printHtmlDocument } from "@/lib/print-dispatch";
 import { formatTillKes, formatTillKesExact, formatTillKesSigned, resolveExpectedNetSales, resolveSessionVariance, sessionHasClosedCashMaths, varianceAmountTone, TILL_REPORT_PAYMENT_LINES } from "@/lib/pos-till";
@@ -804,21 +804,23 @@ export function EndOfDayReportScreen({
       .catch(() => setBranches([]));
   }, [organizationId, user?.branch_id, branchId]);
 
+  // Same sales-capable user set as Sales Data → User filter: create-order,
+  // POS, hotel POS, and mobile sales (server checks each user's permissions).
   useEffect(() => {
     if (!organizationId) return;
     let cancelled = false;
-    const params = { per_page: 50 };
-    if (branchId) params.branch_id = branchId;
-    apiRequest("/reports/filter-cashiers", { searchParams: params })
-      .then((res) => {
+    fetchSalesCapableUsersCached(organizationId)
+      .then((list) => {
         if (cancelled) return;
-        const rows = Array.isArray(res?.data) ? res.data : [];
+        const rows = filterByOrganization(list ?? [], organizationId).filter(
+          (u) => u.is_active !== false,
+        );
         setCashierOptions(
           rows
-      .map((u) => ({
-        value: String(u.id),
-        label: u.full_name?.trim() || u.username || `User #${u.id}`,
-      }))
+            .map((u) => ({
+              value: String(u.id),
+              label: u.full_name?.trim() || u.username || `User #${u.id}`,
+            }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         );
       })
@@ -828,7 +830,7 @@ export function EndOfDayReportScreen({
     return () => {
       cancelled = true;
     };
-  }, [organizationId, branchId]);
+  }, [organizationId]);
 
   // Anyone who sold in the loaded report must appear in the filter — even if their
   // role later lost create permissions (common for Hotel POS cashiers).

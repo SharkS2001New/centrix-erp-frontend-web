@@ -3,8 +3,8 @@ using Centrix.KraAgent.Models;
 namespace Centrix.KraAgent.Services;
 
 /// <summary>
-/// Fast fiscal bridge: long-poll Centrix for commands, proxy to local Comstore.
-/// Keeps pinging Centrix + fiscal hardware; does not start Comstore (Windows does).
+/// Fast fiscal bridge: long-poll Centrix for commands, proxy to local Comstore when available.
+/// Always stays running as a Windows service — Comstore off only marks unhealthy heartbeats.
 /// </summary>
 public sealed class KraWorker : BackgroundService
 {
@@ -137,6 +137,39 @@ public sealed class KraWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Outer guard: a fault in poll/heartbeat must never stop CentrixKraAgent.
+        // Comstore being off is normal — heartbeats keep reporting until it is started.
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await RunWorkerLoopsAsync(stoppingToken);
+                break;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(
+                    ex,
+                    "{Agent} worker faulted; restarting in 5s. Comstore being down must never stop this service.",
+                    AgentConstants.AgentName);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private async Task RunWorkerLoopsAsync(CancellationToken stoppingToken)
+    {
         while (!stoppingToken.IsCancellationRequested)
         {
             _config.Reload();
@@ -168,7 +201,7 @@ public sealed class KraWorker : BackgroundService
             cfg.AutoStartComstore);
         _log.LogInformation("Local status: http://127.0.0.1:{Port}", AgentConstants.StatusPort);
 
-        // Bring Comstore up before accepting fiscal traffic (does nothing when already healthy).
+        // Probe Comstore once at startup. Never exit if it is down — only warn.
         try
         {
             var (ok, detail) = await _ensure.EnsureRunningAsync(cfg, stoppingToken, forceStartAttempt: true);
@@ -176,7 +209,6 @@ public sealed class KraWorker : BackgroundService
             _lastComstoreEnsureNote = detail;
             if (!ok)
             {
-                // Service keeps running — only warn. Heartbeats will keep signalling manual start.
                 _log.LogWarning(
                     "Comstore not ready at startup ({Detail}). {Agent} stays running and will keep reporting until Comstore is started manually.",
                     detail,
@@ -185,7 +217,8 @@ public sealed class KraWorker : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogWarning(ex, "Comstore ensure at startup failed");
+            _comstoreHealthy = false;
+            _log.LogWarning(ex, "Comstore ensure at startup failed — agent continues without Comstore");
         }
 
         await Task.WhenAll(
