@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
@@ -5502,12 +5502,13 @@ export function PosScreen({ standalone = false }) {
 
       const rankOpts = {
         limit: 40,
-        getAvailableQty: (product) =>
-          posSearchAvailableQty(product, sellFromShop, posSalesConfig, sellWholesale),
+        // Skip getAvailableQty on the typing path — stock is shown in the dropdown
+        // from product fields; ranking by live qty made every keystroke scan the cart stock math.
       };
 
       const seedRetailAndIndex = (list) => {
         const novelForIndex = [];
+        const novelForState = [];
         for (const p of list) {
           const code = p?.product_code;
           if (!code) continue;
@@ -5515,38 +5516,38 @@ export function PosScreen({ standalone = false }) {
             retailByCodeRef.current[code] = p.retail_package;
           }
           if (!posSearchCatalogHasCode(code)) novelForIndex.push(p);
+          const existingRef = productByCodeRef.current[code];
+          if (existingRef) {
+            const merged = mergeProductStockFields(existingRef, p);
+            if (merged !== existingRef) productByCodeRef.current[code] = merged;
+          } else {
+            productByCodeRef.current[code] = p;
+            novelForState.push(p);
+          }
         }
         // Only index truly new codes — re-upserting known catalog rows used to
         // rebuild the full prefix index on every keystroke (felt heavy).
         if (novelForIndex.length) upsertPosSearchProducts(novelForIndex);
-        setProductByCode((prev) => {
-          let changed = false;
-          let next = prev;
-          for (const p of list) {
-            const code = p?.product_code;
-            if (!code) continue;
-            const existing = prev[code];
-            if (existing) {
-              const merged = mergeProductStockFields(existing, p);
-              if (merged !== existing) {
+        // Avoid setProductByCode on every keystroke (full POS re-render). Only
+        // publish truly new codes, and defer so search paint stays first.
+        if (novelForState.length) {
+          startTransition(() => {
+            setProductByCode((prev) => {
+              let changed = false;
+              let next = prev;
+              for (const p of novelForState) {
+                const code = p?.product_code;
+                if (!code || prev[code]) continue;
                 if (!changed) {
                   next = { ...prev };
                   changed = true;
                 }
-                next[code] = merged;
-                productByCodeRef.current[code] = merged;
+                next[code] = productByCodeRef.current[code] ?? p;
               }
-              continue;
-            }
-            if (!changed) {
-              next = { ...prev };
-              changed = true;
-            }
-            next[code] = p;
-            productByCodeRef.current[code] = p;
-          }
-          return changed ? next : prev;
-        });
+              return changed ? next : prev;
+            });
+          });
+        }
       };
 
       let committedNonEmpty = false;
@@ -5590,7 +5591,6 @@ export function PosScreen({ standalone = false }) {
         setSearching(false);
         return;
       }
-      setSearching(true);
       // Keep the prior list visible while this query is in flight. Clearing early when the
       // query lengthens (yab → yabal) blanked the dropdown before index/API responded.
       /** Offline/index search is already ranked — only enrich + sellable filter. */
@@ -5605,11 +5605,16 @@ export function PosScreen({ standalone = false }) {
         const missingPkg = list
           .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
           .map((p) => p.product_code);
-        const cap = classicLayout ? 12 : 24;
+        // Only warm packages for the first few hits — full-list fanout fought select/add.
+        const cap = 6;
         if (!missingPkg.length) return;
         void ensureRetailPackages(missingPkg.slice(0, cap)).then(() => {
           if (seq !== searchSeq.current || abort.signal.aborted) return;
-          setRetailByCode({ ...retailByCodeRef.current });
+          // Ref already updated; skip setRetailByCode unless the parked SKU needs a paint.
+          const parked = selectedProductRef.current?.product_code;
+          if (parked && retailByCodeRef.current[parked] != null) {
+            setRetailByCode({ ...retailByCodeRef.current });
+          }
         });
       };
 
@@ -5666,6 +5671,8 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
+        // Only show the spinner when we actually wait on the network.
+        setSearching(true);
         const res = await apiRequest("/products", {
           searchParams: {
             per_page: 40,
@@ -5727,12 +5734,8 @@ export function PosScreen({ standalone = false }) {
       productBranchParams,
       ensureRetailPackages,
       standalone,
-      classicLayout,
       offlineMode,
       searchOffline,
-      sellFromShop,
-      posSalesConfig,
-      sellWholesale,
     ],
   );
 
@@ -5748,15 +5751,8 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const codeLike = looksLikeProductCodeQuery(searchQuery);
-    // Debounce typing so we don't thrash index/API on every keystroke.
-    // Local catalog paints first inside searchProducts; Enter / barcode still resolve immediately.
-    const delay = !trimmed
-      ? 0
-      : codeLike
-        ? 50
-        : classicLayout
-          ? 120
-          : 200;
+    // Keep debounce minimal — local index is sync; long delays made search feel laggy.
+    const delay = !trimmed ? 0 : codeLike ? 0 : classicLayout ? 40 : 60;
     const t = setTimeout(() => searchProducts(searchQueryRef.current), delay);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts, classicLayout]);
@@ -7399,48 +7395,52 @@ export function PosScreen({ standalone = false }) {
     const swapIntent = Boolean(frozenReplacingId || frozenSnap || frozenDraft?.line);
 
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
-    // Only block select when stock fields are missing. Always force-refreshing
-    // /products/{code} made every search pick feel multi-second on slow links.
-    if (productStockFieldsMissing(product)) {
-      product = await hydrateProductLiveStock(product, branchId, apiRequest);
-    } else {
-      const parkedCode = product.product_code;
-      void hydrateProductLiveStock(product, branchId, apiRequest, { force: true })
-        .then((fresh) => {
-          if (!fresh?.product_code || String(fresh.product_code) !== String(parkedCode)) return;
+    // Never await stock on select — park first; refresh in background.
+    const parkedCodeForStock = product.product_code;
+    void hydrateProductLiveStock(
+      product,
+      branchId,
+      apiRequest,
+      productStockFieldsMissing(product) ? {} : { force: true },
+    )
+      .then((fresh) => {
+        if (!fresh?.product_code || String(fresh.product_code) !== String(parkedCodeForStock)) {
+          return;
+        }
+        productByCodeRef.current[fresh.product_code] =
+          mergeProductStockFields(productByCodeRef.current[fresh.product_code] ?? product, fresh) ??
+          fresh;
+        if (String(selectedProductRef.current?.product_code ?? "") === String(parkedCodeForStock)) {
+          selectedProductRef.current =
+            mergeProductStockFields(selectedProductRef.current, fresh) ?? fresh;
+          setSelectedProduct((prev) =>
+            prev && String(prev.product_code) === String(parkedCodeForStock)
+              ? mergeProductStockFields(prev, fresh) ?? fresh
+              : prev,
+          );
+        }
+        startTransition(() => {
           setProductByCode((prev) => {
             const existing = prev[fresh.product_code] ?? product;
             const merged = mergeProductStockFields(existing, fresh);
             if (merged === existing) return prev;
             return { ...prev, [fresh.product_code]: merged };
           });
-          productByCodeRef.current[fresh.product_code] =
-            mergeProductStockFields(productByCodeRef.current[fresh.product_code] ?? product, fresh) ??
-            fresh;
-          if (
-            String(selectedProductRef.current?.product_code ?? "") === String(parkedCode)
-          ) {
-            selectedProductRef.current =
-              mergeProductStockFields(selectedProductRef.current, fresh) ?? fresh;
-            setSelectedProduct((prev) =>
-              prev && String(prev.product_code) === String(parkedCode)
-                ? mergeProductStockFields(prev, fresh) ?? fresh
-                : prev,
-            );
-          }
-        })
-        .catch(() => {});
-    }
-    setProductByCode((prev) => {
-      const existing = prev[product.product_code];
-      if (!existing) return { ...prev, [product.product_code]: product };
-      const merged = mergeProductStockFields(existing, product);
-      return merged === existing ? prev : { ...prev, [product.product_code]: merged };
-    });
+        });
+      })
+      .catch(() => {});
     productByCodeRef.current[product.product_code] = mergeProductStockFields(
       productByCodeRef.current[product.product_code],
       product,
     ) ?? product;
+    startTransition(() => {
+      setProductByCode((prev) => {
+        const existing = prev[product.product_code];
+        if (!existing) return { ...prev, [product.product_code]: product };
+        const merged = mergeProductStockFields(existing, product);
+        return merged === existing ? prev : { ...prev, [product.product_code]: merged };
+      });
+    });
 
     if (
       swapIntent &&
@@ -7556,9 +7556,8 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // Classic / Find select: park entry row, resolve markup, then focus qty.
-    // Price must be base + package/route markup before the cashier commits Enter.
-    // Do not quick-add on Find/select — barcode scan still uses handleBarcodeEnter.
+    // Classic / Find select: park entry row immediately, price from cache/embed,
+    // focus qty — never await network on the select click (that felt multi-second).
     const parkCode = product.product_code;
     focusSearchAfterAdd.current = false;
     setSelectedProductCode(parkCode);
@@ -7566,16 +7565,23 @@ export function PosScreen({ standalone = false }) {
     selectedProductRef.current = product;
     setUnitPriceTouched(false);
 
+    if (product.retail_package && retailByCodeRef.current[parkCode] == null) {
+      retailByCodeRef.current[parkCode] = product.retail_package;
+    }
+
     // Mount the entry row immediately (description / provisional qty) so focus can land.
     const shellPkg = getRetailPackage(parkCode);
     const shellQty = defaultPosEntryQty(product, sellWholesaleRef.current, shellPkg);
+    const shellPriced = applyComputedPrice(product, shellQty, 0, null, null, null);
     setLineForm({
       product_code: parkCode,
       description: product.product_name ?? "",
-      package: product.uom ? uomCompactPackageLabel(product.uom) : "",
+      package: product.uom
+        ? uomCompactPackageLabel(product.uom)
+        : shellPriced.packagingLabel,
       quantity: shellQty,
-      discount: "0",
-      unit_price: "",
+      discount: String(shellPriced.discountAmount ?? 0),
+      unit_price: String(shellPriced.displayUnitPrice),
     });
     updateSearchQuery(parkCode ?? "");
     productSearchRef.current?.setDraftValue?.(parkCode ?? "");
@@ -7583,38 +7589,32 @@ export function PosScreen({ standalone = false }) {
     searchSeq.current += 1;
     setSearching(false);
     setSearchResults([]);
-
-    try {
-      await ensureRetailPackageForProduct(product);
-    } catch {
-      /* fall through — price from catalog if package unavailable */
-    }
-
-    // Still on this parked SKU?
-    const stillParked =
-      String(productByCodeRef.current[parkCode]?.product_code ?? parkCode) === String(parkCode);
-    if (!stillParked) return;
-
-    const pricedPkg = getRetailPackage(parkCode);
-    setLineForm((prev) => {
-      if (String(prev.product_code) !== String(parkCode)) return prev;
-      // Keep any qty the cashier typed while markup was loading.
-      const qty =
-        prev.quantity != null && String(prev.quantity).trim() !== ""
-          ? prev.quantity
-          : defaultPosEntryQty(product, sellWholesaleRef.current, pricedPkg);
-      const priced = applyComputedPrice(product, qty, 0, null, null, null);
-      return {
-        ...prev,
-        quantity: qty,
-        package: product.uom
-          ? uomCompactPackageLabel(product.uom)
-          : priced.packagingLabel,
-        discount: String(priced.discountAmount ?? 0),
-        unit_price: String(priced.displayUnitPrice),
-      };
-    });
     scheduleFocusEntryQty();
+
+    // Soft-refresh package in background; update price only if still parked.
+    void ensureRetailPackageForProduct(product)
+      .then(() => {
+        if (String(selectedProductRef.current?.product_code ?? "") !== String(parkCode)) return;
+        const pricedPkg = getRetailPackage(parkCode);
+        setLineForm((prev) => {
+          if (String(prev.product_code) !== String(parkCode)) return prev;
+          const qty =
+            prev.quantity != null && String(prev.quantity).trim() !== ""
+              ? prev.quantity
+              : defaultPosEntryQty(product, sellWholesaleRef.current, pricedPkg);
+          const priced = applyComputedPrice(product, qty, 0, null, null, null);
+          return {
+            ...prev,
+            quantity: qty,
+            package: product.uom
+              ? uomCompactPackageLabel(product.uom)
+              : priced.packagingLabel,
+            discount: String(priced.discountAmount ?? 0),
+            unit_price: String(priced.displayUnitPrice),
+          };
+        });
+      })
+      .catch(() => {});
   }
 
   function beginReplaceCartLine(lineId) {
