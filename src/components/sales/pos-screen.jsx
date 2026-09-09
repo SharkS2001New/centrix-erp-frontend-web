@@ -349,6 +349,7 @@ import {
   rememberPosOrderCustomerName,
 } from "@/lib/pos-customer-name-memory";
 import { readPosLastReceipt, rememberPosLastReceipt, clearPosLastReceipt } from "@/lib/pos-last-receipt";
+import { ensureSaleForPrint } from "@/lib/print-module-settings";
 import {
   posCashLineAmount,
   posDisplayCartLineAmount,
@@ -1274,15 +1275,17 @@ function saleHasPrintableItems(sale) {
 function fastPosPrintOptions(sale, base = {}) {
   const offline = offlinePrintOptions(sale, base);
   if (offline !== base) return offline;
+  // Session / last-receipt stubs only have id + ticket # — must fetch the full sale.
+  const hasItems = saleHasPrintableItems(sale);
   return {
     ...base,
-    skipSaleRefresh: saleHasPrintableItems(sale),
+    skipSaleRefresh: hasItems,
     skipSettingsRefresh: true,
     skipOrganizationRefresh: Boolean(
       base.organization?.name || base.organizationName || base.capabilities?.profile_label,
     ),
-    // Receipt HTML is built from the sale already in memory — don't wait on WAN.
-    skipNetworkLookups: true,
+    // Only skip WAN when the sale already has printable lines in memory.
+    skipNetworkLookups: hasItems,
     skipLogoFetch: true,
     // Just-completed checkout — don't block thermal print on stock-gate races.
     skipStockPrintGate: true,
@@ -14140,6 +14143,28 @@ export function PosScreen({ standalone = false }) {
       notifyError(message);
       if (!standalone) setStatusMessage(message);
       return;
+    }
+
+    // Session / last-receipt targets are often stubs (id + Cash Sales # only).
+    // Load the full sale before printing so lines, date, and tenders appear.
+    if (
+      sale?.id &&
+      !saleHasPrintableItems(sale) &&
+      !isOfflinePendingSaleId(sale.id) &&
+      !String(sale.id).startsWith("edit:") &&
+      !sale.offline_pending_sync
+    ) {
+      try {
+        const loaded = await ensureSaleForPrint(sale);
+        if (saleHasPrintableItems(loaded)) {
+          sale = loaded;
+          completedSaleRef.current = loaded;
+          setCompletedSale(loaded);
+          rememberPosLastReceipt(user?.id, user?.branch_id, loaded);
+        }
+      } catch {
+        // printSaleOrder will attempt refresh again
+      }
     }
 
     // Any previous-order edit session: print revised receipt then blank new order.

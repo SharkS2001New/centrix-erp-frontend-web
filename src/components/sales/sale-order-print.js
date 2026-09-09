@@ -363,11 +363,13 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
     // POS checkout / previous-order draft: skipSaleRefresh with complete in-memory
     // lines. Never require eTIMS QR — that forced a GET of the pre-edit sale and
     // reprinted the old items after swap/qty changes.
+    // skipNetworkLookups alone must NOT skip refresh when items are missing
+    // (Reprint last receipt often holds a session stub with only id + ticket #).
     const skipSaleRefresh =
-      options.skipNetworkLookups ||
       offlineSale ||
       isOfflineSalePrint(sale, options) ||
       (options.skipSaleRefresh && hasCompleteItems) ||
+      (options.skipNetworkLookups && hasCompleteItems) ||
       Boolean(sale?._skip_kra_qr) ||
       Boolean(sale?.offline_pending_sync) ||
       String(sale?.id ?? "").startsWith("offline:");
