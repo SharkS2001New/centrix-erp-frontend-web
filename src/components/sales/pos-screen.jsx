@@ -885,8 +885,8 @@ function formatItemChangedSuccess(fromName, toName) {
 }
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
-/** Slightly above server KRA soft-skip budget (~25s) so the UI never hangs forever. */
-const POS_CHECKOUT_TIMEOUT_MS = 32_000;
+/** Slightly above server KRA soft-skip budget (~22s) so the UI never hangs forever. */
+const POS_CHECKOUT_TIMEOUT_MS = 28_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
 const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 30_000;
 
@@ -11974,7 +11974,7 @@ export function PosScreen({ standalone = false }) {
           sale.kra_warning ||
           (kraStatus === "skipped"
             ? "Sale created without KRA (skipped)."
-            : "Sale created without KRA — check that Comstore is running on the shop PC.");
+            : "Sale created without KRA — confirm Centrix KRA Agent is online and Comstore is running.");
         setStatusMessage(kraMsg);
         notifyError(kraMsg);
       }
@@ -12095,7 +12095,7 @@ export function PosScreen({ standalone = false }) {
           rawMessage,
         );
       const kraComstoreTimeoutMsg =
-        "KRA / Comstore did not respond in time. Start Comstore on the shop PC if it is stopped. If the sale saved, reopen it from Cash Sales.";
+        "Centrix KRA Agent / Comstore did not respond in time. Start Comstore where CentrixKraAgent runs if it is stopped. If the sale saved, reopen it from Cash Sales.";
       const message =
         submitKra && (timedOutCheckout || looksLikeConnectivityNoise)
           ? kraComstoreTimeoutMsg

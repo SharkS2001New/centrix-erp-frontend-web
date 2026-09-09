@@ -3,17 +3,17 @@ namespace Centrix.KraAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixKraAgent";
-    public const string Version = "1.3.2";
+    public const string Version = "1.3.4";
     public const string ServiceName = "CentrixKraAgent";
     public const int StatusPort = 9261;
 
-    /// <summary>Long-poll hold on Centrix pending commands (ms). Wakes as soon as a fiscal call is queued.</summary>
-    public const int CommandLongPollMs = 2000;
+    /// <summary>Long-poll hold on Centrix pending commands (ms). Shorter = faster fiscal pickup.</summary>
+    public const int CommandLongPollMs = 750;
 
     /// <summary>Tiny pause only after a long-poll returns empty without wait (fallback).</summary>
     public const int CommandIdleDelayMs = 50;
 
-    public const int LiveHeartbeatSeconds = 60;
+    public const int LiveHeartbeatSeconds = 30;
     public const int MaxHeartbeatSeconds = 120;
 
     public const int ComstoreConnectTimeoutSeconds = 5;

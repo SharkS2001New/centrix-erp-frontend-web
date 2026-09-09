@@ -3,16 +3,16 @@
  * Mirrors backend config/kra_device_errors.php for older API builds.
  */
 const KRA_DEVICE_OFFLINE_MESSAGE =
-  "The KRA fiscal device is not communicating with the system. Check that Comstore is running, the device is powered on and connected, then try again.";
+  "The KRA fiscal device is not communicating. Check that Centrix KRA Agent is online, Comstore is running, and the device is powered on.";
 
 const KRA_DEVICE_TIMEOUT_MESSAGE =
-  "The KRA fiscal device stopped responding. Check that the device is powered on, connected to the network, and Comstore is running, then try again.";
+  "Centrix KRA Agent / Comstore stopped responding. Confirm CentrixKraAgent is running and Comstore is started, then try again.";
 
 const CODE_MESSAGES = {
-  518: "The KRA fiscal device timed out. Check the device connection and try again.",
+  518: "The KRA fiscal device timed out via Centrix KRA Agent. Check Comstore and the device connection, then try again.",
   519: KRA_DEVICE_OFFLINE_MESSAGE,
-  520: "The KRA fiscal device closed the connection. Check that the device is online and try again.",
-  96: "Could not reach the KRA device. Check that it is powered on and on the same network.",
+  520: "The KRA fiscal device closed the connection. Check Centrix KRA Agent, Comstore, and the device.",
+  96: "Could not reach the fiscal device via Centrix KRA Agent. Confirm the agent is online and Comstore can reach the Smart VSCU.",
   90: "The KRA device has no internet connection. Connect the device to the internet and try again.",
   337: "One or more products are not on the KRA device. Upload them to the device, then retry the sale.",
   13: "A product on this sale is not registered on the KRA device. Register it first, then retry.",
@@ -52,8 +52,12 @@ export function humanizeKraDeviceErrorMessage(raw) {
     return KRA_DEVICE_TIMEOUT_MESSAGE;
   }
 
-  if (/could not reach kra|connection refused|failed to connect|cURL error/i.test(text)) {
-    return "Could not connect to the KRA device. Check network connectivity and the device URL in Finance settings.";
+  if (
+    /could not reach kra|could not reach the kra device|url in settings|connection refused|failed to connect|cURL error|centrix kra agent/i.test(
+      text,
+    )
+  ) {
+    return "Could not reach Comstore via Centrix KRA Agent. Confirm CentrixKraAgent is online and Comstore is started, then try again.";
   }
 
   return null;
@@ -140,7 +144,7 @@ export function suggestKraFailureFix(rawError, options = {}) {
       text,
     )
   ) {
-    return "Confirm Comstore is running and the KRA device is powered on and on the network, then use Retry on this row.";
+    return "Confirm Centrix KRA Agent is online, Comstore is running, and the fiscal device is powered on, then use Retry on this row.";
   }
 
   if (code === "358" || code === "880" || /pinofbuyer|customer kra pin|buyer pin/i.test(text)) {
@@ -148,7 +152,7 @@ export function suggestKraFailureFix(rawError, options = {}) {
   }
 
   if (code === "325" || code === "10" || code === "32" || /pinofshop|shop kra pin|trader/i.test(text)) {
-    return "Verify the shop KRA PIN and device serial in Finance settings, then retry.";
+    return "Verify the trader KRA PIN and device serial in Finance settings, then retry.";
   }
 
   if (code === "313" || /relevantinvoicenumber|original invoice reference/i.test(text)) {

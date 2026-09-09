@@ -23,13 +23,13 @@ public sealed class AgentConfig
     public double PollIntervalSeconds { get; set; } = 0.25;
 
     [JsonPropertyName("heartbeatIntervalSeconds")]
-    public int HeartbeatIntervalSeconds { get; set; } = 60;
+    public int HeartbeatIntervalSeconds { get; set; } = 30;
 
     [JsonPropertyName("commandTimeoutSeconds")]
     public int CommandTimeoutSeconds { get; set; } = 25;
 
     [JsonPropertyName("longPollMs")]
-    public int LongPollMs { get; set; } = 2000;
+    public int LongPollMs { get; set; } = 750;
 
     /// <summary>When true, agent starts Comstore if /api/health fails. Default false — start Comstore via Windows.</summary>
     [JsonPropertyName("autoStartComstore")]
@@ -100,7 +100,7 @@ public sealed class AgentConfig
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (HeartbeatIntervalSeconds < 30) HeartbeatIntervalSeconds = 60;
+        if (HeartbeatIntervalSeconds < 30) HeartbeatIntervalSeconds = 30;
         if (HeartbeatIntervalSeconds > 120)
         {
             HeartbeatIntervalSeconds = 120;
