@@ -136,6 +136,87 @@ describe("mergePreservedOptimisticLines", () => {
     expect(mergePreservedOptimisticLines(server, prev)).toEqual(server);
   });
 
+  it("drops pending optimistic when server returns the new SKU under another mode flag", () => {
+    // After DELETE Banjab → add Kamande: TemporaryCart may flip retail flag on POST.
+    const server = [
+      { id: 9, product_code: "KAMANDE", on_wholesale_retail: 1, quantity: 4, amount: 100 },
+    ];
+    const prev = [
+      {
+        id: "pending-k",
+        product_code: "KAMANDE",
+        on_wholesale_retail: 0,
+        quantity: 4,
+        amount: 100,
+        _optimistic: true,
+      },
+    ];
+    expect(mergePreservedOptimisticLines(server, prev)).toEqual(server);
+  });
+
+  it("keeps intentional bags+kg when combine is on and SKU was already on the cart", () => {
+    const server = [
+      { id: 1, product_code: "SUGAR", on_wholesale_retail: 0, quantity: 1, amount: 140 },
+      { id: 2, product_code: "SUGAR", on_wholesale_retail: 1, quantity: 25, amount: 3600 },
+    ];
+    const prev = [
+      { id: 1, product_code: "SUGAR", on_wholesale_retail: 0, quantity: 1, amount: 140 },
+      {
+        id: "pending-kg",
+        product_code: "SUGAR",
+        on_wholesale_retail: 1,
+        quantity: 25,
+        amount: 3600,
+        _optimistic: true,
+      },
+    ];
+    const merged = mergePreservedOptimisticLines(server, prev);
+    expect(merged).toHaveLength(2);
+    expect(merged.every((line) => !line._optimistic)).toBe(true);
+  });
+
+  it("keeps optimistic opposite-mode SKU while its POST is still in flight", () => {
+    const server = [
+      { id: 1, product_code: "SUGAR", on_wholesale_retail: 0, quantity: 1, amount: 140 },
+    ];
+    const prev = [
+      { id: 1, product_code: "SUGAR", on_wholesale_retail: 0, quantity: 1, amount: 140 },
+      {
+        id: "pending-kg",
+        product_code: "SUGAR",
+        on_wholesale_retail: 1,
+        quantity: 25,
+        amount: 3600,
+        _optimistic: true,
+      },
+    ];
+    const merged = mergePreservedOptimisticLines(server, prev);
+    expect(merged).toHaveLength(2);
+    expect(merged.some((line) => line._optimistic && line.on_wholesale_retail === 1)).toBe(true);
+  });
+
+  it("does not drop a recycled TemporaryCart id when exclusion is product-scoped", () => {
+    const excluded = new Set(["CLU-B::BANJAB"]);
+    const server = [
+      { id: 1, update_code: "CLU-A", product_code: "SUGAR", on_wholesale_retail: 0, amount: 100 },
+      // Same CLU as deleted Banjab, now assigned to Kamande on the server.
+      { id: 2, update_code: "CLU-B", product_code: "KAMANDE", on_wholesale_retail: 0, amount: 50 },
+    ];
+    const prev = [
+      { id: 1, update_code: "CLU-A", product_code: "SUGAR", on_wholesale_retail: 0, amount: 100 },
+      {
+        id: "pending-k",
+        product_code: "KAMANDE",
+        on_wholesale_retail: 0,
+        amount: 50,
+        _optimistic: true,
+      },
+    ];
+    const merged = mergePreservedOptimisticLines(server, prev, { excludedLineRefs: excluded });
+    expect(merged.map((line) => line.product_code).sort()).toEqual(["KAMANDE", "SUGAR"]);
+    expect(merged.every((line) => !line._optimistic)).toBe(true);
+  });
+
   it("keeps a second same-SKU optimistic when combine is off", () => {
     const server = [
       { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
@@ -298,6 +379,18 @@ describe("filterCartLinesExcludedRefs", () => {
     expect(filterCartLinesExcludedRefs(lines, excluded).map((line) => line.product_code)).toEqual([
       "A",
       "C",
+    ]);
+  });
+
+  it("scopes product-coded exclusions so recycled TemporaryCart ids stay", () => {
+    const excluded = new Set(["CLU-B::BANJAB"]);
+    const lines = [
+      { id: 1, update_code: "CLU-A", product_code: "SUGAR" },
+      { id: 2, update_code: "CLU-B", product_code: "KAMANDE" },
+    ];
+    expect(filterCartLinesExcludedRefs(lines, excluded).map((line) => line.product_code)).toEqual([
+      "SUGAR",
+      "KAMANDE",
     ]);
   });
 });

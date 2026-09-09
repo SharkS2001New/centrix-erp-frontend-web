@@ -168,6 +168,7 @@ import {
   filterCartLinesExcludedProductCodes,
   finalizeCartLineList,
   findCartLineForEdit,
+  lineDeleteExclusionKey,
   preserveClientLineSkuAfterMutation,
   findCartLineIndexByRef,
   findMergeableCartLine,
@@ -2448,7 +2449,7 @@ export function PosScreen({ standalone = false }) {
   const heldRestoreGenerationRef = useRef(0);
   const cartSummaryRef = useRef(null);
   const lineBusyRef = useRef(false);
-  /** True while runWithLineSaveOverlay / BlockingWait is up (delete, qty, swap). */
+  /** True while runWithLineSaveOverlay / BlockingWait is up (add, delete, qty, swap). */
   const cartLineSaveWaitBusyRef = useRef(false);
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
@@ -2493,8 +2494,10 @@ export function PosScreen({ standalone = false }) {
 
   function registerPendingLineDeletes(lines) {
     for (const line of lines ?? []) {
+      const code = String(line?.product_code ?? "").trim();
       for (const key of cartLineIdentityKeys(line)) {
-        pendingLineDeleteRefsRef.current.add(key);
+        const scoped = lineDeleteExclusionKey(key, code);
+        if (scoped) pendingLineDeleteRefsRef.current.add(scoped);
       }
     }
   }
@@ -2510,7 +2513,11 @@ export function PosScreen({ standalone = false }) {
   }
 
   function clearPendingLineDeleteKeysForLine(line) {
+    const code = String(line?.product_code ?? "").trim();
     for (const key of cartLineIdentityKeys(line)) {
+      const scoped = lineDeleteExclusionKey(key, code);
+      if (scoped) pendingLineDeleteRefsRef.current.delete(scoped);
+      // Legacy bare keys from earlier in the session.
       pendingLineDeleteRefsRef.current.delete(key);
     }
   }
@@ -4951,7 +4958,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * Blocking overlay while a queued cart line save runs (qty / F12 / swap / delete).
+   * Blocking overlay while a queued cart line save runs (add / qty / F12 / swap / delete).
    * Nested calls share one overlay so rapid Enter does not clear it early.
    * While open, scan/add/shortcuts must wait — otherwise delete→add races revive lines.
    */
@@ -7231,7 +7238,7 @@ export function PosScreen({ standalone = false }) {
     // Always serialize adds — same-mode lines merge when combine is on.
     // Opposite mode (Sugar bag + Sugar kg) must append a new row — never convert
     // the sole existing SKU. Mode convert only happens on that line's qty Enter + F12.
-    void enqueueCartCommit(async () => {
+    const runQuickAdd = async () => {
       const mergeTarget = findMergeableCartLine(
         cartRef.current?.lines,
         product.product_code,
@@ -7294,7 +7301,23 @@ export function PosScreen({ standalone = false }) {
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
       }
-    });
+    };
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (classicLayout || localDraftEdit || standalone) {
+      void runWithLineSaveOverlay(
+        async () => {
+          await enqueueCartCommit(runQuickAdd);
+        },
+        {
+          message: "Adding item…",
+          detail: "Saving this line — please wait until it finishes.",
+        },
+      ).catch((e) => {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
+      });
+      return;
+    }
+    void enqueueCartCommit(runQuickAdd);
   }
 
   async function handleBarcodeEnter(code) {
@@ -8643,6 +8666,10 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
     }
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing cart update before adding items.");
+      return;
+    }
     // Mid-swap: never append — finish the in-place replace instead.
     if (swapDraftRef.current?.product) {
       void completeSwapFromDraft(
@@ -8882,7 +8909,30 @@ export function PosScreen({ standalone = false }) {
     };
 
     // Always serialize line adds — rapid Enter/click must not create duplicate rows.
-    // commitCartLine paints then clears entry (unlockUiEarly) — do not clear first.
+    // Classic / External POS: blocking overlay until TemporaryCart / IndexedDB finishes
+    // so delete→add and double-Enter cannot race.
+    // commitCartLine paints then clears entry (unlockUiEarly) under the overlay.
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (classicLayout || localDraftEdit || standalone) {
+      void runWithLineSaveOverlay(
+        async () => {
+          await enqueueCartCommit(run);
+        },
+        {
+          message: wasEditing ? "Updating line…" : "Adding item…",
+          detail: "Saving this line — please wait until it finishes.",
+        },
+      ).catch((e) => {
+        setStatusMessage(
+          e instanceof ApiError
+            ? e.message
+            : wasEditing
+              ? "Failed to update line"
+              : "Failed to add line",
+        );
+      });
+      return;
+    }
     void enqueueCartCommit(run);
   }
 
@@ -8934,6 +8984,10 @@ export function PosScreen({ standalone = false }) {
     // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (isCartLineSaveBlocking()) {
+      setStatusMessage("Please wait — finishing cart update before adding items.");
+      return;
+    }
     // Soft previous-order load must not block Classic qty Enter → add.
     if (busy && !(classicLayout && previousOrderLoadingSoft)) {
       setStatusMessage("Please wait — finishing the previous cart update, then press Enter again.");
@@ -9950,6 +10004,8 @@ export function PosScreen({ standalone = false }) {
     try {
       await runWithLineSaveOverlay(
         async () => {
+          // Same commit chain as Enter→add so delete∥add cannot twin a new SKU.
+          await enqueueCartCommit(async () => {
           if (isPreviousOrderEditSession(working) && onlinePreviousOrderDraft) {
             const label =
               targets.length === 1
@@ -10058,6 +10114,7 @@ export function PosScreen({ standalone = false }) {
           }
 
           paintRemoved(nextCart);
+          });
         },
         {
           message: removeWaitMessage,

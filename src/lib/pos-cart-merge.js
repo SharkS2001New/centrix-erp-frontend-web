@@ -321,6 +321,12 @@ export function mergePreservedOptimisticLines(
 
   if (combineIdenticalLines !== false) {
     for (const line of optimisticPrev) {
+      const localOptimisticId =
+        line?.id == null ||
+        String(line.id).startsWith("pending-") ||
+        String(line.id).startsWith("opt-");
+      const optCode = String(line.product_code ?? "");
+      const optMode = Number(line.on_wholesale_retail ?? 0) ? 1 : 0;
       const already =
         (line?.id != null &&
           !String(line.id).startsWith("pending-") &&
@@ -328,9 +334,22 @@ export function mergePreservedOptimisticLines(
           lines.some((row) => String(row.id) === String(line.id))) ||
         lines.some(
           (row) =>
-            String(row.product_code) === String(line.product_code) &&
-            Number(row.on_wholesale_retail ?? 0) === Number(line.on_wholesale_retail ?? 0),
+            String(row.product_code) === optCode &&
+            (Number(row.on_wholesale_retail ?? 0) ? 1 : 0) === optMode,
         ) ||
+        // Pending/opt paint after DELETE: server may return the new SKU under a
+        // different retail flag — absorb when this SKU was not already confirmed
+        // on the cart before the add (avoids Kamande twin after removing Banjab).
+        (localOptimisticId &&
+          lines.some((row) => {
+            if (String(row.product_code) !== optCode) return false;
+            if ((Number(row.on_wholesale_retail ?? 0) ? 1 : 0) === optMode) return true;
+            const hadSku = (prevLines ?? []).some(
+              (prev) =>
+                !prev?._optimistic && String(prev.product_code ?? "") === optCode,
+            );
+            return !hadSku;
+          })) ||
         lines.some((row) => String(cartLineRef(row)) === String(cartLineRef(line)));
       if (!already) lines.push(line);
     }
@@ -400,6 +419,17 @@ export function cartLineIdentityKeys(line) {
     .map((key) => String(key));
 }
 
+/**
+ * Delete exclusion key scoped by product_code so TemporaryCart recycling a
+ * CLU-/numeric id onto a *new* SKU does not treat that add as still-deleted.
+ */
+export function lineDeleteExclusionKey(ref, productCode) {
+  const key = String(ref ?? "").trim();
+  if (!key) return null;
+  const code = String(productCode ?? "").trim();
+  return code ? `${key}::${code}` : key;
+}
+
 /** True when two cart rows share any id / update_code / client_line_id. */
 export function cartLinesShareIdentity(a, b) {
   if (a == null || b == null) return false;
@@ -452,8 +482,15 @@ export function dedupeSkuLinesAfterInPlaceEdit(
 export function filterCartLinesExcludedRefs(lines, excludedRefSet) {
   if (!excludedRefSet?.size) return Array.isArray(lines) ? lines : [];
   return (Array.isArray(lines) ? lines : []).filter((line) => {
+    const code = String(line?.product_code ?? "").trim();
     const keys = cartLineIdentityKeys(line);
-    return !keys.some((key) => excludedRefSet.has(key));
+    return !keys.some((key) => {
+      // Product-scoped exclusion (preferred): recycled TemporaryCart ids on a new SKU stay.
+      if (code && excludedRefSet.has(lineDeleteExclusionKey(key, code))) return true;
+      // Legacy bare ref — still honored for older in-session exclusions / tests.
+      if (excludedRefSet.has(key)) return true;
+      return false;
+    });
   });
 }
 
