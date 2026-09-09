@@ -13,6 +13,7 @@ import {
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { productMatchesPosSearch } from "@/lib/pos-product-search-rank";
 import { shouldSyncParentSearchQuery } from "@/lib/pos-search-draft-sync";
+import { posProductSearchColumnDefs } from "@/lib/pos-product-search-columns";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -158,6 +159,20 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     },
     getDraftValue() {
       return String(localInputRef.current?.value ?? draftQueryRef.current ?? "");
+    },
+    /** Refocus Scan after Esc / parent actions without remounting. */
+    focusInput({ selectAll = false } = {}) {
+      const apply = () => {
+        const el = localInputRef.current;
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        if (selectAll) el.select?.();
+      };
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(apply);
+        return;
+      }
+      apply();
     },
   }));
 
@@ -314,7 +329,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
       const maxHeight = Math.max(
         160,
-        Math.min(360, openUp ? spaceAbove : spaceBelow),
+        Math.min(400, openUp ? spaceAbove : spaceBelow),
       );
       setMenuBox({
         top: openUp ? Math.max(8, rect.top - maxHeight) : rect.bottom + 4,
@@ -352,14 +367,18 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (picksLocked) return;
     onSelect?.(product);
     setUserDismissed(true);
+    setOpen(false);
+    setHighlight(-1);
+    highlightCodeRef.current = null;
     if (classic) {
-      setOpen(false);
-      setHighlight(-1);
-      highlightCodeRef.current = null;
+      // Parent parks the code and moves focus to qty (SearchLookUp → qty).
       return;
     }
-    commitDraft(product.product_code ?? product.product_name ?? "");
-    setOpen(false);
+    // Modern / Create Order: parent also parks + scheduleFocusEntryQty; keep draft
+    // as the parked code without fighting the DOM mid-focus handoff.
+    writeDraft(product.product_code ?? product.product_name ?? "", {
+      notifyParent: false,
+    });
   }
 
   function pickHighlighted() {
@@ -441,7 +460,15 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   const showShopStock = stockDisplayMode === "both" || stockDisplayMode === "shop";
   const showStoreStock = stockDisplayMode === "both" || stockDisplayMode === "store";
-  const modernColSpan = 2 + stockColCountFix(showShopStock, showStoreStock);
+  const columnDefs = useMemo(
+    () =>
+      posProductSearchColumnDefs({
+        variant: classic ? "classic" : "modern",
+        stockDisplayMode,
+      }),
+    [classic, stockDisplayMode],
+  );
+  const modernColSpan = columnDefs.length;
 
   const classicDropdown =
     classic && showDropdown && menuBox && typeof document !== "undefined"
@@ -463,28 +490,40 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
             <table className="classic-pos-find-table w-full">
               <thead>
                 <tr>
-                  <th>Product code</th>
-                  <th>Product name</th>
-                  <th className="classic-pos-find-num classic-pos-find-price">Unit price</th>
-                  <th className="classic-pos-find-num classic-pos-find-stock">Available</th>
+                  {columnDefs.map((col) => (
+                    <th
+                      key={col.id}
+                      className={
+                        col.align === "right"
+                          ? `classic-pos-find-num ${
+                              col.id === "unit_price"
+                                ? "classic-pos-find-price"
+                                : "classic-pos-find-stock"
+                            }`
+                          : undefined
+                      }
+                    >
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {searching && !visibleResults.length ? (
                   <tr>
-                    <td colSpan={4} className="classic-pos-find-empty">
+                    <td colSpan={columnDefs.length} className="classic-pos-find-empty">
                       Searching…
                     </td>
                   </tr>
                 ) : idleQuery ? (
                   <tr>
-                    <td colSpan={4} className="classic-pos-find-empty">
+                    <td colSpan={columnDefs.length} className="classic-pos-find-empty">
                       Type a code or name
                     </td>
                   </tr>
                 ) : visibleResults.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="classic-pos-find-empty">
+                    <td colSpan={columnDefs.length} className="classic-pos-find-empty">
                       {emptySearchGuidance(draftQuery, barcodeEnabled)}
                     </td>
                   </tr>
@@ -499,7 +538,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       enablePosCashRounding,
                     );
                     const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
-                    const negative = Number(qty) < 0;
+                    const negative = Number(qty) <= 0;
                     return (
                       <tr
                         key={product.product_code}
@@ -554,9 +593,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         inputRef={localInputRef}
         enabled={touchSearchKeypad}
         uncontrolled={!touchSearchKeypad}
-        defaultValue={draftQueryRef.current}
+        {...(touchSearchKeypad
+          ? { value: draftQuery }
+          : { defaultValue: draftQueryRef.current })}
         title="Search product"
-        value={draftQuery}
         disabled={inputLocked}
         placeholder={searchPlaceholder}
         className={classic ? "classic-pos-cart-scan-input" : fieldInput}
@@ -567,6 +607,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         autoCorrect="off"
         autoCapitalize="off"
         spellCheck={false}
+        autoComplete="off"
         onChange={(next) => {
           if (inputLocked) return;
           setUserDismissed(false);
@@ -577,7 +618,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         onFocus={() => {
           if (inputLocked || dropdownSuppressed) return;
           inputFocusedRef.current = true;
-          if (String(draftQuery ?? "").trim()) setUserDismissed(false);
+          if (String(draftQueryRef.current ?? "").trim()) setUserDismissed(false);
           setOpen(true);
         }}
         onBlur={() => {
@@ -599,19 +640,19 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           id={listId}
           ref={listRef}
           role="listbox"
-          className="theme-panel absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded-lg border shadow-lg"
+          className="theme-panel absolute left-0 right-0 z-[100] mt-1 max-h-[min(55vh,400px)] overflow-auto rounded-lg border shadow-lg"
         >
           <table className="theme-table w-full border-collapse text-[11px]">
             <thead className="theme-table-head sticky top-0 z-10">
               <tr className="theme-table-head-row text-left font-bold">
-                <th className="px-2 py-1.5">Product name</th>
-                <th className="px-2 py-1.5 text-right">Unit price</th>
-                {showShopStock ? (
-                  <th className="px-2 py-1.5 text-right">Available in shop</th>
-                ) : null}
-                {showStoreStock ? (
-                  <th className="px-2 py-1.5 text-right">Available in store</th>
-                ) : null}
+                {columnDefs.map((col) => (
+                  <th
+                    key={col.id}
+                    className={`px-2 py-1.5 ${col.align === "right" ? "text-right" : ""}`}
+                  >
+                    {col.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -644,6 +685,16 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     routeMarkupPerUnit,
                     enablePosCashRounding,
                   );
+                  const availQty = availableQty(
+                    product,
+                    sellFromShop,
+                    posSalesConfig,
+                    sellWholesale,
+                  );
+                  const negative = Number(availQty) <= 0;
+                  const stockMode = posSalesConfig
+                    ? productCartStockDisplayMode(product, posSalesConfig, sellWholesale)
+                    : null;
                   return (
                     <tr
                       key={product.product_code}
@@ -659,33 +710,53 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       }}
                       onClick={() => pick(product)}
                       className={`theme-table-row cursor-pointer border-b border-[var(--theme-border)] ${
-                        keyboardActive
-                          ? "bg-[var(--theme-primary-subtle)] ring-1 ring-inset ring-[var(--theme-primary)]"
-                          : selected
-                            ? "bg-[var(--theme-primary-muted)]"
-                            : "hover:bg-[var(--theme-hover)]"
+                        negative
+                          ? "bg-red-600/90 text-white hover:bg-red-600"
+                          : keyboardActive
+                            ? "bg-[var(--theme-primary-subtle)] ring-1 ring-inset ring-[var(--theme-primary)]"
+                            : selected
+                              ? "bg-[var(--theme-primary-muted)]"
+                              : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
-                      <td className="px-2 py-1.5 font-medium text-slate-900">
-                        {product.product_name}
-                        <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-500">
-                          {product.product_code}
-                        </span>
+                      <td
+                        className={`px-2 py-1.5 font-mono text-[10px] tabular-nums ${
+                          negative ? "text-white" : "text-slate-600"
+                        }`}
+                      >
+                        {product.product_code}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums font-bold">
+                      <td
+                        className={`px-2 py-1.5 font-medium ${
+                          negative ? "text-white" : "text-slate-900"
+                        }`}
+                      >
+                        {product.product_name}
+                      </td>
+                      <td
+                        className={`px-2 py-1.5 text-right tabular-nums font-bold ${
+                          negative ? "text-white" : ""
+                        }`}
+                      >
                         {Number(price).toLocaleString()}
                       </td>
                       {showShopStock ? (
-                        <td className="px-2 py-1.5 text-right text-slate-600">
-                          {posSalesConfig &&
-                          productCartStockDisplayMode(product, posSalesConfig, sellWholesale) ===
-                            "store"
+                        <td
+                          className={`px-2 py-1.5 text-right tabular-nums ${
+                            negative ? "text-white font-bold" : "text-slate-600"
+                          }`}
+                        >
+                          {stockMode === "store"
                             ? "—"
                             : formatStockQty(productStockAtLocation(product, "shop"), product)}
                         </td>
                       ) : null}
                       {showStoreStock ? (
-                        <td className="px-2 py-1.5 text-right text-slate-600">
+                        <td
+                          className={`px-2 py-1.5 text-right tabular-nums ${
+                            negative ? "text-white font-bold" : "text-slate-600"
+                          }`}
+                        >
                           {formatStockQty(productStockAtLocation(product, "store"), product)}
                         </td>
                       ) : null}
@@ -700,7 +771,3 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     </div>
   );
 });
-
-function stockColCountFix(showShopStock, showStoreStock) {
-  return (showShopStock ? 1 : 0) + (showStoreStock ? 1 : 0);
-}

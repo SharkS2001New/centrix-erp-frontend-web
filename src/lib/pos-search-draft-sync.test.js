@@ -54,4 +54,18 @@ describe("shouldSyncParentSearchQuery", () => {
       shouldSyncParentSearchQuery("6161100100015", "616", { inputFocused: true }),
     ).toBe(true);
   });
+
+  it("keeps live draft when parent still holds a parked product code after select-all rewrite", () => {
+    expect(
+      shouldSyncParentSearchQuery("ABC-001", "kam", { allowParentClear: false }),
+    ).toBe(false);
+    expect(
+      shouldSyncParentSearchQuery("ABC-001", "k", { allowParentClear: false }),
+    ).toBe(false);
+  });
+
+  it("does not sync when parent lags one character behind continuous typing", () => {
+    expect(shouldSyncParentSearchQuery("yama", "yamas")).toBe(false);
+    expect(shouldSyncParentSearchQuery("yamas", "yamash")).toBe(false);
+  });
 });

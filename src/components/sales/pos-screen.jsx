@@ -1665,7 +1665,10 @@ export function PosScreen({ standalone = false }) {
   function focusPosScanInput({ selectAll = false, forceSelectAll = false } = {}) {
     if (posOverlayBlocksScanRef.current) return;
     const el = searchInputRef.current;
-    if (!el) return;
+    if (!el) {
+      productSearchRef.current?.focusInput?.({ selectAll: forceSelectAll || selectAll });
+      return;
+    }
     const alreadyFocused =
       typeof document !== "undefined" && document.activeElement === el;
     const activeQuery = String(el.value ?? "").trim();
@@ -4062,19 +4065,18 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!posSearchSuspended) return undefined;
     focusSearchAfterAdd.current = false;
-    // Never wipe search results while the cashier has an active query — overlays /
-    // preparingNext / autoHeldBusy can flicker and previously cleared the list mid-type.
+    // Overlay flicker must never blur or wipe mid-type. Dropdown hide is handled by
+    // suppressProductSearchDropdown — leave the draft and focus alone while typing.
     const activeQuery = String(
-      searchInputRef.current?.value ?? searchQueryRef.current ?? searchQuery ?? "",
+      searchInputRef.current?.value ?? searchQueryRef.current ?? "",
     ).trim();
     if (!activeQuery) {
       closeProductSearchDropdown();
       setSearchResults([]);
-      searchInputRef.current?.blur?.();
     }
     defaultScanFocusDoneRef.current = false;
     return undefined;
-  }, [posSearchSuspended, searchQuery]);
+  }, [posSearchSuspended]);
 
   useEffect(() => {
     if (cartActionPending || posSearchSuspended || !focusSearchAfterAdd.current) return;
@@ -5359,7 +5361,15 @@ export function PosScreen({ standalone = false }) {
       window.requestAnimationFrame(() => {
         if (!focusSearchAfterAdd.current) return;
         focusSearchAfterAdd.current = false;
+        // Prefer the live input; fall back to PosProductSearch.focusInput if remounted.
         focusPosScanInput({ selectAll: true });
+        if (
+          typeof document !== "undefined" &&
+          searchInputRef.current &&
+          document.activeElement !== searchInputRef.current
+        ) {
+          productSearchRef.current?.focusInput?.({ selectAll: true });
+        }
       });
     });
   }
@@ -7640,6 +7650,7 @@ export function PosScreen({ standalone = false }) {
     });
     updateSearchQuery(parkCode ?? "");
     productSearchRef.current?.setDraftValue?.(parkCode ?? "");
+    productSearchRef.current?.dismissDropdown?.();
     searchAbortRef.current?.abort();
     searchSeq.current += 1;
     setSearching(false);
