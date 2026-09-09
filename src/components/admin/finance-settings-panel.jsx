@@ -479,9 +479,9 @@ export function FinanceSettingsPanel({
                     <div>
                       <p className="theme-heading text-sm font-medium">Centrix KRA Agent</p>
                       <p className="theme-subtext mt-0.5 text-xs">
-                        Download the agent package and run BUILD-AND-INSTALL.bat on the shop PC. Centrix
-                        cloud talks to the agent, which calls local Comstore / Smart VSCU. Start Comstore
-                        with Windows; the agent keeps pinging Centrix and the fiscal device.
+                        Download the agent package and run BUILD-AND-INSTALL.bat on the PC where Comstore
+                        runs. That PC must stay awake (install sets Sleep = Never). Centrix cloud talks to
+                        the agent, which calls local Comstore / Smart VSCU.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

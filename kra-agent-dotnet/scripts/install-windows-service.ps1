@@ -79,6 +79,22 @@ sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/10000/res
 sc.exe config $ServiceName start= auto | Out-Null
 sc.exe config $ServiceName depend= Tcpip/Dnscache | Out-Null
 
+# Comstore PC must not sleep — sleep freezes CentrixKraAgent and all till fiscalization.
+Write-Host "Configuring Windows power plan: Sleep / Hibernate = Never (plugged in) ..."
+try {
+    powercfg /change standby-timeout-ac 0 | Out-Null
+    powercfg /change hibernate-timeout-ac 0 | Out-Null
+    powercfg /change standby-timeout-dc 0 | Out-Null
+    powercfg /change hibernate-timeout-dc 0 | Out-Null
+    # Also clear modern standby / hybrid sleep where supported.
+    powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP STANDBYIDLE 0 2>$null
+    powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP HYBRIDSLEEP 0 2>$null
+    powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE 0 2>$null
+    powercfg /SETACTIVE SCHEME_CURRENT 2>$null
+} catch {
+    Write-Host "WARNING: could not change power plan automatically. Set Sleep = Never when plugged in." -ForegroundColor Yellow
+}
+
 Start-Service -Name $ServiceName
 Start-Sleep -Seconds 2
 
@@ -90,4 +106,5 @@ Write-Host "  Service: $ServiceName ($($svc.Status))"
 Write-Host "  Status page: http://127.0.0.1:9261"
 Write-Host ""
 Write-Host "Start Comstore via Windows (startup / its own service). This agent only monitors Centrix + device."
+Write-Host "This PC should stay awake (Sleep = Never). CentrixKraAgent also requests stay-awake while running."
 Write-Host "Keep config.json private (contains a Centrix API token)."

@@ -15,6 +15,8 @@ Finance → KRA → **Download Centrix KRA Agent** zips this folder with a prefi
 
 **CentrixKraAgent always keeps running** as a Windows service.
 
+- Asks Windows **not to sleep/hibernate** while the service runs (and install sets Sleep = Never when plugged in).
+- After a forced resume, reconnects Centrix/Comstore automatically.
 - Heartbeats Centrix on an interval and long-polls for fiscal commands.
 - Probes Comstore `GET /api/health` (does **not** start Comstore — configure Windows to start Comstore).
 - Pings the Smart VSCU / fiscal hardware IP from Finance settings.

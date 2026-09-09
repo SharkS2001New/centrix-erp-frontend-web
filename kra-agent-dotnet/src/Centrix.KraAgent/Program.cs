@@ -41,6 +41,7 @@ builder.Services.AddSingleton<CentrixClient>();
 builder.Services.AddSingleton<ComstoreClient>();
 builder.Services.AddSingleton<ComstoreEnsureService>();
 builder.Services.AddSingleton<DeviceReachabilityProbe>();
+builder.Services.AddSingleton<SleepGuard>();
 builder.Services.AddSingleton<KraWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KraWorker>());
 
@@ -143,7 +144,7 @@ static string StatusHtml() => """
       <div id="banner" class="banner warn">Loading status…</div>
       <button id="refreshBtn" type="button" style="margin-bottom:10px;background:#334155">Refresh status</button>
       <button id="testBtn" type="button">Test connection</button>
-      <p class="muted">Keep CentrixKraAgent on Automatic startup. Comstore being offline does <strong>not</strong> stop this service — heartbeats keep telling Centrix to start Comstore manually until /api/health succeeds.</p>
+      <p class="muted">Keep CentrixKraAgent on Automatic startup. The service asks Windows not to sleep while it runs. Comstore being offline does <strong>not</strong> stop this service — heartbeats keep telling Centrix to start Comstore manually until /api/health succeeds.</p>
       <pre id="detail"></pre>
     </div>
   </div>

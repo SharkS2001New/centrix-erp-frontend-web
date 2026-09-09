@@ -15,6 +15,7 @@ public sealed class KraWorker : BackgroundService
     private readonly ComstoreClient _comstore;
     private readonly ComstoreEnsureService _ensure;
     private readonly DeviceReachabilityProbe _deviceProbe;
+    private readonly SleepGuard _sleepGuard;
 
     private int _commandsHandled;
     private string? _lastError;
@@ -34,7 +35,8 @@ public sealed class KraWorker : BackgroundService
         CentrixClient centrix,
         ComstoreClient comstore,
         ComstoreEnsureService ensure,
-        DeviceReachabilityProbe deviceProbe)
+        DeviceReachabilityProbe deviceProbe,
+        SleepGuard sleepGuard)
     {
         _log = log;
         _config = config;
@@ -42,6 +44,7 @@ public sealed class KraWorker : BackgroundService
         _comstore = comstore;
         _ensure = ensure;
         _deviceProbe = deviceProbe;
+        _sleepGuard = sleepGuard;
     }
 
     public object StatusSnapshot()
@@ -67,6 +70,7 @@ public sealed class KraWorker : BackgroundService
             last_error = _lastError,
             commands_handled = _commandsHandled,
             fiscal_busy = _fiscalBusyDepth > 0,
+            stay_awake = _sleepGuard.IsActive,
             comstore_base_url = cfg.ComstoreBaseUrl,
             centrix_api_url = cfg.CentrixApiUrl,
             long_poll_ms = cfg.LongPollMs,
@@ -141,34 +145,43 @@ public sealed class KraWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Outer guard: a fault in poll/heartbeat must never stop CentrixKraAgent.
-        // Comstore being off is normal — heartbeats keep reporting until it is started.
-        while (!stoppingToken.IsCancellationRequested)
+        // Keep the Comstore PC from sleeping while this service runs.
+        _sleepGuard.RequestStayAwake();
+        try
         {
-            try
+            // Outer guard: a fault in poll/heartbeat must never stop CentrixKraAgent.
+            // Comstore being off is normal — heartbeats keep reporting until it is started.
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await RunWorkerLoopsAsync(stoppingToken);
-                break;
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(
-                    ex,
-                    "{Agent} worker faulted; restarting in 5s. Comstore being down must never stop this service.",
-                    AgentConstants.AgentName);
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    await RunWorkerLoopsAsync(stoppingToken);
+                    break;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
                 }
+                catch (Exception ex)
+                {
+                    _log.LogError(
+                        ex,
+                        "{Agent} worker faulted; restarting in 5s. Comstore being down must never stop this service.",
+                        AgentConstants.AgentName);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
             }
+        }
+        finally
+        {
+            _sleepGuard.Clear();
         }
     }
 
@@ -321,7 +334,18 @@ public sealed class KraWorker : BackgroundService
             try
             {
                 var seconds = Math.Clamp(_config.Current.HeartbeatIntervalSeconds, 30, AgentConstants.MaxHeartbeatSeconds);
+                var before = DateTimeOffset.UtcNow;
                 await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
+                // Sleep/hibernate pauses Delay; after resume the clock jump is large — reconnect immediately.
+                if (DateTimeOffset.UtcNow - before > TimeSpan.FromSeconds(seconds + 45))
+                {
+                    await OnResumedFromSleepAsync(ct);
+                }
+                else
+                {
+                    // Refresh the stay-awake request (Windows can clear it over time).
+                    _sleepGuard.RequestStayAwake();
+                }
             }
             catch (OperationCanceledException)
             {
@@ -361,7 +385,15 @@ public sealed class KraWorker : BackgroundService
         if (!config.IsReady) return;
 
         _lastPollAt = DateTimeOffset.UtcNow;
+        var pullStarted = DateTimeOffset.UtcNow;
         var (commands, comstoreUrl, hardwareIp) = await _centrix.PullCommandsAsync(config, ct);
+        // Long-poll can be paused for minutes while the PC slept — treat as resume.
+        var waitedMs = Math.Max(0, config.LongPollMs);
+        if (DateTimeOffset.UtcNow - pullStarted > TimeSpan.FromMilliseconds(waitedMs + 45_000))
+        {
+            await OnResumedFromSleepAsync(ct);
+            config = _config.Current;
+        }
         _config.ApplyRuntimeOverrides(comstoreUrl, hardwareIp);
         config = _config.Current;
 
@@ -452,6 +484,54 @@ public sealed class KraWorker : BackgroundService
                 _lastError = ex.Message;
                 _log.LogWarning(ex, "Failed to post result for command {Id}", command.Id);
             }
+        }
+    }
+
+    private async Task OnResumedFromSleepAsync(CancellationToken ct)
+    {
+        _log.LogWarning(
+            "{Agent} detected PC resume from sleep/hibernate — re-arming stay-awake and refreshing Centrix/Comstore.",
+            AgentConstants.AgentName);
+        _sleepGuard.RequestStayAwake();
+        _config.Reload(force: true);
+        _comstoreHealthy = false;
+        _lastError = "PC resumed from sleep — reconnecting.";
+
+        try
+        {
+            var config = _config.Current;
+            if (!config.IsReady) return;
+
+            var (ok, detail) = await _ensure.EnsureRunningAsync(config, ct, forceStartAttempt: true);
+            _comstoreHealthy = ok;
+            if (detail != null) _lastComstoreEnsureNote = detail;
+
+            var comstoreMessage = ok
+                ? detail
+                : $"{AgentConstants.ComstoreManualStartPrefix} {AgentConstants.ComstoreManualStartUserMessage}";
+
+            var device = await _deviceProbe.ProbeAsync(config, ok, ct);
+            _deviceReachable = device.Reachable;
+            _lastDeviceMessage = device.Message;
+
+            await _centrix.PostHeartbeatAsync(
+                config,
+                ct,
+                comstoreHealthy: ok,
+                comstoreMessage: comstoreMessage,
+                deviceReachable: device.Reachable,
+                deviceMessage: device.Message,
+                deviceHardwareIp: device.HardwareIp,
+                deviceConnection: device.DeviceConnection);
+            _online = true;
+            _lastHeartbeatAt = DateTimeOffset.UtcNow;
+            _lastError = ok ? null : comstoreMessage;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _online = false;
+            _lastError = ex.Message;
+            _log.LogWarning(ex, "Post-sleep reconnect failed");
         }
     }
 
