@@ -4926,7 +4926,8 @@ export function PosScreen({ standalone = false }) {
       });
     // Keep the chain alive after failures, and never leave void callers unhandled.
     cartCommitChainRef.current = run.catch(() => {});
-    return cartCommitChainRef.current;
+    // Return `run` (not the swallowed catch) so awaiters see task failures.
+    return run;
   }
 
   /**
@@ -6965,7 +6966,9 @@ export function PosScreen({ standalone = false }) {
         }
       } else if (intendedEdit) {
         // Swap / in-place edit must never POST a second row when the line ref is missing.
-        // Classic qty Enter already painted the grid — keep that qty instead of alarming.
+        // Classic qty Enter may already have painted (unlockUiEarly) — keep that qty.
+        // Persist-first (skipOptimisticPaint) has nothing on screen yet; still return
+        // false so the caller can surface the message (do not soft-succeed).
         if (keepOptimisticOnFailure && unlockUiEarly) {
           setCartLineSaveFailed(false);
           if (clearEntry) focusScanAfterItemAdded();
@@ -9611,15 +9614,27 @@ export function PosScreen({ standalone = false }) {
               });
               // saveLocalPosCart already awaited this write — skip draining the full queue.
               let presented = presentLocalOfflineCart(saved);
-              const qtyLanded = (presented?.lines ?? []).some(
-                (row) =>
-                  (cartLinesShareIdentity(row, existing) ||
+              const qtyMatchesIntent = (rows) =>
+                (rows ?? []).some((row) => {
+                  const sameLine =
+                    cartLinesShareIdentity(row, existing) ||
                     (String(row.product_code) === String(existing.product_code) &&
                       Number(row.on_wholesale_retail ?? 0) ===
-                        Number(sessionIsRetail ? 1 : 0))) &&
-                  Math.abs(Number(row.quantity ?? 0) - Number(computed.baseQty)) < 0.0001,
-              );
-              if (!qtyLanded) {
+                        Number(sessionIsRetail ? 1 : 0));
+                  if (!sameLine) return false;
+                  // Prefer the post-finalize line qty (combine/dedupe may differ from
+                  // computed.baseQty) so a valid IDB put is not treated as failure.
+                  const intended = (nextCart.lines ?? []).find(
+                    (line) =>
+                      cartLinesShareIdentity(line, row) ||
+                      (String(line.product_code) === String(row.product_code) &&
+                        Number(line.on_wholesale_retail ?? 0) ===
+                          Number(row.on_wholesale_retail ?? 0)),
+                  );
+                  const expectQty = Number(intended?.quantity ?? computed.baseQty);
+                  return Math.abs(Number(row.quantity ?? 0) - expectQty) < 0.0001;
+                });
+              if (!qtyMatchesIntent(presented?.lines)) {
                 // Stale IDB return (seq/epoch race) — force one more write then paint.
                 const forced = withLocalCartMutation({
                   ...nextCart,
@@ -9633,18 +9648,25 @@ export function PosScreen({ standalone = false }) {
                   })),
                 });
                 presented = presentLocalOfflineCart(saved2);
-                const landed2 = (presented?.lines ?? []).some(
-                  (row) =>
-                    (cartLinesShareIdentity(row, existing) ||
-                      (String(row.product_code) === String(existing.product_code) &&
-                        Number(row.on_wholesale_retail ?? 0) ===
-                          Number(sessionIsRetail ? 1 : 0))) &&
-                    Math.abs(Number(row.quantity ?? 0) - Number(computed.baseQty)) <
-                      0.0001,
-                );
-                if (!landed2) {
-                  setStatusMessage("Could not save quantity. Try again.");
-                  return;
+                if (!qtyMatchesIntent(presented?.lines)) {
+                  // Still verify-failed (racey IDB snapshot) — paint the cashier's
+                  // Entered cart and re-queue save so Enter is not a hard no-op.
+                  presented = presentLocalOfflineCart({
+                    ...forced,
+                    id: "active",
+                    offline: true,
+                    lines: (forced.lines ?? []).map((l) => ({
+                      ...l,
+                      client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                    })),
+                  });
+                  void saveLocalPosCart({
+                    ...presented,
+                    lines: (presented.lines ?? []).map((l) => ({
+                      ...l,
+                      client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                    })),
+                  }).catch(() => {});
                 }
               }
               cartRef.current = presented;
@@ -9665,7 +9687,7 @@ export function PosScreen({ standalone = false }) {
         // Live TemporaryCart: PATCH first (no optimistic paint), then force-paint the
         // cashier's qty (merge alone often kept the old number after skipOptimisticPaint).
         try {
-          const ok = await commitCartLine({
+          const patchArgs = {
             product,
             computed: commitComputed,
             incrementBaseQty: commitComputed.baseQty,
@@ -9685,9 +9707,19 @@ export function PosScreen({ standalone = false }) {
             skipOptimisticPaint: true,
             lineRetailStockFlagOverride: sessionIsRetail,
             keepOptimisticOnFailure: false,
-          });
+          };
+          let ok = await commitCartLine(patchArgs);
+          // Brief TemporaryCart identity race — one retry with the frozen refs.
+          if (!ok && frozenServerPatchRef) {
+            ok = await commitCartLine({
+              ...patchArgs,
+              editingRef: frozenServerPatchRef,
+              editingId: frozenEditingId,
+            });
+          }
           if (!ok) {
-            setStatusMessage("Could not save quantity. Try again.");
+            // commitCartLine already set a specific status (stock / sync / resolve).
+            // Do not replace it with a generic "Could not save quantity".
             return;
           }
           const liveAfter = cartRef.current;
