@@ -254,6 +254,12 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     setHighlight(-1);
   }, [dropdownSuppressed]);
 
+  // Keep shut if focus/onChange tries to reopen while an overlay is up.
+  useEffect(() => {
+    if (!dropdownSuppressed || !open) return;
+    setOpen(false);
+  }, [dropdownSuppressed, open]);
+
   useEffect(() => {
     if (visibleResults.length === 0) {
       setHighlight(-1);
@@ -565,11 +571,11 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           if (inputLocked) return;
           setUserDismissed(false);
           commitDraft(next);
-          setOpen(true);
+          if (!dropdownSuppressed) setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
         onFocus={() => {
-          if (inputLocked) return;
+          if (inputLocked || dropdownSuppressed) return;
           inputFocusedRef.current = true;
           if (String(draftQuery ?? "").trim()) setUserDismissed(false);
           setOpen(true);

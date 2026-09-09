@@ -4015,9 +4015,13 @@ export function PosScreen({ standalone = false }) {
     Boolean(ticketSyncConflict) ||
     preparingNextOpen ||
     (previousOrderLoading && !previousOrderLoadingSoft) ||
-    Boolean(autoHeldBusy) ||
-    // Hide Find/scan dropdown while qty / swap / delete blocking overlay is up.
-    cartLineSaveWaitBusy;
+    Boolean(autoHeldBusy);
+
+  // Only hide the Find dropdown while qty/swap/delete wait is up — do NOT fold
+  // cartLineSaveWaitBusy into posOverlayBlocksScan (that blurred/refocused Scan
+  // and made Enter on qty feel like it only jumped to search).
+  const suppressProductSearchDropdown =
+    posOverlayBlocksScan || cartLineSaveWaitBusy;
 
   /** Block switching to Accounts / other applications while outbox sales are uploading. */
   const blocksWorkspaceSwitch = useMemo(() => {
@@ -17009,7 +17013,7 @@ export function PosScreen({ standalone = false }) {
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
                   picksDisabled={posSearchSuspended}
-                  dropdownSuppressed={posOverlayBlocksScan}
+                  dropdownSuppressed={suppressProductSearchDropdown}
                 />
               )}
               <div className="space-y-1">
@@ -17613,7 +17617,7 @@ export function PosScreen({ standalone = false }) {
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
                     picksDisabled={posSearchSuspended}
-                    dropdownSuppressed={posOverlayBlocksScan}
+                    dropdownSuppressed={suppressProductSearchDropdown}
                   />
                 }
                 qtyRef={qtyInputRef}
