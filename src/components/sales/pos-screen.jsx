@@ -101,6 +101,7 @@ import {
   showPosLineDiscountField,
   showPosOrderDiscountInput,
   resolveOrderPrintDocumentType,
+  resolveBackofficeProductSearchMode,
 } from "@/lib/sales-settings";
 import {
   buildAdvisedDiscountMap,
@@ -2454,6 +2455,12 @@ export function PosScreen({ standalone = false }) {
   const lineBusyRef = useRef(false);
   /** True while runWithLineSaveOverlay / BlockingWait is up (add, delete, qty, swap). */
   const cartLineSaveWaitBusyRef = useRef(false);
+  /**
+   * Synchronous gate armed the instant Delete / Add starts — before the first await —
+   * so fast Delete→scan→Enter cannot queue a twin add while removeSelectedLines is
+   * still spinning up the blocking overlay.
+   */
+  const cartLineMutationGateRef = useRef(false);
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
   const applyLiveCartCatalogPricesRef = useRef(null);
@@ -4966,14 +4973,32 @@ export function PosScreen({ standalone = false }) {
    * While open, scan/add/shortcuts must wait — otherwise delete→add races revive lines.
    */
   const lineSaveOverlayDepthRef = useRef(0);
-  function isCartLineSaveBlocking() {
+  function armCartLineMutationGate() {
+    cartLineMutationGateRef.current = true;
+  }
+  function releaseCartLineMutationGate() {
+    if (
+      lineSaveOverlayDepthRef.current <= 0 &&
+      cartCommitPendingRef.current <= 0 &&
+      !cartLineSaveWaitBusyRef.current
+    ) {
+      cartLineMutationGateRef.current = false;
+    }
+  }
+  /** True while an overlay/commit is actually running (excludes Delete-key pre-arm). */
+  function isCartLineSaveBusy() {
     return (
       lineSaveOverlayDepthRef.current > 0 ||
+      cartCommitPendingRef.current > 0 ||
       cartLineSaveWaitBusyRef.current ||
       cartLineSaveWaitBusy
     );
   }
+  function isCartLineSaveBlocking() {
+    return cartLineMutationGateRef.current || isCartLineSaveBusy();
+  }
   async function runWithLineSaveOverlay(task, opts = {}) {
+    armCartLineMutationGate();
     lineSaveOverlayDepthRef.current += 1;
     const outer = lineSaveOverlayDepthRef.current === 1;
     if (outer) {
@@ -4996,6 +5021,7 @@ export function PosScreen({ standalone = false }) {
         lineBusyRef.current = false;
         setLineBusy(false);
       }
+      releaseCartLineMutationGate();
     }
   }
 
@@ -5721,6 +5747,11 @@ export function PosScreen({ standalone = false }) {
         }
 
         // Create Order + External POS: paint warmed catalog immediately (fuzzy / multi-field).
+        // Backoffice "live" mode still paints local first for snappy typing, then always
+        // refreshes from /products so Available stock is current.
+        const preferLiveSearch =
+          !standalone &&
+          resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
         try {
           localPaint = await paintFromOffline();
           if (seq === searchSeq.current && localPaint.length) {
@@ -5733,14 +5764,60 @@ export function PosScreen({ standalone = false }) {
           /* fall through to API */
         }
 
-        // Solid local hits: skip background /products — it contended with select/add
-        // and made typing + pick feel slow on busy tills. API still runs when local misses.
+        // IndexedDB mode + External POS: skip /products when local hits exist (perf),
+        // but still refresh stock fields in the background so Available is not stuck at 0.
         const localReady = localPaint.length > 0;
-        if (localReady) {
+        if (localReady && !preferLiveSearch) {
+          void (async () => {
+            try {
+              const res = await apiRequest("/products", {
+                searchParams: {
+                  per_page: 40,
+                  q: trimmed,
+                  fields: "lean",
+                  status: "active",
+                  ...productBranchParams,
+                },
+                signal: abort.signal,
+                loading: false,
+                reportIssues: false,
+              });
+              if (seq !== searchSeq.current || abort.signal.aborted) return;
+              const remote = sellableSearchResults(
+                (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+              );
+              if (!remote.length) return;
+              const byCode = new Map(
+                remote.map((p) => [String(p.product_code ?? ""), p]),
+              );
+              setSearchResults((prev) => {
+                if (!prev?.length || seq !== searchSeq.current) return prev;
+                let changed = false;
+                const next = prev.map((row) => {
+                  const live = byCode.get(String(row.product_code ?? ""));
+                  if (!live) return row;
+                  const merged = mergeProductStockFields(row, live);
+                  if (merged !== row) changed = true;
+                  return merged;
+                });
+                return changed ? next : prev;
+              });
+              for (const p of remote) {
+                const code = p?.product_code;
+                if (!code) continue;
+                const existing = productByCodeRef.current[code];
+                productByCodeRef.current[code] = existing
+                  ? mergeProductStockFields(existing, p)
+                  : p;
+              }
+            } catch {
+              /* keep local paint */
+            }
+          })();
           return;
         }
 
-        // Only show the spinner when we actually wait on the network.
+        // Live backoffice search (or local miss): wait on the network for current stock.
         setSearching(true);
         const res = await apiRequest("/products", {
           searchParams: {
@@ -5805,6 +5882,7 @@ export function PosScreen({ standalone = false }) {
       standalone,
       offlineMode,
       searchOffline,
+      capabilities?.module_settings,
     ],
   );
 
@@ -7221,6 +7299,7 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     if (!assertRouteReadyForAdd()) return;
+    armCartLineMutationGate();
 
     setProductByCode((prev) => {
       const existing = prev[product.product_code];
@@ -7236,7 +7315,10 @@ export function PosScreen({ standalone = false }) {
     // Retail markup comes from retail_package_settings for this item — load before pricing.
     await ensureRetailPackageForProduct(product);
     const computed = applyComputedPrice(product, "1", 0);
-    if (computed.baseQty <= 0) return;
+    if (computed.baseQty <= 0) {
+      releaseCartLineMutationGate();
+      return;
+    }
 
     // Always serialize adds — same-mode lines merge when combine is on.
     // Opposite mode (Sugar bag + Sugar kg) must append a new row — never convert
@@ -7320,7 +7402,9 @@ export function PosScreen({ standalone = false }) {
       });
       return;
     }
-    void enqueueCartCommit(runQuickAdd);
+    void enqueueCartCommit(runQuickAdd).finally(() => {
+      releaseCartLineMutationGate();
+    });
   }
 
   async function handleBarcodeEnter(code) {
@@ -8673,7 +8757,8 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return;
     }
-    // Mid-swap: never append — finish the in-place replace instead.
+    // Arm before any work so a second Enter / barcode cannot twin this add.
+    armCartLineMutationGate();
     if (swapDraftRef.current?.product) {
       void completeSwapFromDraft(
         lineFormQtyCommitRef.current ?? swapDraftRef.current.quantity ?? lineForm.quantity,
@@ -8681,15 +8766,20 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     if (replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
+      releaseCartLineMutationGate();
       setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
       return;
     }
     if (!lineForm.product_code || !(selectedProductRef.current ?? selectedProduct)) {
+      releaseCartLineMutationGate();
       setStatusMessage("Select a product first.");
       return;
     }
     const productForAdd = selectedProductRef.current ?? selectedProduct;
-    if (!assertRouteReadyForAdd()) return;
+    if (!assertRouteReadyForAdd()) {
+      releaseCartLineMutationGate();
+      return;
+    }
 
     // Prefer qty captured from the input on Enter (last keystroke may not be in state yet).
     const entryQtyRaw =
@@ -8744,6 +8834,7 @@ export function PosScreen({ standalone = false }) {
 
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(productForAdd.product_code)) {
+        releaseCartLineMutationGate();
         setStatusMessage("Choose a different product to replace this line.");
         return;
       }
@@ -8782,7 +8873,9 @@ export function PosScreen({ standalone = false }) {
         });
         return;
       }
-      void enqueueCartCommit(runReplace);
+      void enqueueCartCommit(runReplace).finally(() => {
+        releaseCartLineMutationGate();
+      });
       return;
     }
 
@@ -8793,6 +8886,7 @@ export function PosScreen({ standalone = false }) {
       override,
     );
     if (computed.baseQty <= 0) {
+      releaseCartLineMutationGate();
       setStatusMessage("Enter a valid quantity.");
       return;
     }
@@ -8912,31 +9006,26 @@ export function PosScreen({ standalone = false }) {
     };
 
     // Always serialize line adds — rapid Enter/click must not create duplicate rows.
-    // Classic / External POS: blocking overlay until TemporaryCart / IndexedDB finishes
-    // so delete→add and double-Enter cannot race.
+    // Blocking overlay until TemporaryCart / IndexedDB finishes so delete→add and
+    // double-Enter cannot race (including modern backoffice Create Order).
     // commitCartLine paints then clears entry (unlockUiEarly) under the overlay.
-    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (classicLayout || localDraftEdit || standalone) {
-      void runWithLineSaveOverlay(
-        async () => {
-          await enqueueCartCommit(run);
-        },
-        {
-          message: wasEditing ? "Updating line…" : "Adding item…",
-          detail: "Saving this line — please wait until it finishes.",
-        },
-      ).catch((e) => {
-        setStatusMessage(
-          e instanceof ApiError
-            ? e.message
-            : wasEditing
-              ? "Failed to update line"
-              : "Failed to add line",
-        );
-      });
-      return;
-    }
-    void enqueueCartCommit(run);
+    void runWithLineSaveOverlay(
+      async () => {
+        await enqueueCartCommit(run);
+      },
+      {
+        message: wasEditing ? "Updating line…" : "Adding item…",
+        detail: "Saving this line — please wait until it finishes.",
+      },
+    ).catch((e) => {
+      setStatusMessage(
+        e instanceof ApiError
+          ? e.message
+          : wasEditing
+            ? "Failed to update line"
+            : "Failed to add line",
+      );
+    });
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
@@ -9930,17 +10019,27 @@ export function PosScreen({ standalone = false }) {
   async function removeCartLinesByIds(rawIds) {
     const ids = [...new Set((rawIds ?? []).map(String))].filter(Boolean);
     const liveCart = cartRef.current ?? cart;
-    if (!liveCart?.id || !liveCart?.lines?.length || !ids.length) return;
-    if (isCartLineSaveBlocking()) {
+    if (!liveCart?.id || !liveCart?.lines?.length || !ids.length) {
+      releaseCartLineMutationGate();
+      return;
+    }
+    // Use busy (not full blocking) so Delete-key pre-arm does not abort ourselves.
+    if (isCartLineSaveBusy()) {
+      releaseCartLineMutationGate();
       setStatusMessage("Please wait — finishing the previous cart update first.");
       return;
     }
+    // Arm before confirm / first await so Delete→Enter cannot sneak an add in.
+    armCartLineMutationGate();
 
     const idSet = new Set(ids);
     const targets = (liveCart.lines ?? []).filter((line) =>
       cartLineMatchesSelection(line, idSet),
     );
-    if (!targets.length) return;
+    if (!targets.length) {
+      releaseCartLineMutationGate();
+      return;
+    }
 
     const isPreviousOrderEdit = Boolean(
       liveCart.held_order_num && liveCart.superseded_sale_id,
@@ -9954,7 +10053,10 @@ export function PosScreen({ standalone = false }) {
         confirmLabel: "Remove",
         destructive: true,
       });
-      if (!ok) return;
+      if (!ok) {
+        releaseCartLineMutationGate();
+        return;
+      }
     }
 
     registerPendingLineDeletes(targets);
@@ -10129,6 +10231,7 @@ export function PosScreen({ standalone = false }) {
       for (const line of targets) {
         clearPendingLineDeleteKeysForLine(line);
       }
+      releaseCartLineMutationGate();
       setStatusMessage(
         e instanceof ApiError
           ? e.message
@@ -16125,6 +16228,7 @@ export function PosScreen({ standalone = false }) {
     checkoutBlocked,
     activeSession: Boolean(activeSession),
     cartLineSaveWaitBusy,
+    getCartLineSaveBlocking: () => isCartLineSaveBlocking(),
   };
   posShortcutActionsRef.current = {
     flashPosShortcutMessage,
@@ -16148,6 +16252,7 @@ export function PosScreen({ standalone = false }) {
     handlePrintReceipt,
     removeSelectedLine,
     removeSelectedLines,
+    armCartLineMutationGate,
     confirm,
   };
 
@@ -16210,6 +16315,7 @@ export function PosScreen({ standalone = false }) {
         || state.autoHeldBusy
         || state.editAdjustmentDialogOpen
         || state.cartLineSaveWaitBusy
+        || Boolean(state.getCartLineSaveBlocking?.())
         || isConfirmDialogOpen()
       );
     }
@@ -16532,6 +16638,8 @@ export function PosScreen({ standalone = false }) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
         actions.closeProductSearchDropdown?.();
+        // Arm before the async remove starts — Delete→Enter used to twin the next add.
+        actions.armCartLineMutationGate?.();
         void actions.removeSelectedLines();
       }
     }

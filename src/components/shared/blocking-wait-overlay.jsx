@@ -19,7 +19,26 @@ export function BlockingWaitOverlay({ open, message, detail, progress = 0 }) {
       role="alertdialog"
       aria-modal="true"
       aria-label={message || "Please wait"}
+      tabIndex={-1}
+      ref={(el) => {
+        // Steal focus so qty/scan Enter cannot fire under the overlay.
+        if (el && typeof el.focus === "function") {
+          try {
+            el.focus({ preventScroll: true });
+          } catch {
+            el.focus();
+          }
+        }
+      }}
       // Capture scanner / keyboard so POS cannot add lines while delete/save runs.
+      onKeyDownCapture={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onKeyUpCapture={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onKeyDown={(e) => {
         e.preventDefault();
         e.stopPropagation();

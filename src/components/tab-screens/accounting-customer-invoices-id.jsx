@@ -9,7 +9,10 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
-import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
+import {
+  formatCustomerInvoicePaymentStatus,
+  normalizeCustomerInvoice,
+} from "@/lib/customer-invoices";
 import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 import {
@@ -79,7 +82,8 @@ export function AccountingCustomerInvoicesIdScreen() {
           reportIssues: false,
         }),
       ]);
-      setInvoice(normalizeCustomerInvoice(inv));
+      const normalized = normalizeCustomerInvoice(inv);
+      setInvoice(normalized);
       setPayments(payRes.data ?? []);
       setMethods(
         filterPaymentMethodsForOrg(methodsRes.data ?? [], capabilities?.module_settings, {
@@ -87,11 +91,11 @@ export function AccountingCustomerInvoicesIdScreen() {
           checkoutContext: "order_payment",
         }),
       );
-      const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
-      const customerName = inv.customer_name || inv.customer?.customer_name || "";
+      const balance = Number(normalized.balance_due ?? 0);
+      const customerName = normalized.customer_name || "";
       setPayForm((f) => ({
         ...f,
-        amount_paid: balance > 0 ? String(balance.toFixed(2)) : "",
+        amount_paid: balance > 0.01 ? String(balance.toFixed(2)) : "",
         notes: customerName ? `Received from ${customerName}` : f.notes,
       }));
     } catch (e) {
@@ -173,7 +177,8 @@ export function AccountingCustomerInvoicesIdScreen() {
     );
   }
 
-  const balance = Number(invoice.invoice_total ?? 0) - Number(invoice.amount_paid ?? 0);
+  const balance = Number(invoice.balance_due ?? 0);
+  const statusLabel = formatCustomerInvoicePaymentStatus(invoice.payment_status);
 
   return (
     <CatalogPageShell
@@ -194,7 +199,7 @@ export function AccountingCustomerInvoicesIdScreen() {
         ]}
       />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-xs uppercase text-slate-500">Invoice total</p>
           <p className="mt-1 text-xl font-semibold">{currency(invoice.invoice_total)}</p>
@@ -204,8 +209,16 @@ export function AccountingCustomerInvoicesIdScreen() {
           <p className="mt-1 text-xl font-semibold">{currency(invoice.amount_paid)}</p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Return credits</p>
+          <p className="mt-1 text-xl font-semibold">{currency(invoice.return_credit_total ?? 0)}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-xs uppercase text-slate-500">Balance due</p>
           <p className="mt-1 text-xl font-semibold text-amber-700">{currency(balance)}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Status</p>
+          <p className="mt-1 text-xl font-semibold">{statusLabel}</p>
         </div>
       </div>
 

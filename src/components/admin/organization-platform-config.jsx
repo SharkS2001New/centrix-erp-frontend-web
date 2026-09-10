@@ -394,6 +394,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     },
     require_pos_till_float: false,
     external_pos_layout: "modern",
+    backoffice_product_search_mode:
+      deploymentProfile === "distribution" ? "live" : "indexeddb",
     classic_pos_theme_template: CLASSIC_POS_THEME_DEFAULT,
     classic_pos_theme_colors: {},
     hotel_pos_grid_columns: 4,
@@ -473,6 +475,10 @@ export function salesPlatformFromApi(apiPayload) {
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
+    backoffice_product_search_mode:
+      String(apiPayload.backoffice_product_search_mode ?? "indexeddb").toLowerCase() === "live"
+        ? "live"
+        : "indexeddb",
     classic_pos_theme_template: normalizeClassicPosThemeTemplate(
       apiPayload.classic_pos_theme_template,
     ),
@@ -708,6 +714,39 @@ export function OrganizationPlatformSalesSettings({
             checked={showBackofficeCheckout}
             onChange={(v) => patch({ show_checkout_on_create_order: v })}
           />
+          <OrgRegisterField label="Backoffice Create order product search">
+            <SearchableSelect
+              className={inputClass}
+              value={
+                String(salesPlatform?.backoffice_product_search_mode ?? "indexeddb").toLowerCase() ===
+                "live"
+                  ? "live"
+                  : "indexeddb"
+              }
+              nativeEvent
+              onChange={(e) =>
+                patch({
+                  backoffice_product_search_mode:
+                    e.target.value === "live" ? "live" : "indexeddb",
+                })
+              }
+              options={[
+                {
+                  value: "indexeddb",
+                  label: "Fast (device catalog) — stock refreshes in the background",
+                },
+                {
+                  value: "live",
+                  label: "Live from server — best for distribution / accurate stock",
+                },
+              ]}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Live search always loads current branch stock from the server. Device catalog is
+              faster for busy desks but can briefly show stale Available qty until stock refreshes.
+              Distribution profiles default to live.
+            </p>
+          </OrgRegisterField>
           <Toggle
             label="Enable mobile orders"
             description="When on, the mobile app, mobile user logins, and backoffice mobile-order views are available. When off, only backoffice (and external POS when enabled) can be used."

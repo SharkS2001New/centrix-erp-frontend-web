@@ -306,6 +306,8 @@ export const CUSTOMER_INVOICE_EXPORT_COLUMNS = [
   { key: "customer_name", label: "Customer name" },
   { key: "invoice_date", label: "Date" },
   { key: "invoice_total", label: "Total", align: "right" },
+  { key: "amount_paid", label: "Paid", align: "right" },
+  { key: "return_credit_total", label: "Return credits", align: "right" },
   { key: "balance_due", label: "Balance", align: "right" },
   { key: "payment_status", label: "Payment status" },
 ];

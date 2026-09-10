@@ -237,7 +237,7 @@ export const REPORT_DEFINITIONS = {
   "sales-by-user": {
     title: "Sales by User",
     subtitle:
-      "Orders by cashier for the placed date (booked → completed). Gross includes unpaid/credit; Collected is amount paid on those orders (may include later debtor collections). Fully paid is closest to till cash sales.",
+      "Orders by cashier for the placed date (booked → completed). Paid against orders is money recorded on those orders (may include later debtor collections). Outstanding = Gross − Paid. Unpaid = orders with no payment yet. Fully settled is order value paid in full — not till cash.",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -257,22 +257,36 @@ export const REPORT_DEFINITIONS = {
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
       {
         key: "gross_sales",
-        label: "Gross (all orders)",
+        label: "Gross orders",
         accessor: (r) => r.gross_sales,
         align: "right",
         total: true,
       },
       {
         key: "fully_paid_sales",
-        label: "Fully paid",
+        label: "Fully settled",
         accessor: (r) => r.fully_paid_sales,
         align: "right",
         total: true,
       },
       {
         key: "amount_collected",
-        label: "Collected",
+        label: "Paid against orders",
         accessor: (r) => r.amount_collected,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "outstanding_balance",
+        label: "Outstanding",
+        accessor: (r) => r.outstanding_balance,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "unpaid_sales",
+        label: "Unpaid (no payment)",
+        accessor: (r) => r.unpaid_sales,
         align: "right",
         total: true,
       },
@@ -288,18 +302,34 @@ export const REPORT_DEFINITIONS = {
       ...vatReportKpis("gross_sales", "total_vat"),
       {
         id: "fully-paid",
-        label: "Fully paid",
+        label: "Fully settled",
         compute: (rows, summary) => ({
           value: kes(summary?.fully_paid_sales ?? sum(rows, "fully_paid_sales")),
-          hint: "Paid in full — closest to till cash sales",
+          hint: "Order value where amount paid covers the total",
         }),
       },
       {
         id: "collected",
-        label: "Collected",
+        label: "Paid against orders",
         compute: (rows, summary) => ({
           value: kes(summary?.amount_collected ?? sum(rows, "amount_collected")),
-          hint: "Sum of amount paid (can be below Gross on credit)",
+          hint: "Sum of amount paid on orders in this period (not till receipts)",
+        }),
+      },
+      {
+        id: "outstanding",
+        label: "Outstanding",
+        compute: (rows, summary) => ({
+          value: kes(summary?.outstanding_balance ?? sum(rows, "outstanding_balance")),
+          hint: "Gross − paid (includes partial balances)",
+        }),
+      },
+      {
+        id: "unpaid",
+        label: "Unpaid (no payment)",
+        compute: (rows, summary) => ({
+          value: kes(summary?.unpaid_sales ?? sum(rows, "unpaid_sales")),
+          hint: "Orders with nothing paid yet",
         }),
       },
       {

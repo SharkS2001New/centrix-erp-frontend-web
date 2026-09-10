@@ -195,8 +195,8 @@ export function AccountingCustomerInvoicesScreen() {
               </tr>
             ) : (
               invoices.map((inv) => {
-                const balance = Number(inv.balance_due ?? (Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0)));
-                const status = PAYMENT_STATUS[inv.payment_status] ?? PAYMENT_STATUS[0];
+                const balance = Number(inv.balance_due ?? 0);
+                const status = PAYMENT_STATUS[Number(inv.payment_status)] ?? PAYMENT_STATUS[0];
                 return (
                   <tr key={inv.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-medium">{inv.invoice_number}</td>

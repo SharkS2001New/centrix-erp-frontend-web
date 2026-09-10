@@ -84,6 +84,8 @@ const SALES_DEFAULTS = {
   mobile_sheets_default_days: 5,
   require_pos_till_float: false,
   external_pos_layout: "modern",
+  /** Backoffice Create order: indexeddb (fast) or live (server stock). */
+  backoffice_product_search_mode: "indexeddb",
   /** Light Stores–style last-digit cash rounding on external POS (/pos). */
   enable_pos_cash_rounding: false,
   /** Show all payment method rows on thermal receipt (Cash, M-Pesa, Equity, KCB) even when zero. */
@@ -1350,6 +1352,10 @@ export function mergeSalesSettings(moduleSettings) {
     String(sales.external_pos_layout ?? "modern").toLowerCase() === "classic"
       ? "classic"
       : "modern";
+  sales.backoffice_product_search_mode =
+    String(sales.backoffice_product_search_mode ?? "indexeddb").toLowerCase() === "live"
+      ? "live"
+      : "indexeddb";
   sales.backoffice_order_edit_layout =
     String(sales.backoffice_order_edit_layout ?? "modern").toLowerCase() === "classic"
       ? "classic"
@@ -1602,6 +1608,14 @@ export function resolveEnablePosCashRounding(moduleSettings) {
   return String(raw.external_pos_layout ?? "modern").toLowerCase() === "classic";
 }
 
+/** Backoffice Create order search source: live API vs device IndexedDB catalog. */
+export function resolveBackofficeProductSearchMode(moduleSettings) {
+  const raw = String(
+    moduleSettings?.sales?.backoffice_product_search_mode ?? "indexeddb",
+  ).toLowerCase();
+  return raw === "live" ? "live" : "indexeddb";
+}
+
 export function getPosSalesConfig(moduleSettings, options = {}) {
   const sales = mergeSalesSettings(moduleSettings);
   const allowShop = Boolean(sales.allow_sell_from_shop);
@@ -1673,6 +1687,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     appendSameDayCustomerOrders: Boolean(sales.append_same_day_customer_orders),
     /** External POS (/pos) only — use with `standalone`. Classic + modern share this flag. */
     enablePosCashRounding: resolveEnablePosCashRounding(moduleSettings),
+    /** Backoffice Create order product search: live | indexeddb */
+    backofficeProductSearchMode: resolveBackofficeProductSearchMode(moduleSettings),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
