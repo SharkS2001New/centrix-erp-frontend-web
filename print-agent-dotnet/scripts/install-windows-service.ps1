@@ -201,6 +201,6 @@ Write-Host "Centrix Print Agent installed and started as a Windows service." -Fo
 Write-Host "Health check: http://127.0.0.1:9247/v1/health"
 Write-Host ("SumatraPDF: {0}" -f $sumatraPath) -ForegroundColor Green
 if (-not $wkhtmlPath -or -not (Test-Path $wkhtmlPath)) {
-    Write-Host "wkhtmltopdf is missing — install it once, then re-run this script (or set WKHTMLTOPDF_PATH)." -ForegroundColor Yellow
+    Write-Host "wkhtmltopdf is missing - install it once, then re-run this script (or set WKHTMLTOPDF_PATH)." -ForegroundColor Yellow
 }
 Write-Host "In Centrix: Administration -> Local printing -> Centrix Print Agent -> Test connection -> Save."
