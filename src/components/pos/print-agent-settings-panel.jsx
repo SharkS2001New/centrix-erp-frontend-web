@@ -197,7 +197,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     if (result?.ok) {
       const sumatraNote = result.sumatraAvailable
         ? " SumatraPDF is ready."
-        : " SumatraPDF is not configured yet — run configure-sumatra.ps1 on the till PC.";
+        : " SumatraPDF is missing — re-run BUILD-AND-INSTALL.bat as Administrator.";
       notifySuccess(
         (result.defaultPrinter
           ? `Connected. Printers available — default: ${result.defaultPrinter}.`
@@ -236,7 +236,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         notifySuccess('Health OK — "sumatra_available" is true.');
       } else if (status.ok) {
         notifyError(
-          'Agent is running but "sumatra_available" is false. Copy Sumatra into the Print Agent folder (see setup guide) or run configure-sumatra.ps1 on the till PC.',
+          'Agent is running but "sumatra_available" is false. Re-run BUILD-AND-INSTALL.bat as Administrator (bundles Sumatra).',
         );
       } else {
         notifyError("Print agent returned an unhealthy status.");
@@ -459,10 +459,10 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           ) : null}
           {health?.ok && health.sumatraAvailable === false ? (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Print Agent is online but <strong>SumatraPDF is missing</strong>. Silent printing needs{" "}
-              <code className="text-[11px]">sumatra_available: true</code> — use{" "}
-              <strong>Check health</strong> after running <code className="text-[11px]">configure-sumatra.ps1</code>{" "}
-              on the till PC.
+              Print Agent is online but <strong>SumatraPDF is missing</strong>. Re-run{" "}
+              <code className="text-[11px]">BUILD-AND-INSTALL.bat</code> as Administrator (it bundles Sumatra).
+              Then click <strong>Check health</strong> — you need{" "}
+              <code className="text-[11px]">sumatra_available: true</code>.
             </p>
           ) : null}
           {healthDetailJson ? (
@@ -488,15 +488,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               <p className="theme-heading text-xs font-semibold">Downloads you may need</p>
               <ul className="theme-subtext mt-2 list-disc space-y-1.5 pl-4 text-xs">
                 <li>
-                  <ExternalDownloadLink href={PRINT_AGENT_SUMATRA_PDF_URL}>
-                    SumatraPDF (free)
-                  </ExternalDownloadLink>
-                  {" — "}
-                  required for silent thermal printing. After install, Sumatra must live{" "}
-                  <strong>inside the Print Agent folder</strong> (see step below). Installing only under Program
-                  Files is not enough for the Windows service.
-                </li>
-                <li>
                   <ExternalDownloadLink href={PRINT_AGENT_DOTNET_SDK_URL}>
                     .NET 8 SDK (Windows x64)
                   </ExternalDownloadLink>
@@ -511,6 +502,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                   {" — "}
                   one-time install so receipts render to PDF. The build picks it up from{" "}
                   <code className="text-[11px]">Program Files\wkhtmltopdf</code> automatically.
+                </li>
+                <li>
+                  <ExternalDownloadLink href={PRINT_AGENT_SUMATRA_PDF_URL}>
+                    SumatraPDF (free)
+                  </ExternalDownloadLink>
+                  {" — "}
+                  optional manual install. <strong>BUILD-AND-INSTALL</strong> downloads and bundles it into the
+                  Print Agent folder automatically — you should not need a separate copy step.
                 </li>
               </ul>
             </div>
@@ -548,20 +547,15 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                 </p>
                 <ol className="list-decimal space-y-1.5 pl-4">
                   <li>
-                    On the till Windows PC, download{" "}
-                    <ExternalDownloadLink href={PRINT_AGENT_SUMATRA_PDF_URL}>SumatraPDF</ExternalDownloadLink>{" "}
-                    and install it (or download the portable zip).
-                  </li>
-                  <li>
                     Optionally install{" "}
                     <ExternalDownloadLink href={PRINT_AGENT_WKHTMLTOPDF_URL}>wkhtmltopdf</ExternalDownloadLink>{" "}
-                    once for receipt rendering.
+                    once for receipt rendering (recommended before build).
                   </li>
                   <li>
                     {dotnetAvailable ? (
                       <>
                         Prefer <strong>Download ready installer (zip)</strong> when shown — unzip and run the
-                        install script as Administrator (no .NET SDK).
+                        install script as Administrator (no .NET SDK). Sumatra is included in the zip.
                       </>
                     ) : (
                       <>
@@ -569,64 +563,30 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                         <code className="text-[11px]">print-agent-dotnet</code>, install the{" "}
                         <ExternalDownloadLink href={PRINT_AGENT_DOTNET_SDK_URL}>.NET 8 SDK</ExternalDownloadLink>
                         , then double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code> and allow
-                        Administrator. Wait for <strong>SUCCESS</strong>.
+                        Administrator. Wait for <strong>SUCCESS</strong>. That step publishes the agent,{" "}
+                        <strong>downloads Sumatra into the agent folder</strong>, and starts the Windows service.
                       </>
                     )}
                   </li>
                   <li>
-                    <strong>Copy Sumatra into the Print Agent folder</strong> (required after install). The agent
-                    looks for:
-                    <p className="mt-1 rounded bg-white/80 px-2 py-1 font-mono text-[11px] text-[var(--theme-heading)]">
-                      C:\Program Files\Centrix\PrintAgent\tools\SumatraPDF\SumatraPDF.exe
-                    </p>
-                    <ul className="mt-1.5 list-disc space-y-1 pl-4">
-                      <li>
-                        <strong>Easiest:</strong> open an elevated PowerShell in the unzipped{" "}
-                        <code className="text-[11px]">print-agent-dotnet</code> folder and run:
-                        <p className="mt-1 font-mono text-[11px]">
-                          .\scripts\configure-sumatra.ps1
-                        </p>
-                        That downloads or copies Sumatra into{" "}
-                        <code className="text-[11px]">tools\SumatraPDF\</code> next to the agent and restarts the
-                        service.
-                      </li>
-                      <li>
-                        If Sumatra is already installed elsewhere, run:
-                        <p className="mt-1 font-mono text-[11px]">
-                          .\scripts\configure-sumatra.ps1 -SkipDownload
-                        </p>
-                        Or manually copy <code className="text-[11px]">SumatraPDF.exe</code> into that{" "}
-                        <code className="text-[11px]">tools\SumatraPDF\</code> path (create the folder if missing).
-                        <p className="mt-1.5">
-                          Usual install locations (copy from whichever exists on the till PC):
-                        </p>
-                        <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[11px]">
-                          <li>C:\Program Files\SumatraPDF\SumatraPDF.exe</li>
-                          <li>C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe</li>
-                          <li>
-                            C:\Users\&lt;your Windows user&gt;\AppData\Local\SumatraPDF\SumatraPDF.exe
-                          </li>
-                        </ul>
-                        <p className="mt-1">
-                          Portable zip: extract the zip and copy <code className="text-[11px]">SumatraPDF.exe</code>{" "}
-                          from the folder you unzipped. If unsure, search the PC for{" "}
-                          <code className="text-[11px]">SumatraPDF.exe</code> in File Explorer.
-                        </p>
-                      </li>
-                    </ul>
-                  </li>
-                  <li>
                     Click <strong>Check health</strong> below on the till PC — the response should include{" "}
-                    <code className="text-[11px]">&quot;sumatra_available&quot;: true</code>. Or open{" "}
+                    <code className="text-[11px]">&quot;sumatra_available&quot;: true</code> and{" "}
+                    <code className="text-[11px]">&quot;version&quot;: &quot;0.3.2&quot;</code> (or newer). Or open{" "}
                     <ExternalDownloadLink href={printAgentHealthUrl(agentForm)}>
                       {printAgentHealthUrl(agentForm)}
                     </ExternalDownloadLink>{" "}
                     in a browser on that same PC.
                   </li>
                   <li>
-                    Pick preferred printer → <strong>Test print</strong> → <strong>Save settings</strong>.
+                    Back here: choose the preferred printer → <strong>Test connection</strong> →{" "}
+                    <strong>Save</strong>.
                   </li>
                 </ol>
+                <p className="mt-2 text-[11px] text-slate-600">
+                  If health still shows Sumatra missing (rare offline/firewall tills), re-run{" "}
+                  <code className="text-[11px]">BUILD-AND-INSTALL.bat</code>, or as Administrator:{" "}
+                  <code className="text-[11px]">.\scripts\configure-sumatra.ps1</code>.
+                </p>
                 <p>
                   Full notes are in <code className="text-[11px]">BUILD.md</code> inside the zip. The agent
                   listens on <code className="text-[11px]">http://127.0.0.1:9247</code>.

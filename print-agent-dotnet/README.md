@@ -7,7 +7,7 @@ Runs as a **Windows service** and renders with **wkhtmltopdf** (works in the bac
 - **Thermal (80mm)** — POS receipts (`job_type: receipt`)
 - **A4** — HR payslips, cash advances, leave forms, invoices (`payroll_receipt`, `cash_advance`, `leave_application`, …)
 
-Agent **0.3.1+** picks paper size from `job_type` (previously all jobs were forced to 80mm, which distorted HR A4 layouts).
+Agent **0.3.1+** picks paper size from `job_type`. Agent **0.3.2+** bundles Sumatra during publish/install (no separate copy step).
 
 ## For till / office staff
 

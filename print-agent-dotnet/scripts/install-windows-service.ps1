@@ -137,7 +137,23 @@ $installedExe = Join-Path $InstallDir "Centrix.PrintAgent.exe"
 
 Ensure-WkhtmlTopdf -TargetInstallDir $InstallDir | Out-Null
 
+# Prefer Sumatra already shipped in publish\tools; otherwise copy/download into InstallDir.
 $sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipSumatraDownload
+if (-not $sumatraPath -or -not (Test-Path $sumatraPath)) {
+    Write-Host ""
+    Write-Host "ERROR: SumatraPDF is required and was not installed into:" -ForegroundColor Red
+    Write-Host "  $InstallDir\tools\SumatraPDF\SumatraPDF.exe" -ForegroundColor Red
+    Write-Host "Fix network/firewall, or place SumatraPDF.exe there, then re-run install." -ForegroundColor Red
+    exit 1
+}
+
+# Always use the bundled path under Program Files (service-safe).
+$bundledSumatra = Join-Path $InstallDir "tools\SumatraPDF\SumatraPDF.exe"
+if ((Test-Path $sumatraPath) -and ($sumatraPath -ne $bundledSumatra)) {
+    $sumatraPath = Copy-SumatraToBundle -SourceExe $sumatraPath -TargetInstallDir $InstallDir
+}
+$sumatraPath = $bundledSumatra
+
 $wkhtmlPath = Join-Path $InstallDir "tools\wkhtmltopdf\bin\wkhtmltopdf.exe"
 if (-not (Test-Path $wkhtmlPath)) {
     $wkhtmlPath = Find-WkhtmlTopdfSystemBin
@@ -183,9 +199,8 @@ Start-Service -Name $ServiceName
 Write-Host ""
 Write-Host "Centrix Print Agent installed and started as a Windows service." -ForegroundColor Green
 Write-Host "Health check: http://127.0.0.1:9247/v1/health"
-if (-not $sumatraPath) {
-    Write-Host "SumatraPDF is missing. Run scripts\configure-sumatra.ps1 as Administrator." -ForegroundColor Yellow
-} else {
-    Write-Host ("SumatraPDF: {0}" -f $sumatraPath)
+Write-Host ("SumatraPDF: {0}" -f $sumatraPath) -ForegroundColor Green
+if (-not $wkhtmlPath -or -not (Test-Path $wkhtmlPath)) {
+    Write-Host "wkhtmltopdf is missing — install it once, then re-run this script (or set WKHTMLTOPDF_PATH)." -ForegroundColor Yellow
 }
 Write-Host "In Centrix: Administration -> Local printing -> Centrix Print Agent -> Test connection -> Save."

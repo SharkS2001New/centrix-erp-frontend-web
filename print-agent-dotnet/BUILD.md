@@ -19,25 +19,17 @@ The installer **does not download wkhtmltopdf** by default. Install it once your
 **wkhtmltopdf (one-time, for receipt rendering):**  
 https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
 
-**SumatraPDF (silent PDF to printer):** must end up next to the Print Agent:
+**SumatraPDF (silent PDF → printer):** bundled automatically by publish / BUILD-AND-INSTALL into:
 
 `C:\Program Files\Centrix\PrintAgent\tools\SumatraPDF\SumatraPDF.exe`
 
-`BUILD-AND-INSTALL.bat` / `configure-sumatra.ps1` copy it there. If you installed Sumatra separately, run as Administrator:
+You should **not** need a separate copy step. Install fails if Sumatra cannot be downloaded or found. Fallback only:
 
 ```powershell
-.\scripts\configure-sumatra.ps1 -SkipDownload
+.\scripts\configure-sumatra.ps1
 ```
 
-Or manually copy `SumatraPDF.exe` into that `tools\SumatraPDF\` folder.
-
-**Usual install locations** (copy from whichever exists on the till PC):
-
-- `C:\Program Files\SumatraPDF\SumatraPDF.exe`
-- `C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe`
-- `C:\Users\<your Windows user>\AppData\Local\SumatraPDF\SumatraPDF.exe`
-
-Portable zip: extract and copy `SumatraPDF.exe` from the folder you unzipped. If unsure, search the PC for `SumatraPDF.exe` in File Explorer.
+Agent **0.3.2+** also auto-copies Sumatra from Program Files / user AppData into `tools\` when found.
 
 If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
 
@@ -73,10 +65,8 @@ cd path\to\print-agent-dotnet
 
 ## After SUCCESS
 
-1. Open http://127.0.0.1:9247/v1/health — you should see JSON  
-2. Centrix → Local printing → Centrix Print Agent → **Test connection** → Save  
-3. Optional: install SumatraPDF for silent thermal printing  
-   https://www.sumatrapdfreader.org/download-free-pdf-viewer
+1. Open http://127.0.0.1:9247/v1/health — you should see JSON with `"sumatra_available": true` and version `0.3.2+`
+2. Centrix → Local printing → Centrix Print Agent → **Test connection** → Save
 
 ---
 

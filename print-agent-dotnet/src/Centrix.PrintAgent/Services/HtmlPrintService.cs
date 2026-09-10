@@ -233,7 +233,7 @@ public sealed class HtmlPrintService
     {
         var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
-                "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 -SkipDownload as Administrator (copies Sumatra into the Print Agent folder).");
+                "SumatraPDF is required to print from the Windows service. Re-run BUILD-AND-INSTALL.bat as Administrator (bundles Sumatra automatically), or place SumatraPDF.exe under tools\\SumatraPDF next to the agent.");
 
         var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm, thermal);
         var args = string.IsNullOrWhiteSpace(printerName)
@@ -252,40 +252,23 @@ public sealed class HtmlPrintService
         }
     }
 
-    private static string? FindEdgeExecutable()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe"),
-        };
-
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
-    private static string? FindChromeExecutable()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
-        };
-
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
     private static string? FindSumatraExecutable()
     {
         var env = Environment.GetEnvironmentVariable("SUMATRA_PATH");
         if (!string.IsNullOrWhiteSpace(env) && File.Exists(env))
         {
-            return env;
+            return TryBundleSumatraBesideAgent(env) ?? env;
         }
 
         var baseDir = AppContext.BaseDirectory;
+        var bundled = Path.Combine(baseDir, "tools", "SumatraPDF", "SumatraPDF.exe");
+        if (File.Exists(bundled))
+        {
+            return bundled;
+        }
+
         var candidates = new List<string>
         {
-            Path.Combine(baseDir, "tools", "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SumatraPDF", "SumatraPDF.exe"),
@@ -315,11 +298,63 @@ public sealed class HtmlPrintService
         {
             if (File.Exists(candidate))
             {
-                return candidate;
+                return TryBundleSumatraBesideAgent(candidate) ?? candidate;
             }
         }
 
         return FindOnPath("SumatraPDF.exe");
+    }
+
+    /// <summary>
+    /// Copy Sumatra into Program Files\...\tools so the Windows service keeps a stable path
+    /// without a separate configure-sumatra step after install.
+    /// </summary>
+    private static string? TryBundleSumatraBesideAgent(string sourceExe)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sourceExe) || !File.Exists(sourceExe))
+            {
+                return null;
+            }
+
+            var baseDir = AppContext.BaseDirectory;
+            var target = Path.Combine(baseDir, "tools", "SumatraPDF", "SumatraPDF.exe");
+            if (string.Equals(Path.GetFullPath(sourceExe), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+            {
+                return target;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(sourceExe, target, overwrite: true);
+            return File.Exists(target) ? target : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? FindEdgeExecutable()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static string? FindChromeExecutable()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static string? FindOnPath(string fileName)

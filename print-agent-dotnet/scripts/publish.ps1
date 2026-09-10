@@ -5,6 +5,8 @@ $project = Join-Path $root "src\Centrix.PrintAgent\Centrix.PrintAgent.csproj"
 $publishDir = Join-Path $root "publish"
 $zipPath = Join-Path $root "publish\CentrixPrintAgent-win-x64.zip"
 
+. (Join-Path $PSScriptRoot "sumatra-setup.ps1")
+
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: 'dotnet' was not found." -ForegroundColor Red
     Write-Host "Install .NET 8 SDK from https://dotnet.microsoft.com/download/dotnet/8.0"
@@ -39,21 +41,56 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
+# Bundle Sumatra into publish so install / ready zip work offline (no second configure step).
+Write-Host ""
+Write-Host "Bundling SumatraPDF into publish\tools\SumatraPDF ..." -ForegroundColor Cyan
+$sumatra = Ensure-SumatraPdf -TargetInstallDir $publishDir
+if (-not $sumatra -or -not (Test-Path $sumatra)) {
+    Write-Host "ERROR: SumatraPDF could not be bundled into the publish folder." -ForegroundColor Red
+    Write-Host "Check network access to sumatrapdfreader.org, or place SumatraPDF.exe at:" -ForegroundColor Red
+    Write-Host "  $publishDir\tools\SumatraPDF\SumatraPDF.exe"
+    exit 1
+}
+
+# Install helpers next to the exe (ready-zip consumers run these without the source tree).
+$scriptsOut = Join-Path $publishDir "scripts"
+New-Item -ItemType Directory -Force -Path $scriptsOut | Out-Null
+@(
+    "install-windows-service.ps1",
+    "uninstall-windows-service.ps1",
+    "configure-sumatra.ps1",
+    "sumatra-setup.ps1"
+) | ForEach-Object {
+    $src = Join-Path $root "scripts\$_"
+    if (Test-Path $src) {
+        Copy-Item $src $scriptsOut -Force
+    }
+}
+Copy-Item (Join-Path $root "BUILD-AND-INSTALL.bat") $publishDir -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $root "scripts\install-windows-service.ps1") $publishDir -Force
+
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
 }
 
-# Zip exe + deps, but exclude recreating a nested zip of itself
-$zipItems = Get-ChildItem -Path $publishDir -File | Where-Object { $_.Extension -ne ".zip" }
-Compress-Archive -Path ($zipItems.FullName) -DestinationPath $zipPath -Force
-
-# Also copy install scripts into publish for the ready zip consumers
-Copy-Item (Join-Path $root "scripts\install-windows-service.ps1") $publishDir -Force
-Copy-Item (Join-Path $root "scripts\uninstall-windows-service.ps1") $publishDir -Force
+# Include tools\ (Sumatra) and scripts\, not only top-level files.
+$zipStaging = Join-Path $env:TEMP ("CentrixPrintAgent-zip-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $zipStaging | Out-Null
+try {
+    Get-ChildItem -Path $publishDir -Force | Where-Object {
+        $_.Name -ne "CentrixPrintAgent-win-x64.zip"
+    } | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $zipStaging $_.Name) -Recurse -Force
+    }
+    Compress-Archive -Path (Join-Path $zipStaging "*") -DestinationPath $zipPath -Force
+} finally {
+    Remove-Item -Path $zipStaging -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host ""
 Write-Host "Published:" -ForegroundColor Green
 Write-Host "  $exe"
+Write-Host "  Sumatra: $sumatra"
 Write-Host "  $zipPath"
 Write-Host ""
 Write-Host "Next: run BUILD-AND-INSTALL.bat as Administrator, or:"
