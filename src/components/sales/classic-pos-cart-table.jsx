@@ -144,6 +144,7 @@ function ClassicLineQtyCell({
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
           e.stopPropagation();
           if (e.key === "Enter") {
+            if (e.repeat) return;
             e.preventDefault();
             // Enter already commits — skip the blur commit that would fire next
             // (double swap/qty PATCH raced update_no and left the old SKU on the server).

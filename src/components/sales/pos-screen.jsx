@@ -2734,6 +2734,13 @@ export function PosScreen({ standalone = false }) {
    * can land on qty and auto-add. Ignore qty Enter briefly so Add is a single action.
    */
   const ignoreEntryQtyEnterUntilRef = useRef(0);
+  /**
+   * One-shot: Search keyboard Enter selected the row. Swallow the next qty Enter only
+   * (not a time window — delayed qty mount used to expire 120ms before focus landed).
+   * Cleared on swallow, clear-entry, mouse pick, or timeout if the leak never arrives.
+   */
+  const suppressNextEntryQtyEnterRef = useRef(false);
+  const suppressNextEntryQtyEnterClearTimerRef = useRef(null);
   /** Cancels a pending scheduleFocusEntryQty when Add / clear runs first. */
   const entryQtyFocusGenRef = useRef(0);
   /** Bumps on each restoreOrderForEdit so a late restore-to-cart cannot wipe a newer browse. */
@@ -5215,11 +5222,20 @@ export function PosScreen({ standalone = false }) {
    */
   function notePreviousOrderEditSuccess(kind, message) {
     if (!isPreviousOrderEditSession(cartRef.current)) return Promise.resolve();
+    const wasDirty = Boolean(cartRef.current._editDraftDirty);
     markPreviousOrderDraftDirtyNow();
     const dirty = cartRef.current;
-    const persistPromise = dirty
-      ? persistPreviousOrderLocalDraft(dirty, { immediate: true })
-      : Promise.resolve();
+    // First real edit: queue outbox immediately. Later edits debounce — callers often
+    // already persisted the draft; forcing queue every time double-flushed sync.
+    let persistPromise = Promise.resolve();
+    if (dirty) {
+      if (!wasDirty) {
+        persistPromise = persistPreviousOrderLocalDraft(dirty, { immediate: true });
+      } else {
+        scheduleEditedOrderAutosave();
+        persistPromise = persistPreviousOrderLocalDraft(dirty, { immediate: false });
+      }
+    }
     if (kind === "qty") {
       const msg = message || "Quantity updated successfully";
       notifySuccess(msg);
@@ -5604,16 +5620,38 @@ export function PosScreen({ standalone = false }) {
     });
   }
 
+  function clearSuppressNextEntryQtyEnter() {
+    suppressNextEntryQtyEnterRef.current = false;
+    if (suppressNextEntryQtyEnterClearTimerRef.current != null) {
+      window.clearTimeout(suppressNextEntryQtyEnterClearTimerRef.current);
+      suppressNextEntryQtyEnterClearTimerRef.current = null;
+    }
+  }
+
+  /** Arm one-shot qty Enter swallow after Search keyboard pick (leak past focus handoff). */
+  function armSuppressNextEntryQtyEnter() {
+    suppressNextEntryQtyEnterRef.current = true;
+    if (suppressNextEntryQtyEnterClearTimerRef.current != null) {
+      window.clearTimeout(suppressNextEntryQtyEnterClearTimerRef.current);
+    }
+    // If Search Enter never lands on qty, do not leave the cashier's first Enter dead.
+    suppressNextEntryQtyEnterClearTimerRef.current = window.setTimeout(() => {
+      suppressNextEntryQtyEnterRef.current = false;
+      suppressNextEntryQtyEnterClearTimerRef.current = null;
+    }, 500);
+  }
+
   /** Park keyboard on Classic entry qty after Find/select (Enter adds the line). */
   function scheduleFocusEntryQty(opts = {}) {
     // Cancel any pending "focus Scan after add" so it cannot steal qty focus.
     focusSearchAfterAdd.current = false;
-    // Swallow only the Search Enter that selected the row (key can land on qty).
-    // Classic used to re-arm 450ms on focus — that swallowed the cashier's real
-    // qty Enter and blur left the parked SCAN+QTY row looking hung.
+    // Classic keyboard pick uses suppressNextEntryQtyEnterRef (one-shot). Time window
+    // is only a belt for modern Create Order (Enter leak + Add click).
     const ignoreEnterMs =
-      opts.ignoreEnterMs ?? (classicLayout ? 120 : 450);
-    ignoreEntryQtyEnterUntilRef.current = Date.now() + Math.max(0, ignoreEnterMs);
+      opts.ignoreEnterMs ?? (classicLayout ? 0 : 450);
+    if (ignoreEnterMs > 0) {
+      ignoreEntryQtyEnterUntilRef.current = Date.now() + Math.max(0, ignoreEnterMs);
+    }
     const gen = ++entryQtyFocusGenRef.current;
     const focusQty = () => {
       if (gen !== entryQtyFocusGenRef.current) return false;
@@ -5668,6 +5706,7 @@ export function PosScreen({ standalone = false }) {
       }
     }
     cancelScheduledEntryQtyFocus();
+    clearSuppressNextEntryQtyEnter();
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
@@ -5922,62 +5961,65 @@ export function PosScreen({ standalone = false }) {
       }
       // Keep the prior list visible while this query is in flight. Clearing early when the
       // query lengthens (yab → yabal) blanked the dropdown before index/API responded.
-      /** Offline/index search is already ranked — stamp Available from IndexedDB. */
+      /** Offline/index search is already ranked — paint fast from memory; stock is background. */
       const paintFromOffline = async () => {
         const local = await searchOffline(trimmed, rankOpts.limit);
-        const enrichedRows = local.map((p) => enrichProductForLpo(p, uomMap, vatMap));
-        const missingCodes = [];
-        let stamped = enrichedRows.map((enriched) => {
-          const code = enriched?.product_code;
-          if (!code) return enriched;
-          const fresh = getPosSearchProduct(code);
-          if (fresh && !productStockFieldsMissing(fresh)) {
-            return mergeProductStockFields(enriched, fresh);
-          }
-          missingCodes.push(code);
-          return enriched;
-        });
-        // Memory index can lag the IndexedDB stock overlay — read Available from IDB.
-        if (missingCodes.length) {
-          try {
-            const idbRows = await getPosOfflineProducts(missingCodes);
-            const byCode = new Map(
-              (idbRows ?? [])
-                .filter((row) => row?.product_code)
-                .map((row) => [String(row.product_code), row]),
-            );
-            stamped = stamped.map((row) => {
-              const code = String(row?.product_code ?? "");
-              const idb = byCode.get(code);
-              if (!idb || productStockFieldsMissing(idb)) return row;
-              return mergeProductStockFields(row, idb);
-            });
-            // Keep memory index aligned with IDB Available for the next keystroke.
-            const withStock = [...byCode.values()].filter(
-              (row) => !productStockFieldsMissing(row),
-            );
-            if (withStock.length) upsertPosSearchProducts(withStock);
-          } catch {
-            /* keep memory paint */
-          }
-        }
-        const stillMissing = stamped.some((row) => productStockFieldsMissing(row));
-        if (stillMissing && !(standalone && offlineMode)) {
-          // First Find after warm: wait for IndexedDB stock overlay so Available
-          // is numeric (not "…"). Later searches hit TTL and return immediately.
-          await refreshPosOfflineCatalogStock({
-            force: true,
-            branchId: productBranchParams?.branch_id ?? user?.branch_id ?? null,
-          }).catch(() => {});
-          stamped = stamped.map((row) => {
-            const code = row?.product_code;
-            if (!code || !productStockFieldsMissing(row)) return row;
+        const stamped = sellableSearchResults(
+          local.map((p) => {
+            const enriched = enrichProductForLpo(p, uomMap, vatMap);
+            const code = enriched?.product_code;
+            if (!code) return enriched;
+            // Sync stamp from in-memory catalog only — no await on IDB/network here.
             const fresh = getPosSearchProduct(code);
-            if (!fresh || productStockFieldsMissing(fresh)) return row;
-            return mergeProductStockFields(row, fresh);
-          });
+            if (!fresh || productStockFieldsMissing(fresh)) return enriched;
+            return mergeProductStockFields(enriched, fresh);
+          }),
+        ).slice(0, rankOpts.limit);
+
+        // Background: pull Available from IndexedDB / stock overlay and rematerialize Find.
+        // Never await this on the typing path — that made every keystroke wait on stock APIs.
+        const missingCodes = stamped
+          .filter((row) => productStockFieldsMissing(row))
+          .map((row) => row?.product_code)
+          .filter(Boolean);
+        if (missingCodes.length && !(standalone && offlineMode)) {
+          const paintSeq = seq;
+          void (async () => {
+            try {
+              const idbRows = await getPosOfflineProducts(missingCodes);
+              const byCode = new Map(
+                (idbRows ?? [])
+                  .filter((row) => row?.product_code && !productStockFieldsMissing(row))
+                  .map((row) => [String(row.product_code), row]),
+              );
+              if (byCode.size) {
+                upsertPosSearchProducts([...byCode.values()]);
+                if (paintSeq === searchSeq.current) {
+                  setSearchResults((prev) => {
+                    if (!prev?.length) return prev;
+                    let changed = false;
+                    const next = prev.map((row) => {
+                      const idb = byCode.get(String(row?.product_code ?? ""));
+                      if (!idb) return row;
+                      const merged = mergeProductStockFields(row, idb);
+                      if (merged !== row) changed = true;
+                      return merged;
+                    });
+                    return changed ? next : prev;
+                  });
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+            // TTL-gated — do not force on every keystroke.
+            void refreshPosOfflineCatalogStock({
+              force: false,
+              branchId: productBranchParams?.branch_id ?? user?.branch_id ?? null,
+            }).catch(() => {});
+          })();
         }
-        return sellableSearchResults(stamped).slice(0, rankOpts.limit);
+        return stamped;
       };
 
       const finishRetailPackages = (list) => {
@@ -7867,7 +7909,7 @@ export function PosScreen({ standalone = false }) {
     setSwapDraft(next);
   }
 
-  async function pickProduct(product) {
+  async function pickProduct(product, opts = {}) {
     if (!product) return;
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
       setStatusMessage("Cancel payment first, then add items.");
@@ -8084,6 +8126,12 @@ export function PosScreen({ standalone = false }) {
     searchSeq.current += 1;
     setSearching(false);
     setSearchResults([]);
+    // Keyboard Find Enter can land on qty after focus handoff (past any short ms window).
+    if (opts.fromKeyboard) {
+      armSuppressNextEntryQtyEnter();
+    } else {
+      clearSuppressNextEntryQtyEnter();
+    }
     scheduleFocusEntryQty();
 
     // Soft-refresh package in background; update price only if still parked.
@@ -8561,10 +8609,11 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct?.product_code || replacingLineId) return;
-    // pickProduct already scheduled focus + ignore window. Calling again resets
-    // focus generation and can let a late Search Enter land after ignore expires.
+    // pickProduct already scheduled focus. Re-running resets focus generation and
+    // used to re-arm a time window after the Search Enter ignore had expired.
+    if (suppressNextEntryQtyEnterRef.current) return;
     if (Date.now() < ignoreEntryQtyEnterUntilRef.current) return;
-    scheduleFocusEntryQty();
+    scheduleFocusEntryQty({ ignoreEnterMs: classicLayout ? 0 : 450 });
   }, [selectedProduct?.product_code, replacingLineId]);
 
   useEffect(() => {
@@ -9142,6 +9191,7 @@ export function PosScreen({ standalone = false }) {
       at: addDedupeAt,
     };
     // Past validation — block twin Enter/Add for this commit only.
+    clearSuppressNextEntryQtyEnter();
     ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
 
     // Enter→add must not await network. Seed embed sync; soft-refresh in background.
@@ -9454,10 +9504,9 @@ export function PosScreen({ standalone = false }) {
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
       return;
     }
-    // Search Enter → park → focus qty: the same Enter must not also add the line.
-    if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
-      // Swallow once (leaked Search Enter). Clear ignore and keep qty focused so
-      // the next deliberate Enter adds — classic table blurs after every Enter.
+    // Search keyboard Enter → park → focus qty: swallow that same Enter once.
+    if (suppressNextEntryQtyEnterRef.current) {
+      clearSuppressNextEntryQtyEnter();
       ignoreEntryQtyEnterUntilRef.current = 0;
       if (classicLayout) {
         window.requestAnimationFrame(() => {
@@ -9467,6 +9516,11 @@ export function PosScreen({ standalone = false }) {
           el.select?.();
         });
       }
+      return;
+    }
+    // Modern Create Order: short time window for Enter leak + Add click.
+    if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
+      ignoreEntryQtyEnterUntilRef.current = 0;
       return;
     }
     const parkedProduct = selectedProductRef.current ?? selectedProduct;
@@ -16166,12 +16220,19 @@ export function PosScreen({ standalone = false }) {
       }
     } catch (e) {
       restoreActive = false;
+      // A newer ←/→/FIND owns the till — do not apply fallback or revert onto it.
+      if (restoreGen !== previousOrderRestoreGenRef.current) {
+        return;
+      }
       // API failed (drop / timeout) — still open from the on-device mirror when present.
       try {
         const localFallback = await findLocalSyncedSaleForOfflineEdit({
           saleId,
           ticketNum: saleSnapshot?.pos_order_num ?? null,
         });
+        if (restoreGen !== previousOrderRestoreGenRef.current) {
+          return;
+        }
         if (localFallback?.items?.length) {
           const applied = applyLocalPreviousOrderEditCart(localFallback);
           if (applied) {
@@ -16206,10 +16267,24 @@ export function PosScreen({ standalone = false }) {
       } catch {
         /* keep original error */
       }
-      if (paintedOptimistic) {
+      if (restoreGen !== previousOrderRestoreGenRef.current) {
+        return;
+      }
+      // Keep soft-load edits if the cashier already changed lines on this receipt.
+      const liveNow = cartRef.current;
+      const keepSoftEdits =
+        paintedOptimistic &&
+        liveNow &&
+        Number(liveNow.superseded_sale_id) === Number(saleId) &&
+        (editedOrderHasLocalDraftChanges(liveNow) ||
+          previousOrderEditContentSignatureFromCart(liveNow) !==
+            previousOrderEditContentSignatureFromCart(previousCartSnapshot));
+      if (paintedOptimistic && !keepSoftEdits) {
         cartRef.current = previousCartSnapshot;
         setCart(previousCartSnapshot);
         setEditSourceSale(previousEditSource);
+      } else if (keepSoftEdits) {
+        markPreviousOrderDraftDirtyNow();
       }
       let message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
@@ -16244,6 +16319,13 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       if (standalone) notifyError(message);
     } finally {
+      // Only the latest restore may clear busy/loading.
+      if (restoreGen !== previousOrderRestoreGenRef.current) {
+        if (handoffToReplaceRetry && loadingBegun && !unlockedEarly) {
+          endPreviousOrderLoading();
+        }
+        return;
+      }
       if (handoffToReplaceRetry) {
         // Balance this attempt's begin*; the retry owns busy/loading.
         if (loadingBegun && !unlockedEarly) endPreviousOrderLoading();

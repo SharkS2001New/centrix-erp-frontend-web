@@ -365,9 +365,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [draftQuery]);
 
-  function pick(product) {
+  function pick(product, opts = {}) {
     if (picksLocked) return;
-    onSelect?.(product);
+    onSelect?.(product, { fromKeyboard: Boolean(opts.fromKeyboard) });
     setUserDismissed(true);
     setOpen(false);
     setHighlight(-1);
@@ -387,7 +387,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (!visibleResults.length) return;
     const index = highlight >= 0 ? highlight : 0;
     const product = visibleResults[index];
-    if (product) pick(product);
+    if (product) pick(product, { fromKeyboard: true });
   }
 
   function moveHighlight(delta) {

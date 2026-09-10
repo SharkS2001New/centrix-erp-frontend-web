@@ -278,12 +278,8 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
     const forceStock =
       existing.length > 0 &&
       existing.slice(0, 40).some((row) => productStockFieldsMissing(row));
-    if (forceStock) {
-      // Await so Find does not paint "…" while overlay is still in flight.
-      await refreshPosOfflineCatalogStock({ force: true }).catch(() => {});
-    } else {
-      void refreshPosOfflineCatalogStock({ force: false }).catch(() => {});
-    }
+    // Never block catalog warm / Find on stock overlay — run in background.
+    void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
     return { skipped: true, count: existing.length, scopeKey };
   }
 
