@@ -23,6 +23,24 @@ import {
   validateOffDayForm,
 } from "@/components/hr/hr-off-day-assignment-fields";
 
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** First and last calendar day of the month containing `date` (YYYY-MM-DD or Date). */
+function monthDateBounds(date = new Date()) {
+  const base = typeof date === "string" ? new Date(`${date}T12:00:00`) : date;
+  const y = base.getFullYear();
+  const m = base.getMonth();
+  return {
+    from: formatLocalDate(new Date(y, m, 1)),
+    to: formatLocalDate(new Date(y, m + 1, 0)),
+  };
+}
+
 function deductFromLabel(value) {
   if (value === "annual") return "Annual leave";
   if (value === "sick") return "Sick leave";
@@ -52,15 +70,6 @@ function approvalBadgeClass(status) {
   if (status === "approved") return "bg-emerald-50 text-emerald-800 border-emerald-200";
   if (status === "rejected") return "bg-red-50 text-red-800 border-red-200";
   return "bg-amber-50 text-amber-900 border-amber-200";
-}
-
-function BalancePill({ label, available }) {
-  return (
-    <span className="inline-flex flex-col rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-semibold text-slate-900">{available}</span>
-    </span>
-  );
 }
 
 async function searchEmployeeOptions(query) {
@@ -189,16 +198,14 @@ export function EmployeeLeaveHub({
 
   const [tab, setTab] = useState("leave");
   const [pendingLeaves, setPendingLeaves] = useState([]);
-  const [onLeaveDate, setOnLeaveDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [onLeaveRecords, setOnLeaveRecords] = useState([]);
-  const [loadingOnLeave, setLoadingOnLeave] = useState(true);
+  const initialMonth = useMemo(() => monthDateBounds(), []);
+  const [leaveFromDate, setLeaveFromDate] = useState(initialMonth.from);
+  const [leaveToDate, setLeaveToDate] = useState(initialMonth.to);
+  const [monthLeaveRecords, setMonthLeaveRecords] = useState([]);
+  const [loadingMonthLeaves, setLoadingMonthLeaves] = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [selectedEmployeeLabel, setSelectedEmployeeLabel] = useState("");
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [employeeBalances, setEmployeeBalances] = useState(null);
-  const [employeeLeaves, setEmployeeLeaves] = useState([]);
   const [loadingPending, setLoadingPending] = useState(true);
-  const [loadingEmployee, setLoadingEmployee] = useState(false);
   const [error, setError] = useState(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -231,86 +238,53 @@ export function EmployeeLeaveHub({
     }
   }, []);
 
-  const loadOnLeave = useCallback(async (date) => {
-    const onDate = date || new Date().toISOString().slice(0, 10);
-    setLoadingOnLeave(true);
+  const loadMonthLeaves = useCallback(async (fromDate, toDate) => {
+    const from = fromDate || monthDateBounds().from;
+    const to = toDate || monthDateBounds().to;
+    setLoadingMonthLeaves(true);
     try {
       const res = await apiRequest("/employee-leave-days", {
         searchParams: {
-          on_date: onDate,
+          from_date: from,
+          to_date: to,
           approval_status: "approved",
           assignment_kind: "leave",
           per_page: 200,
         },
       });
-      setOnLeaveRecords(res.data ?? []);
+      setMonthLeaveRecords(res.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employees on leave");
-      setOnLeaveRecords([]);
+      setError(e instanceof Error ? e.message : "Failed to load leave for this period");
+      setMonthLeaveRecords([]);
     } finally {
-      setLoadingOnLeave(false);
+      setLoadingMonthLeaves(false);
     }
   }, []);
 
-  const loadEmployeeData = useCallback(async (employeeId) => {
-    if (!employeeId) {
-      setSelectedEmployee(null);
-      setEmployeeBalances(null);
-      setEmployeeLeaves([]);
-      return;
-    }
-    setLoadingEmployee(true);
-    setError(null);
-    try {
-      const [employee, balanceRes, leaveRes] = await Promise.all([
-        apiRequest(`/employees/${employeeId}`, { searchParams: { fields: "lean" } }),
-        apiRequest(`/employees/${employeeId}/leave-balances`),
-        apiRequest("/employee-leave-days", {
-          searchParams: { employee_id: employeeId, per_page: 100 },
-        }),
-      ]);
-      setSelectedEmployee(employee);
-      setSelectedEmployeeLabel(composeEmployeeDisplayName(employee));
-      setEmployeeBalances(balanceRes.balances ?? null);
-      setEmployeeLeaves(leaveRes.data ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employee leave data");
-      setSelectedEmployee(null);
-      setEmployeeBalances(null);
-      setEmployeeLeaves([]);
-    } finally {
-      setLoadingEmployee(false);
-    }
-  }, []);
+  const filteredMonthLeaves = useMemo(() => {
+    if (!selectedEmployeeId) return monthLeaveRecords;
+    return monthLeaveRecords.filter(
+      (row) => String(row.employee_id) === String(selectedEmployeeId),
+    );
+  }, [monthLeaveRecords, selectedEmployeeId]);
 
   useEffect(() => {
     void loadPending();
   }, [loadPending, refreshKey]);
 
   useEffect(() => {
-    void loadOnLeave(onLeaveDate);
-  }, [loadOnLeave, onLeaveDate, refreshKey]);
+    void loadMonthLeaves(leaveFromDate, leaveToDate);
+  }, [loadMonthLeaves, leaveFromDate, leaveToDate, refreshKey]);
 
   useEffect(() => {
-    void loadEmployeeData(selectedEmployeeId);
-  }, [loadEmployeeData, selectedEmployeeId, refreshKey]);
-
-  useEffect(() => {
-    if (!highlightLeaveDayId || loadingEmployee) return;
+    if (!highlightLeaveDayId || loadingMonthLeaves) return;
     const targetId = Number(highlightLeaveDayId);
     if (!Number.isFinite(targetId) || targetId <= 0) return;
 
     const record =
-      onLeaveRecords.find((row) => Number(row.id) === targetId) ??
-      employeeLeaves.find((row) => Number(row.id) === targetId) ??
+      monthLeaveRecords.find((row) => Number(row.id) === targetId) ??
       pendingLeaves.find((row) => Number(row.id) === targetId);
-    if (!record?.employee_id) return;
-
-    if (String(record.employee_id) !== String(selectedEmployeeId) && record.approval_status !== "pending") {
-      // Keep on-leave list in view; still sync employee for history panel when linked.
-      setSelectedEmployeeId(String(record.employee_id));
-      return;
-    }
+    if (!record) return;
 
     setTab(record.approval_status === "pending" ? "pending" : "leave");
     setHighlightedLeaveDayId(targetId);
@@ -322,7 +296,7 @@ export function EmployeeLeaveHub({
       window.clearTimeout(timer);
       window.clearTimeout(clearTimer);
     };
-  }, [employeeLeaves, highlightLeaveDayId, loadingEmployee, loadingOnLeave, onLeaveRecords, pendingLeaves, selectedEmployeeId]);
+  }, [highlightLeaveDayId, loadingMonthLeaves, monthLeaveRecords, pendingLeaves]);
 
   function emptyCreateForm() {
     return buildOffDayEmptyForm({
@@ -379,20 +353,13 @@ export function EmployeeLeaveHub({
       }
       setDrawerOpen(false);
       setEditing(null);
-      if (!selectedEmployeeId && body.employee_id) {
-        setSelectedEmployeeId(String(body.employee_id));
-      }
       if (!wasEditing) {
-        setForm(buildOffDayEmptyForm({
-          presetEmployeeId: String(body.employee_id ?? selectedEmployeeId),
-          presetEmployeeLabel: selectedEmployeeLabel,
-        }));
+        setForm(emptyCreateForm());
         setTab("pending");
       }
       await Promise.all([
         loadPending(),
-        loadOnLeave(onLeaveDate),
-        loadEmployeeData(selectedEmployeeId || String(body.employee_id)),
+        loadMonthLeaves(leaveFromDate, leaveToDate),
       ]);
       onSaved?.();
     } catch (err) {
@@ -409,7 +376,7 @@ export function EmployeeLeaveHub({
     if (!ok) return;
     try {
       await apiRequest(`/employee-leave-days/${row.id}`, { method: "DELETE" });
-      await Promise.all([loadPending(), loadOnLeave(onLeaveDate), loadEmployeeData(selectedEmployeeId)]);
+      await Promise.all([loadPending(), loadMonthLeaves(leaveFromDate, leaveToDate)]);
       onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -420,11 +387,7 @@ export function EmployeeLeaveHub({
     try {
       await apiRequest(`/employee-leave-days/${row.id}/approve`, { method: "POST" });
       notifySuccess("Leave application approved.");
-      await Promise.all([
-        loadPending(),
-        loadOnLeave(onLeaveDate),
-        loadEmployeeData(String(row.employee_id)),
-      ]);
+      await Promise.all([loadPending(), loadMonthLeaves(leaveFromDate, leaveToDate)]);
       onSaved?.();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Approval failed");
@@ -435,11 +398,7 @@ export function EmployeeLeaveHub({
     try {
       await apiRequest(`/employee-leave-days/${row.id}/reject`, { method: "POST" });
       notifySuccess("Leave application rejected.");
-      await Promise.all([
-        loadPending(),
-        loadOnLeave(onLeaveDate),
-        loadEmployeeData(String(row.employee_id)),
-      ]);
+      await Promise.all([loadPending(), loadMonthLeaves(leaveFromDate, leaveToDate)]);
       onSaved?.();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Rejection failed");
@@ -449,16 +408,25 @@ export function EmployeeLeaveHub({
   async function printLeave(row) {
     try {
       const leave = row.employee ? row : await apiRequest(`/employee-leave-days/${row.id}`);
-      const employee = leave.employee ?? selectedEmployee;
       await printLeaveApplication({
         leave,
-        employee,
+        employee: leave.employee ?? null,
         organization: capabilities?.organization ?? null,
         generalSettings: capabilities?.module_settings?.general ?? null,
         printedByUser: user,
       });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Print failed");
+    }
+  }
+
+  function onLeaveFromDateChange(value) {
+    setLeaveFromDate(value);
+    if (!value) return;
+    const bounds = monthDateBounds(value);
+    // Keep the range on a calendar month when From moves to another month.
+    if (leaveToDate < bounds.from || leaveToDate > bounds.to) {
+      setLeaveToDate(bounds.to);
     }
   }
 
@@ -480,7 +448,7 @@ export function EmployeeLeaveHub({
 
   const employeeSearch = (
     <div className="max-w-xl">
-      <label className="mb-1 block text-sm font-medium text-slate-700">Search employee</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">Search employee (optional)</label>
       <PosSearchableSelect
         value={selectedEmployeeId}
         onChange={(value, option) => {
@@ -489,7 +457,7 @@ export function EmployeeLeaveHub({
         }}
         options={selectedEmployeeOptions}
         loadOptions={loadEmployeeOptions}
-        placeholder="Search by name, code, or payroll #…"
+        placeholder="Filter by employee…"
         searchPlaceholder="Type to search employees…"
         idleSearchLabel="Type at least one character to search"
         emptyLabel="No matching employees"
@@ -524,12 +492,14 @@ export function EmployeeLeaveHub({
 
       {tab === "leave" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-[15px] font-medium text-slate-900">Employees on leave</h2>
+          <h2 className="text-[15px] font-medium text-slate-900">Leave this period</h2>
           <p className="mt-1 mb-4 text-sm text-slate-500">
-            Approved leave covering the selected date. Pick another date to see who was or will be away.
+            Approved leave for all employees in the selected range (including upcoming dates). Use search
+            only to narrow the list.
           </p>
           <HrFilterToolbar>
-            <HrDateField label="On leave date" value={onLeaveDate} onChange={setOnLeaveDate} />
+            <HrDateField label="From" value={leaveFromDate} onChange={onLeaveFromDateChange} />
+            <HrDateField label="To" value={leaveToDate} onChange={setLeaveToDate} />
             <div className="min-w-[16rem] max-w-xl">{employeeSearch}</div>
             <PrimaryButton type="button" onClick={openCreateTab}>
               Create leave
@@ -537,11 +507,11 @@ export function EmployeeLeaveHub({
           </HrFilterToolbar>
 
           <div className="mt-4">
-            {loadingOnLeave ? (
-              <p className="text-sm text-slate-500">Loading employees on leave…</p>
+            {loadingMonthLeaves ? (
+              <p className="text-sm text-slate-500">Loading leave…</p>
             ) : (
               <LeaveRecordsTable
-                records={onLeaveRecords}
+                records={filteredMonthLeaves}
                 canApproveLeave={canApproveLeave}
                 onApprove={approve}
                 onReject={reject}
@@ -551,47 +521,14 @@ export function EmployeeLeaveHub({
                 highlightedLeaveDayId={highlightedLeaveDayId}
                 leaveRowRefs={leaveRowRefs}
                 showEmployee
-                emptyLabel={`No approved leave on ${formatShortDate(onLeaveDate)}.`}
+                emptyLabel={
+                  selectedEmployeeId
+                    ? `No approved leave for this employee between ${formatShortDate(leaveFromDate)} and ${formatShortDate(leaveToDate)}.`
+                    : `No approved leave between ${formatShortDate(leaveFromDate)} and ${formatShortDate(leaveToDate)}.`
+                }
               />
             )}
           </div>
-
-          {loadingEmployee ? (
-            <p className="mt-6 text-sm text-slate-500">Loading employee leave data…</p>
-          ) : selectedEmployee ? (
-            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-slate-900">{composeEmployeeDisplayName(selectedEmployee)}</p>
-                  <p className="text-xs text-slate-500">{selectedEmployee.employee_code ?? "—"}</p>
-                </div>
-                {employeeBalances ? (
-                  <div className="flex flex-wrap gap-2">
-                    <BalancePill label="Annual left" available={employeeBalances.annual?.available ?? 0} />
-                    <BalancePill label="Sick left" available={employeeBalances.sick?.available ?? 0} />
-                    <BalancePill label="Off days left" available={employeeBalances.off_days?.available ?? 0} />
-                  </div>
-                ) : null}
-              </div>
-              <div className="mt-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Leave history
-                </p>
-                <LeaveRecordsTable
-                  records={employeeLeaves}
-                  canApproveLeave={canApproveLeave}
-                  onApprove={approve}
-                  onReject={reject}
-                  onEdit={openEdit}
-                  onDelete={remove}
-                  onPrint={printLeave}
-                  highlightedLeaveDayId={highlightedLeaveDayId}
-                  leaveRowRefs={leaveRowRefs}
-                  emptyLabel="No leave applications for this employee yet."
-                />
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : null}
 

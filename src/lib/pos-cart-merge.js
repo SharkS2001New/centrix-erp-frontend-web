@@ -24,7 +24,8 @@ export function findMergeableCartLine(
   return (
     cartLines.find((line) => {
       if (excludedId != null && String(line.id) === excludedId) return false;
-      if (line.product_code !== productCode) return false;
+      if (line.product_code == null || productCode == null) return false;
+      if (String(line.product_code) !== String(productCode)) return false;
       const lineOnWholesaleRetail = Number(line.on_wholesale_retail) === 1;
       if (lineOnWholesaleRetail !== nextOnWholesaleRetail) return false;
       return true;

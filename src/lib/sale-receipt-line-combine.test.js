@@ -20,6 +20,23 @@ describe("findMergeableCartLine combine setting", () => {
     ).toBe(lines[0]);
   });
 
+  it("merges when product_code types differ (number vs string)", () => {
+    const numericLines = [
+      { id: 1, product_code: 1003, on_wholesale_retail: 0, quantity: 2 },
+    ];
+    expect(
+      findMergeableCartLine(
+        numericLines,
+        "1003",
+        computed,
+        {},
+        true,
+        null,
+        { product_code: "1003" },
+      ),
+    ).toBe(numericLines[0]);
+  });
+
   it("skips merge when combineIdenticalLines is false", () => {
     expect(
       findMergeableCartLine(

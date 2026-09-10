@@ -20,8 +20,8 @@ export function HrLeaveScreen() {
       title="Leave"
       subtitle={
         isAdmin
-          ? "See who is on leave, create applications, and approve pending requests."
-          : "See who is on leave and submit applications for administrator approval."
+          ? "Browse approved leave by month, create applications, and approve pending requests."
+          : "Browse approved leave by month and submit applications for administrator approval."
       }
       action={
         <HrPageActions>

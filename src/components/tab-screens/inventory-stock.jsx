@@ -82,10 +82,16 @@ const STOCK_EXPORT_COLUMN_DEFS = {
 
 function enrichStockRow(row) {
   const factor = Number(row.conversion_factor ?? 1);
+  const safeFactor = factor > 0 ? factor : 1;
   const uomName = row.uom_name ?? "units";
   const uomObj = {
     full_name: uomName,
-    conversion_factor: factor,
+    conversion_factor: safeFactor,
+    small_packaging_label: row.small_packaging_label,
+    middle_packaging_label: row.middle_packaging_label,
+    middle_factor: row.middle_factor,
+    uom_type: row.uom_type,
+    uses_small_packaging: row.uses_small_packaging,
   };
   const cost = Number(row.effective_unit_cost ?? row.last_cost_price ?? 0);
   const sell = Number(row.wholesale_price ?? 0);
@@ -95,15 +101,10 @@ function enrichStockRow(row) {
   const shopQty = Number(row.available_shop_quantity ?? shopOnHand);
   const storeQty = Number(row.available_store_quantity ?? storeOnHand);
   const totalBase = shopQty + storeQty;
-  const convertedShopQty = factor > 0 ? shopOnHand / factor : shopOnHand;
-  const convertedStoreQty = factor > 0 ? storeOnHand / factor : storeOnHand;
-  // Stock value = physical on-hand × cost (valuation ignores reservations).
-  const shopValue = row.shop_cost_value != null
-    ? Number(row.shop_cost_value)
-    : Math.round(convertedShopQty * cost * 100) / 100;
-  const storeValue = row.store_cost_value != null
-    ? Number(row.store_cost_value)
-    : Math.round(convertedStoreQty * cost * 100) / 100;
+  // Stock value must match the qty columns (available): pack qty × cost price.
+  // Never trust on-hand cost when available is lower (reserved stock).
+  const shopValue = Math.round((shopQty / safeFactor) * Math.max(0, cost) * 100) / 100;
+  const storeValue = Math.round((storeQty / safeFactor) * Math.max(0, cost) * 100) / 100;
   const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
   const reorderPoint = Number(row.reorder_point ?? 0);
 
@@ -117,11 +118,11 @@ function enrichStockRow(row) {
     total_base_units: totalBase,
     reorder_point: reorderPoint,
     product_alert: row.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),
-    shopDisplay: baseToDisplayQty(shopQty, factor),
-    storeDisplay: baseToDisplayQty(storeQty, factor),
-    reorderDisplay: baseToDisplayQty(reorderPoint, factor),
+    shopDisplay: baseToDisplayQty(shopQty, safeFactor),
+    storeDisplay: baseToDisplayQty(storeQty, safeFactor),
+    reorderDisplay: baseToDisplayQty(reorderPoint, safeFactor),
     uomName,
-    factor,
+    factor: safeFactor,
     uom: uomObj,
     cost,
     shopValue,
@@ -573,7 +574,7 @@ export function InventoryStockScreen() {
   return (
     <InventoryPageShell
       title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-      subtitle="Quantities in packaging hierarchy — stock value is (qty ÷ conversion factor) × cost price"
+      subtitle="Quantities in packaging hierarchy — stock cost is available pack qty × cost price"
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button

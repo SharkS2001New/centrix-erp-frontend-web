@@ -2663,6 +2663,11 @@ export function PosScreen({ standalone = false }) {
   /** Drop duplicate qty Enter / blur commits for the same parked SKU within one beat. */
   const lastEntryQtyCommitRef = useRef({ key: null, at: 0 });
   /**
+   * Drop twin Add commits (Search Enter leak → qty Enter + Add click, or Enter + blur)
+   * that merge into qty 2 via combineIdenticalLines.
+   */
+  const lastAddLineDedupeRef = useRef({ key: null, at: 0 });
+  /**
    * After search pick, focus moves to qty — the same Enter key that selected the row
    * can land on qty and auto-add. Ignore qty Enter briefly so Add is a single action.
    */
@@ -5442,10 +5447,9 @@ export function PosScreen({ standalone = false }) {
     // Cancel any pending "focus Scan after add" so it cannot steal qty focus.
     focusSearchAfterAdd.current = false;
     // Search Enter that selected the row must not also fire qty Enter → add.
-    // Classic: short window (leak only). Modern/backoffice: longer — Add is the
-    // primary control and a leaked Enter + Add click twin-added the line.
-    const defaultIgnore = classicLayout ? 180 : 450;
-    const ignoreEnterMs = opts.ignoreEnterMs ?? defaultIgnore;
+    // Keep a long enough window for delayed qty mount (classic entryReady) and for
+    // modern Create Order where leaked Enter + Add click twin-added the line.
+    const ignoreEnterMs = opts.ignoreEnterMs ?? 450;
     ignoreEntryQtyEnterUntilRef.current = Date.now() + Math.max(0, ignoreEnterMs);
     const gen = ++entryQtyFocusGenRef.current;
     const focusQty = () => {
@@ -5454,7 +5458,16 @@ export function PosScreen({ standalone = false }) {
       if (!el || el.disabled) return false;
       el.focus({ preventScroll: true });
       el.select?.();
-      return typeof document !== "undefined" && document.activeElement === el;
+      const focused =
+        typeof document !== "undefined" && document.activeElement === el;
+      if (focused) {
+        // Re-arm after focus lands — Search Enter can arrive after delayed mount.
+        ignoreEntryQtyEnterUntilRef.current = Math.max(
+          ignoreEntryQtyEnterUntilRef.current,
+          Date.now() + Math.max(0, ignoreEnterMs),
+        );
+      }
+      return focused;
     };
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -5477,7 +5490,9 @@ export function PosScreen({ standalone = false }) {
     setSelectedProductCode(null);
     setSelectedProduct(null);
     selectedProductRef.current = null;
-    lastEntryQtyCommitRef.current = { key: null, at: 0 };
+    // Keep lastAddLineDedupeRef / lastEntryQtyCommitRef — unlockUiEarly clears the
+    // entry while the save is still finishing; wiping those guards let Enter+Add
+    // (or Enter+blur) POST a duplicate from stale selectedProduct state.
     resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
@@ -7335,69 +7350,58 @@ export function PosScreen({ standalone = false }) {
     if (!assertRouteReadyForAdd()) return;
     armCartLineMutationGate();
 
-    setProductByCode((prev) => {
-      const existing = prev[product.product_code];
-      if (!existing) return { ...prev, [product.product_code]: product };
-      const merged = mergeProductStockFields(existing, product);
-      return merged === existing ? prev : { ...prev, [product.product_code]: merged };
-    });
-    productByCodeRef.current[product.product_code] = mergeProductStockFields(
-      productByCodeRef.current[product.product_code],
-      product,
-    ) ?? product;
-
-    // Retail markup comes from retail_package_settings for this item — load before pricing.
-    await ensureRetailPackageForProduct(product);
-    const computed = applyComputedPrice(product, "1", 0);
-    if (computed.baseQty <= 0) {
-      releaseCartLineMutationGate();
-      return;
-    }
-
-    // Always serialize adds — same-mode lines merge when combine is on.
-    // Opposite mode (Sugar bag + Sugar kg) must append a new row — never convert
-    // the sole existing SKU. Mode convert only happens on that line's qty Enter + F12.
-    const runQuickAdd = async () => {
-      const mergeTarget = findMergeableCartLine(
-        cartRef.current?.lines,
-        product.product_code,
-        computed,
-        posSalesConfig,
-        sellWholesaleRef.current,
-        null,
+    try {
+      setProductByCode((prev) => {
+        const existing = prev[product.product_code];
+        if (!existing) return { ...prev, [product.product_code]: product };
+        const merged = mergeProductStockFields(existing, product);
+        return merged === existing ? prev : { ...prev, [product.product_code]: merged };
+      });
+      productByCodeRef.current[product.product_code] = mergeProductStockFields(
+        productByCodeRef.current[product.product_code],
         product,
-        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-      );
-      try {
-        const ok = await commitCartLine({
-          product,
+      ) ?? product;
+
+      // Retail markup comes from retail_package_settings for this item — load before pricing.
+      await ensureRetailPackageForProduct(product);
+      const computed = applyComputedPrice(product, "1", 0);
+      if (computed.baseQty <= 0) {
+        return;
+      }
+
+      // Always serialize adds — same-mode lines merge when combine is on.
+      // Opposite mode (Sugar bag + Sugar kg) must append a new row — never convert
+      // the sole existing SKU. Mode convert only happens on that line's qty Enter + F12.
+      const runQuickAdd = async () => {
+        const mergeTarget = findMergeableCartLine(
+          cartRef.current?.lines,
+          product.product_code,
           computed,
-          incrementBaseQty: computed.baseQty,
-          mergeTarget,
-          successMessage: null,
-          unlockUiEarly: true,
-        });
-        if (ok) {
-          if (mergeTarget) {
-            const retailPkg = getRetailPackage(product.product_code);
-            const fromQtyLabel = formatPosEntryQtyLabel(
-              posEntryQtyFromCartLine(mergeTarget, product, retailPkg),
-              posCartLineEntryUnitLabel(mergeTarget, product, retailPkg),
-            );
-            const mergedBase =
-              Number(mergeTarget.quantity ?? 0) + Number(computed.baseQty ?? 0);
-            const mergedEntry = posEntryQtyFromCartLine(
-              {
-                ...mergeTarget,
-                quantity: mergedBase,
-                on_wholesale_retail: computed.isRetail ? 1 : 0,
-              },
-              product,
-              retailPkg,
-            );
-            const toQtyLabel = formatPosEntryQtyLabel(
-              mergedEntry,
-              posCartLineEntryUnitLabel(
+          posSalesConfig,
+          sellWholesaleRef.current,
+          null,
+          product,
+          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
+        );
+        try {
+          const ok = await commitCartLine({
+            product,
+            computed,
+            incrementBaseQty: computed.baseQty,
+            mergeTarget,
+            successMessage: null,
+            unlockUiEarly: true,
+          });
+          if (ok) {
+            if (mergeTarget) {
+              const retailPkg = getRetailPackage(product.product_code);
+              const fromQtyLabel = formatPosEntryQtyLabel(
+                posEntryQtyFromCartLine(mergeTarget, product, retailPkg),
+                posCartLineEntryUnitLabel(mergeTarget, product, retailPkg),
+              );
+              const mergedBase =
+                Number(mergeTarget.quantity ?? 0) + Number(computed.baseQty ?? 0);
+              const mergedEntry = posEntryQtyFromCartLine(
                 {
                   ...mergeTarget,
                   quantity: mergedBase,
@@ -7405,42 +7409,54 @@ export function PosScreen({ standalone = false }) {
                 },
                 product,
                 retailPkg,
-              ) || computed.uomLabel,
-            );
-            const qtyMsg = formatQuantityUpdatedSuccess(fromQtyLabel, toQtyLabel);
-            if (isPreviousOrderEditSession(cartRef.current)) {
-              notePreviousOrderEditSuccess("qty", qtyMsg);
+              );
+              const toQtyLabel = formatPosEntryQtyLabel(
+                mergedEntry,
+                posCartLineEntryUnitLabel(
+                  {
+                    ...mergeTarget,
+                    quantity: mergedBase,
+                    on_wholesale_retail: computed.isRetail ? 1 : 0,
+                  },
+                  product,
+                  retailPkg,
+                ) || computed.uomLabel,
+              );
+              const qtyMsg = formatQuantityUpdatedSuccess(fromQtyLabel, toQtyLabel);
+              if (isPreviousOrderEditSession(cartRef.current)) {
+                notePreviousOrderEditSuccess("qty", qtyMsg);
+              } else {
+                announceQuantityUpdated(fromQtyLabel, toQtyLabel);
+              }
             } else {
-              announceQuantityUpdated(fromQtyLabel, toQtyLabel);
+              notePreviousOrderEditSuccess("add");
             }
-          } else {
-            notePreviousOrderEditSuccess("add");
           }
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
         }
-      } catch (e) {
-        setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
+      };
+      const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+      if (classicLayout || localDraftEdit || standalone) {
+        await runWithLineSaveOverlay(
+          async () => {
+            await enqueueCartCommit(runQuickAdd);
+          },
+          {
+            message: "Adding item…",
+            detail: "Saving this line — please wait until it finishes.",
+            // Fast adds stay silent; only show the blocker when the save is slow.
+            showAfterMs: 400,
+          },
+        );
+        return;
       }
-    };
-    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (classicLayout || localDraftEdit || standalone) {
-      void runWithLineSaveOverlay(
-        async () => {
-          await enqueueCartCommit(runQuickAdd);
-        },
-        {
-          message: "Adding item…",
-          detail: "Saving this line — please wait until it finishes.",
-          // Fast adds stay silent; only show the blocker when the save is slow.
-          showAfterMs: 400,
-        },
-      ).catch((e) => {
-        setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
-      });
-      return;
-    }
-    void enqueueCartCommit(runQuickAdd).finally(() => {
+      await enqueueCartCommit(runQuickAdd);
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
+    } finally {
       releaseCartLineMutationGate();
-    });
+    }
   }
 
   async function handleBarcodeEnter(code) {
@@ -8287,6 +8303,9 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct?.product_code || replacingLineId) return;
+    // pickProduct already scheduled focus + ignore window. Calling again resets
+    // focus generation and can let a late Search Enter land after ignore expires.
+    if (Date.now() < ignoreEntryQtyEnterUntilRef.current) return;
     scheduleFocusEntryQty();
   }, [selectedProduct?.product_code, replacingLineId]);
 
@@ -8801,7 +8820,9 @@ export function PosScreen({ standalone = false }) {
     if (swapDraftRef.current?.product) {
       void completeSwapFromDraft(
         lineFormQtyCommitRef.current ?? swapDraftRef.current.quantity ?? lineForm.quantity,
-      );
+      ).finally(() => {
+        releaseCartLineMutationGate();
+      });
       return;
     }
     if (replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
@@ -8809,12 +8830,14 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
       return;
     }
-    if (!lineForm.product_code || !(selectedProductRef.current ?? selectedProduct)) {
+    // Prefer the parked ref only — after unlockUiEarly, selectedProduct state can
+    // still hold the old product for a frame while the ref is already null.
+    const productForAdd = selectedProductRef.current;
+    if (!productForAdd?.product_code) {
       releaseCartLineMutationGate();
       setStatusMessage("Select a product first.");
       return;
     }
-    const productForAdd = selectedProductRef.current ?? selectedProduct;
     if (!assertRouteReadyForAdd()) {
       releaseCartLineMutationGate();
       return;
@@ -8832,6 +8855,23 @@ export function PosScreen({ standalone = false }) {
     ) {
       setLineForm((p) => ({ ...p, quantity: String(entryQtyRaw) }));
     }
+
+    // Qty Enter (from Search Enter leak) + Add click both call this within one beat;
+    // without this, combineIdenticalLines merges two +1 commits into qty 2.
+    const addDedupeKey = `${String(productForAdd.product_code ?? "")}|${String(entryQtyRaw ?? "")}|${String(editingLineId ?? "")}`;
+    const addDedupeAt = Date.now();
+    if (
+      lastAddLineDedupeRef.current.key === addDedupeKey &&
+      addDedupeAt - lastAddLineDedupeRef.current.at < 750
+    ) {
+      releaseCartLineMutationGate();
+      return;
+    }
+    lastAddLineDedupeRef.current = { key: addDedupeKey, at: addDedupeAt };
+    lastEntryQtyCommitRef.current = {
+      key: `${productForAdd.product_code}|${String(entryQtyRaw ?? "")}`,
+      at: addDedupeAt,
+    };
 
     // Enter→add must not await network. Seed embed sync; soft-refresh in background.
     if (
@@ -8873,6 +8913,7 @@ export function PosScreen({ standalone = false }) {
 
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(productForAdd.product_code)) {
+        lastAddLineDedupeRef.current = { key: null, at: 0 };
         releaseCartLineMutationGate();
         setStatusMessage("Choose a different product to replace this line.");
         return;
@@ -8925,6 +8966,7 @@ export function PosScreen({ standalone = false }) {
       override,
     );
     if (computed.baseQty <= 0) {
+      lastAddLineDedupeRef.current = { key: null, at: 0 };
       releaseCartLineMutationGate();
       setStatusMessage("Enter a valid quantity.");
       return;
@@ -8970,7 +9012,10 @@ export function PosScreen({ standalone = false }) {
         successMessage: null,
         unlockUiEarly: true,
       });
-      if (!ok) return;
+      if (!ok) {
+        lastAddLineDedupeRef.current = { key: null, at: 0 };
+        return;
+      }
       const retailPkg = getRetailPackage(productForAdd.product_code);
       const toQtyLabel = formatPosEntryQtyLabel(
         String(entryQtyRaw),
@@ -9034,6 +9079,7 @@ export function PosScreen({ standalone = false }) {
       }
       focusScanAfterItemAdded();
     } catch (e) {
+      lastAddLineDedupeRef.current = { key: null, at: 0 };
       setStatusMessage(
         e instanceof ApiError
           ? e.message
@@ -9058,15 +9104,20 @@ export function PosScreen({ standalone = false }) {
         // Fast POS / Create Order adds stay silent; overlay only if save is slow.
         showAfterMs: 400,
       },
-    ).catch((e) => {
-      setStatusMessage(
-        e instanceof ApiError
-          ? e.message
-          : wasEditing
-            ? "Failed to update line"
-            : "Failed to add line",
-      );
-    });
+    )
+      .catch((e) => {
+        lastAddLineDedupeRef.current = { key: null, at: 0 };
+        setStatusMessage(
+          e instanceof ApiError
+            ? e.message
+            : wasEditing
+              ? "Failed to update line"
+              : "Failed to add line",
+        );
+      })
+      .finally(() => {
+        releaseCartLineMutationGate();
+      });
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
@@ -9096,7 +9147,7 @@ export function PosScreen({ standalone = false }) {
     if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
       return;
     }
-    const parkedProduct = selectedProductRef.current ?? selectedProduct;
+    const parkedProduct = selectedProductRef.current;
     if (!parkedProduct) {
       setStatusMessage("Select a product first, then press Enter on qty.");
       return;
@@ -11203,8 +11254,13 @@ export function PosScreen({ standalone = false }) {
   async function handleRefresh() {
     setBusy(true);
     try {
+      // Unlock Scan/Add if a prior cart save left the mutation gate armed.
+      cartCommitGenerationRef.current += 1;
+      cartLineMutationGateRef.current = false;
       // Refresh only clears the in-progress search/line entry and reloads product prices.
       clearLineEntry();
+      clearSwapChrome();
+      swapCommitInFlightRef.current = false;
       const codes = [
         ...new Set((cart?.lines ?? []).map((l) => l.product_code).filter(Boolean)),
       ];
@@ -11241,6 +11297,7 @@ export function PosScreen({ standalone = false }) {
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Refresh failed");
     } finally {
+      cartLineMutationGateRef.current = false;
       setBusy(false);
     }
   }

@@ -7,7 +7,6 @@ import {
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
-  DOCUMENT_PRINT_EDGE_BODY_BOTTOM,
   DOCUMENT_PRINT_EDGE_BODY_SIDES,
   DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
@@ -20,6 +19,9 @@ import {
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 
 const PRINT_VARIANT = "payroll_receipt";
+
+/** Usable A4 height after top/side padding — keep form + footer on one sheet. */
+const PAGE_INNER_MIN_HEIGHT = "277mm";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -97,19 +99,29 @@ function docStyles(generalSettings = null) {
   const font = orgPrintFontFamilyFromSettings(generalSettings, PRINT_VARIANT);
 
   return `
-    @page { size: A4; margin: 0; }
+    @page { size: 210mm 297mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { height: auto; }
     body {
       font-family: ${font};
       color: #000;
       margin: 0;
-      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM};
+      /* Footer is in-flow inside .sheet — do not reserve a second page with large bottom padding. */
+      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_TOP};
       font-size: ${px(10)};
       line-height: 1.25;
       ${orgPrintInkStyles(generalSettings, PRINT_VARIANT)}
     }
-    .sheet { page-break-inside: avoid; break-inside: avoid; }
+    .sheet {
+      min-height: ${PAGE_INNER_MIN_HEIGHT};
+      display: flex;
+      flex-direction: column;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+    .sheet-body { flex: 1 1 auto; }
     .org-header {
       text-align: center;
       margin-bottom: 4px !important;
@@ -179,11 +191,40 @@ function docStyles(generalSettings = null) {
       min-height: 1.1em;
     }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: PRINT_VARIANT })}
+    /* Keep footer with the form on page 1 (override global position:fixed). */
+    body.leave-application .doc-print-edge-footer,
+    body.leave-application.has-doc-print-edge-footer .doc-print-edge-footer {
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      margin-top: 10px !important;
+      padding: 6px 0 0 !important;
+      flex: 0 0 auto;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-before: avoid;
+      break-before: avoid;
+    }
     @media print {
+      body.leave-application.has-doc-print-edge-footer {
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_TOP} !important;
+      }
       body { font-size: ${px(10, true)}; }
       .org-name { font-size: ${px(13, true)}; }
       .header .doc-title { font-size: ${px(12, true)}; }
-      .sheet { page-break-inside: avoid; break-inside: avoid; }
+      .sheet {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+      }
+      body.leave-application .doc-print-edge-footer,
+      body.leave-application.has-doc-print-edge-footer .doc-print-edge-footer {
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+      }
     }
   `;
 }
@@ -212,8 +253,9 @@ export async function printLeaveApplication({
   <title>Leave application ${escapeHtml(leave?.id ?? "")}</title>
   <style>${docStyles(generalSettings)}</style>
 </head>
-<body class="has-doc-print-edge-footer">
+<body class="has-doc-print-edge-footer leave-application">
   <div class="sheet">
+    <div class="sheet-body">
   ${buildReportOrgHeaderHtml(branding)}
   <div class="header">
     <h1 class="doc-title">${isOffDay ? "Off day application" : "Leave application"}</h1>
@@ -259,8 +301,9 @@ export async function printLeaveApplication({
       <div class="line">Received by / date</div>
     </div>
   </div>
-  </div>
+    </div>
   ${buildDocumentPrintEdgeFooterHtml({ printedBy })}
+  </div>
 </body>
 </html>`;
 

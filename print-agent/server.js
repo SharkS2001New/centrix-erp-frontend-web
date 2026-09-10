@@ -117,7 +117,8 @@ async function printPdf(pdfPath, printerName, thermal = true) {
       process.env.SUMATRA_PATH ??
       "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe";
     try {
-      const printSettings = thermal ? "noscale" : "noscale,paper=A4";
+      // Force portrait on A4 — without it Sumatra keeps the printer DEVMODE orientation.
+      const printSettings = thermal ? "noscale" : "noscale,paper=A4,portrait";
       const args = printer
         ? ["-print-to", printer, "-print-settings", printSettings, "-silent", pdfPath]
         : ["-print-to-default", "-print-settings", printSettings, "-silent", pdfPath];

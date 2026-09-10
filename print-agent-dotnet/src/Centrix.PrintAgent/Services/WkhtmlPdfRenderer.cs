@@ -222,7 +222,8 @@ internal static class WkhtmlPdfRenderer
     {
         if (!thermal)
         {
-            return "noscale,paper=A4";
+            // Force portrait — without it Sumatra keeps the printer DEVMODE orientation.
+            return "noscale,paper=A4,portrait";
         }
 
         return $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";
