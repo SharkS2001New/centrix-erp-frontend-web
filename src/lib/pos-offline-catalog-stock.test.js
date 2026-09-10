@@ -46,12 +46,14 @@ vi.mock("@/lib/stock-cache", async () => {
 
 vi.mock("@/lib/pos-product-search-index", () => ({
   hasPosSearchCatalog: () => false,
+  samplePosSearchCatalogProducts: () => [],
   setPosSearchCatalog: vi.fn(),
   upsertPosSearchProducts: vi.fn(),
   serializePosSearchIndex: () => null,
   hydratePosSearchIndex: vi.fn(),
   isPosSearchIndexSnapshotValid: () => false,
   searchPosCatalogIndexAsync: vi.fn(async () => []),
+  resetPosSearchCatalog: vi.fn(),
 }));
 
 describe("refreshPosOfflineCatalogStock", () => {

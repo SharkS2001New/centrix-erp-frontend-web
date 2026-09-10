@@ -164,6 +164,27 @@ export function mergeProductStockFields(existing, incoming) {
   return next;
 }
 
+/** True when Available overlay fields are already equal (skip Find re-render). */
+export function productStockOverlaySame(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const aMissing = productStockFieldsMissing(a);
+  const bMissing = productStockFieldsMissing(b);
+  if (aMissing || bMissing) return aMissing && bMissing;
+  const keys = [
+    "stock_available_shop",
+    "stock_available_store",
+    "stock_on_hand_shop",
+    "stock_on_hand_store",
+    "stock_in_shop",
+    "stock_in_store",
+  ];
+  for (const key of keys) {
+    if (Number(a[key] ?? NaN) !== Number(b[key] ?? NaN)) return false;
+  }
+  return true;
+}
+
 /**
  * Fetch live branch stock for one product (Create Order / POS offline catalog).
  * @param {object} product

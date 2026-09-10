@@ -252,4 +252,23 @@ describe("pos-product-search-index", () => {
     expect(sameSearchResultList(a, b)).toBe(true);
     expect(sameSearchResultList(a, c)).toBe(false);
   });
+
+  it("sameSearchResultList treats stock overlay changes as different", () => {
+    const missing = [{ product_code: "1" }];
+    const stocked = [
+      {
+        product_code: "1",
+        branch_stock: { shop_available: 4, store_available: 0, shop_quantity: 4, store_quantity: 0 },
+      },
+    ];
+    const stockedNext = [
+      {
+        product_code: "1",
+        branch_stock: { shop_available: 9, store_available: 0, shop_quantity: 9, store_quantity: 0 },
+      },
+    ];
+    expect(sameSearchResultList(missing, stocked)).toBe(false);
+    expect(sameSearchResultList(stocked, stockedNext)).toBe(false);
+    expect(sameSearchResultList(stocked, [...stocked])).toBe(true);
+  });
 });

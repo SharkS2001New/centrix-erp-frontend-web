@@ -489,6 +489,47 @@ describe("applyCartMutationResponse", () => {
     expect(excluded.size).toBe(2);
   });
 
+  it("delete→add does not resurrect removed SKU or twin the new line (product exclusion)", () => {
+    // Add 1,2,3 → delete 2 (B) while still pending-* → add Kamande.
+    // TemporaryCart POST still returns B under a reminted CLU; product exclusion
+    // must drop B and absorb optimistic Kamande (no twin).
+    const excludedProductCodes = new Set(["B"]);
+    const prev = {
+      id: 10,
+      update_no: 4,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        { id: 3, update_code: "CLU-C", product_code: "C", on_wholesale_retail: 0, amount: 40 },
+        {
+          id: "pending-k",
+          product_code: "KAMANDE",
+          on_wholesale_retail: 0,
+          quantity: 1,
+          amount: 140,
+          _optimistic: true,
+        },
+      ],
+    };
+    const afterKamandePost = {
+      id: 10,
+      update_no: 5,
+      lines: [
+        { id: 1, update_code: "CLU-A", product_code: "A", on_wholesale_retail: 0, amount: 100 },
+        // Deleted B reminted — must stay excluded by product_code.
+        { id: 99, update_code: "CLU-B2", product_code: "B", on_wholesale_retail: 0, amount: 50 },
+        { id: 3, update_code: "CLU-C", product_code: "C", on_wholesale_retail: 0, amount: 40 },
+        { id: 40, update_code: "CLU-K", product_code: "KAMANDE", on_wholesale_retail: 1, amount: 140 },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, afterKamandePost, {
+      excludedProductCodes,
+    });
+    expect(next.lines.map((l) => l.product_code).sort()).toEqual(["A", "C", "KAMANDE"]);
+    expect(next.lines.filter((l) => l.product_code === "KAMANDE")).toHaveLength(1);
+    // Product exclusion must survive (stale POSTs) until intentional re-add / F8.
+    expect(excludedProductCodes.has("B")).toBe(true);
+  });
+
   it("keeps delete exclusions after the server cart no longer has the deleted line", () => {
     const excluded = new Set(["CLU-B", "2"]);
     const prev = {

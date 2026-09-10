@@ -682,9 +682,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     routeMarkupPerUnit,
                     enablePosCashRounding,
                   );
-                  const stockMode = posSalesConfig
-                    ? productCartStockDisplayMode(product, posSalesConfig, sellWholesale)
-                    : null;
                   return (
                     <tr
                       key={product.product_code}
@@ -718,9 +715,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       </td>
                       {showShopStock ? (
                         <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
-                          {stockMode === "store"
-                            ? "—"
-                            : formatStockQty(productStockAtLocation(product, "shop"), product)}
+                          {formatStockQty(productStockAtLocation(product, "shop"), product)}
                         </td>
                       ) : null}
                       {showStoreStock ? (

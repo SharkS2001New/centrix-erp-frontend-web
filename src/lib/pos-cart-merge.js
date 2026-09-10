@@ -521,19 +521,14 @@ function pruneConfirmedLineDeleteRefs(_excludedRefSet, _serverLines) {
   // Intentionally a no-op — see registerPendingLineDeletes in pos-screen.
 }
 
-/** Keep swapped-away codes until the server no longer returns that SKU. */
-function pruneConfirmedSwappedAwayProductCodes(excludedProductCodes, serverLines) {
-  if (!excludedProductCodes?.size) return;
-  const stillOnServer = new Set(
-    (serverLines ?? [])
-      .map((line) => String(line?.product_code ?? "").trim())
-      .filter(Boolean),
-  );
-  for (const code of [...excludedProductCodes]) {
-    if (!stillOnServer.has(code)) {
-      excludedProductCodes.delete(code);
-    }
-  }
+/** Keep swapped-away / deleted SKUs until workspace replace or intentional re-add.
+ *
+ * Do not clear when TemporaryCart briefly omits the SKU — an older in-flight POST
+ * can still return it and would resurrect the row (delete→add Kamande twin).
+ * Intentional re-add calls clearSwappedAwayProductCode; F8 / fresh clears the set.
+ */
+function pruneConfirmedSwappedAwayProductCodes(_excludedProductCodes, _serverLines) {
+  // Intentionally a no-op — same rationale as pruneConfirmedLineDeleteRefs.
 }
 
 function restorePrevCartLineFields(line, prev) {

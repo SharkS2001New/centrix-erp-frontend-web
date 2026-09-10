@@ -3,6 +3,7 @@ import {
   productStockFieldsMissing,
   hydrateProductLiveStock,
   mergeProductStockFields,
+  productStockOverlaySame,
 } from "@/lib/stock-cache";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 
@@ -91,5 +92,23 @@ describe("hydrateProductLiveStock", () => {
     );
     expect(merged.stock_available_shop).toBe(17);
     expect(merged.branch_stock.shop_available).toBe(17);
+  });
+
+  it("productStockOverlaySame compares Available fields", () => {
+    const a = {
+      product_code: "1",
+      stock_available_shop: 4,
+      stock_available_store: 0,
+      stock_on_hand_shop: 4,
+      stock_on_hand_store: 0,
+      stock_in_shop: 4,
+      stock_in_store: 0,
+      branch_stock: { shop_available: 4 },
+    };
+    const b = { ...a };
+    const c = { ...a, stock_available_shop: 9, stock_on_hand_shop: 9, stock_in_shop: 9 };
+    expect(productStockOverlaySame(a, b)).toBe(true);
+    expect(productStockOverlaySame(a, c)).toBe(false);
+    expect(productStockOverlaySame({ product_code: "1" }, a)).toBe(false);
   });
 });

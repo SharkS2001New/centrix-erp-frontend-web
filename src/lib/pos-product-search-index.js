@@ -331,6 +331,22 @@ export function getPosSearchProduct(productCode) {
 }
 
 /**
+ * Sample products from the in-memory catalog (for stock-overlay health checks).
+ * @param {number} [limit=40]
+ * @returns {object[]}
+ */
+export function samplePosSearchCatalogProducts(limit = 40) {
+  if (!catalogByCode?.size) return [];
+  const out = [];
+  const max = Math.max(1, Number(limit) || 40);
+  for (const product of catalogByCode.values()) {
+    out.push(product);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
  * Resolve candidate entry indexes via exact / prefix postings.
  * @param {string} query
  * @returns {number[]|null} null = full scan
@@ -528,8 +544,21 @@ export async function searchPosCatalogIndexAsync(query, options = {}) {
   });
 }
 
+/** Compact Available signature so Find can paint after IndexedDB stock overlay. */
+function searchResultStockSig(row) {
+  const bs = row?.branch_stock;
+  if (!bs || typeof bs !== "object") return "missing";
+  return [
+    bs.shop_available ?? "",
+    bs.store_available ?? "",
+    bs.shop_quantity ?? "",
+    bs.store_quantity ?? "",
+  ].join(":");
+}
+
 /**
- * True when two result lists show the same products in the same order (skip React redraw).
+ * True when two result lists show the same products, order, and Available qty.
+ * Codes-only equality used to keep "…" forever after a background stock overlay.
  * @param {object[]} prev
  * @param {object[]} next
  */
@@ -539,6 +568,7 @@ export function sameSearchResultList(prev, next) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
     if (String(a[i]?.product_code ?? "") !== String(b[i]?.product_code ?? "")) return false;
+    if (searchResultStockSig(a[i]) !== searchResultStockSig(b[i])) return false;
   }
   return true;
 }

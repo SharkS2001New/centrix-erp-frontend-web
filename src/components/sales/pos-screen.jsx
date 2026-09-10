@@ -59,8 +59,8 @@ import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-u
 import {
   hydrateProductLiveStock,
   mergeProductStockFields,
-  mergeProductWithLiveStock,
   productStockFieldsMissing,
+  productStockOverlaySame,
 } from "@/lib/stock-cache";
 import {
   computeProductLineDiscount,
@@ -298,9 +298,10 @@ import {
   warmPosOfflineCatalog,
   refreshPosOfflineCatalogPricing,
   refreshPosOfflineCatalogStock,
+  subscribePosOfflineCatalogStock,
   POS_OFFLINE_STOCK_TTL_MS,
 } from "@/lib/pos-offline";
-import { isSellableCatalogProduct, stripProductStockFields } from "@/lib/catalog-cache";
+import { isSellableCatalogProduct } from "@/lib/catalog-cache";
 import {
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
@@ -3712,11 +3713,34 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   // Keep IndexedDB Available qty fresh (every ~60s + on tab focus). Search stays local.
+  // Any overlay tick (this interval, offline-support hook, or warm) rematerializes Find.
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     if (offlineMode) return undefined;
     let cancelled = false;
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
+
+    const applyStockToOpenSearch = () => {
+      if (cancelled) return;
+      setSearchResults((prev) => {
+        if (!prev?.length) return prev;
+        let changed = false;
+        const next = prev.map((row) => {
+          const code = row?.product_code;
+          if (!code) return row;
+          const fresh = getPosSearchProduct(code);
+          if (!fresh || productStockFieldsMissing(fresh)) return row;
+          if (productStockOverlaySame(row, fresh)) return row;
+          changed = true;
+          return mergeProductStockFields(row, fresh);
+        });
+        return changed ? next : prev;
+      });
+    };
+
+    const unsub = subscribePosOfflineCatalogStock(() => {
+      applyStockToOpenSearch();
+    });
 
     const tick = (force = false) => {
       if (cancelled) return;
@@ -3733,6 +3757,7 @@ export function PosScreen({ standalone = false }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
+      unsub();
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
@@ -5847,7 +5872,15 @@ export function PosScreen({ standalone = false }) {
       const paintFromOffline = async () => {
         const local = await searchOffline(trimmed, rankOpts.limit);
         return sellableSearchResults(
-          local.map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+          local.map((p) => {
+            const enriched = enrichProductForLpo(p, uomMap, vatMap);
+            const code = enriched?.product_code;
+            if (!code) return enriched;
+            // Stamp Available from the IndexedDB overlay already in memory.
+            const fresh = getPosSearchProduct(code);
+            if (!fresh || productStockFieldsMissing(fresh)) return enriched;
+            return mergeProductStockFields(enriched, fresh);
+          }),
         ).slice(0, rankOpts.limit);
       };
 
@@ -5948,121 +5981,10 @@ export function PosScreen({ standalone = false }) {
           /* fall through to API */
         }
 
-        // Soft stock refresh when local hits exist — do not block select/add.
-        // Never stamp lean /products branch_stock (often all zeros) onto stripped
-        // IndexedDB rows — that painted "0 carton" for every Create Order hit.
-        // Overlay Available from stock-on-hand for this query instead.
-        const localReady = localPaint.length > 0;
-        if (localReady) {
-          const stockBranchId =
-            productBranchParams?.branch_id ?? user?.branch_id ?? null;
-          void refreshPosOfflineCatalogStock({
-            branchId: stockBranchId,
-          }).catch(() => {});
-          void (async () => {
-            try {
-              const [leanRes, stockRes] = await Promise.all([
-                apiRequest("/products", {
-                  searchParams: {
-                    per_page: 40,
-                    q: trimmed,
-                    fields: "lean",
-                    status: "active",
-                    ...productBranchParams,
-                  },
-                  signal: abort.signal,
-                  loading: false,
-                  reportIssues: false,
-                }).catch(() => null),
-                apiRequest("/reports/stock-on-hand", {
-                  searchParams: {
-                    per_page: 100,
-                    q: trimmed,
-                    ...(stockBranchId ? { branch_id: stockBranchId } : {}),
-                  },
-                  signal: abort.signal,
-                  loading: false,
-                  reportIssues: false,
-                }).catch(() => null),
-              ]);
-              if (seq !== searchSeq.current || abort.signal.aborted) return;
-
-              const stockByCode = new Map();
-              const stockRows = Array.isArray(stockRes?.data)
-                ? stockRes.data
-                : Array.isArray(stockRes)
-                  ? stockRes
-                  : [];
-              for (const row of stockRows) {
-                const code = row?.product_code;
-                if (code) stockByCode.set(String(code), row);
-              }
-
-              const leanRemote = sellableSearchResults(
-                (leanRes?.data ?? []).map((p) =>
-                  stripProductStockFields(enrichProductForLpo(p, uomMap, vatMap)),
-                ),
-              );
-              const leanByCode = new Map(
-                leanRemote.map((p) => [String(p.product_code ?? ""), p]),
-              );
-
-              setSearchResults((prev) => {
-                if (!prev?.length || seq !== searchSeq.current) return prev;
-                let changed = false;
-                const next = prev.map((row) => {
-                  const code = String(row.product_code ?? "");
-                  let merged = row;
-                  const lean = leanByCode.get(code);
-                  if (lean) {
-                    const nextRow = mergeProductStockFields(merged, lean);
-                    if (nextRow !== merged) {
-                      merged = nextRow;
-                      changed = true;
-                    }
-                  }
-                  if (stockByCode.size) {
-                    const withStock = mergeProductWithLiveStock(merged, stockByCode);
-                    if (withStock !== merged) {
-                      merged = withStock;
-                      changed = true;
-                    }
-                  }
-                  return merged;
-                });
-                return changed ? next : prev;
-              });
-
-              for (const row of localPaint) {
-                const code = row?.product_code;
-                if (!code) continue;
-                let merged = productByCodeRef.current[code] ?? row;
-                const lean = leanByCode.get(String(code));
-                if (lean) merged = mergeProductStockFields(merged, lean);
-                if (stockByCode.size) {
-                  merged = mergeProductWithLiveStock(merged, stockByCode);
-                }
-                productByCodeRef.current[code] = merged;
-              }
-              try {
-                const mergedRows = localPaint.map((row) => {
-                  const code = String(row?.product_code ?? "");
-                  let merged = row;
-                  const lean = leanByCode.get(code);
-                  if (lean) merged = mergeProductStockFields(merged, lean);
-                  if (stockByCode.size) {
-                    merged = mergeProductWithLiveStock(merged, stockByCode);
-                  }
-                  return merged;
-                });
-                upsertPosSearchProducts(mergedRows.filter(Boolean));
-              } catch {
-                /* best-effort index stock */
-              }
-            } catch {
-              /* keep local paint */
-            }
-          })();
+        // Fast/IndexedDB: Available is only what the background stock overlay
+        // already wrote into IndexedDB. Search does not fetch live stock; the
+        // ~60s/focus overlay updates IDB and rematerializes open Find via subscribe.
+        if (localPaint.length > 0) {
           return;
         }
 
@@ -10395,12 +10317,8 @@ export function PosScreen({ standalone = false }) {
       releaseCartLineMutationGate();
       return;
     }
-    // Use busy (not full blocking) so Delete-key pre-arm does not abort ourselves.
-    if (isCartLineSaveBusy()) {
-      releaseCartLineMutationGate();
-      setStatusMessage("Please wait — finishing the previous cart update first.");
-      return;
-    }
+    // Do NOT abort when a prior unlockUiEarly add is still committing — queue on the
+    // same chain so Delete always runs after TemporaryCart remints CLU ids.
     // Arm before confirm / first await so Delete→Enter cannot sneak an add in.
     armCartLineMutationGate();
 
@@ -10431,38 +10349,23 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
+    // Snapshot before any await — used for product-code exclusion + local nextCart.
+    const cartBeforeDelete = liveCart;
     registerPendingLineDeletes(targets);
+    registerFullyRemovedProductCodes(cartBeforeDelete, targets);
 
     setStatusMessage(null);
     const clearsEditing = targets.some((line) => sameLineId(editingLineId, line.id));
-    const serverCartId = isServerPosCartId(liveCart.id) ? liveCart.id : null;
-    const serverLineRefs = [
-      ...new Set(
-        targets
-          .map((line) => serverPersistedCartLineRef(line))
-          .filter((ref) => ref != null && String(ref).trim() !== "")
-          .map(String),
-      ),
-    ];
-
-    // Build the next cart in memory — paint only after IndexedDB / TemporaryCart delete.
-    const working = cartRef.current ?? liveCart;
-    const nextLines = (working.lines ?? []).filter(
-      (line) => !cartLineMatchesSelection(line, idSet),
-    );
-    let nextCart = withLocalCartMutation(
-      withEditDraftDirty({ ...working, lines: nextLines }),
-    );
     const onlinePreviousOrderDraft =
-      isPreviousOrderEditSession(working) &&
-      isServerPosCartId(working.id) &&
-      !working.offline &&
+      isPreviousOrderEditSession(cartBeforeDelete) &&
+      isServerPosCartId(cartBeforeDelete.id) &&
+      !cartBeforeDelete.offline &&
       !(standalone && offlineMode);
     const persistLocal =
       !onlinePreviousOrderDraft &&
-      (Boolean(working.offline) ||
-        usesLocalPosCartWorkspace(working) ||
-        !isServerPosCartId(working.id) ||
+      (Boolean(cartBeforeDelete.offline) ||
+        usesLocalPosCartWorkspace(cartBeforeDelete) ||
+        !isServerPosCartId(cartBeforeDelete.id) ||
         (standalone && offlineMode));
 
     const removeWaitMessage =
@@ -10471,7 +10374,14 @@ export function PosScreen({ standalone = false }) {
       ? "Saving this previous order so the item does not come back."
       : "Saving this till so the item does not come back.";
 
-    const paintRemoved = (presented = nextCart) => {
+    const dropIdentityKeys = new Set();
+    for (const row of targets) {
+      for (const key of cartLineIdentityKeys(row)) {
+        dropIdentityKeys.add(String(key));
+      }
+    }
+
+    const paintRemoved = (presented) => {
       cartRef.current = presented;
       setCart(presented);
       if (clearsEditing) clearLineEntry();
@@ -10483,7 +10393,16 @@ export function PosScreen({ standalone = false }) {
         async () => {
           // Same commit chain as Enter→add so delete∥add cannot twin a new SKU.
           await enqueueCartCommit(async () => {
-          if (isPreviousOrderEditSession(working) && onlinePreviousOrderDraft) {
+          if (isPreviousOrderEditSession(cartBeforeDelete) && onlinePreviousOrderDraft) {
+            const working = cartRef.current ?? cartBeforeDelete;
+            const nextLines = (working.lines ?? []).filter(
+              (line) =>
+                !cartLineMatchesSelection(line, idSet) &&
+                !cartLineIdentityKeys(line).some((k) => dropIdentityKeys.has(String(k))),
+            );
+            const nextCart = withLocalCartMutation(
+              withEditDraftDirty({ ...working, lines: nextLines }),
+            );
             const label =
               targets.length === 1
                 ? targets[0]?.product_name || targets[0]?.product_code || "Item"
@@ -10502,7 +10421,16 @@ export function PosScreen({ standalone = false }) {
             return;
           }
 
-          if (persistLocal || (isPreviousOrderEditSession(working) && !onlinePreviousOrderDraft)) {
+          if (persistLocal || (isPreviousOrderEditSession(cartBeforeDelete) && !onlinePreviousOrderDraft)) {
+            const working = cartRef.current ?? cartBeforeDelete;
+            const nextLines = (working.lines ?? []).filter(
+              (line) =>
+                !cartLineMatchesSelection(line, idSet) &&
+                !cartLineIdentityKeys(line).some((k) => dropIdentityKeys.has(String(k))),
+            );
+            const nextCart = withLocalCartMutation(
+              withEditDraftDirty({ ...working, lines: nextLines }),
+            );
             const snapshot = {
               ...nextCart,
               id: "active",
@@ -10514,8 +10442,6 @@ export function PosScreen({ standalone = false }) {
               })),
             };
             const saved = await saveLocalPosCart(snapshot);
-            // saveLocalPosCart already waited on the write queue for this put —
-            // do not awaitLocalCartWrites() again (that waited on unrelated backlog).
             const presented = presentLocalOfflineCart(saved);
             const live = cartRef.current;
             const liveSeq = Number(live?._local_mutation_seq ?? 0);
@@ -10527,11 +10453,91 @@ export function PosScreen({ standalone = false }) {
             return;
           }
 
+          // After prior unlockUiEarly adds finish, TemporaryCart rows have CLU ids —
+          // re-resolve so DELETE hits the server instead of local-only paint.
+          const liveNow = cartRef.current ?? cartBeforeDelete;
+          const liveTargets = [];
+          for (const t of targets) {
+            const found = findCartLineForEdit(liveNow?.lines, t, {
+              preferProductCode: t.product_code,
+            });
+            if (found) {
+              liveTargets.push(found);
+              for (const key of cartLineIdentityKeys(found)) {
+                dropIdentityKeys.add(String(key));
+              }
+            }
+          }
+          const deleteRows = liveTargets.length ? liveTargets : targets;
+          registerPendingLineDeletes(deleteRows);
+          registerFullyRemovedProductCodes(cartBeforeDelete, targets);
+
+          const serverCartId = isServerPosCartId(liveNow.id) ? liveNow.id : null;
+          const serverLineRefs = [
+            ...new Set(
+              deleteRows
+                .map((line) => serverPersistedCartLineRef(line))
+                .filter((ref) => ref != null && String(ref).trim() !== "")
+                .map(String),
+            ),
+          ];
+
+          const nextLines = (liveNow.lines ?? []).filter(
+            (line) =>
+              !cartLineMatchesSelection(line, idSet) &&
+              !cartLineIdentityKeys(line).some((k) => dropIdentityKeys.has(String(k))),
+          );
+          let nextCart = withLocalCartMutation(
+            withEditDraftDirty({ ...liveNow, lines: nextLines }),
+          );
+
           // Online TemporaryCart: DELETE first, then remove from the grid.
-          if (serverCartId && serverLineRefs.length > 0 && !offlineMode) {
+          if (serverCartId && !offlineMode) {
+            let refsToDelete = serverLineRefs;
+            // Local-only paint used to run when rows were still pending-* — TemporaryCart
+            // kept the line, then the next add POST resurrected it beside Kamande.
+            if (refsToDelete.length === 0) {
+              try {
+                const remote = await apiRequest(`/sales/carts/${serverCartId}`, {
+                  ...POS_CART_REQUEST,
+                  loading: false,
+                  reportIssues: false,
+                });
+                const remoteLines = Array.isArray(remote?.lines) ? remote.lines : [];
+                const codesFullyRemoved = new Set(
+                  targets
+                    .map((t) => String(t.product_code ?? "").trim())
+                    .filter(
+                      (code) =>
+                        code && pendingSwappedAwayProductCodesRef.current.has(code),
+                    ),
+                );
+                refsToDelete = [
+                  ...new Set(
+                    remoteLines
+                      .filter((row) =>
+                        codesFullyRemoved.has(String(row?.product_code ?? "").trim()),
+                      )
+                      .map((row) => serverPersistedCartLineRef(row))
+                      .filter((ref) => ref != null && String(ref).trim() !== "")
+                      .map(String),
+                  ),
+                ];
+                for (const row of remoteLines) {
+                  if (!codesFullyRemoved.has(String(row?.product_code ?? "").trim())) {
+                    continue;
+                  }
+                  registerPendingLineDeletes([row]);
+                }
+              } catch {
+                /* keep local exclusions; paint below */
+              }
+            }
+
+            if (refsToDelete.length > 0) {
             const cartIdAtRemove = serverCartId;
             let presented = nextCart;
-            for (const lineRef of serverLineRefs) {
+            for (const lineRef of refsToDelete) {
               try {
                 const updated = await apiRequest(
                   `/sales/carts/${cartIdAtRemove}/lines/${encodeURIComponent(lineRef)}`,
@@ -10588,9 +10594,15 @@ export function PosScreen({ standalone = false }) {
             };
             paintRemoved(presented);
             return;
+            }
           }
 
-          paintRemoved(nextCart);
+          // No server refs yet (still pending-*) — local paint + exclusions; a later
+          // merge will drop the TemporaryCart row once product exclusion filters it.
+          paintRemoved({
+            ...nextCart,
+            lines: filterServerCartLines(nextCart.lines ?? []),
+          });
           });
         },
         {
@@ -10603,6 +10615,7 @@ export function PosScreen({ standalone = false }) {
       for (const line of targets) {
         clearPendingLineDeleteKeysForLine(line);
       }
+      clearFullyRemovedProductCodes(targets);
       releaseCartLineMutationGate();
       setStatusMessage(
         e instanceof ApiError

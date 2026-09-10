@@ -13,6 +13,7 @@ import {
   hydratePosSearchIndex,
   isPosSearchIndexSnapshotValid,
   resetPosSearchCatalog,
+  samplePosSearchCatalogProducts,
   searchPosCatalogIndexAsync,
   serializePosSearchIndex,
   setPosSearchCatalog,
@@ -84,6 +85,8 @@ export const POS_OFFLINE_TARGET_OUTAGE_MS = 90 * 60 * 1000;
 
 const CATALOG_STOCK_OVERLAY_META_KEY = "catalog_stock_overlay_at";
 let catalogStockRefreshInFlight = null;
+/** @type {Set<(info: object) => void>} */
+const catalogStockListeners = new Set();
 
 function resolveCatalogStockBranchId(explicitBranchId = null) {
   if (explicitBranchId != null && String(explicitBranchId).trim() !== "") {
@@ -92,6 +95,30 @@ function resolveCatalogStockBranchId(explicitBranchId = null) {
   const org = getStoredOrganization() ?? null;
   const user = getStoredUser() ?? null;
   return user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
+}
+
+/**
+ * Subscribe to IndexedDB catalog stock overlay ticks (success or TTL skip).
+ * Used by Find to rematerialize Available without polling the network on search.
+ * @param {(info: object) => void} listener
+ * @returns {() => void}
+ */
+export function subscribePosOfflineCatalogStock(listener) {
+  if (typeof listener !== "function") return () => {};
+  catalogStockListeners.add(listener);
+  return () => {
+    catalogStockListeners.delete(listener);
+  };
+}
+
+function notifyPosOfflineCatalogStock(info) {
+  for (const listener of catalogStockListeners) {
+    try {
+      listener(info);
+    } catch {
+      /* listener must not break overlay */
+    }
+  }
 }
 
 /**
@@ -104,7 +131,16 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
   const force = Boolean(options.force);
   const last = Number((await idbGetMeta(CATALOG_STOCK_OVERLAY_META_KEY)) ?? 0);
   if (!force && last && Date.now() - last < POS_OFFLINE_STOCK_TTL_MS) {
-    return { skipped: true, count: 0, ageMs: Date.now() - last };
+    // TTL says overlay is fresh, but memory/IDB may still be stock-stripped
+    // (warm painted master rows, overlay aborted, or Find raced ahead).
+    const sample = samplePosSearchCatalogProducts(40);
+    const sampleMissing =
+      sample.length > 0 && sample.every((row) => productStockFieldsMissing(row));
+    if (!sampleMissing) {
+      const skipped = { skipped: true, count: 0, ageMs: Date.now() - last };
+      notifyPosOfflineCatalogStock(skipped);
+      return skipped;
+    }
   }
   if (catalogStockRefreshInFlight) {
     return catalogStockRefreshInFlight;
@@ -113,13 +149,17 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
   catalogStockRefreshInFlight = (async () => {
     const existing = await idbGetAllCatalog();
     if (!existing.length) {
-      return { skipped: true, count: 0 };
+      const empty = { skipped: true, count: 0 };
+      notifyPosOfflineCatalogStock(empty);
+      return empty;
     }
     const org = getStoredOrganization() ?? null;
     const branchId = resolveCatalogStockBranchId(options.branchId);
     const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
     if (!stockByCode?.size) {
-      return { skipped: false, count: 0 };
+      const none = { skipped: false, count: 0 };
+      notifyPosOfflineCatalogStock(none);
+      return none;
     }
     const withStock = mergeProductsWithLiveStock(existing, stockByCode);
     await idbPutCatalogProducts(withStock);
@@ -128,7 +168,9 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
     const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || overlayAt;
     setPosSearchCatalog(withStock, { warmedAt });
     void persistPosSearchIndexSnapshot(warmedAt);
-    return { skipped: false, count: withStock.length, overlayAt };
+    const done = { skipped: false, count: withStock.length, overlayAt };
+    notifyPosOfflineCatalogStock(done);
+    return done;
   })().finally(() => {
     catalogStockRefreshInFlight = null;
   });
