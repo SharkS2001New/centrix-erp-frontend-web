@@ -750,6 +750,19 @@ export function applyCartMutationResponse(
     ) {
       merged.superseded_sale_id = prevCart.superseded_sale_id;
     }
+    // Keep the locked prior bill through TemporaryCart line POSTs (API omits it).
+    if (
+      Number(prevCart?.original_order_total) > 0.009 &&
+      !(Number(normalized?.original_order_total) > 0.009)
+    ) {
+      merged.original_order_total = Number(prevCart.original_order_total);
+    }
+    if (
+      prevCart?.offline_edit_snapshot &&
+      normalized?.offline_edit_snapshot == null
+    ) {
+      merged.offline_edit_snapshot = prevCart.offline_edit_snapshot;
+    }
     const preserved = preserveUntouchedCartLines(prevCart, merged, { targetLineRef });
     return {
       ...preserved,

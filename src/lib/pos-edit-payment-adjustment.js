@@ -283,6 +283,42 @@ export function reconcilePreviousOrderEditAdjustments(
 }
 
 /**
+ * Prior bill total for previous-order edit top-up / return.
+ * Browse rows and remounts often omit order_total (or lock 0); fall back to amount_paid,
+ * offline snapshot, then tender columns so Alt+P never shows "Was 0 → full bill".
+ *
+ * @param {object|null|undefined} sourceSale
+ * @param {object|null|undefined} cart
+ */
+export function resolvePreviousOrderEditPriorTotal(sourceSale, cart) {
+  const candidates = [
+    cart?.original_order_total,
+    cart?.offline_edit_snapshot?.order_total,
+    cart?.offline_edit_snapshot?.amount_paid,
+    cart?.offline_edit_snapshot?.original_order_total,
+    sourceSale?.order_total,
+    sourceSale?.original_order_total,
+    sourceSale?.amount_paid,
+  ];
+  for (const value of candidates) {
+    if (value == null || value === "") continue;
+    const n = Math.round(Number(value) * 100) / 100;
+    if (Number.isFinite(n) && n > 0.009) return n;
+  }
+
+  const tenderSources = [sourceSale, cart?.offline_edit_snapshot];
+  let bestTender = 0;
+  for (const src of tenderSources) {
+    if (!src || typeof src !== "object") continue;
+    const prior = priorSaleTenderMap(src);
+    const sum =
+      Math.round((prior.cash + prior.mpesa + prior.equity + prior.kcb) * 100) / 100;
+    if (sum > bestTender) bestTender = sum;
+  }
+  return bestTender > 0.009 ? bestTender : 0;
+}
+
+/**
  * @param {object|null|undefined} sourceSale
  * @param {object|null|undefined} cart
  * @param {{ cashRound?: boolean }} [options]
@@ -297,14 +333,8 @@ export function computePreviousOrderEditPaymentDelta(sourceSale, cart, options =
   if (!isPreviousOrderEdit) {
     return { amount: 0, type: null, originalTotal: 0, newTotal: 0 };
   }
-  // Prefer the total locked when the edit session started — browse snapshots and
-  // remounts often omit order_total, which wrongly treats the whole bill as a top-up.
-  const original = Number(
-    cart?.original_order_total ??
-      sourceSale?.order_total ??
-      sourceSale?.amount_paid ??
-      0,
-  );
+  // Treat 0 / missing as unresolved — never use a locked 0 when tenders/snapshot exist.
+  const original = resolvePreviousOrderEditPriorTotal(sourceSale, cart);
   const revised = Number(
     summarizeLocalPosCart(cart, { cashRound: Boolean(options.cashRound) }).amountDue ?? 0,
   );

@@ -142,6 +142,49 @@ describe("computePreviousOrderEditPaymentDelta", () => {
     expect(delta.originalTotal).toBe(5993.34);
   });
 
+  it("does not treat locked original_order_total 0 as prior when tenders exist", () => {
+    const cart = {
+      ...editCart,
+      original_order_total: 0,
+      offline_edit_snapshot: {
+        order_total: 10000,
+        cash: 10000,
+        mpesa_amount: 0,
+      },
+      lines: [{ product_code: "A1", quantity: 1, unit_price: 12000, amount: 12000 }],
+    };
+    const delta = computePreviousOrderEditPaymentDelta(
+      { id: 100, cash: 10000, mpesa_amount: 0 },
+      cart,
+    );
+    expect(delta.type).toBe("topup");
+    expect(delta.originalTotal).toBe(10000);
+    expect(delta.amount).toBe(2000);
+  });
+
+  it("uses prior tender columns when sale omits order_total (Alt+P Was 0 bug)", () => {
+    const cart = {
+      held_order_num: 12,
+      superseded_sale_id: 99,
+      lines: [{ product_code: "A1", quantity: 1, unit_price: 15000, amount: 15000 }],
+    };
+    const delta = computePreviousOrderEditPaymentDelta(
+      {
+        id: 99,
+        // Browse / lean hydrate often omits order_total and amount_paid.
+        cash: 0,
+        mpesa_amount: 13160,
+        equity_amount: 0,
+        kcb_amount: 0,
+        payment_method_code: "MPESA",
+      },
+      cart,
+    );
+    expect(delta.type).toBe("topup");
+    expect(delta.originalTotal).toBe(13160);
+    expect(delta.amount).toBe(1840);
+  });
+
   it("detects top-up for offline pending-sync edits without superseded_sale_id", () => {
     const cart = {
       held_order_num: 42,

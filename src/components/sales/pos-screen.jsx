@@ -704,21 +704,19 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
       ? { payment_method_code: String(mergedSource.payment_method_code).toUpperCase() }
       : {}),
     // Lock prior bill total for top-up/return math (browse rows often omit order_total).
-    // Prefer the sale total; if missing, use the cart line summary so an untouched
-    // load never looks like a full-bill top-up.
-    ...(base.original_order_total == null
-      ? (() => {
-          const fromSale = Math.round(
-            Number(mergedSource?.order_total ?? mergedSource?.amount_paid ?? 0) * 100,
-          ) / 100;
-          if (fromSale > 0.009) {
-            return { original_order_total: fromSale };
+    // Prefer the sale total / tenders; if missing, use the cart line summary so an
+    // untouched load never looks like a full-bill top-up.
+    ...(Number(base.original_order_total) > 0.009
+      ? {}
+      : (() => {
+          const fromPrior = resolvePreviousOrderEditPriorTotal(mergedSource, base);
+          if (fromPrior > 0.009) {
+            return { original_order_total: fromPrior };
           }
           const fromCart =
             Math.round(Number(summarizeLocalPosCart(base).amountDue ?? 0) * 100) / 100;
           return fromCart > 0.009 ? { original_order_total: fromCart } : {};
-        })()
-      : {}),
+        })()),
     // Keep original tender mix for receipt rebuild (never use rebuilt outbox payload).
     ...(mergedSource?.id
       ? { offline_edit_snapshot: base.offline_edit_snapshot ?? mergedSource }
@@ -5212,8 +5210,14 @@ export function PosScreen({ standalone = false }) {
       server_sale_id: sale.id,
       superseded_sale_id: sale.id,
       held_order_num: Number(sale.order_num),
-      // Baseline for the next top-up/return is the total just synced.
-      original_order_total: Math.round(Number(sale.order_total ?? 0) * 100) / 100,
+      // Baseline for the next top-up/return is the total just synced (never lock 0
+      // when the prior sale still has tenders / a previous locked total).
+      original_order_total: (() => {
+        const resolved = resolvePreviousOrderEditPriorTotal(sale, active);
+        if (resolved > 0.009) return resolved;
+        const prev = Math.round(Number(active.original_order_total ?? 0) * 100) / 100;
+        return prev > 0.009 ? prev : Math.round(Number(sale.order_total ?? 0) * 100) / 100;
+      })(),
       ...(sale.pos_order_num != null
         ? { pos_order_num: Number(sale.pos_order_num) }
         : {}),
@@ -5491,15 +5495,25 @@ export function PosScreen({ standalone = false }) {
     entryQtyFocusGenRef.current += 1;
   }
 
-  function clearClassicEntryFields() {
+  function clearClassicEntryFields(opts = {}) {
+    const onlyProductCode = opts.onlyProductCode;
+    // unlockUiEarly clears the entry immediately, then commitCartLine awaits
+    // TemporaryCart / IndexedDB. A second clear after that await must not wipe
+    // the next SKU the cashier already parked.
+    if (onlyProductCode != null && entryParkActiveRef.current) {
+      const parkedCode = String(selectedProductRef.current?.product_code ?? "");
+      if (parkedCode && parkedCode !== String(onlyProductCode)) {
+        return false;
+      }
+    }
     cancelScheduledEntryQtyFocus();
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
     selectedProductRef.current = null;
     entryParkActiveRef.current = false;
-    // Keep lastAddLineDedupeRef for the in-flight twin window only — pickProduct
-    // resets it when the cashier parks the next item.
+    lastEntryQtyCommitRef.current = { key: null, at: 0 };
+    lastAddLineDedupeRef.current = { key: null, at: 0 };
     resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
@@ -5507,6 +5521,7 @@ export function PosScreen({ standalone = false }) {
     setSelectedLineId(null);
     closeProductSearchDropdown();
     focusScanAfterItemAdded();
+    return true;
   }
 
   /** Drop swap draft / replacing chrome so the next Enter is a normal qty edit. */
@@ -6468,7 +6483,7 @@ export function PosScreen({ standalone = false }) {
         ? paintOptimisticOn(liveCart)
         : null;
     if (painted && unlockUiEarly && clearEntry) {
-      clearClassicEntryFields();
+      clearClassicEntryFields({ onlyProductCode: product.product_code });
     }
 
     // Background previous-order edit owns TemporaryCart — sell on a local workspace
@@ -6693,7 +6708,7 @@ export function PosScreen({ standalone = false }) {
       const presentedSeq = Number(presented?._local_mutation_seq ?? localMutationSeq);
       // A faster delete/qty/swap already painted a newer cart — keep it.
       if (liveAfter && liveSeq > presentedSeq) {
-        if (clearEntry) clearClassicEntryFields();
+        if (clearEntry) clearClassicEntryFields({ onlyProductCode: product.product_code });
         void refreshOfflineCounts();
         return true;
       }
@@ -6705,7 +6720,7 @@ export function PosScreen({ standalone = false }) {
             ? `Added offline (will sync when online).`
             : `Added.`),
       );
-      if (clearEntry) clearClassicEntryFields();
+      if (clearEntry) clearClassicEntryFields({ onlyProductCode: product.product_code });
       void refreshOfflineCounts();
       return true;
     }
@@ -6746,7 +6761,7 @@ export function PosScreen({ standalone = false }) {
     if (!painted) {
       painted = paintOptimisticOn(liveCart);
       if (painted && unlockUiEarly && clearEntry) {
-        clearClassicEntryFields();
+        clearClassicEntryFields({ onlyProductCode: product.product_code });
       }
     }
 
@@ -6796,7 +6811,7 @@ export function PosScreen({ standalone = false }) {
       painted = paintOptimisticOn(cartRef.current ?? activeCart) ?? painted;
     }
     if (painted && unlockUiEarly && clearEntry) {
-      clearClassicEntryFields();
+      clearClassicEntryFields({ onlyProductCode: product.product_code });
     }
 
     // Server cart may exist now — merge into a persisted row, not a second POST.
@@ -7002,7 +7017,7 @@ export function PosScreen({ standalone = false }) {
           "Discount saved on this line. Manager approval is requested when you save the order.",
         );
         if (clearEntry) {
-          clearClassicEntryFields();
+          clearClassicEntryFields({ onlyProductCode: product.product_code });
         }
         return true;
       } catch (error) {
@@ -7072,7 +7087,7 @@ export function PosScreen({ standalone = false }) {
       setCartLineSaveFailed(false);
       if (successMessage) setStatusMessage(successMessage);
       if (clearEntry && !unlockUiEarly) {
-        clearClassicEntryFields();
+        clearClassicEntryFields({ onlyProductCode: product.product_code });
       }
       return true;
     }
@@ -7083,9 +7098,10 @@ export function PosScreen({ standalone = false }) {
       setCart(optimisticCart);
     }
 
-    // Already cleared above when unlockUiEarly; keep a second clear for safety if flags change.
+    // Already cleared at optimistic paint when unlockUiEarly. A blind second clear
+    // here races the next search→park and blocks adding a second line.
     if (unlockUiEarly && clearEntry) {
-      clearClassicEntryFields();
+      clearClassicEntryFields({ onlyProductCode: product.product_code });
     }
 
     try {
@@ -7326,10 +7342,13 @@ export function PosScreen({ standalone = false }) {
     if (successMessage) setStatusMessage(successMessage);
 
     if (clearEntry && !unlockUiEarly) {
-      clearClassicEntryFields();
+      clearClassicEntryFields({ onlyProductCode: product.product_code });
     } else if (clearEntry && unlockUiEarly) {
-      // Entry was cleared early — reinforce Scan focus after optimistic cart paint.
-      focusScanAfterItemAdded();
+      // Entry was cleared early. Only reinforce Scan if the cashier has not
+      // already parked the next product during the save.
+      if (!entryParkActiveRef.current) {
+        focusScanAfterItemAdded();
+      }
     }
 
     return true;
@@ -8875,9 +8894,11 @@ export function PosScreen({ standalone = false }) {
 
     // Qty Enter (from Search Enter leak) + Add click both call this within one beat;
     // without this, combineIdenticalLines merges two +1 commits into qty 2.
+    // Only dedupe while this park is still active — after clear, the next park is a new add.
     const addDedupeKey = `${String(productForAdd.product_code ?? "")}|${String(entryQtyRaw ?? "")}|${String(editingLineId ?? "")}`;
     const addDedupeAt = Date.now();
     if (
+      entryParkActiveRef.current &&
       lastAddLineDedupeRef.current.key === addDedupeKey &&
       addDedupeAt - lastAddLineDedupeRef.current.at < 750
     ) {
@@ -10508,6 +10529,10 @@ export function PosScreen({ standalone = false }) {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
+    selectedProductRef.current = null;
+    entryParkActiveRef.current = false;
+    lastAddLineDedupeRef.current = { key: null, at: 0 };
+    lastEntryQtyCommitRef.current = { key: null, at: 0 };
     resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
@@ -13680,18 +13705,32 @@ export function PosScreen({ standalone = false }) {
     if (freshWorkspaceInFlightRef.current) return;
     freshWorkspaceInFlightRef.current = true;
     try {
+    // Same unlock as Clear all / Refresh: drop in-flight adds and force the Scan/Add
+    // gate open. Without this, F8 during/after a line save left pickProduct/handleAddLine
+    // stuck on "Please wait — finishing cart update…".
+    cartCommitGenerationRef.current += 1;
+    cartLineMutationGateRef.current = false;
+    lineSaveOverlayDepthRef.current = 0;
+    if (lineBusyRef.current) {
+      lineBusyRef.current = false;
+      setLineBusy(false);
+    }
     // Finish in-flight line saves first (same as F10). A silent return while lineBusy
     // made F8 look like it needed two presses right after a scan.
     // Discard-Esc skips waiting — TemporaryCart is deleted and autosave is suppressed.
-    if (lineBusyRef.current && !discardPreviousOrderEdit) {
+    if (cartCommitPendingRef.current > 0 && !discardPreviousOrderEdit) {
       try {
         await runBlockingTask(waitForCartLineSavesToFinish, {
           message: "Saving cart changes…",
           detail: "Please wait while the current line finishes saving.",
         });
       } catch {
-        return;
+        /* generation bump already invalidated the commit — continue clearing */
       }
+      cartLineMutationGateRef.current = false;
+      lineSaveOverlayDepthRef.current = 0;
+      lineBusyRef.current = false;
+      setLineBusy(false);
     }
 
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
@@ -15438,9 +15477,7 @@ export function PosScreen({ standalone = false }) {
             return prev;
           }
           const merged = { ...(prev ?? {}), ...sale };
-          const priorTotal = Math.round(
-            Number(merged.order_total ?? merged.amount_paid ?? 0) * 100,
-          ) / 100;
+          const priorTotal = resolvePreviousOrderEditPriorTotal(merged, live);
           if (live && Number(live.superseded_sale_id) === Number(saleId)) {
             const next = {
               ...live,
