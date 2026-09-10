@@ -77,8 +77,16 @@ async function isThermalJob(jobType, html) {
   }
   const src = String(html ?? "");
   if (/centrix-print-thermal/i.test(src)) return true;
-  if (/size:\s*A4|210mm\s+297mm|centrix-edge|has-doc-print-edge-footer/i.test(src)) return false;
+  if (/size:\s*A4|210mm\s+297mm|297mm\s+210mm|centrix-edge|has-doc-print-edge-footer/i.test(src)) return false;
   return true;
+}
+
+/** Centrix @page mm box — landscape when columns need width; null if undeclared. */
+function resolveA4Orientation(html) {
+  const src = String(html ?? "");
+  if (/297mm\s+210mm/i.test(src)) return "landscape";
+  if (/210mm\s+297mm/i.test(src)) return "portrait";
+  return null;
 }
 
 async function htmlToPdf(html, outputPath, jobType = "receipt") {
@@ -98,6 +106,7 @@ async function htmlToPdf(html, outputPath, jobType = "receipt") {
       await page.pdf({
         path: outputPath,
         format: "A4",
+        landscape: resolveA4Orientation(html) === "landscape",
         printBackground: true,
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
         preferCSSPageSize: true,
@@ -108,7 +117,7 @@ async function htmlToPdf(html, outputPath, jobType = "receipt") {
   }
 }
 
-async function printPdf(pdfPath, printerName, thermal = true) {
+async function printPdf(pdfPath, printerName, thermal = true, html = "") {
   const platform = process.platform;
   const printer = printerName?.trim();
 
@@ -117,8 +126,13 @@ async function printPdf(pdfPath, printerName, thermal = true) {
       process.env.SUMATRA_PATH ??
       "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe";
     try {
-      // Force portrait on A4 — without it Sumatra keeps the printer DEVMODE orientation.
-      const printSettings = thermal ? "noscale" : "noscale,paper=A4,portrait";
+      let printSettings = "noscale";
+      if (!thermal) {
+        const orientation = resolveA4Orientation(html);
+        printSettings = orientation
+          ? `noscale,paper=A4,${orientation}`
+          : "noscale,paper=A4";
+      }
       const args = printer
         ? ["-print-to", printer, "-print-settings", printSettings, "-silent", pdfPath]
         : ["-print-to-default", "-print-settings", printSettings, "-silent", pdfPath];
@@ -149,7 +163,7 @@ async function runPrintJob({ html, copies, printer, documentId, jobId, jobType }
   try {
     await htmlToPdf(html, pdfPath, jobType);
     for (let copy = 0; copy < copies; copy += 1) {
-      await printPdf(pdfPath, printer, thermal);
+      await printPdf(pdfPath, printer, thermal, html);
     }
     return jobId;
   } finally {

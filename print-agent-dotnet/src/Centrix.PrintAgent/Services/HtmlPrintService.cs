@@ -46,7 +46,7 @@ public sealed class HtmlPrintService
                 for (var copy = 0; copy < copies; copy++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await PrintPdfAsync(pdfPath, targetPrinter, pageHeightMm, thermal, cancellationToken);
+                    await PrintPdfAsync(pdfPath, targetPrinter, pageHeightMm, thermal, html, cancellationToken);
                 }
 
                 return ($"{documentId}-{stamp}", targetPrinter);
@@ -229,13 +229,15 @@ public sealed class HtmlPrintService
         string? printerName,
         int pageHeightMm,
         bool thermal,
+        string html,
         CancellationToken cancellationToken)
     {
         var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
                 "SumatraPDF is required to print from the Windows service. Re-run BUILD-AND-INSTALL.bat as Administrator (bundles Sumatra automatically), or place SumatraPDF.exe under tools\\SumatraPDF next to the agent.");
 
-        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm, thermal);
+        var a4Orientation = thermal ? null : WkhtmlPdfRenderer.ResolveA4Orientation(html);
+        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm, thermal, a4Orientation);
         var args = string.IsNullOrWhiteSpace(printerName)
             ? new[] { "-print-to-default", "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath }
             : new[] { "-print-to", printerName, "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath };

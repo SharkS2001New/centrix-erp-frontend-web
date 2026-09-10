@@ -71,6 +71,7 @@ internal static class WkhtmlPdfRenderer
             if (html.Contains("size: A4", StringComparison.OrdinalIgnoreCase)
                 || html.Contains("size:A4", StringComparison.OrdinalIgnoreCase)
                 || html.Contains("210mm 297mm", StringComparison.OrdinalIgnoreCase)
+                || html.Contains("297mm 210mm", StringComparison.OrdinalIgnoreCase)
                 || html.Contains("page: centrix-edge", StringComparison.OrdinalIgnoreCase)
                 || html.Contains("has-doc-print-edge-footer", StringComparison.OrdinalIgnoreCase))
             {
@@ -81,6 +82,35 @@ internal static class WkhtmlPdfRenderer
         // Unknown jobs: keep thermal defaults so POS receipts stay safe.
         return true;
     }
+
+    /// <summary>
+    /// Centrix picks orientation in HTML (@page size mm). Landscape reports use
+    /// 297mm×210mm when columns won't fit portrait; forms use 210mm×297mm.
+    /// Returns null when the document does not declare a page box — do not guess.
+    /// </summary>
+    public static string? ResolveA4Orientation(string? html)
+    {
+        if (string.IsNullOrEmpty(html))
+        {
+            return null;
+        }
+
+        // Prefer landscape match first (width > height).
+        if (Regex.IsMatch(html, @"297mm\s+210mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return "landscape";
+        }
+
+        if (Regex.IsMatch(html, @"210mm\s+297mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return "portrait";
+        }
+
+        return null;
+    }
+
+    public static bool IsLandscapeDocument(string? html) =>
+        string.Equals(ResolveA4Orientation(html), "landscape", StringComparison.OrdinalIgnoreCase);
 
     public static async Task<int> RenderAsync(
         string htmlPath,
@@ -95,8 +125,9 @@ internal static class WkhtmlPdfRenderer
         var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
         if (!IsThermalJob(jobType, html))
         {
-            await RenderA4Async(executable, htmlPath, pdfPath, cancellationToken);
-            return 297;
+            var landscape = IsLandscapeDocument(html);
+            await RenderA4Async(executable, htmlPath, pdfPath, landscape, cancellationToken);
+            return landscape ? 210 : 297;
         }
 
         var pageHeightMm = EstimateThermalPageHeightMm(html);
@@ -117,9 +148,12 @@ internal static class WkhtmlPdfRenderer
         string executable,
         string htmlPath,
         string pdfPath,
+        bool landscape,
         CancellationToken cancellationToken)
     {
-        // A4 portrait at ~96dpi viewport so CSS layouts (payslip 2×2, vouchers) are not squeezed.
+        // Match Centrix @page box. Landscape reports need a wide viewport so columns are not squeezed.
+        var orientation = landscape ? "Landscape" : "Portrait";
+        var viewport = landscape ? "1123x794" : "794x1123";
         var args = new[]
         {
             "--quiet",
@@ -129,7 +163,7 @@ internal static class WkhtmlPdfRenderer
             "--page-size",
             "A4",
             "--orientation",
-            "Portrait",
+            orientation,
             "--margin-top",
             "0mm",
             "--margin-bottom",
@@ -141,7 +175,7 @@ internal static class WkhtmlPdfRenderer
             "--disable-smart-shrinking",
             "--print-media-type",
             "--viewport-size",
-            "794x1123",
+            viewport,
             htmlPath,
             pdfPath,
         };
@@ -218,12 +252,22 @@ internal static class WkhtmlPdfRenderer
         }
     }
 
-    public static string BuildSumatraPrintSettings(int pageHeightMm, bool thermal)
+    public static string BuildSumatraPrintSettings(int pageHeightMm, bool thermal, string? a4Orientation = null)
     {
         if (!thermal)
         {
-            // Force portrait — without it Sumatra keeps the printer DEVMODE orientation.
-            return "noscale,paper=A4,portrait";
+            // Follow Centrix @page orientation when declared; never blanket-force all A4.
+            if (string.Equals(a4Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
+            {
+                return "noscale,paper=A4,landscape";
+            }
+
+            if (string.Equals(a4Orientation, "portrait", StringComparison.OrdinalIgnoreCase))
+            {
+                return "noscale,paper=A4,portrait";
+            }
+
+            return "noscale,paper=A4";
         }
 
         return $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";

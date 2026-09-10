@@ -89,7 +89,7 @@ function voucherStyles(generalSettings = null) {
   const font = orgPrintFontFamilyFromSettings(generalSettings, PRINT_VARIANT);
 
   return `
-    @page { size: A4; margin: 0; }
+    @page { size: 210mm 297mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { height: auto; }
     body {
