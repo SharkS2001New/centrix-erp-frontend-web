@@ -732,7 +732,7 @@ export function OrganizationPlatformSalesSettings({
               options={[
                 {
                   value: "indexeddb",
-                  label: "Fast (device catalog) — stock refreshes in the background",
+                  label: "Fast (device catalog) — stock refreshes about every minute",
                 },
                 {
                   value: "live",
@@ -741,9 +741,9 @@ export function OrganizationPlatformSalesSettings({
               ]}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Fast search uses the device IndexedDB catalog (with cached Available qty). Live mode
-              still paints the device catalog first and only refreshes stock in the background —
-              never waits on the server for every keystroke (that raced cart adds).
+              Fast search uses the device IndexedDB catalog. Available qty is refreshed from the
+              server about every minute (and when you return to the tab). Live mode still paints
+              the device catalog first and only refreshes stock in the background.
             </p>
           </OrgRegisterField>
           <Toggle

@@ -291,6 +291,8 @@ import {
   withPosReceiptTicket,
   warmPosOfflineCatalog,
   refreshPosOfflineCatalogPricing,
+  refreshPosOfflineCatalogStock,
+  POS_OFFLINE_STOCK_TTL_MS,
 } from "@/lib/pos-offline";
 import { isSellableCatalogProduct } from "@/lib/catalog-cache";
 import {
@@ -3517,9 +3519,12 @@ export function PosScreen({ standalone = false }) {
   }, [cartLineSaveWaitBusy]);
 
   useEffect(() => {
-    if (!cartLineSaveWaitBusy) return;
+    // External POS unlockUiEarly: cashiers search the next SKU while the prior
+    // line save finishes. Closing Find when the slow-save overlay appears wiped
+    // Kamande mid-search after Sugar.
+    if (!cartLineSaveWaitBusy || standalone || classicLayout) return;
     productSearchRef.current?.closeDropdown?.();
-  }, [cartLineSaveWaitBusy]);
+  }, [cartLineSaveWaitBusy, standalone, classicLayout]);
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
@@ -3699,6 +3704,34 @@ export function PosScreen({ standalone = false }) {
     receiptPrintStatus,
     failedSyncOrders,
   ]);
+
+  // Keep IndexedDB Available qty fresh (every ~60s + on tab focus). Search stays local.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (offlineMode) return undefined;
+    let cancelled = false;
+    const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
+
+    const tick = (force = false) => {
+      if (cancelled) return;
+      void refreshPosOfflineCatalogStock({ force, branchId }).catch(() => {});
+    };
+
+    tick(false);
+    const timer = window.setInterval(() => tick(false), POS_OFFLINE_STOCK_TTL_MS);
+    const onFocus = () => tick(true);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick(true);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [offlineMode, productBranchParams?.branch_id, user?.branch_id]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
   // Pause while offline, and also while a continued offline / queued-edit cart is open
@@ -5016,16 +5049,31 @@ export function PosScreen({ standalone = false }) {
     return cartLineMutationGateRef.current || isCartLineSaveBusy();
   }
   /**
-   * External POS / Classic: unlockUiEarly clears the entry so the cashier can
-   * search the next SKU while TemporaryCart/IndexedDB finishes. Queue the next
-   * add instead of hard-blocking — enqueueCartCommit still serializes commits.
+   * unlockUiEarly already painted the line and cleared the entry. Free Scan/Add
+   * immediately so Sugar → Kamande is not stuck on "finishing cart update…" while
+   * TemporaryCart / IndexedDB finish in the background. enqueueCartCommit still
+   * serializes the network writes; entryParkActiveRef blocks twin Enter.
    */
-  function allowsQueuedCartLineAddWhileSaving() {
-    return (
-      classicLayout ||
-      standalone ||
-      usesPosLocalDraftLineEdits(cartRef.current)
-    );
+  function releaseLineSaveUiForNextSku() {
+    lineBusyRef.current = false;
+    setLineBusy(false);
+    cartLineMutationGateRef.current = false;
+  }
+  /**
+   * Heal a drifted gate (pending/depth already 0 but Scan/Add still blocked).
+   * Call from pick / Add so a hung prior save cannot strand the till.
+   */
+  function healStuckCartLineSaveGate() {
+    if (
+      lineSaveOverlayDepthRef.current <= 0 &&
+      cartCommitPendingRef.current <= 0
+    ) {
+      cartLineMutationGateRef.current = false;
+      if (lineBusyRef.current) {
+        lineBusyRef.current = false;
+        setLineBusy(false);
+      }
+    }
   }
   async function runWithLineSaveOverlay(task, opts = {}) {
     armCartLineMutationGate();
@@ -5866,6 +5914,9 @@ export function PosScreen({ standalone = false }) {
         // Soft stock refresh when local hits exist — do not block select/add.
         const localReady = localPaint.length > 0;
         if (localReady) {
+          void refreshPosOfflineCatalogStock({
+            branchId: productBranchParams?.branch_id ?? user?.branch_id ?? null,
+          }).catch(() => {});
           void (async () => {
             try {
               const res = await apiRequest("/products", {
@@ -6520,6 +6571,8 @@ export function PosScreen({ standalone = false }) {
         : null;
     if (painted && unlockUiEarly && clearEntry) {
       clearClassicEntryFields({ onlyProductCode: product.product_code });
+      // Let the cashier park Kamande while Sugar's TemporaryCart write finishes.
+      releaseLineSaveUiForNextSku();
     }
 
     // Background previous-order edit owns TemporaryCart — sell on a local workspace
@@ -6802,6 +6855,7 @@ export function PosScreen({ standalone = false }) {
       painted = paintOptimisticOn(liveCart);
       if (painted && unlockUiEarly && clearEntry) {
         clearClassicEntryFields({ onlyProductCode: product.product_code });
+        releaseLineSaveUiForNextSku();
       }
     }
 
@@ -7398,10 +7452,7 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
-    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
-      setStatusMessage("Please wait — finishing cart update before adding items.");
-      return;
-    }
+    healStuckCartLineSaveGate();
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
@@ -7506,17 +7557,8 @@ export function PosScreen({ standalone = false }) {
       };
       const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
       if (classicLayout || localDraftEdit || standalone) {
-        await runWithLineSaveOverlay(
-          async () => {
-            await enqueueCartCommit(runQuickAdd);
-          },
-          {
-            message: "Adding item…",
-            detail: "Saving this line — please wait until it finishes.",
-            // Fast adds stay silent; only show the blocker when the save is slow.
-            showAfterMs: 400,
-          },
-        );
+        // No blocking overlay — barcode/next scan must not wait on TemporaryCart.
+        await enqueueCartCommit(runQuickAdd);
         return;
       }
       await enqueueCartCommit(runQuickAdd);
@@ -7529,10 +7571,7 @@ export function PosScreen({ standalone = false }) {
 
   async function handleBarcodeEnter(code) {
     if (!enableBarcodeScanner) return false;
-    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
-      setStatusMessage("Please wait — finishing cart update before adding items.");
-      return true;
-    }
+    healStuckCartLineSaveGate();
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return false;
 
@@ -7698,10 +7737,9 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
     }
-    // Park the next SKU even while a prior line save is finishing. unlockUiEarly
-    // already cleared the entry for that — blocking pick here made cashiers unable
-    // to search/select item #2 until a full reload when the save gate stuck.
-    // handleAddLine / quickAdd still honor isCartLineSaveBlocking().
+    // Never soft-block select on cart-save busy — unlockUiEarly already freed the
+    // entry for the next SKU. Heal a drifted gate so Add is not stuck after Sugar.
+    healStuckCartLineSaveGate();
     // Freeze swap intent BEFORE any await. hydrateProductLiveStock / retail package
     // can yield long enough for remounts or cart sync to clear replacingLineIdRef,
     // which parked Kamande as a new line instead of swapping Sugar.
@@ -8883,10 +8921,9 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
     }
-    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
-      setStatusMessage("Please wait — finishing cart update before adding items.");
-      return;
-    }
+    // Never soft-block Add on "finishing cart update" — that stranded Kamande after
+    // Sugar while TemporaryCart was still writing. Queue via enqueueCartCommit.
+    healStuckCartLineSaveGate();
     // Stop a pending search→qty focus from racing this Add (felt like a second add).
     cancelScheduledEntryQtyFocus();
     ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
@@ -9184,9 +9221,30 @@ export function PosScreen({ standalone = false }) {
     };
 
     // Always serialize line adds — rapid Enter/click must not create duplicate rows.
-    // Blocking overlay until TemporaryCart / IndexedDB finishes so delete→add and
-    // double-Enter cannot race (including modern backoffice Create Order).
-    // commitCartLine paints then clears entry (unlockUiEarly) under the overlay.
+    // External POS / Classic: no blocking overlay. unlockUiEarly paints Sugar then frees
+    // the till so Kamande can be searched/added while TemporaryCart finishes in queue.
+    // Backoffice Create Order still uses the overlay for slower rematerialize paths.
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    const queueWithoutBlockingOverlay =
+      classicLayout || standalone || localDraftEdit;
+    if (queueWithoutBlockingOverlay) {
+      void enqueueCartCommit(run)
+        .catch((e) => {
+          lastAddLineDedupeRef.current = { key: null, at: 0 };
+          setStatusMessage(
+            e instanceof ApiError
+              ? e.message
+              : wasEditing
+                ? "Failed to update line"
+                : "Failed to add line",
+          );
+        })
+        .finally(() => {
+          healStuckCartLineSaveGate();
+          releaseCartLineMutationGate();
+        });
+      return;
+    }
     void runWithLineSaveOverlay(
       async () => {
         await enqueueCartCommit(run);
@@ -9275,16 +9333,14 @@ export function PosScreen({ standalone = false }) {
     // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
-      setStatusMessage("Please wait — finishing cart update before adding items.");
-      return;
-    }
+    healStuckCartLineSaveGate();
     // Soft previous-order load must not block Classic qty Enter → add.
     if (busy && !(classicLayout && previousOrderLoadingSoft)) {
       setStatusMessage("Please wait — finishing the previous cart update, then press Enter again.");
       return;
     }
-    if (lineBusy && !classicLayout && !localDraftEdit) {
+    // External POS / Classic queue adds — do not freeze on lineBusy from the prior SKU.
+    if (lineBusy && !classicLayout && !standalone && !localDraftEdit) {
       setStatusMessage("Please wait — saving the previous line, then press Enter again.");
       return;
     }
@@ -9325,7 +9381,7 @@ export function PosScreen({ standalone = false }) {
     e.preventDefault();
     if (!selectedProduct || busy) return;
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !classicLayout && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !standalone && !localDraftEdit) return;
     if (addLineBlocked) return;
     if (allowEditUnitPrice) {
       focusLineField(unitPriceRef);
@@ -9339,7 +9395,7 @@ export function PosScreen({ standalone = false }) {
     e.preventDefault();
     if (busy) return;
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !classicLayout && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !standalone && !localDraftEdit) return;
     if (!addLineBlocked) void handleAddLine();
   }
 

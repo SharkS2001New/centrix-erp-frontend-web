@@ -16,6 +16,8 @@ import {
   searchPosOfflineCatalog,
   syncPosOfflineOutbox,
   warmPosOfflineCatalog,
+  refreshPosOfflineCatalogStock,
+  POS_OFFLINE_STOCK_TTL_MS,
 } from "@/lib/pos-offline";
 
 const RETRY_BACKOFF_MS = 5_000;
@@ -585,6 +587,31 @@ export function usePosOfflineSupport({
       cancelled = true;
     };
   }, [enabled, catalogOnly, prepare, refreshCounts, probeCanFlushOutbox, flushOutboxNow]);
+
+  // Frequent stock overlay for Create Order + External POS device catalog search.
+  useEffect(() => {
+    if (!enabled || !fullyOnline) return undefined;
+    if (typeof window === "undefined") return undefined;
+    let cancelled = false;
+    const tick = (force = false) => {
+      if (cancelled) return;
+      void refreshPosOfflineCatalogStock({ force }).catch(() => {});
+    };
+    tick(false);
+    const timer = window.setInterval(() => tick(false), POS_OFFLINE_STOCK_TTL_MS);
+    const onFocus = () => tick(true);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick(true);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [enabled, fullyOnline]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   useEffect(() => {

@@ -76,8 +76,64 @@ export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
 /** Re-warm catalog while healthy so a ~1.5h drop still has recent prices. */
 export const POS_OFFLINE_CATALOG_TTL_MS = 90 * 60 * 1000;
+/** How often IndexedDB Available qty is refreshed from stock-on-hand (search stays local). */
+export const POS_OFFLINE_STOCK_TTL_MS = 60 * 1000;
 /** Design target for drop/slow bridge (~1.5 hours) — not a hard cutoff; sync on reconnect. */
 export const POS_OFFLINE_TARGET_OUTAGE_MS = 90 * 60 * 1000;
+
+const CATALOG_STOCK_OVERLAY_META_KEY = "catalog_stock_overlay_at";
+let catalogStockRefreshInFlight = null;
+
+function resolveCatalogStockBranchId(explicitBranchId = null) {
+  if (explicitBranchId != null && String(explicitBranchId).trim() !== "") {
+    return explicitBranchId;
+  }
+  const org = getStoredOrganization() ?? null;
+  const user = getStoredUser() ?? null;
+  return user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
+}
+
+/**
+ * Refresh Available qty on the warmed IndexedDB catalog without re-downloading products.
+ * Safe to call often (TTL-gated). Does not block POS search/select.
+ *
+ * @param {{ force?: boolean, branchId?: string|number|null }} [options]
+ */
+export async function refreshPosOfflineCatalogStock(options = {}) {
+  const force = Boolean(options.force);
+  const last = Number((await idbGetMeta(CATALOG_STOCK_OVERLAY_META_KEY)) ?? 0);
+  if (!force && last && Date.now() - last < POS_OFFLINE_STOCK_TTL_MS) {
+    return { skipped: true, count: 0, ageMs: Date.now() - last };
+  }
+  if (catalogStockRefreshInFlight) {
+    return catalogStockRefreshInFlight;
+  }
+
+  catalogStockRefreshInFlight = (async () => {
+    const existing = await idbGetAllCatalog();
+    if (!existing.length) {
+      return { skipped: true, count: 0 };
+    }
+    const org = getStoredOrganization() ?? null;
+    const branchId = resolveCatalogStockBranchId(options.branchId);
+    const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
+    if (!stockByCode?.size) {
+      return { skipped: false, count: 0 };
+    }
+    const withStock = mergeProductsWithLiveStock(existing, stockByCode);
+    await idbPutCatalogProducts(withStock);
+    const overlayAt = Date.now();
+    await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, overlayAt);
+    const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || overlayAt;
+    setPosSearchCatalog(withStock, { warmedAt });
+    void persistPosSearchIndexSnapshot(warmedAt);
+    return { skipped: false, count: withStock.length, overlayAt };
+  })().finally(() => {
+    catalogStockRefreshInFlight = null;
+  });
+
+  return catalogStockRefreshInFlight;
+}
 
 function sortCatalog(products, query) {
   return rankPosProductSearchResults(products, query, { limit: products.length });
@@ -125,30 +181,11 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
         void persistPosSearchIndexSnapshot(last);
       }
     }
-    // Older warm runs stripped stock — overlay once so Available is not "…".
-    if (
-      existing.length &&
-      existing.slice(0, 40).every((row) => productStockFieldsMissing(row))
-    ) {
-      try {
-        const org = getStoredOrganization() ?? null;
-        const user = getStoredUser() ?? null;
-        const branchId =
-          user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
-        const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(
-          () => null,
-        );
-        if (stockByCode?.size) {
-          const withStock = mergeProductsWithLiveStock(existing, stockByCode);
-          await idbPutCatalogProducts(withStock);
-          setPosSearchCatalog(withStock, { warmedAt: last });
-          void persistPosSearchIndexSnapshot(last);
-          return { skipped: true, count: withStock.length, stockOverlay: true };
-        }
-      } catch {
-        /* keep stripped catalog */
-      }
-    }
+    // Keep Available current even when the product master TTL has not expired.
+    const forceStock =
+      existing.length > 0 &&
+      existing.slice(0, 40).every((row) => productStockFieldsMissing(row));
+    void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
     return { skipped: true, count: existing.length };
   }
 
@@ -179,29 +216,15 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   const warmedAt = Date.now();
   await idbClearStore("catalog");
   await idbPutCatalogProducts(products);
-
-  // Overlay live stock so Available is numeric in fast IndexedDB search.
-  // Master rows stay stripped of stale bake-in; stock map is applied once after warm.
-  let searchable = products;
-  try {
-    const org = getStoredOrganization() ?? null;
-    const user = getStoredUser() ?? null;
-    const branchId =
-      user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
-    const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
-    if (stockByCode?.size) {
-      searchable = mergeProductsWithLiveStock(products, stockByCode);
-      await idbPutCatalogProducts(searchable);
-    }
-  } catch {
-    /* keep master-only catalog */
-  }
-
   await idbSetMeta("catalog_warmed_at", warmedAt);
-  await idbSetMeta("catalog_count", searchable.length);
-  setPosSearchCatalog(searchable, { warmedAt });
+  await idbSetMeta("catalog_count", products.length);
+  // Clear stock overlay stamp so the forced refresh below always runs.
+  await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, 0);
+  setPosSearchCatalog(products, { warmedAt });
   void persistPosSearchIndexSnapshot(warmedAt);
-  return { skipped: false, count: searchable.length };
+
+  const stock = await refreshPosOfflineCatalogStock({ force: true }).catch(() => null);
+  return { skipped: false, count: Number(stock?.count ?? products.length) };
 }
 
 /**
