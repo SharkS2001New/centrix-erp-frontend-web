@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       public_url: ${{ steps.upload.outputs.public_url }}
+      uploaded: ${{ steps.upload.outputs.uploaded }}
     steps:
       - name: Download MSI artifact
         uses: actions/download-artifact@v4
@@ -89,9 +90,28 @@ jobs:
         run: |
           set -euo pipefail
           export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
+
           if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_BUCKET:-}" ] || [ -z "${R2_ENDPOINT:-}" ]; then
-            echo "::error::Missing backup R2 secrets. Set the same BACKUP_R2_* values used for MySQL backups: BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY, BACKUP_R2_BUCKET, BACKUP_R2_ENDPOINT (and BACKUP_R2_PUBLIC_URL for downloads)."
-            exit 1
+            echo "uploaded=false" >> "$GITHUB_OUTPUT"
+            echo "public_url=" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Centrix Print Agent MSI — R2 skipped"
+              echo ""
+              echo "Build succeeded, but **R2 upload was skipped** because repo secrets are missing."
+              echo ""
+              echo "Add these GitHub Actions secrets on **centrix-erp-frontend-web** (same values as MySQL backup / Platform → Database backups):"
+              echo ""
+              echo "- \`BACKUP_R2_ACCESS_KEY_ID\`"
+              echo "- \`BACKUP_R2_SECRET_ACCESS_KEY\`"
+              echo "- \`BACKUP_R2_BUCKET\`"
+              echo "- \`BACKUP_R2_ENDPOINT\`"
+              echo "- \`BACKUP_R2_PUBLIC_URL\` (for download + Helm \`PRINT_AGENT_MSI_URL\`)"
+              echo "- \`BACKUP_R2_REGION\` (optional; defaults to \`auto\`)"
+              echo ""
+              echo "The MSI is still available as a workflow artifact and GitHub Release asset."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::BACKUP_R2_* secrets missing — skipped R2 upload. MSI remains as artifact/release. Set secrets to publish to Cloudflare R2."
+            exit 0
           fi
 
           # Same bucket as backups; separate prefix from backups/database.
@@ -107,6 +127,8 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/octet-stream" \
             --cache-control "public, max-age=31536000, immutable"
+
+          echo "uploaded=true" >> "$GITHUB_OUTPUT"
 
           PUBLIC_BASE="${R2_PUBLIC_URL%/}"
           if [ -z "$PUBLIC_BASE" ]; then
@@ -154,7 +176,8 @@ jobs:
               echo "PRINT_AGENT_MSI_URL=${PUBLIC_URL}"
               echo '```'
             else
-              echo "Set secret \`BACKUP_R2_PUBLIC_URL\` (same as MySQL backup R2 public/custom domain URL) to expose a download link."
+              echo "R2 public URL was not set (missing \`BACKUP_R2_*\` secrets or \`BACKUP_R2_PUBLIC_URL\`)."
+              echo "Download this release asset, or add the secrets and re-run to publish to Cloudflare R2."
             fi
           } > release-notes.md
 

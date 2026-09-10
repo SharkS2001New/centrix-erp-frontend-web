@@ -2668,6 +2668,12 @@ export function PosScreen({ standalone = false }) {
    */
   const lastAddLineDedupeRef = useRef({ key: null, at: 0 });
   /**
+   * True while a product is parked for Add. clearClassicEntryFields (unlockUiEarly)
+   * flips this off immediately so a twin Enter/Add cannot reuse stale selectedProduct
+   * state — without blocking a later search→select→add.
+   */
+  const entryParkActiveRef = useRef(false);
+  /**
    * After search pick, focus moves to qty — the same Enter key that selected the row
    * can land on qty and auto-add. Ignore qty Enter briefly so Add is a single action.
    */
@@ -5391,6 +5397,7 @@ export function PosScreen({ standalone = false }) {
     setLineForm(EMPTY_LINE);
     setSelectedProduct(null);
     selectedProductRef.current = null;
+    entryParkActiveRef.current = false;
     setSelectedProductCode(null);
     resetProductSearchField();
     setUnitPriceTouched(false);
@@ -5490,9 +5497,9 @@ export function PosScreen({ standalone = false }) {
     setSelectedProductCode(null);
     setSelectedProduct(null);
     selectedProductRef.current = null;
-    // Keep lastAddLineDedupeRef / lastEntryQtyCommitRef — unlockUiEarly clears the
-    // entry while the save is still finishing; wiping those guards let Enter+Add
-    // (or Enter+blur) POST a duplicate from stale selectedProduct state.
+    entryParkActiveRef.current = false;
+    // Keep lastAddLineDedupeRef for the in-flight twin window only — pickProduct
+    // resets it when the cashier parks the next item.
     resetProductSearchField();
     setUnitPriceTouched(false);
     setEditingLineId(null);
@@ -7806,6 +7813,10 @@ export function PosScreen({ standalone = false }) {
     // focus qty — never await network on the select click (that felt multi-second).
     const parkCode = product.product_code;
     focusSearchAfterAdd.current = false;
+    entryParkActiveRef.current = true;
+    // New park is a deliberate next add — drop the prior add's twin-dedupe key.
+    lastAddLineDedupeRef.current = { key: null, at: 0 };
+    lastEntryQtyCommitRef.current = { key: null, at: 0 };
     setSelectedProductCode(parkCode);
     setSelectedProduct(product);
     selectedProductRef.current = product;
@@ -7904,6 +7915,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineRef(null);
     setSelectedProduct(null);
     selectedProductRef.current = null;
+    entryParkActiveRef.current = false;
     setSelectedProductCode(null);
     resetProductSearchField();
     setLineForm({
@@ -8830,9 +8842,14 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
       return;
     }
-    // Prefer the parked ref only — after unlockUiEarly, selectedProduct state can
-    // still hold the old product for a frame while the ref is already null.
-    const productForAdd = selectedProductRef.current;
+    // After unlockUiEarly clear, park is inactive — reject twin Enter/Add that still
+    // sees stale selectedProduct state. Normal search→select sets park active again.
+    if (!entryParkActiveRef.current) {
+      releaseCartLineMutationGate();
+      setStatusMessage("Select a product first.");
+      return;
+    }
+    const productForAdd = selectedProductRef.current ?? selectedProduct;
     if (!productForAdd?.product_code) {
       releaseCartLineMutationGate();
       setStatusMessage("Select a product first.");
@@ -9147,8 +9164,8 @@ export function PosScreen({ standalone = false }) {
     if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
       return;
     }
-    const parkedProduct = selectedProductRef.current;
-    if (!parkedProduct) {
+    const parkedProduct = selectedProductRef.current ?? selectedProduct;
+    if (!entryParkActiveRef.current || !parkedProduct) {
       setStatusMessage("Select a product first, then press Enter on qty.");
       return;
     }
@@ -10881,6 +10898,10 @@ export function PosScreen({ standalone = false }) {
       setSellWholesaleMode(!isRetailLine);
       setSelectedProductCode(line.product_code);
       setSelectedProduct(product);
+      selectedProductRef.current = product;
+      entryParkActiveRef.current = true;
+      lastAddLineDedupeRef.current = { key: null, at: 0 };
+      lastEntryQtyCommitRef.current = { key: null, at: 0 };
       updateSearchQuery(product.product_name ?? line.product_code);
       productSearchRef.current?.setDraftValue?.(
         product.product_name ?? line.product_code,

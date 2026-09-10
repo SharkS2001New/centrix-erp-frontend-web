@@ -70,7 +70,8 @@ Then host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` o
 
 Do **not** bake the ~400MB MSI into the Docker image. CI uploads it to the **same R2 bucket** used for MySQL backups (`BACKUP_R2_*`), under prefix `print-agent/`.
 
-GitHub Actions secrets (frontend repo) — mirror Platform → Database backups / API `BACKUP_R2_*`:
+GitHub Actions secrets (frontend repo) — mirror Platform → Database backups / API `BACKUP_R2_*`.  
+Without them the MSI workflow still **builds**, uploads a **workflow artifact**, and publishes a **GitHub Release**; R2 + Helm `PRINT_AGENT_MSI_URL` updates are skipped with a warning.
 
 | Secret | Same as |
 |--------|---------|
