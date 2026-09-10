@@ -59,6 +59,7 @@ import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-u
 import {
   hydrateProductLiveStock,
   mergeProductStockFields,
+  mergeProductWithLiveStock,
   productStockFieldsMissing,
 } from "@/lib/stock-cache";
 import {
@@ -103,6 +104,7 @@ import {
   showPosOrderDiscountInput,
   resolveOrderPrintDocumentType,
   isOrderCancellationApprovalEnabled,
+  resolveBackofficeProductSearchMode,
 } from "@/lib/sales-settings";
 import { canDirectCancelOrders } from "@/lib/approval-permissions";
 import {
@@ -298,7 +300,7 @@ import {
   refreshPosOfflineCatalogStock,
   POS_OFFLINE_STOCK_TTL_MS,
 } from "@/lib/pos-offline";
-import { isSellableCatalogProduct } from "@/lib/catalog-cache";
+import { isSellableCatalogProduct, stripProductStockFields } from "@/lib/catalog-cache";
 import {
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
@@ -5888,6 +5890,12 @@ export function PosScreen({ standalone = false }) {
       };
 
       let localPaint = [];
+      // Create Order only: admin "Live" → query /products directly (current stock).
+      // External POS stays IndexedDB-first. Online adds still use TemporaryCart
+      // (same sticky-cart pattern as mobile) regardless of search mode.
+      const preferLiveSearch =
+        !standalone &&
+        resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
       try {
         if (standalone && offlineMode) {
           const list = await paintFromOffline();
@@ -5899,10 +5907,35 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        // Always paint warmed IndexedDB catalog first (fast). Never skip it for
-        // "live" mode — awaiting /products on every keystroke raced TemporaryCart
-        // adds (optimistic line painted then reverted; "Adding…" overlay late).
-        // Live mode only soft-refreshes stock in the background after local paint.
+        // Live Create Order: server-first. Do not paint IndexedDB first (stale stock).
+        // Select aborts this request (searchSeq++) so late /products cannot race Add.
+        if (preferLiveSearch) {
+          setSearching(true);
+          try {
+            const res = await apiRequest("/products", {
+              searchParams: {
+                per_page: 40,
+                q: trimmed,
+                fields: "lean",
+                status: "active",
+                ...productBranchParams,
+              },
+              signal: abort.signal,
+              loading: false,
+              reportIssues: false,
+            });
+            if (seq !== searchSeq.current || abort.signal.aborted) return;
+            applyRemoteMerge(res.data ?? []);
+            return;
+          } catch (liveErr) {
+            if (isAbortError(liveErr) || abort.signal.aborted || seq !== searchSeq.current) {
+              return;
+            }
+            // Network blip: fall through to IndexedDB so the desk can keep selling.
+          }
+        }
+
+        // Fast mode (and live fallback): paint warmed IndexedDB catalog first.
         try {
           localPaint = await paintFromOffline();
           if (seq === searchSeq.current && localPaint.length) {
@@ -5916,57 +5949,111 @@ export function PosScreen({ standalone = false }) {
         }
 
         // Soft stock refresh when local hits exist — do not block select/add.
+        // Never stamp lean /products branch_stock (often all zeros) onto stripped
+        // IndexedDB rows — that painted "0 carton" for every Create Order hit.
+        // Overlay Available from stock-on-hand for this query instead.
         const localReady = localPaint.length > 0;
         if (localReady) {
+          const stockBranchId =
+            productBranchParams?.branch_id ?? user?.branch_id ?? null;
           void refreshPosOfflineCatalogStock({
-            branchId: productBranchParams?.branch_id ?? user?.branch_id ?? null,
+            branchId: stockBranchId,
           }).catch(() => {});
           void (async () => {
             try {
-              const res = await apiRequest("/products", {
-                searchParams: {
-                  per_page: 40,
-                  q: trimmed,
-                  fields: "lean",
-                  status: "active",
-                  ...productBranchParams,
-                },
-                signal: abort.signal,
-                loading: false,
-                reportIssues: false,
-              });
+              const [leanRes, stockRes] = await Promise.all([
+                apiRequest("/products", {
+                  searchParams: {
+                    per_page: 40,
+                    q: trimmed,
+                    fields: "lean",
+                    status: "active",
+                    ...productBranchParams,
+                  },
+                  signal: abort.signal,
+                  loading: false,
+                  reportIssues: false,
+                }).catch(() => null),
+                apiRequest("/reports/stock-on-hand", {
+                  searchParams: {
+                    per_page: 100,
+                    q: trimmed,
+                    ...(stockBranchId ? { branch_id: stockBranchId } : {}),
+                  },
+                  signal: abort.signal,
+                  loading: false,
+                  reportIssues: false,
+                }).catch(() => null),
+              ]);
               if (seq !== searchSeq.current || abort.signal.aborted) return;
-              const remote = sellableSearchResults(
-                (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+
+              const stockByCode = new Map();
+              const stockRows = Array.isArray(stockRes?.data)
+                ? stockRes.data
+                : Array.isArray(stockRes)
+                  ? stockRes
+                  : [];
+              for (const row of stockRows) {
+                const code = row?.product_code;
+                if (code) stockByCode.set(String(code), row);
+              }
+
+              const leanRemote = sellableSearchResults(
+                (leanRes?.data ?? []).map((p) =>
+                  stripProductStockFields(enrichProductForLpo(p, uomMap, vatMap)),
+                ),
               );
-              if (!remote.length) return;
-              const byCode = new Map(
-                remote.map((p) => [String(p.product_code ?? ""), p]),
+              const leanByCode = new Map(
+                leanRemote.map((p) => [String(p.product_code ?? ""), p]),
               );
+
               setSearchResults((prev) => {
                 if (!prev?.length || seq !== searchSeq.current) return prev;
                 let changed = false;
                 const next = prev.map((row) => {
-                  const live = byCode.get(String(row.product_code ?? ""));
-                  if (!live) return row;
-                  const merged = mergeProductStockFields(row, live);
-                  if (merged !== row) changed = true;
+                  const code = String(row.product_code ?? "");
+                  let merged = row;
+                  const lean = leanByCode.get(code);
+                  if (lean) {
+                    const nextRow = mergeProductStockFields(merged, lean);
+                    if (nextRow !== merged) {
+                      merged = nextRow;
+                      changed = true;
+                    }
+                  }
+                  if (stockByCode.size) {
+                    const withStock = mergeProductWithLiveStock(merged, stockByCode);
+                    if (withStock !== merged) {
+                      merged = withStock;
+                      changed = true;
+                    }
+                  }
                   return merged;
                 });
                 return changed ? next : prev;
               });
-              for (const p of remote) {
-                const code = p?.product_code;
+
+              for (const row of localPaint) {
+                const code = row?.product_code;
                 if (!code) continue;
-                const existing = productByCodeRef.current[code];
-                productByCodeRef.current[code] = existing
-                  ? mergeProductStockFields(existing, p)
-                  : p;
+                let merged = productByCodeRef.current[code] ?? row;
+                const lean = leanByCode.get(String(code));
+                if (lean) merged = mergeProductStockFields(merged, lean);
+                if (stockByCode.size) {
+                  merged = mergeProductWithLiveStock(merged, stockByCode);
+                }
+                productByCodeRef.current[code] = merged;
               }
               try {
                 const mergedRows = localPaint.map((row) => {
-                  const live = byCode.get(String(row.product_code ?? ""));
-                  return live ? mergeProductStockFields(row, live) : row;
+                  const code = String(row?.product_code ?? "");
+                  let merged = row;
+                  const lean = leanByCode.get(code);
+                  if (lean) merged = mergeProductStockFields(merged, lean);
+                  if (stockByCode.size) {
+                    merged = mergeProductWithLiveStock(merged, stockByCode);
+                  }
+                  return merged;
                 });
                 upsertPosSearchProducts(mergedRows.filter(Boolean));
               } catch {
@@ -6060,11 +6147,29 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const codeLike = looksLikeProductCodeQuery(searchQuery);
-    // Keep debounce minimal — local index is sync; long delays made search feel laggy.
-    const delay = !trimmed ? 0 : codeLike ? 0 : classicLayout ? 40 : 60;
+    const liveCreateOrderSearch =
+      !standalone &&
+      resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
+    // IndexedDB is sync — keep debounce tiny. Live Create Order hits /products; give
+    // typing a short pause so TemporaryCart add is not fighting every keystroke.
+    const delay = !trimmed
+      ? 0
+      : codeLike
+        ? 0
+        : liveCreateOrderSearch
+          ? 140
+          : classicLayout
+            ? 40
+            : 60;
     const t = setTimeout(() => searchProducts(searchQueryRef.current), delay);
     return () => clearTimeout(t);
-  }, [searchQuery, searchProducts, classicLayout]);
+  }, [
+    searchQuery,
+    searchProducts,
+    classicLayout,
+    standalone,
+    capabilities?.module_settings,
+  ]);
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
@@ -6949,37 +7054,45 @@ export function PosScreen({ standalone = false }) {
               mergePatchRef,
           );
         }
-        // Always merge from the pre-paint qty — painted rows already include incrementBaseQty.
-        const baseBefore =
-          mergeQtyBeforePaint != null && Number.isFinite(mergeQtyBeforePaint)
-            ? mergeQtyBeforePaint
-            : Number(serverMergeTarget.quantity);
-        const newBaseQty = baseBefore + incrementBaseQty;
-        const mergedEntryQty = posEntryQtyFromBaseQty(
-          newBaseQty,
-          product,
-          retailPackage,
-          cartLineRetailStockFlag(serverMergeTarget),
-        );
-        const lockedUnit =
-          cartLineLockedUnitOverride(
-            serverMergeTarget,
-            product.uom,
+        // Own just-painted optimistic row is NOT a pre-existing merge base.
+        // Re-adding incrementBaseQty here turned Create Order "add 1" into POST qty 2.
+        const mergingOwnOptimisticPaint =
+          Boolean(serverMergeTarget._optimistic) &&
+          mergeQtyBeforePaint == null &&
+          !isServerPersistedCartLine(serverMergeTarget);
+        if (!mergingOwnOptimisticPaint) {
+          // Always merge from the pre-paint qty — painted rows already include incrementBaseQty.
+          const baseBefore =
+            mergeQtyBeforePaint != null && Number.isFinite(mergeQtyBeforePaint)
+              ? mergeQtyBeforePaint
+              : Number(serverMergeTarget.quantity);
+          const newBaseQty = baseBefore + incrementBaseQty;
+          const mergedEntryQty = posEntryQtyFromBaseQty(
+            newBaseQty,
+            product,
+            retailPackage,
             cartLineRetailStockFlag(serverMergeTarget),
-            { cashRound: enablePosCashRounding },
-          ) ?? override;
-        finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
-        lineBody = {
-          ...lineBody,
-          quantity: finalComputed.baseQty,
-          unit_price: finalComputed.unitPricePerBase,
-          display_unit_price: finalComputed.displayUnitPrice,
-          uom: finalComputed.uomLabel || product.package_name,
-          discount_given:
-            allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
-          product_vat: lineProductVat(product, finalComputed.lineAmount),
-          amount: finalComputed.lineAmount,
-        };
+          );
+          const lockedUnit =
+            cartLineLockedUnitOverride(
+              serverMergeTarget,
+              product.uom,
+              cartLineRetailStockFlag(serverMergeTarget),
+              { cashRound: enablePosCashRounding },
+            ) ?? override;
+          finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
+          lineBody = {
+            ...lineBody,
+            quantity: finalComputed.baseQty,
+            unit_price: finalComputed.unitPricePerBase,
+            display_unit_price: finalComputed.displayUnitPrice,
+            uom: finalComputed.uomLabel || product.package_name,
+            discount_given:
+              allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
+            product_vat: lineProductVat(product, finalComputed.lineAmount),
+            amount: finalComputed.lineAmount,
+          };
+        }
       }
     }
 

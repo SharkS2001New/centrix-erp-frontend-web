@@ -15,6 +15,7 @@ import {
   resolveEditOrderStatuses,
   resolveEnablePosCashRounding,
   resolveShowPosCheckoutOnCreate,
+  resolveBackofficeProductSearchMode,
   resolvePrintInvoiceStatuses,
   saleAppliesRouteMarkupPricing,
   shouldShowDistributionLoadingLists,
@@ -519,5 +520,25 @@ describe("salesCartChannelForWorkspace", () => {
 
   it("still maps store-only stock source helper to backend for callers that need it", () => {
     expect(posChannelFromStockSource(false, storeOnly)).toBe("backend");
+  });
+});
+
+describe("resolveBackofficeProductSearchMode", () => {
+  it("defaults to indexeddb", () => {
+    expect(resolveBackofficeProductSearchMode({})).toBe("indexeddb");
+    expect(resolveBackofficeProductSearchMode({ sales: {} })).toBe("indexeddb");
+  });
+
+  it("accepts live for Create Order server search + TemporaryCart selling", () => {
+    expect(
+      resolveBackofficeProductSearchMode({
+        sales: { backoffice_product_search_mode: "live" },
+      }),
+    ).toBe("live");
+    expect(
+      getPosSalesConfig({
+        sales: { backoffice_product_search_mode: "LIVE" },
+      }).backofficeProductSearchMode,
+    ).toBe("live");
   });
 });

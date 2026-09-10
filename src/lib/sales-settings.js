@@ -1608,7 +1608,11 @@ export function resolveEnablePosCashRounding(moduleSettings) {
   return String(raw.external_pos_layout ?? "modern").toLowerCase() === "classic";
 }
 
-/** Backoffice Create order search source: live API vs device IndexedDB catalog. */
+/**
+ * Backoffice Create order product search source.
+ * - indexeddb: device catalog first (fast); soft stock refresh in background
+ * - live: query /products directly for current stock; cart adds still use TemporaryCart
+ */
 export function resolveBackofficeProductSearchMode(moduleSettings) {
   const raw = String(
     moduleSettings?.sales?.backoffice_product_search_mode ?? "indexeddb",

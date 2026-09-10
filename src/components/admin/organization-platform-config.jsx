@@ -736,14 +736,14 @@ export function OrganizationPlatformSalesSettings({
                 },
                 {
                   value: "live",
-                  label: "Live from server — best for distribution / accurate stock",
+                  label: "Live from server — TemporaryCart selling (like mobile)",
                 },
               ]}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Fast search uses the device IndexedDB catalog. Available qty is refreshed from the
-              server about every minute (and when you return to the tab). Live mode still paints
-              the device catalog first and only refreshes stock in the background.
+              Fast search uses the device IndexedDB catalog (Available qty refreshes about every
+              minute). Live search queries the server on each search for current stock, then adds
+              to the TemporaryCart like mobile orders. External POS always uses the device catalog.
             </p>
           </OrgRegisterField>
           <Toggle
