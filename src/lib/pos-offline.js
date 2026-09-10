@@ -18,6 +18,7 @@ import {
   serializePosSearchIndex,
   setPosSearchCatalog,
   upsertPosSearchProducts,
+  getPosSearchProduct,
 } from "@/lib/pos-product-search-index";
 import { rankPosProductSearchResults } from "@/lib/pos-product-search-rank";
 import {
@@ -59,7 +60,7 @@ import {
   resolveOutboxClientUuidForCart,
   todayPosOrderDate,
 } from "@/lib/pos-offline-db";
-import { fetchStockLevelsMap, mergeProductsWithLiveStock, productStockFieldsMissing } from "@/lib/stock-cache";
+import { fetchStockLevelsMap, mergeProductsWithLiveStock, mergeProductStockFields, productStockFieldsMissing } from "@/lib/stock-cache";
 import { getStoredOrganization, getStoredUser } from "@/lib/auth-storage";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
@@ -129,51 +130,67 @@ function notifyPosOfflineCatalogStock(info) {
  */
 export async function refreshPosOfflineCatalogStock(options = {}) {
   const force = Boolean(options.force);
-  const last = Number((await idbGetMeta(CATALOG_STOCK_OVERLAY_META_KEY)) ?? 0);
-  if (!force && last && Date.now() - last < POS_OFFLINE_STOCK_TTL_MS) {
-    // TTL says overlay is fresh, but memory/IDB may still be stock-stripped
-    // (warm painted master rows, overlay aborted, or Find raced ahead).
-    const sample = samplePosSearchCatalogProducts(40);
-    const sampleMissing =
-      sample.length > 0 && sample.every((row) => productStockFieldsMissing(row));
-    if (!sampleMissing) {
-      const skipped = { skipped: true, count: 0, ageMs: Date.now() - last };
-      notifyPosOfflineCatalogStock(skipped);
-      return skipped;
+
+  // force:true must not join a stale in-flight that may have read a pre-warm /
+  // pre-clear catalog. Wait it out, then start a fresh pass.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (catalogStockRefreshInFlight) {
+      if (!force) return catalogStockRefreshInFlight;
+      await catalogStockRefreshInFlight.catch(() => null);
+      continue;
     }
-  }
-  if (catalogStockRefreshInFlight) {
+
+    const last = Number((await idbGetMeta(CATALOG_STOCK_OVERLAY_META_KEY)) ?? 0);
+    if (!force && last && Date.now() - last < POS_OFFLINE_STOCK_TTL_MS) {
+      // TTL says overlay is fresh, but memory may still be stock-stripped
+      // (warm painted master rows, overlay aborted, or Find raced ahead).
+      const sample = samplePosSearchCatalogProducts(40);
+      const sampleMissing =
+        sample.length > 0 && sample.every((row) => productStockFieldsMissing(row));
+      if (!sampleMissing) {
+        const skipped = { skipped: true, count: 0, ageMs: Date.now() - last };
+        notifyPosOfflineCatalogStock(skipped);
+        return skipped;
+      }
+    }
+
+    if (catalogStockRefreshInFlight) {
+      if (!force) return catalogStockRefreshInFlight;
+      await catalogStockRefreshInFlight.catch(() => null);
+      continue;
+    }
+
+    catalogStockRefreshInFlight = (async () => {
+      const existing = await idbGetAllCatalog();
+      if (!existing.length) {
+        const empty = { skipped: true, count: 0 };
+        notifyPosOfflineCatalogStock(empty);
+        return empty;
+      }
+      const org = getStoredOrganization() ?? null;
+      const branchId = resolveCatalogStockBranchId(options.branchId);
+      const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
+      if (!stockByCode?.size) {
+        const none = { skipped: false, count: 0 };
+        notifyPosOfflineCatalogStock(none);
+        return none;
+      }
+      const withStock = mergeProductsWithLiveStock(existing, stockByCode);
+      await idbPutCatalogProducts(withStock);
+      const overlayAt = Date.now();
+      await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, overlayAt);
+      const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || overlayAt;
+      setPosSearchCatalog(withStock, { warmedAt });
+      void persistPosSearchIndexSnapshot(warmedAt);
+      const done = { skipped: false, count: withStock.length, overlayAt };
+      notifyPosOfflineCatalogStock(done);
+      return done;
+    })().finally(() => {
+      catalogStockRefreshInFlight = null;
+    });
+
     return catalogStockRefreshInFlight;
   }
-
-  catalogStockRefreshInFlight = (async () => {
-    const existing = await idbGetAllCatalog();
-    if (!existing.length) {
-      const empty = { skipped: true, count: 0 };
-      notifyPosOfflineCatalogStock(empty);
-      return empty;
-    }
-    const org = getStoredOrganization() ?? null;
-    const branchId = resolveCatalogStockBranchId(options.branchId);
-    const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
-    if (!stockByCode?.size) {
-      const none = { skipped: false, count: 0 };
-      notifyPosOfflineCatalogStock(none);
-      return none;
-    }
-    const withStock = mergeProductsWithLiveStock(existing, stockByCode);
-    await idbPutCatalogProducts(withStock);
-    const overlayAt = Date.now();
-    await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, overlayAt);
-    const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || overlayAt;
-    setPosSearchCatalog(withStock, { warmedAt });
-    void persistPosSearchIndexSnapshot(warmedAt);
-    const done = { skipped: false, count: withStock.length, overlayAt };
-    notifyPosOfflineCatalogStock(done);
-    return done;
-  })().finally(() => {
-    catalogStockRefreshInFlight = null;
-  });
 
   return catalogStockRefreshInFlight;
 }
@@ -375,12 +392,20 @@ export async function refreshPosOfflineCatalogPricing(payload = {}) {
         warm,
       };
     }
-    await idbPutCatalogProducts([product]);
-    upsertPosSearchProducts([product]);
+    // Lean price payloads are stock-stripped — keep Available already in IDB/memory.
+    const prior =
+      getPosSearchProduct(product.product_code) ??
+      (await idbGetCatalogProduct(product.product_code));
+    const merged =
+      prior && !productStockFieldsMissing(prior)
+        ? mergeProductStockFields(product, prior)
+        : product;
+    await idbPutCatalogProducts([merged]);
+    upsertPosSearchProducts([merged]);
     // Keep warm timestamp so background TTL refresh still runs later.
     const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || Date.now();
     await idbSetMeta("catalog_warmed_at", warmedAt);
-    return { products: [product], forcedFull: false };
+    return { products: [merged], forcedFull: false };
   } catch (e) {
     console.warn("[pos] single-product catalog refresh failed; forcing full warm", e);
     const warm = await warmPosOfflineCatalog({ force: true });

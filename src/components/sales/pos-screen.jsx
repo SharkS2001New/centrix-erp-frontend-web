@@ -2518,6 +2518,38 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  /**
+   * When every cart row for a SKU is being removed, also exclude by product_code.
+   * Optimistic `pending-*` delete keys miss reminted TemporaryCart `CLU-` ids, so
+   * a later add POST would resurrect the deleted row and twin the new SKU.
+   */
+  function registerFullyRemovedProductCodes(cartBefore, deletedLines) {
+    const deleteCountByCode = new Map();
+    for (const line of deletedLines ?? []) {
+      const code = String(line?.product_code ?? "").trim();
+      if (!code) continue;
+      deleteCountByCode.set(code, (deleteCountByCode.get(code) ?? 0) + 1);
+    }
+    const cartCountByCode = new Map();
+    for (const line of cartBefore?.lines ?? []) {
+      const code = String(line?.product_code ?? "").trim();
+      if (!code) continue;
+      cartCountByCode.set(code, (cartCountByCode.get(code) ?? 0) + 1);
+    }
+    for (const [code, n] of deleteCountByCode) {
+      if ((cartCountByCode.get(code) ?? 0) <= n) {
+        registerSwappedAwayProductCode(code);
+      }
+    }
+  }
+
+  function clearFullyRemovedProductCodes(deletedLines) {
+    for (const line of deletedLines ?? []) {
+      const code = String(line?.product_code ?? "").trim();
+      if (code) clearSwappedAwayProductCode(code);
+    }
+  }
+
   function registerSwappedAwayProductCode(productCode) {
     const code = String(productCode ?? "").trim();
     if (code) pendingSwappedAwayProductCodesRef.current.add(code);
@@ -2536,6 +2568,12 @@ export function PosScreen({ standalone = false }) {
       // Legacy bare keys from earlier in the session.
       pendingLineDeleteRefsRef.current.delete(key);
     }
+  }
+
+  /** Drop delete/swap exclusion state (Clear, F8, held restore, fresh workspace). */
+  function clearCartLineExclusionState() {
+    pendingLineDeleteRefsRef.current.clear();
+    pendingSwappedAwayProductCodesRef.current.clear();
   }
 
   function filterServerCartLines(lines) {
@@ -2594,8 +2632,7 @@ export function PosScreen({ standalone = false }) {
     };
     cartRef.current = placeholder;
     setCart(placeholder);
-    pendingLineDeleteRefsRef.current.clear();
-    pendingSwappedAwayProductCodesRef.current.clear();
+    clearCartLineExclusionState();
     setEditOrderNo(peekNextPos != null ? String(peekNextPos) : "");
     return placeholder;
   }
@@ -4806,7 +4843,8 @@ export function PosScreen({ standalone = false }) {
         const code = String(line.product_code ?? "").trim();
         if (!code || !advisedByCode.has(code)) continue;
 
-        const lineRef = cartLineRef(line);
+        const lineRef = serverPersistedCartLineRef(line) ?? cartLineRef(line);
+        if (!lineRef) continue;
         const advisedPerUnit = advisedByCode.get(code);
         const product = productByCode?.[code] ?? null;
         const retailPackage = getRetailPackage(code);
@@ -5555,10 +5593,11 @@ export function PosScreen({ standalone = false }) {
   function scheduleFocusEntryQty(opts = {}) {
     // Cancel any pending "focus Scan after add" so it cannot steal qty focus.
     focusSearchAfterAdd.current = false;
-    // Search Enter that selected the row must not also fire qty Enter → add.
-    // Keep a long enough window for delayed qty mount (classic entryReady) and for
-    // modern Create Order where leaked Enter + Add click twin-added the line.
-    const ignoreEnterMs = opts.ignoreEnterMs ?? 450;
+    // Swallow only the Search Enter that selected the row (key can land on qty).
+    // Classic used to re-arm 450ms on focus — that swallowed the cashier's real
+    // qty Enter and blur left the parked SCAN+QTY row looking hung.
+    const ignoreEnterMs =
+      opts.ignoreEnterMs ?? (classicLayout ? 120 : 450);
     ignoreEntryQtyEnterUntilRef.current = Date.now() + Math.max(0, ignoreEnterMs);
     const gen = ++entryQtyFocusGenRef.current;
     const focusQty = () => {
@@ -5569,8 +5608,8 @@ export function PosScreen({ standalone = false }) {
       el.select?.();
       const focused =
         typeof document !== "undefined" && document.activeElement === el;
-      if (focused) {
-        // Re-arm after focus lands — Search Enter can arrive after delayed mount.
+      if (focused && !classicLayout && ignoreEnterMs > 0) {
+        // Modern Create Order: leaked Enter + Add click twin-added — re-arm once.
         ignoreEntryQtyEnterUntilRef.current = Math.max(
           ignoreEntryQtyEnterUntilRef.current,
           Date.now() + Math.max(0, ignoreEnterMs),
@@ -8298,10 +8337,17 @@ export function PosScreen({ standalone = false }) {
     }
 
     // Live TemporaryCart: PATCH first (no optimistic paint), then UI from response.
-    const lineRef = cartLineRef(nextLine);
+    const lineRef =
+      serverPersistedCartLineRef(nextLine) ??
+      serverPersistedCartLineRef(line) ??
+      cartLineRef(nextLine);
     if (!lineRef) {
       setStatusMessage("Could not resolve the line to replace.");
       return false;
+    }
+    // Register before PATCH so TemporaryCart responses cannot resurrect the old SKU.
+    if (replacedProductCode && replacedProductCode !== nextProductCode) {
+      registerSwappedAwayProductCode(replacedProductCode);
     }
     try {
       const ok = await commitCartLine({
@@ -8321,6 +8367,7 @@ export function PosScreen({ standalone = false }) {
         clientSkuSnapshot: swapSyncSnapshot,
       });
       if (!ok) {
+        if (replacedProductCode) clearSwappedAwayProductCode(replacedProductCode);
         setStatusMessage("Could not save item change. Try again.");
         return false;
       }
@@ -8372,6 +8419,7 @@ export function PosScreen({ standalone = false }) {
       clearClassicEntryFields();
       return true;
     } catch (e) {
+      if (replacedProductCode) clearSwappedAwayProductCode(replacedProductCode);
       setStatusMessage(
         e instanceof ApiError ? e.message : "Could not save item change. Try again.",
       );
@@ -8965,10 +9013,11 @@ export function PosScreen({ standalone = false }) {
     healStuckCartLineSaveGate();
     // Stop a pending search→qty focus from racing this Add (felt like a second add).
     cancelScheduledEntryQtyFocus();
-    ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
-    // Arm before any work so a second Enter / barcode cannot twin this add.
+    // Arm twin-Enter ignore only after validation — early returns must not leave
+    // qty Enter silently dead for 400ms (parked SCAN+QTY row looked hung).
     armCartLineMutationGate();
     if (swapDraftRef.current?.product) {
+      ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
       void completeSwapFromDraft(
         lineFormQtyCommitRef.current ?? swapDraftRef.current.quantity ?? lineForm.quantity,
       ).finally(() => {
@@ -8976,7 +9025,11 @@ export function PosScreen({ standalone = false }) {
       });
       return;
     }
-    if (replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
+    // Incomplete swap chrome (waiting for a replacement) — do not treat as a normal add.
+    if (
+      (replacingLineIdRef.current || replaceTargetSnapshotRef.current) &&
+      !entryParkActiveRef.current
+    ) {
       releaseCartLineMutationGate();
       setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
       return;
@@ -9030,6 +9083,8 @@ export function PosScreen({ standalone = false }) {
       key: `${productForAdd.product_code}|${String(entryQtyRaw ?? "")}`,
       at: addDedupeAt,
     };
+    // Past validation — block twin Enter/Add for this commit only.
+    ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
 
     // Enter→add must not await network. Seed embed sync; soft-refresh in background.
     if (
@@ -9342,8 +9397,18 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     // Search Enter → park → focus qty: the same Enter must not also add the line.
-    // Cashiers then use Add (or a deliberate second Enter on qty).
     if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
+      // Swallow once (leaked Search Enter). Clear ignore and keep qty focused so
+      // the next deliberate Enter adds — classic table blurs after every Enter.
+      ignoreEntryQtyEnterUntilRef.current = 0;
+      if (classicLayout) {
+        window.requestAnimationFrame(() => {
+          const el = qtyInputRef.current;
+          if (!el || el.disabled) return;
+          el.focus({ preventScroll: true });
+          el.select?.();
+        });
+      }
       return;
     }
     const parkedProduct = selectedProductRef.current ?? selectedProduct;
@@ -9635,7 +9700,7 @@ export function PosScreen({ standalone = false }) {
         computed,
         incrementBaseQty: computed.baseQty,
         editingId: line.id,
-        editingRef: cartLineRef(line),
+        editingRef: serverPersistedCartLineRef(line) ?? cartLineRef(line),
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
@@ -10670,6 +10735,7 @@ export function PosScreen({ standalone = false }) {
     // Drop any in-flight add/qty/swap after Clear — otherwise a late commit can keep
     // cartLineMutationGate stuck ("Please wait — finishing cart update…") forever.
     cartCommitGenerationRef.current += 1;
+    clearCartLineExclusionState();
     const working = cartRef.current ?? liveCart;
     const serverCartId = isServerPosCartId(working.id) ? working.id : null;
     let nextCart = withEditDraftDirty({ ...working, lines: [] });
@@ -15007,6 +15073,7 @@ export function PosScreen({ standalone = false }) {
     }
     cartRef.current = cartData;
     setCart(cartData);
+    clearCartLineExclusionState();
     setEditSourceSale(null);
     setSelectedLineId(null);
     setEditingLineId(null);
