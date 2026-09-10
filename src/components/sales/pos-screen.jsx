@@ -101,7 +101,6 @@ import {
   showPosLineDiscountField,
   showPosOrderDiscountInput,
   resolveOrderPrintDocumentType,
-  resolveBackofficeProductSearchMode,
 } from "@/lib/sales-settings";
 import {
   buildAdvisedDiscountMap,
@@ -4069,11 +4068,11 @@ export function PosScreen({ standalone = false }) {
     (previousOrderLoading && !previousOrderLoadingSoft) ||
     Boolean(autoHeldBusy);
 
-  // Only hide the Find dropdown while qty/swap/delete wait is up — do NOT fold
-  // cartLineSaveWaitBusy into posOverlayBlocksScan (that blurred/refocused Scan
-  // and made Enter on qty feel like it only jumped to search).
-  const suppressProductSearchDropdown =
-    posOverlayBlocksScan || cartLineSaveWaitBusy;
+  // Hide Find while payment / modal overlays own the till — never while a line
+  // save is in flight. unlockUiEarly clears the entry so the cashier can search
+  // the next SKU; folding cartLineSaveWaitBusy here made item #2 unselectable
+  // until reload when the save gate stuck or ran long.
+  const suppressProductSearchDropdown = posOverlayBlocksScan;
 
   /** Block switching to Accounts / other applications while outbox sales are uploading. */
   const blocksWorkspaceSwitch = useMemo(() => {
@@ -4995,10 +4994,11 @@ export function PosScreen({ standalone = false }) {
     cartLineMutationGateRef.current = true;
   }
   function releaseCartLineMutationGate() {
+    // Do not wait on cartLineSaveWaitBusyRef — React busy can lag one frame after
+    // overlay finally and left the Scan/Add gate stuck until a full reload.
     if (
       lineSaveOverlayDepthRef.current <= 0 &&
-      cartCommitPendingRef.current <= 0 &&
-      !cartLineSaveWaitBusyRef.current
+      cartCommitPendingRef.current <= 0
     ) {
       cartLineMutationGateRef.current = false;
     }
@@ -5014,6 +5014,18 @@ export function PosScreen({ standalone = false }) {
   }
   function isCartLineSaveBlocking() {
     return cartLineMutationGateRef.current || isCartLineSaveBusy();
+  }
+  /**
+   * External POS / Classic: unlockUiEarly clears the entry so the cashier can
+   * search the next SKU while TemporaryCart/IndexedDB finishes. Queue the next
+   * add instead of hard-blocking — enqueueCartCommit still serializes commits.
+   */
+  function allowsQueuedCartLineAddWhileSaving() {
+    return (
+      classicLayout ||
+      standalone ||
+      usesPosLocalDraftLineEdits(cartRef.current)
+    );
   }
   async function runWithLineSaveOverlay(task, opts = {}) {
     armCartLineMutationGate();
@@ -5038,8 +5050,15 @@ export function PosScreen({ standalone = false }) {
       if (lineSaveOverlayDepthRef.current === 0) {
         lineBusyRef.current = false;
         setLineBusy(false);
+        // Outer overlay finished — free Scan/Add even if pending accounting lagged.
+        if (cartCommitPendingRef.current <= 0) {
+          cartLineMutationGateRef.current = false;
+        } else {
+          releaseCartLineMutationGate();
+        }
+      } else {
+        releaseCartLineMutationGate();
       }
-      releaseCartLineMutationGate();
     }
   }
 
@@ -5499,10 +5518,19 @@ export function PosScreen({ standalone = false }) {
     const onlyProductCode = opts.onlyProductCode;
     // unlockUiEarly clears the entry immediately, then commitCartLine awaits
     // TemporaryCart / IndexedDB. A second clear after that await must not wipe
-    // the next SKU the cashier already parked.
+    // the next SKU the cashier already parked or typed into Find.
     if (onlyProductCode != null && entryParkActiveRef.current) {
       const parkedCode = String(selectedProductRef.current?.product_code ?? "");
       if (parkedCode && parkedCode !== String(onlyProductCode)) {
+        return false;
+      }
+    }
+    if (onlyProductCode != null) {
+      const draft = String(productSearchRef.current?.getDraftValue?.() ?? "").trim();
+      if (
+        draft &&
+        draft.toLowerCase() !== String(onlyProductCode).toLowerCase()
+      ) {
         return false;
       }
     }
@@ -5522,6 +5550,20 @@ export function PosScreen({ standalone = false }) {
     closeProductSearchDropdown();
     focusScanAfterItemAdded();
     return true;
+  }
+
+  /**
+   * Late clear after awaits. When unlockUiEarly already cleared at paint, only
+   * reinforce Scan focus — never reset Find (that wiped item #2 search).
+   */
+  function clearEntryAfterLineCommit(productCode, { unlockUiEarly = false } = {}) {
+    if (unlockUiEarly) {
+      if (!entryParkActiveRef.current) {
+        focusScanAfterItemAdded();
+      }
+      return;
+    }
+    clearClassicEntryFields({ onlyProductCode: productCode });
   }
 
   /** Drop swap draft / replacing chrome so the next Enter is a normal qty edit. */
@@ -5805,31 +5847,25 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        // Create Order + External POS: paint warmed catalog immediately (fuzzy / multi-field).
-        // Backoffice "live" mode skips IndexedDB entirely — search hits /products only.
-        const preferLiveSearch =
-          !standalone &&
-          resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
-        if (!preferLiveSearch) {
-          try {
-            localPaint = await paintFromOffline();
-            if (seq === searchSeq.current && localPaint.length) {
-              seedRetailAndIndex(localPaint);
-              commitSearchResults(localPaint);
-              setSearching(false);
-              finishRetailPackages(localPaint);
-            }
-          } catch {
-            /* fall through to API */
+        // Always paint warmed IndexedDB catalog first (fast). Never skip it for
+        // "live" mode — awaiting /products on every keystroke raced TemporaryCart
+        // adds (optimistic line painted then reverted; "Adding…" overlay late).
+        // Live mode only soft-refreshes stock in the background after local paint.
+        try {
+          localPaint = await paintFromOffline();
+          if (seq === searchSeq.current && localPaint.length) {
+            seedRetailAndIndex(localPaint);
+            commitSearchResults(localPaint);
+            setSearching(false);
+            finishRetailPackages(localPaint);
           }
-        } else {
-          localPaint = [];
+        } catch {
+          /* fall through to API */
         }
 
-        // IndexedDB mode + External POS: skip /products when local hits exist (perf),
-        // but still refresh stock fields in the background so Available is not stuck at 0.
+        // Soft stock refresh when local hits exist — do not block select/add.
         const localReady = localPaint.length > 0;
-        if (localReady && !preferLiveSearch) {
+        if (localReady) {
           void (async () => {
             try {
               const res = await apiRequest("/products", {
@@ -5872,6 +5908,15 @@ export function PosScreen({ standalone = false }) {
                   ? mergeProductStockFields(existing, p)
                   : p;
               }
+              try {
+                const mergedRows = localPaint.map((row) => {
+                  const live = byCode.get(String(row.product_code ?? ""));
+                  return live ? mergeProductStockFields(row, live) : row;
+                });
+                upsertPosSearchProducts(mergedRows.filter(Boolean));
+              } catch {
+                /* best-effort index stock */
+              }
             } catch {
               /* keep local paint */
             }
@@ -5879,7 +5924,7 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        // Live backoffice search (or local miss): wait on the network for current stock.
+        // Local catalog miss: wait on the network.
         setSearching(true);
         const res = await apiRequest("/products", {
           searchParams: {
@@ -5897,22 +5942,13 @@ export function PosScreen({ standalone = false }) {
         applyRemoteMerge(res.data);
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
-        // Network drop mid-search: keep local paint when using device catalog.
-        // Live backoffice mode does not fall back to IndexedDB.
-        const preferLiveSearch =
-          !standalone &&
-          resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
+        // Network drop mid-search: keep IndexedDB paint whenever available.
         try {
-          if (!preferLiveSearch && localPaint.length) {
+          if (localPaint.length) {
             commitSearchResults(localPaint);
             if (standalone) {
               setStatusMessage("Offline catalog — prices from last sync.");
             }
-            return;
-          }
-          if (preferLiveSearch) {
-            commitSearchResults([], { allowEmpty: true });
-            setStatusMessage("Cannot reach server for live product search.");
             return;
           }
           const list = await paintFromOffline();
@@ -6708,7 +6744,9 @@ export function PosScreen({ standalone = false }) {
       const presentedSeq = Number(presented?._local_mutation_seq ?? localMutationSeq);
       // A faster delete/qty/swap already painted a newer cart — keep it.
       if (liveAfter && liveSeq > presentedSeq) {
-        if (clearEntry) clearClassicEntryFields({ onlyProductCode: product.product_code });
+        if (clearEntry) {
+          clearEntryAfterLineCommit(product.product_code, { unlockUiEarly });
+        }
         void refreshOfflineCounts();
         return true;
       }
@@ -6720,7 +6758,9 @@ export function PosScreen({ standalone = false }) {
             ? `Added offline (will sync when online).`
             : `Added.`),
       );
-      if (clearEntry) clearClassicEntryFields({ onlyProductCode: product.product_code });
+      if (clearEntry) {
+        clearEntryAfterLineCommit(product.product_code, { unlockUiEarly });
+      }
       void refreshOfflineCounts();
       return true;
     }
@@ -6810,8 +6850,10 @@ export function PosScreen({ standalone = false }) {
     ) {
       painted = paintOptimisticOn(cartRef.current ?? activeCart) ?? painted;
     }
-    if (painted && unlockUiEarly && clearEntry) {
-      clearClassicEntryFields({ onlyProductCode: product.product_code });
+    // unlockUiEarly already cleared at first paint. A second clear after ensureCart
+    // wiped Find while the cashier typed/selected item #2.
+    if (painted && unlockUiEarly && clearEntry && !entryParkActiveRef.current) {
+      focusScanAfterItemAdded();
     }
 
     // Server cart may exist now — merge into a persisted row, not a second POST.
@@ -7101,7 +7143,7 @@ export function PosScreen({ standalone = false }) {
     // Already cleared at optimistic paint when unlockUiEarly. A blind second clear
     // here races the next search→park and blocks adding a second line.
     if (unlockUiEarly && clearEntry) {
-      clearClassicEntryFields({ onlyProductCode: product.product_code });
+      clearEntryAfterLineCommit(product.product_code, { unlockUiEarly: true });
     }
 
     try {
@@ -7356,7 +7398,7 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
-    if (isCartLineSaveBlocking()) {
+    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return;
     }
@@ -7487,7 +7529,7 @@ export function PosScreen({ standalone = false }) {
 
   async function handleBarcodeEnter(code) {
     if (!enableBarcodeScanner) return false;
-    if (isCartLineSaveBlocking()) {
+    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return true;
     }
@@ -7652,10 +7694,14 @@ export function PosScreen({ standalone = false }) {
 
   async function pickProduct(product) {
     if (!product) return;
-    if (isCartLineSaveBlocking()) {
-      setStatusMessage("Please wait — finishing cart update before adding items.");
+    if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
+      setStatusMessage("Cancel payment first, then add items.");
       return;
     }
+    // Park the next SKU even while a prior line save is finishing. unlockUiEarly
+    // already cleared the entry for that — blocking pick here made cashiers unable
+    // to search/select item #2 until a full reload when the save gate stuck.
+    // handleAddLine / quickAdd still honor isCartLineSaveBlocking().
     // Freeze swap intent BEFORE any await. hydrateProductLiveStock / retail package
     // can yield long enough for remounts or cart sync to clear replacingLineIdRef,
     // which parked Kamande as a new line instead of swapping Sugar.
@@ -7667,40 +7713,38 @@ export function PosScreen({ standalone = false }) {
     const swapIntent = Boolean(frozenReplacingId || frozenSnap || frozenDraft?.line);
 
     const branchId = productBranchParams?.branch_id ?? user?.branch_id ?? null;
-    // Never await stock on select — park first; refresh in background.
+    // Never await stock on select — park first. Only soft-refresh when cache has no
+    // stock fields (do not force GET on every select — that raced TemporaryCart adds).
     const parkedCodeForStock = product.product_code;
-    void hydrateProductLiveStock(
-      product,
-      branchId,
-      apiRequest,
-      productStockFieldsMissing(product) ? {} : { force: true },
-    )
-      .then((fresh) => {
-        if (!fresh?.product_code || String(fresh.product_code) !== String(parkedCodeForStock)) {
-          return;
-        }
-        productByCodeRef.current[fresh.product_code] =
-          mergeProductStockFields(productByCodeRef.current[fresh.product_code] ?? product, fresh) ??
-          fresh;
-        if (String(selectedProductRef.current?.product_code ?? "") === String(parkedCodeForStock)) {
-          selectedProductRef.current =
-            mergeProductStockFields(selectedProductRef.current, fresh) ?? fresh;
-          setSelectedProduct((prev) =>
-            prev && String(prev.product_code) === String(parkedCodeForStock)
-              ? mergeProductStockFields(prev, fresh) ?? fresh
-              : prev,
-          );
-        }
-        startTransition(() => {
-          setProductByCode((prev) => {
-            const existing = prev[fresh.product_code] ?? product;
-            const merged = mergeProductStockFields(existing, fresh);
-            if (merged === existing) return prev;
-            return { ...prev, [fresh.product_code]: merged };
+    if (productStockFieldsMissing(product)) {
+      void hydrateProductLiveStock(product, branchId, apiRequest)
+        .then((fresh) => {
+          if (!fresh?.product_code || String(fresh.product_code) !== String(parkedCodeForStock)) {
+            return;
+          }
+          productByCodeRef.current[fresh.product_code] =
+            mergeProductStockFields(productByCodeRef.current[fresh.product_code] ?? product, fresh) ??
+            fresh;
+          if (String(selectedProductRef.current?.product_code ?? "") === String(parkedCodeForStock)) {
+            selectedProductRef.current =
+              mergeProductStockFields(selectedProductRef.current, fresh) ?? fresh;
+            setSelectedProduct((prev) =>
+              prev && String(prev.product_code) === String(parkedCodeForStock)
+                ? mergeProductStockFields(prev, fresh) ?? fresh
+                : prev,
+            );
+          }
+          startTransition(() => {
+            setProductByCode((prev) => {
+              const existing = prev[fresh.product_code] ?? product;
+              const merged = mergeProductStockFields(existing, fresh);
+              if (merged === existing) return prev;
+              return { ...prev, [fresh.product_code]: merged };
+            });
           });
-        });
-      })
-      .catch(() => {});
+        })
+        .catch(() => {});
+    }
     productByCodeRef.current[product.product_code] = mergeProductStockFields(
       productByCodeRef.current[product.product_code],
       product,
@@ -8839,7 +8883,7 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Cancel payment first, then add items.");
       return;
     }
-    if (isCartLineSaveBlocking()) {
+    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return;
     }
@@ -8986,9 +9030,20 @@ export function PosScreen({ standalone = false }) {
             message: "Changing item…",
             detail: "Saving swap — please wait until IndexedDB / cart sync finishes.",
           },
-        ).catch((e) => {
-          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
-        });
+        )
+          .catch((e) => {
+            setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+          })
+          .finally(() => {
+            if (
+              lineSaveOverlayDepthRef.current <= 0 &&
+              cartCommitPendingRef.current <= 0
+            ) {
+              cartLineMutationGateRef.current = false;
+            } else {
+              releaseCartLineMutationGate();
+            }
+          });
         return;
       }
       void enqueueCartCommit(runReplace).finally(() => {
@@ -9154,7 +9209,16 @@ export function PosScreen({ standalone = false }) {
         );
       })
       .finally(() => {
-        releaseCartLineMutationGate();
+        // Always free Scan/park after this add's overlay — drifted pending/depth
+        // used to leave pickProduct dead until a full page reload.
+        if (
+          lineSaveOverlayDepthRef.current <= 0 &&
+          cartCommitPendingRef.current <= 0
+        ) {
+          cartLineMutationGateRef.current = false;
+        } else {
+          releaseCartLineMutationGate();
+        }
       });
   }
 
@@ -9211,7 +9275,7 @@ export function PosScreen({ standalone = false }) {
     // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (isCartLineSaveBlocking()) {
+    if (isCartLineSaveBlocking() && !allowsQueuedCartLineAddWhileSaving()) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return;
     }

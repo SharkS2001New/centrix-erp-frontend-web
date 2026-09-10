@@ -57,7 +57,8 @@ import {
   resolveOutboxClientUuidForCart,
   todayPosOrderDate,
 } from "@/lib/pos-offline-db";
-import { fetchStockLevelsMap, mergeProductsWithLiveStock } from "@/lib/stock-cache";
+import { fetchStockLevelsMap, mergeProductsWithLiveStock, productStockFieldsMissing } from "@/lib/stock-cache";
+import { getStoredOrganization, getStoredUser } from "@/lib/auth-storage";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import {
@@ -124,6 +125,30 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
         void persistPosSearchIndexSnapshot(last);
       }
     }
+    // Older warm runs stripped stock — overlay once so Available is not "…".
+    if (
+      existing.length &&
+      existing.slice(0, 40).every((row) => productStockFieldsMissing(row))
+    ) {
+      try {
+        const org = getStoredOrganization() ?? null;
+        const user = getStoredUser() ?? null;
+        const branchId =
+          user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
+        const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(
+          () => null,
+        );
+        if (stockByCode?.size) {
+          const withStock = mergeProductsWithLiveStock(existing, stockByCode);
+          await idbPutCatalogProducts(withStock);
+          setPosSearchCatalog(withStock, { warmedAt: last });
+          void persistPosSearchIndexSnapshot(last);
+          return { skipped: true, count: withStock.length, stockOverlay: true };
+        }
+      } catch {
+        /* keep stripped catalog */
+      }
+    }
     return { skipped: true, count: existing.length };
   }
 
@@ -154,11 +179,29 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   const warmedAt = Date.now();
   await idbClearStore("catalog");
   await idbPutCatalogProducts(products);
+
+  // Overlay live stock so Available is numeric in fast IndexedDB search.
+  // Master rows stay stripped of stale bake-in; stock map is applied once after warm.
+  let searchable = products;
+  try {
+    const org = getStoredOrganization() ?? null;
+    const user = getStoredUser() ?? null;
+    const branchId =
+      user?.branch_id ?? org?.branch_id ?? org?.default_branch_id ?? null;
+    const stockByCode = await fetchStockLevelsMap(org?.id ?? null, branchId).catch(() => null);
+    if (stockByCode?.size) {
+      searchable = mergeProductsWithLiveStock(products, stockByCode);
+      await idbPutCatalogProducts(searchable);
+    }
+  } catch {
+    /* keep master-only catalog */
+  }
+
   await idbSetMeta("catalog_warmed_at", warmedAt);
-  await idbSetMeta("catalog_count", products.length);
-  setPosSearchCatalog(products, { warmedAt });
+  await idbSetMeta("catalog_count", searchable.length);
+  setPosSearchCatalog(searchable, { warmedAt });
   void persistPosSearchIndexSnapshot(warmedAt);
-  return { skipped: false, count: products.length };
+  return { skipped: false, count: searchable.length };
 }
 
 /**

@@ -135,7 +135,8 @@ const PRODUCT_STOCK_OVERLAY_KEYS = [
 
 /**
  * True when the row never received a live branch stock overlay.
- * Offline catalog strips stock; inventing numeric 0 must still count as missing.
+ * Offline catalog strips stock; inventing numeric 0 must still count as missing
+ * until branch_stock is applied (warm overlay / soft search refresh).
  */
 export function productStockFieldsMissing(product) {
   if (!product) return true;

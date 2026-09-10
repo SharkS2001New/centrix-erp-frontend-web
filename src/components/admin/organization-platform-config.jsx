@@ -394,8 +394,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     },
     require_pos_till_float: false,
     external_pos_layout: "modern",
-    backoffice_product_search_mode:
-      deploymentProfile === "distribution" ? "live" : "indexeddb",
+    backoffice_product_search_mode: "indexeddb",
     classic_pos_theme_template: CLASSIC_POS_THEME_DEFAULT,
     classic_pos_theme_colors: {},
     hotel_pos_grid_columns: 4,
@@ -742,9 +741,9 @@ export function OrganizationPlatformSalesSettings({
               ]}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Live search queries the server only (no device IndexedDB catalog). Device catalog is
-              faster for busy desks but can briefly show stale Available qty until stock refreshes.
-              Distribution profiles default to live.
+              Fast search uses the device IndexedDB catalog (with cached Available qty). Live mode
+              still paints the device catalog first and only refreshes stock in the background —
+              never waits on the server for every keystroke (that raced cart adds).
             </p>
           </OrgRegisterField>
           <Toggle
