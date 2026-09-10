@@ -21,6 +21,7 @@ public sealed class HtmlPrintService
         string? printerName,
         int copies,
         string documentId,
+        string? jobType,
         CancellationToken cancellationToken)
     {
         await PrintLock.WaitAsync(cancellationToken);
@@ -33,18 +34,19 @@ public sealed class HtmlPrintService
 
             var htmlPath = Path.Combine(jobDir, "receipt.html");
             var pdfPath = Path.Combine(jobDir, "receipt.pdf");
+            var thermal = WkhtmlPdfRenderer.IsThermalJob(jobType, html);
 
             await File.WriteAllTextAsync(htmlPath, html, cancellationToken);
 
             try
             {
-                var pageHeightMm = await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, cancellationToken);
+                var pageHeightMm = await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, jobType, cancellationToken);
 
                 var targetPrinter = ResolvePrinter(printerName);
                 for (var copy = 0; copy < copies; copy++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await PrintPdfAsync(pdfPath, targetPrinter, pageHeightMm, cancellationToken);
+                    await PrintPdfAsync(pdfPath, targetPrinter, pageHeightMm, thermal, cancellationToken);
                 }
 
                 return ($"{documentId}-{stamp}", targetPrinter);
@@ -96,17 +98,19 @@ public sealed class HtmlPrintService
         string htmlPath,
         string pdfPath,
         string workDir,
+        string? jobType,
         CancellationToken cancellationToken)
     {
         var errors = new List<string>();
-        var pageHeightMm = WkhtmlPdfRenderer.EstimateThermalPageHeightMm(html);
+        var thermal = WkhtmlPdfRenderer.IsThermalJob(jobType, html);
+        var pageHeightMm = thermal ? WkhtmlPdfRenderer.EstimateThermalPageHeightMm(html) : 297;
 
         if (WkhtmlPdfRenderer.FindExecutable() is not null)
         {
             try
             {
                 TryDelete(pdfPath);
-                pageHeightMm = await WkhtmlPdfRenderer.RenderAsync(htmlPath, pdfPath, cancellationToken);
+                pageHeightMm = await WkhtmlPdfRenderer.RenderAsync(htmlPath, pdfPath, jobType, cancellationToken);
                 if (File.Exists(pdfPath))
                 {
                     return pageHeightMm;
@@ -224,13 +228,14 @@ public sealed class HtmlPrintService
         string pdfPath,
         string? printerName,
         int pageHeightMm,
+        bool thermal,
         CancellationToken cancellationToken)
     {
         var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
                 "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 -SkipDownload as Administrator (copies Sumatra into the Print Agent folder).");
 
-        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm);
+        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm, thermal);
         var args = string.IsNullOrWhiteSpace(printerName)
             ? new[] { "-print-to-default", "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath }
             : new[] { "-print-to", printerName, "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath };

@@ -7396,6 +7396,8 @@ export function PosScreen({ standalone = false }) {
         {
           message: "Adding item…",
           detail: "Saving this line — please wait until it finishes.",
+          // Fast adds stay silent; only show the blocker when the save is slow.
+          showAfterMs: 400,
         },
       ).catch((e) => {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
@@ -9016,6 +9018,8 @@ export function PosScreen({ standalone = false }) {
       {
         message: wasEditing ? "Updating line…" : "Adding item…",
         detail: "Saving this line — please wait until it finishes.",
+        // Fast POS / Create Order adds stay silent; overlay only if save is slow.
+        showAfterMs: 400,
       },
     ).catch((e) => {
       setStatusMessage(

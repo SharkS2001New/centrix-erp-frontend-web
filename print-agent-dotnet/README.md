@@ -1,8 +1,13 @@
 # Centrix Print Agent (.NET Windows Service)
 
-Silent receipt printing for Windows POS tills. Same API as before (`http://127.0.0.1:9247`).
+Silent receipt + A4 document printing for Windows POS tills. Same API as before (`http://127.0.0.1:9247`).
 
-Runs as a **Windows service** and renders receipts with **wkhtmltopdf** (works in the background without Edge headless).
+Runs as a **Windows service** and renders with **wkhtmltopdf** (works in the background without Edge headless).
+
+- **Thermal (80mm)** — POS receipts (`job_type: receipt`)
+- **A4** — HR payslips, cash advances, leave forms, invoices (`payroll_receipt`, `cash_advance`, `leave_application`, …)
+
+Agent **0.3.1+** picks paper size from `job_type` (previously all jobs were forced to 80mm, which distorted HR A4 layouts).
 
 ## For till / office staff
 

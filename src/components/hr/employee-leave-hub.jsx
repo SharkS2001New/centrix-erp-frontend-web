@@ -7,7 +7,7 @@ import {
   PrimaryButton,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
-import { HrFilterToolbar } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterToolbar } from "@/components/hr/hr-list-toolbar";
 import { useAuth } from "@/contexts/auth-context";
 import { canApproveLeaveRequests } from "@/lib/approval-permissions";
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
@@ -87,6 +87,7 @@ function LeaveRecordsTable({
   highlightedLeaveDayId,
   leaveRowRefs,
   emptyLabel,
+  showEmployee = false,
 }) {
   if (!records.length) {
     return <p className="text-sm text-slate-500">{emptyLabel}</p>;
@@ -97,6 +98,7 @@ function LeaveRecordsTable({
       <table className="min-w-[640px] w-full text-sm">
         <thead className="theme-table-head-row text-left text-xs font-medium">
           <tr>
+            {showEmployee ? <th className="px-3 py-2">Employee</th> : null}
             <th className="px-3 py-2">Period</th>
             <th className="px-3 py-2">Type</th>
             <th className="px-3 py-2">Days</th>
@@ -119,6 +121,11 @@ function LeaveRecordsTable({
                   : ""
               }`}
             >
+              {showEmployee ? (
+                <td className="px-3 py-2 text-slate-800">
+                  {composeEmployeeDisplayName(record.employee) || `Employee #${record.employee_id}`}
+                </td>
+              ) : null}
               <td className="px-3 py-2 text-slate-800">{formatPeriod(record)}</td>
               <td className="px-3 py-2 text-slate-700">{deductFromLabel(record.deduct_from)}</td>
               <td className="px-3 py-2 text-slate-700">{formatDays(record)}</td>
@@ -182,6 +189,9 @@ export function EmployeeLeaveHub({
 
   const [tab, setTab] = useState("leave");
   const [pendingLeaves, setPendingLeaves] = useState([]);
+  const [onLeaveDate, setOnLeaveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [onLeaveRecords, setOnLeaveRecords] = useState([]);
+  const [loadingOnLeave, setLoadingOnLeave] = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [selectedEmployeeLabel, setSelectedEmployeeLabel] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -221,6 +231,27 @@ export function EmployeeLeaveHub({
     }
   }, []);
 
+  const loadOnLeave = useCallback(async (date) => {
+    const onDate = date || new Date().toISOString().slice(0, 10);
+    setLoadingOnLeave(true);
+    try {
+      const res = await apiRequest("/employee-leave-days", {
+        searchParams: {
+          on_date: onDate,
+          approval_status: "approved",
+          assignment_kind: "leave",
+          per_page: 200,
+        },
+      });
+      setOnLeaveRecords(res.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load employees on leave");
+      setOnLeaveRecords([]);
+    } finally {
+      setLoadingOnLeave(false);
+    }
+  }, []);
+
   const loadEmployeeData = useCallback(async (employeeId) => {
     if (!employeeId) {
       setSelectedEmployee(null);
@@ -257,6 +288,10 @@ export function EmployeeLeaveHub({
   }, [loadPending, refreshKey]);
 
   useEffect(() => {
+    void loadOnLeave(onLeaveDate);
+  }, [loadOnLeave, onLeaveDate, refreshKey]);
+
+  useEffect(() => {
     void loadEmployeeData(selectedEmployeeId);
   }, [loadEmployeeData, selectedEmployeeId, refreshKey]);
 
@@ -266,11 +301,13 @@ export function EmployeeLeaveHub({
     if (!Number.isFinite(targetId) || targetId <= 0) return;
 
     const record =
+      onLeaveRecords.find((row) => Number(row.id) === targetId) ??
       employeeLeaves.find((row) => Number(row.id) === targetId) ??
       pendingLeaves.find((row) => Number(row.id) === targetId);
     if (!record?.employee_id) return;
 
-    if (String(record.employee_id) !== String(selectedEmployeeId)) {
+    if (String(record.employee_id) !== String(selectedEmployeeId) && record.approval_status !== "pending") {
+      // Keep on-leave list in view; still sync employee for history panel when linked.
       setSelectedEmployeeId(String(record.employee_id));
       return;
     }
@@ -285,7 +322,7 @@ export function EmployeeLeaveHub({
       window.clearTimeout(timer);
       window.clearTimeout(clearTimer);
     };
-  }, [employeeLeaves, highlightLeaveDayId, loadingEmployee, pendingLeaves, selectedEmployeeId]);
+  }, [employeeLeaves, highlightLeaveDayId, loadingEmployee, loadingOnLeave, onLeaveRecords, pendingLeaves, selectedEmployeeId]);
 
   function emptyCreateForm() {
     return buildOffDayEmptyForm({
@@ -352,7 +389,11 @@ export function EmployeeLeaveHub({
         }));
         setTab("pending");
       }
-      await Promise.all([loadPending(), loadEmployeeData(selectedEmployeeId || String(body.employee_id))]);
+      await Promise.all([
+        loadPending(),
+        loadOnLeave(onLeaveDate),
+        loadEmployeeData(selectedEmployeeId || String(body.employee_id)),
+      ]);
       onSaved?.();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -368,7 +409,7 @@ export function EmployeeLeaveHub({
     if (!ok) return;
     try {
       await apiRequest(`/employee-leave-days/${row.id}`, { method: "DELETE" });
-      await Promise.all([loadPending(), loadEmployeeData(selectedEmployeeId)]);
+      await Promise.all([loadPending(), loadOnLeave(onLeaveDate), loadEmployeeData(selectedEmployeeId)]);
       onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -379,7 +420,11 @@ export function EmployeeLeaveHub({
     try {
       await apiRequest(`/employee-leave-days/${row.id}/approve`, { method: "POST" });
       notifySuccess("Leave application approved.");
-      await Promise.all([loadPending(), loadEmployeeData(String(row.employee_id))]);
+      await Promise.all([
+        loadPending(),
+        loadOnLeave(onLeaveDate),
+        loadEmployeeData(String(row.employee_id)),
+      ]);
       onSaved?.();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Approval failed");
@@ -390,7 +435,11 @@ export function EmployeeLeaveHub({
     try {
       await apiRequest(`/employee-leave-days/${row.id}/reject`, { method: "POST" });
       notifySuccess("Leave application rejected.");
-      await Promise.all([loadPending(), loadEmployeeData(String(row.employee_id))]);
+      await Promise.all([
+        loadPending(),
+        loadOnLeave(onLeaveDate),
+        loadEmployeeData(String(row.employee_id)),
+      ]);
       onSaved?.();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Rejection failed");
@@ -475,20 +524,42 @@ export function EmployeeLeaveHub({
 
       {tab === "leave" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-[15px] font-medium text-slate-900">Leave</h2>
+          <h2 className="text-[15px] font-medium text-slate-900">Employees on leave</h2>
           <p className="mt-1 mb-4 text-sm text-slate-500">
-            Search an employee to view balances and leave history.
+            Approved leave covering the selected date. Pick another date to see who was or will be away.
           </p>
           <HrFilterToolbar>
+            <HrDateField label="On leave date" value={onLeaveDate} onChange={setOnLeaveDate} />
             <div className="min-w-[16rem] max-w-xl">{employeeSearch}</div>
             <PrimaryButton type="button" onClick={openCreateTab}>
               Create leave
             </PrimaryButton>
           </HrFilterToolbar>
+
+          <div className="mt-4">
+            {loadingOnLeave ? (
+              <p className="text-sm text-slate-500">Loading employees on leave…</p>
+            ) : (
+              <LeaveRecordsTable
+                records={onLeaveRecords}
+                canApproveLeave={canApproveLeave}
+                onApprove={approve}
+                onReject={reject}
+                onEdit={openEdit}
+                onDelete={remove}
+                onPrint={printLeave}
+                highlightedLeaveDayId={highlightedLeaveDayId}
+                leaveRowRefs={leaveRowRefs}
+                showEmployee
+                emptyLabel={`No approved leave on ${formatShortDate(onLeaveDate)}.`}
+              />
+            )}
+          </div>
+
           {loadingEmployee ? (
-            <p className="mt-4 text-sm text-slate-500">Loading employee leave data…</p>
+            <p className="mt-6 text-sm text-slate-500">Loading employee leave data…</p>
           ) : selectedEmployee ? (
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-slate-900">{composeEmployeeDisplayName(selectedEmployee)}</p>
@@ -520,11 +591,7 @@ export function EmployeeLeaveHub({
                 />
               </div>
             </div>
-          ) : (
-            <p className="mt-4 text-sm text-slate-500">
-              Search and select an employee to view balances and leave history.
-            </p>
-          )}
+          ) : null}
         </section>
       ) : null}
 
@@ -582,6 +649,7 @@ export function EmployeeLeaveHub({
               onPrint={printLeave}
               highlightedLeaveDayId={highlightedLeaveDayId}
               leaveRowRefs={leaveRowRefs}
+              showEmployee
               emptyLabel="No leave applications are waiting for approval."
             />
           )}

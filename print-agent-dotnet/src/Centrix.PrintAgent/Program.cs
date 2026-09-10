@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.3.0";
+const string Version = "0.3.1";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)
@@ -79,7 +79,7 @@ app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, 
     {
         if (!wait)
         {
-            var queuedJobId = queue.Enqueue(request.Html, request.Printer, copies, documentId);
+            var queuedJobId = queue.Enqueue(request.Html, request.Printer, copies, documentId, request.JobType);
             return Results.Json(new
             {
                 ok = true,
@@ -94,6 +94,7 @@ app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, 
             request.Printer,
             copies,
             documentId,
+            request.JobType,
             ct);
 
         return Results.Json(new { ok = true, queued = false, job_id = jobId, printer = printerUsed });

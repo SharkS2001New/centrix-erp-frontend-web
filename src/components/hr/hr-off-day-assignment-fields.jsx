@@ -8,9 +8,9 @@ import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 const LEAVE_TYPE_OPTIONS = [
+  { value: "unpaid", label: "Unpaid leave" },
   { value: "annual", label: "Annual leave" },
   { value: "sick", label: "Sick leave" },
-  { value: "unpaid", label: "Unpaid leave" },
 ];
 
 const OFF_DAY_POOL_OPTIONS = [
@@ -43,11 +43,9 @@ export function buildOffDayEmptyForm(extra, row) {
     salary_deductible: salaryDeductible,
     deduct_from:
       assignmentKind === "leave"
-        ? row?.deduct_from === "sick"
-          ? "sick"
-          : row?.deduct_from === "unpaid"
-            ? "unpaid"
-            : "annual"
+        ? row?.deduct_from === "sick" || row?.deduct_from === "annual" || row?.deduct_from === "unpaid"
+          ? row.deduct_from
+          : "unpaid"
         : salaryDeductible
           ? "unpaid"
           : resolveBalancePool(row),
@@ -60,7 +58,7 @@ export function buildOffDayEmptyForm(extra, row) {
 export function buildOffDayBody(form) {
   const assignmentKind = form.assignment_kind === "off_day" ? "off_day" : "leave";
   const salaryDeductible = assignmentKind === "off_day" && Boolean(form.salary_deductible);
-  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? "annual");
+  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? "unpaid");
   const leaveType =
     deductFrom === "annual" ? "annual" : deductFrom === "sick" ? "sick" : deductFrom === "unpaid" ? "unpaid" : "other";
 
@@ -149,7 +147,7 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
   const isLeave = form.assignment_kind !== "off_day";
   const isHalfDay = form.duration_type === "half_day";
   const salaryDeductible = !isLeave && Boolean(form.salary_deductible);
-  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? (isLeave ? "annual" : "off_days"));
+  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? (isLeave ? "unpaid" : "off_days"));
   const exceptLeaveId = extra?.editingRow?.id;
 
   const loadEmployeeOptions = useCallback(async (query) => searchEmployeeOptions(query), []);
@@ -301,7 +299,7 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
           setForm((prev) => ({
             ...prev,
             assignment_kind: offDay ? "off_day" : "leave",
-            deduct_from: offDay ? "off_days" : "annual",
+            deduct_from: offDay ? "off_days" : "unpaid",
             salary_deductible: false,
           }));
         }}

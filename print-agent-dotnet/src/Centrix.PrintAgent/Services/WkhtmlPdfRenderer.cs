@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 namespace Centrix.PrintAgent.Services;
 
 /// <summary>
-/// Renders receipt HTML to PDF using wkhtmltopdf. Works from a Windows service (session 0).
+/// Renders HTML to PDF using wkhtmltopdf. Works from a Windows service (session 0).
+/// Thermal (80mm) and A4 document jobs use different page geometry — mixing them
+/// squeezes payslips / HR forms onto receipt paper (distorted printouts).
 /// </summary>
 internal static class WkhtmlPdfRenderer
 {
@@ -39,13 +41,64 @@ internal static class WkhtmlPdfRenderer
         return pathExe;
     }
 
-    public static async Task<int> RenderAsync(string htmlPath, string pdfPath, CancellationToken cancellationToken)
+    /// <summary>
+    /// POS receipts default to thermal. HR / A4 documents must not use 80mm paper.
+    /// </summary>
+    public static bool IsThermalJob(string? jobType, string? html = null)
+    {
+        if (!string.IsNullOrWhiteSpace(jobType))
+        {
+            var t = jobType.Trim().ToLowerInvariant();
+            if (t is "receipt" or "thermal" or "kra" or "kra_receipt" or "pos_receipt" or "hospitality_check")
+            {
+                return true;
+            }
+
+            if (t is "document" or "invoice" or "a4" or "payroll_receipt" or "cash_advance"
+                or "leave_application" or "lpo" or "picking_list" or "report")
+            {
+                return false;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(html))
+        {
+            if (html.Contains("centrix-print-thermal", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (html.Contains("size: A4", StringComparison.OrdinalIgnoreCase)
+                || html.Contains("size:A4", StringComparison.OrdinalIgnoreCase)
+                || html.Contains("210mm 297mm", StringComparison.OrdinalIgnoreCase)
+                || html.Contains("page: centrix-edge", StringComparison.OrdinalIgnoreCase)
+                || html.Contains("has-doc-print-edge-footer", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        // Unknown jobs: keep thermal defaults so POS receipts stay safe.
+        return true;
+    }
+
+    public static async Task<int> RenderAsync(
+        string htmlPath,
+        string pdfPath,
+        string? jobType,
+        CancellationToken cancellationToken)
     {
         var executable = FindExecutable()
             ?? throw new InvalidOperationException(
                 "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
 
         var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
+        if (!IsThermalJob(jobType, html))
+        {
+            await RenderA4Async(executable, htmlPath, pdfPath, cancellationToken);
+            return 297;
+        }
+
         var pageHeightMm = EstimateThermalPageHeightMm(html);
 
         await RenderAtHeightAsync(executable, htmlPath, pdfPath, pageHeightMm, cancellationToken);
@@ -58,6 +111,49 @@ internal static class WkhtmlPdfRenderer
         }
 
         return pageHeightMm;
+    }
+
+    private static async Task RenderA4Async(
+        string executable,
+        string htmlPath,
+        string pdfPath,
+        CancellationToken cancellationToken)
+    {
+        // A4 portrait at ~96dpi viewport so CSS layouts (payslip 2×2, vouchers) are not squeezed.
+        var args = new[]
+        {
+            "--quiet",
+            "--enable-local-file-access",
+            "--encoding",
+            "utf-8",
+            "--page-size",
+            "A4",
+            "--orientation",
+            "Portrait",
+            "--margin-top",
+            "0mm",
+            "--margin-bottom",
+            "0mm",
+            "--margin-left",
+            "0mm",
+            "--margin-right",
+            "0mm",
+            "--disable-smart-shrinking",
+            "--print-media-type",
+            "--viewport-size",
+            "794x1123",
+            htmlPath,
+            pdfPath,
+        };
+
+        var (exitCode, stderr) = await RunProcessAsync(executable, args, cancellationToken);
+        if (exitCode != 0 || !File.Exists(pdfPath) || new FileInfo(pdfPath).Length == 0)
+        {
+            var detail = string.IsNullOrWhiteSpace(stderr)
+                ? $"wkhtmltopdf exited with code {exitCode}."
+                : stderr.Trim();
+            throw new InvalidOperationException(detail);
+        }
     }
 
     private static async Task RenderAtHeightAsync(
@@ -122,8 +218,15 @@ internal static class WkhtmlPdfRenderer
         }
     }
 
-    public static string BuildSumatraPrintSettings(int pageHeightMm) =>
-        $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";
+    public static string BuildSumatraPrintSettings(int pageHeightMm, bool thermal)
+    {
+        if (!thermal)
+        {
+            return "noscale,paper=A4";
+        }
+
+        return $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";
+    }
 
     /// <summary>
     /// Rough mm height for an 80mm thermal receipt.

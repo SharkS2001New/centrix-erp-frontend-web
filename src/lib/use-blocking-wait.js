@@ -54,14 +54,32 @@ export function useBlockingWait(defaultMessage = DEFAULT_MESSAGE) {
     async (requestFn, opts = {}) => {
       const message = opts.message ?? opts.label ?? defaultMessage;
       const detail = opts.detail ?? null;
+      // Delay the visible overlay so fast POS adds stay silent; gate/busy still run.
+      const showAfterMs = Math.max(0, Number(opts.showAfterMs ?? 0) || 0);
 
-      setWaitState({
-        active: true,
-        message,
-        detail,
-        progress: 4,
-        serverProgress: 0,
-      });
+      let shown = false;
+      let showTimer = null;
+      const showOverlay = (progress = 4, serverProgress = 0) => {
+        shown = true;
+        setWaitState({
+          active: true,
+          message,
+          detail,
+          progress,
+          serverProgress,
+        });
+      };
+
+      if (showAfterMs <= 0) {
+        showOverlay();
+      } else if (typeof window !== "undefined") {
+        showTimer = window.setTimeout(() => {
+          showTimer = null;
+          showOverlay();
+        }, showAfterMs);
+      } else {
+        showOverlay();
+      }
 
       try {
         const result = await runQueuedTask(requestFn, {
@@ -70,6 +88,14 @@ export function useBlockingWait(defaultMessage = DEFAULT_MESSAGE) {
             opts.onProgress?.(task);
             const serverProgress = Number(task.progress ?? 0);
             if (serverProgress <= 0) return;
+            if (!shown) {
+              if (showTimer != null) {
+                window.clearTimeout(showTimer);
+                showTimer = null;
+              }
+              showOverlay(Math.max(4, serverProgress), serverProgress);
+              return;
+            }
             setWaitState((current) =>
               current?.active
                 ? {
@@ -82,16 +108,21 @@ export function useBlockingWait(defaultMessage = DEFAULT_MESSAGE) {
           },
         });
 
-        setWaitState((current) =>
-          current?.active ? { ...current, progress: 100, serverProgress: 100 } : current,
-        );
-        const settleMs = opts.settleMs === undefined ? 220 : Math.max(0, Number(opts.settleMs) || 0);
-        if (settleMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, settleMs));
+        if (shown) {
+          setWaitState((current) =>
+            current?.active ? { ...current, progress: 100, serverProgress: 100 } : current,
+          );
+          const settleMs = opts.settleMs === undefined ? 220 : Math.max(0, Number(opts.settleMs) || 0);
+          if (settleMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, settleMs));
+          }
         }
 
         return result;
       } finally {
+        if (showTimer != null && typeof window !== "undefined") {
+          window.clearTimeout(showTimer);
+        }
         setWaitState(null);
       }
     },

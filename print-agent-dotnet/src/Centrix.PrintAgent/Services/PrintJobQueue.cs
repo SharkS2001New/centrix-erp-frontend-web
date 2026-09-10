@@ -26,11 +26,11 @@ public sealed class PrintJobQueue : IHostedService, IDisposable
         });
     }
 
-    public string Enqueue(string html, string? printerName, int copies, string documentId)
+    public string Enqueue(string html, string? printerName, int copies, string documentId, string? jobType)
     {
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var jobId = $"{Sanitize(documentId)}-{stamp}";
-        var job = new QueuedPrintJob(jobId, html, printerName, Math.Max(1, copies), documentId);
+        var job = new QueuedPrintJob(jobId, html, printerName, Math.Max(1, copies), documentId, jobType);
         if (!_channel.Writer.TryWrite(job))
         {
             throw new InvalidOperationException("Print queue is unavailable.");
@@ -81,6 +81,7 @@ public sealed class PrintJobQueue : IHostedService, IDisposable
                         job.PrinterName,
                         job.Copies,
                         job.DocumentId,
+                        job.JobType,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -112,5 +113,6 @@ public sealed class PrintJobQueue : IHostedService, IDisposable
         string Html,
         string? PrinterName,
         int Copies,
-        string DocumentId);
+        string DocumentId,
+        string? JobType);
 }

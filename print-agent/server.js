@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 
 const HOST = process.env.PRINT_AGENT_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.PRINT_AGENT_PORT ?? 9247);
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -63,23 +63,52 @@ async function defaultPrinter() {
   }
 }
 
-async function htmlToPdf(html, outputPath) {
+async function isThermalJob(jobType, html) {
+  const t = String(jobType ?? "").trim().toLowerCase();
+  if (["receipt", "thermal", "kra", "kra_receipt", "pos_receipt", "hospitality_check"].includes(t)) {
+    return true;
+  }
+  if (
+    ["document", "invoice", "a4", "payroll_receipt", "cash_advance", "leave_application", "lpo", "picking_list", "report"].includes(
+      t,
+    )
+  ) {
+    return false;
+  }
+  const src = String(html ?? "");
+  if (/centrix-print-thermal/i.test(src)) return true;
+  if (/size:\s*A4|210mm\s+297mm|centrix-edge|has-doc-print-edge-footer/i.test(src)) return false;
+  return true;
+}
+
+async function htmlToPdf(html, outputPath, jobType = "receipt") {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
-    await page.pdf({
-      path: outputPath,
-      width: "80mm",
-      printBackground: true,
-      margin: { top: "4mm", right: "2mm", bottom: "4mm", left: "2mm" },
-    });
+    const thermal = await isThermalJob(jobType, html);
+    if (thermal) {
+      await page.pdf({
+        path: outputPath,
+        width: "80mm",
+        printBackground: true,
+        margin: { top: "4mm", right: "2mm", bottom: "4mm", left: "2mm" },
+      });
+    } else {
+      await page.pdf({
+        path: outputPath,
+        format: "A4",
+        printBackground: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+        preferCSSPageSize: true,
+      });
+    }
   } finally {
     await browser.close();
   }
 }
 
-async function printPdf(pdfPath, printerName) {
+async function printPdf(pdfPath, printerName, thermal = true) {
   const platform = process.platform;
   const printer = printerName?.trim();
 
@@ -88,9 +117,10 @@ async function printPdf(pdfPath, printerName) {
       process.env.SUMATRA_PATH ??
       "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe";
     try {
+      const printSettings = thermal ? "noscale" : "noscale,paper=A4";
       const args = printer
-        ? ["-print-to", printer, "-silent", pdfPath]
-        : ["-print-to-default", "-silent", pdfPath];
+        ? ["-print-to", printer, "-print-settings", printSettings, "-silent", pdfPath]
+        : ["-print-to-default", "-print-settings", printSettings, "-silent", pdfPath];
       await execFileAsync(sumatra, args);
       return;
     } catch {
@@ -109,15 +139,16 @@ async function printPdf(pdfPath, printerName) {
   await execFileAsync("lp", args);
 }
 
-async function runPrintJob({ html, copies, printer, documentId, jobId }) {
+async function runPrintJob({ html, copies, printer, documentId, jobId, jobType }) {
   const workDir = path.join(os.tmpdir(), "centrix-print-agent");
   await mkdir(workDir, { recursive: true });
   const pdfPath = path.join(workDir, `${jobId}.pdf`);
+  const thermal = await isThermalJob(jobType, html);
 
   try {
-    await htmlToPdf(html, pdfPath);
+    await htmlToPdf(html, pdfPath, jobType);
     for (let copy = 0; copy < copies; copy += 1) {
-      await printPdf(pdfPath, printer);
+      await printPdf(pdfPath, printer, thermal);
     }
     return jobId;
   } finally {
@@ -146,10 +177,10 @@ async function drainPrintQueue() {
   }
 }
 
-function enqueuePrintJob({ html, copies, printer, documentId }) {
+function enqueuePrintJob({ html, copies, printer, documentId, jobType }) {
   const stamp = Date.now();
   const jobId = `${String(documentId || "job").replace(/[^\w.-]+/g, "_")}-${stamp}`;
-  printQueue.push({ jobId, html, copies, printer, documentId });
+  printQueue.push({ jobId, html, copies, printer, documentId, jobType });
   void drainPrintQueue();
   return jobId;
 }
@@ -172,6 +203,7 @@ app.post("/v1/print", async (req, res) => {
   const copies = Math.max(1, Number(req.body?.copies ?? 1) || 1);
   const printer = req.body?.printer ? String(req.body.printer) : null;
   const documentId = req.body?.document_id ? String(req.body.document_id) : "job";
+  const jobType = req.body?.job_type ? String(req.body.job_type) : "receipt";
   const wait = req.body?.wait === true || req.body?.wait === 1 || req.body?.wait === "1";
 
   if (!html.trim()) {
@@ -181,14 +213,14 @@ app.post("/v1/print", async (req, res) => {
 
   try {
     if (!wait) {
-      const jobId = enqueuePrintJob({ html, copies, printer, documentId });
+      const jobId = enqueuePrintJob({ html, copies, printer, documentId, jobType });
       res.json({ ok: true, queued: true, job_id: jobId, printer });
       return;
     }
 
     const stamp = Date.now();
     const jobId = `${String(documentId).replace(/[^\w.-]+/g, "_")}-${stamp}`;
-    await runPrintJob({ html, copies, printer, documentId, jobId });
+    await runPrintJob({ html, copies, printer, documentId, jobId, jobType });
     res.json({ ok: true, queued: false, job_id: jobId, printer });
   } catch (error) {
     res.status(500).json({
