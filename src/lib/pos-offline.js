@@ -259,8 +259,13 @@ async function tryHydratePosSearchIndex(products, warmedAt) {
   }
 }
 
-/** Warm lean product catalog into IndexedDB for offline search. */
-export async function warmPosOfflineCatalog({ force = false } = {}) {
+/**
+ * Warm lean product catalog into IndexedDB for offline search.
+ * @param {{ force?: boolean, awaitStock?: boolean }} [options]
+ *   awaitStock — External POS open: wait for the first stock overlay so Find
+ *   already has Available. Search never waits on this.
+ */
+export async function warmPosOfflineCatalog({ force = false, awaitStock = false } = {}) {
   const scopeKey = resolvePosOfflineCatalogScopeKey();
   const lastScopeKey = String((await idbGetMeta(POS_OFFLINE_CATALOG_SCOPE_META_KEY)) ?? "");
   const scopeChanged = Boolean(scopeKey) && lastScopeKey !== scopeKey;
@@ -278,8 +283,11 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
     const forceStock =
       existing.length > 0 &&
       existing.slice(0, 40).some((row) => productStockFieldsMissing(row));
-    // Never block catalog warm / Find on stock overlay — run in background.
-    void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
+    const stockRefresh = refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
+    // POS open (awaitStock) waits for the first overlay. Search / background rewarm do not.
+    if (awaitStock) {
+      await stockRefresh;
+    }
     return { skipped: true, count: existing.length, scopeKey };
   }
 
@@ -6309,7 +6317,8 @@ export function isLocalFirstCashCheckout(body) {
 
 /** Prepare for offline: catalog + Cash Sales seq peek (no org S# pool). */
 export async function preparePosOfflineReady({ floatSessionId = null } = {}) {
-  const catalog = await warmPosOfflineCatalog({ force: false });
+  // First stock overlay runs here — when External POS opens — not on Find.
+  const catalog = await warmPosOfflineCatalog({ force: false, awaitStock: true });
   // Peek only — Cash Sales # is local; org order_num is assigned on sync.
   const numbers = await ensurePosOfflineOrderNumbers({
     force: false,

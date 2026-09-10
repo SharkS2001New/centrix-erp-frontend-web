@@ -597,7 +597,8 @@ export function usePosOfflineSupport({
       if (cancelled) return;
       void refreshPosOfflineCatalogStock({ force }).catch(() => {});
     };
-    tick(false);
+    // First overlay on workspace open (External POS prepare also awaits this).
+    tick(!catalogOnly);
     const timer = window.setInterval(() => tick(false), POS_OFFLINE_STOCK_TTL_MS);
     const onFocus = () => tick(true);
     const onVisible = () => {
@@ -611,7 +612,7 @@ export function usePosOfflineSupport({
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [enabled, fullyOnline]);
+  }, [enabled, fullyOnline, catalogOnly]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   // Org change: force catalogue rewarm (TTL otherwise keeps the previous tenant's SKUs).

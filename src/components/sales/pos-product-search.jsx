@@ -416,6 +416,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
+      if (e.repeat) return;
       if (picksLocked) return;
       if (visibleResults.length) {
         setUserDismissed(true);
