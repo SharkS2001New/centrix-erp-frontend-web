@@ -194,7 +194,7 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
     return catalogStockRefreshInFlight;
   }
 
-  return catalogStockRefreshInFlight;
+  return catalogStockRefreshInFlight ?? { skipped: true, count: 0 };
 }
 
 function sortCatalog(products, query) {
@@ -278,7 +278,12 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
     const forceStock =
       existing.length > 0 &&
       existing.slice(0, 40).some((row) => productStockFieldsMissing(row));
-    void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
+    if (forceStock) {
+      // Await so Find does not paint "…" while overlay is still in flight.
+      await refreshPosOfflineCatalogStock({ force: true }).catch(() => {});
+    } else {
+      void refreshPosOfflineCatalogStock({ force: false }).catch(() => {});
+    }
     return { skipped: true, count: existing.length, scopeKey };
   }
 

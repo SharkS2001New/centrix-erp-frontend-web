@@ -494,10 +494,23 @@ function previousOrderEditLineSignatureFromSale(sourceSale) {
     });
 }
 
+/** Compact content fingerprint — detects cashier edits before `_editDraftDirty` is set. */
+function previousOrderEditContentSignatureFromCart(cart) {
+  return (Array.isArray(cart?.lines) ? cart.lines : [])
+    .map(
+      (line) =>
+        `${String(line?.product_code ?? "")}|${Number(line?.quantity ?? 0)}|${Number(line?.on_wholesale_retail ?? 0)}|${Math.round(Number(line?.unit_price ?? 0) * 100)}`,
+    )
+    .filter((row) => !row.startsWith("|"))
+    .sort()
+    .join(";");
+}
+
 function cartHasStalePreviousOrderMarkers(cart, sourceSale) {
-  if (!cart?.held_order_num || !cart?.superseded_sale_id) return false;
+  if (!cart?.held_order_num) return false;
+  if (!cart?.superseded_sale_id && !cart?.offline_client_sale_uuid) return false;
   if (editedOrderHasLocalDraftChanges(cart)) return false;
-  if (!sourceSale?.id) return false;
+  if (!sourceSale?.id && !sourceSale?.items?.length) return false;
   const cartLines = previousOrderEditLineSignatureFromCart(cart);
   const saleLines = previousOrderEditLineSignatureFromSale(sourceSale);
   if (!cartLines.length || !saleLines.length) return false;
@@ -505,16 +518,16 @@ function cartHasStalePreviousOrderMarkers(cart, sourceSale) {
 }
 
 /**
- * True when Alt+P / F8 / F10 must collect top-up or return method.
- * Recovers after offline outage migration drops `_editDraftDirty` while the bill still changed.
+ * True when Alt+P / F8 / F10 must collect top-up or return method / queue sync.
+ * Recovers when `_editDraftDirty` was lost but totals or lines still differ.
  */
 function previousOrderEditNeedsPaymentBreakdown(cart, sourceSale, { cashRound = false } = {}) {
   if (!isPreviousOrderEditSession(cart)) return false;
-  const delta = computePreviousOrderEditPaymentDelta(sourceSale, cart, { cashRound });
-  if (!delta.type || !(Number(delta.amount) > 0)) return false;
   if (editedOrderHasLocalDraftChanges(cart)) return true;
-  // Offline continue / remount can lose the dirty flag — still prompt when totals differ.
-  return Boolean(cart?.offline || cart?.offline_client_sale_uuid);
+  const delta = computePreviousOrderEditPaymentDelta(sourceSale, cart, { cashRound });
+  if (delta.type && Number(delta.amount) > 0) return true;
+  // Dirty flag lost (remount / race) but lines still differ from the original receipt.
+  return cartHasStalePreviousOrderMarkers(cart, sourceSale);
 }
 
 function withEditDraftDirty(cart) {
@@ -2723,6 +2736,8 @@ export function PosScreen({ standalone = false }) {
   const ignoreEntryQtyEnterUntilRef = useRef(0);
   /** Cancels a pending scheduleFocusEntryQty when Add / clear runs first. */
   const entryQtyFocusGenRef = useRef(0);
+  /** Bumps on each restoreOrderForEdit so a late restore-to-cart cannot wipe a newer browse. */
+  const previousOrderRestoreGenRef = useRef(0);
   /** Drop queued line commits after hold / fresh workspace so they cannot restore parked lines. */
   const cartCommitGenerationRef = useRef(0);
   const editAutosaveTimerRef = useRef(null);
@@ -5907,20 +5922,62 @@ export function PosScreen({ standalone = false }) {
       }
       // Keep the prior list visible while this query is in flight. Clearing early when the
       // query lengthens (yab → yabal) blanked the dropdown before index/API responded.
-      /** Offline/index search is already ranked — only enrich + sellable filter. */
+      /** Offline/index search is already ranked — stamp Available from IndexedDB. */
       const paintFromOffline = async () => {
         const local = await searchOffline(trimmed, rankOpts.limit);
-        return sellableSearchResults(
-          local.map((p) => {
-            const enriched = enrichProductForLpo(p, uomMap, vatMap);
-            const code = enriched?.product_code;
-            if (!code) return enriched;
-            // Stamp Available from the IndexedDB overlay already in memory.
-            const fresh = getPosSearchProduct(code);
-            if (!fresh || productStockFieldsMissing(fresh)) return enriched;
+        const enrichedRows = local.map((p) => enrichProductForLpo(p, uomMap, vatMap));
+        const missingCodes = [];
+        let stamped = enrichedRows.map((enriched) => {
+          const code = enriched?.product_code;
+          if (!code) return enriched;
+          const fresh = getPosSearchProduct(code);
+          if (fresh && !productStockFieldsMissing(fresh)) {
             return mergeProductStockFields(enriched, fresh);
-          }),
-        ).slice(0, rankOpts.limit);
+          }
+          missingCodes.push(code);
+          return enriched;
+        });
+        // Memory index can lag the IndexedDB stock overlay — read Available from IDB.
+        if (missingCodes.length) {
+          try {
+            const idbRows = await getPosOfflineProducts(missingCodes);
+            const byCode = new Map(
+              (idbRows ?? [])
+                .filter((row) => row?.product_code)
+                .map((row) => [String(row.product_code), row]),
+            );
+            stamped = stamped.map((row) => {
+              const code = String(row?.product_code ?? "");
+              const idb = byCode.get(code);
+              if (!idb || productStockFieldsMissing(idb)) return row;
+              return mergeProductStockFields(row, idb);
+            });
+            // Keep memory index aligned with IDB Available for the next keystroke.
+            const withStock = [...byCode.values()].filter(
+              (row) => !productStockFieldsMissing(row),
+            );
+            if (withStock.length) upsertPosSearchProducts(withStock);
+          } catch {
+            /* keep memory paint */
+          }
+        }
+        const stillMissing = stamped.some((row) => productStockFieldsMissing(row));
+        if (stillMissing && !(standalone && offlineMode)) {
+          // First Find after warm: wait for IndexedDB stock overlay so Available
+          // is numeric (not "…"). Later searches hit TTL and return immediately.
+          await refreshPosOfflineCatalogStock({
+            force: true,
+            branchId: productBranchParams?.branch_id ?? user?.branch_id ?? null,
+          }).catch(() => {});
+          stamped = stamped.map((row) => {
+            const code = row?.product_code;
+            if (!code || !productStockFieldsMissing(row)) return row;
+            const fresh = getPosSearchProduct(code);
+            if (!fresh || productStockFieldsMissing(fresh)) return row;
+            return mergeProductStockFields(row, fresh);
+          });
+        }
+        return sellableSearchResults(stamped).slice(0, rankOpts.limit);
       };
 
       const finishRetailPackages = (list) => {
@@ -6093,6 +6150,7 @@ export function PosScreen({ standalone = false }) {
       offlineMode,
       searchOffline,
       capabilities?.module_settings,
+      user?.branch_id,
     ],
   );
 
@@ -9428,7 +9486,6 @@ export function PosScreen({ standalone = false }) {
     ) {
       return;
     }
-    lastEntryQtyCommitRef.current = { key: dedupeKey, at: now };
     // Keep React state aligned if a draft/search race cleared selectedProduct.
     if (!selectedProduct || selectedProduct.product_code !== parkedProduct.product_code) {
       setSelectedProduct(parkedProduct);
@@ -9455,6 +9512,8 @@ export function PosScreen({ standalone = false }) {
       else setStatusMessage("Not enough stock for this quantity.");
       return;
     }
+    // Arm dedupe only after gates — busy/stock returns must not kill the next Enter.
+    lastEntryQtyCommitRef.current = { key: dedupeKey, at: now };
     // Classic entry row only edits qty — Enter adds the line.
     if (classicLayout) {
       if (
@@ -15316,10 +15375,12 @@ export function PosScreen({ standalone = false }) {
     const outgoing = cartRef.current ?? cart;
     const leavingDirtyPrevious =
       Boolean(outgoing?.held_order_num && outgoing?.superseded_sale_id) &&
-      editedOrderHasLocalDraftChanges(outgoing) &&
       Number(outgoing.superseded_sale_id) !== Number(saleId) &&
       !outgoing?.offline &&
-      !outgoing?.offline_client_sale_uuid;
+      !outgoing?.offline_client_sale_uuid &&
+      previousOrderEditNeedsPaymentBreakdown(outgoing, editSourceSale, {
+        cashRound: enablePosCashRounding,
+      });
     if (leavingDirtyPrevious) {
       try {
         if (lineBusyRef.current) {
@@ -15616,6 +15677,7 @@ export function PosScreen({ standalone = false }) {
     let handoffToReplaceRetry = false;
     let unlockedEarly = false;
     let loadingBegun = false;
+    const restoreGen = ++previousOrderRestoreGenRef.current;
 
     const restoreFailedTicketField = () => {
       restoreEditOrderNoAfterFailedLoad({
@@ -15672,20 +15734,9 @@ export function PosScreen({ standalone = false }) {
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
       paintedOptimistic = true;
-      // Unlock immediately — cashier can edit while restore/stock/KRA finish.
-      unlockTillEarly(browseNum);
-      if (standalone) {
-        const kraFiscalize = shouldSubmitKraOnCheckout(
-          capabilities?.module_settings,
-          capabilities,
-          summarizeLocalPosCart(optimistic)?.total,
-        );
-        notifySuccess(
-          previousOrderEditModeMessages(browseNum, {
-            kraFiscalize,
-          }).loaded,
-        );
-      }
+      // Keep soft loading until restore-to-cart applies — unlocking early let
+      // cashiers edit, then the authoritative cart wiped those lines.
+      beginLoadingIfNeeded();
       return true;
     };
 
@@ -15789,6 +15840,9 @@ export function PosScreen({ standalone = false }) {
     };
 
     const applyAuthoritativeRestoredCart = (restoredRaw) => {
+      if (restoreGen !== previousOrderRestoreGenRef.current) {
+        return null;
+      }
       const sourceSale = resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId);
       const restoredCart = presentRestoredEditCart(restoredRaw, sourceSale);
       const live = cartRef.current;
@@ -15800,9 +15854,14 @@ export function PosScreen({ standalone = false }) {
       // Swap/replace can be mid-flight before the draft is marked dirty — keep the
       // optimistic sale-item lines so the swap target id still resolves.
       const swapActive = Boolean(replacingLineIdRef.current || swapDraftRef.current);
+      // Cashier may have edited before `_editDraftDirty` flipped — keep live lines.
+      const liveChanged =
+        sameEdit &&
+        previousOrderEditContentSignatureFromCart(live) !==
+          previousOrderEditContentSignatureFromCart(restoredCart);
 
       let nextCart = restoredCart;
-      if (dirty || swapActive) {
+      if (dirty || swapActive || liveChanged) {
         // Keep cashier edits / in-progress swap; bind to the real server cart id for sync.
         nextCart = {
           ...restoredCart,
@@ -15811,13 +15870,13 @@ export function PosScreen({ standalone = false }) {
             live.customer_name_override ?? restoredCart.customer_name_override,
           order_discount: live.order_discount ?? restoredCart.order_discount,
           lines: live.lines,
-          ...(dirty ? { _editDraftDirty: true } : {}),
+          ...(dirty || liveChanged ? { _editDraftDirty: true } : {}),
         };
       }
       const { _optimistic_restore: _omitOptimistic, ...clean } = nextCart;
       cartRef.current = clean;
       setCart(clean);
-      persistPreviousOrderLocalDraft(clean, { immediate: dirty });
+      persistPreviousOrderLocalDraft(clean, { immediate: dirty || liveChanged });
       setSelectedLineId(null);
       setEditingLineId(null);
       setEditingLineRef(null);
@@ -16029,7 +16088,13 @@ export function PosScreen({ standalone = false }) {
         },
       });
       restoreActive = false;
+      if (restoreGen !== previousOrderRestoreGenRef.current) {
+        return;
+      }
       const applied = applyAuthoritativeRestoredCart(restoredRaw);
+      if (!applied) {
+        return;
+      }
       // Cache lines from the restored cart so this receipt stays editable offline.
       void cacheServerSaleForOfflineEdit({
         ...(applied.sourceSale && typeof applied.sourceSale === "object"
@@ -18245,19 +18310,6 @@ export function PosScreen({ standalone = false }) {
                     </>
                   )}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void cancelPreviousOrderFromEdit()}
-                    className="rounded-md border border-red-600 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Cancel order
-                  </button>
-                  <span className="self-center text-[11px] opacity-80">
-                    Cancels online without deleting lines. Delete removes selected items only.
-                  </span>
-                </div>
               </div>
             </div>
           ) : null}

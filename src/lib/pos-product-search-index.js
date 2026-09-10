@@ -9,6 +9,7 @@ import {
   parseAmountSearchTerm,
   rankPosProductSearchResults,
 } from "@/lib/pos-product-search-rank";
+import { mergeProductStockFields } from "@/lib/stock-cache";
 
 /** Bump when entry/posting shape changes (invalidates persisted snapshots). */
 export const POS_SEARCH_INDEX_SCHEMA = 1;
@@ -276,7 +277,8 @@ export function upsertPosSearchProducts(products) {
     const code = String(product?.product_code ?? "");
     if (!code) continue;
     const prev = catalogByCode.get(code);
-    const next = prev ? { ...prev, ...product } : product;
+    // Never let a lean/enriched row with null stock wipe IndexedDB Available.
+    const next = prev ? mergeProductStockFields(prev, product) : product;
     catalogByCode.set(code, next);
     const entry = buildProductSearchEntry(next);
     const existing = entryByCode.get(code);

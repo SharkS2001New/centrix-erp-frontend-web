@@ -14,7 +14,6 @@ import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { productMatchesPosSearch } from "@/lib/pos-product-search-rank";
 import { shouldSyncParentSearchQuery } from "@/lib/pos-search-draft-sync";
 import { posProductSearchColumnDefs } from "@/lib/pos-product-search-columns";
-import { productStockFieldsMissing } from "@/lib/stock-cache";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -22,11 +21,10 @@ import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 const fieldInput = INPUT_CLASS;
 
 function formatStockQty(baseQty, product) {
-  if (productStockFieldsMissing(product)) {
-    return "…";
-  }
+  // Always show a number from IndexedDB / product fields — never "…".
+  const qty = Number(baseQty);
   const { text } = formatMixedStockDisplay(
-    baseQty,
+    Number.isFinite(qty) ? qty : 0,
     product?.uom ?? product?.conversion_factor ?? 1,
     product?.package_name,
   );
