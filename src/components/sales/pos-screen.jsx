@@ -2662,6 +2662,13 @@ export function PosScreen({ standalone = false }) {
   const cartCommitPendingRef = useRef(0);
   /** Drop duplicate qty Enter / blur commits for the same parked SKU within one beat. */
   const lastEntryQtyCommitRef = useRef({ key: null, at: 0 });
+  /**
+   * After search pick, focus moves to qty — the same Enter key that selected the row
+   * can land on qty and auto-add. Ignore qty Enter briefly so Add is a single action.
+   */
+  const ignoreEntryQtyEnterUntilRef = useRef(0);
+  /** Cancels a pending scheduleFocusEntryQty when Add / clear runs first. */
+  const entryQtyFocusGenRef = useRef(0);
   /** Drop queued line commits after hold / fresh workspace so they cannot restore parked lines. */
   const cartCommitGenerationRef = useRef(0);
   const editAutosaveTimerRef = useRef(null);
@@ -4960,6 +4967,8 @@ export function PosScreen({ standalone = false }) {
       .then(wrapped, wrapped)
       .finally(() => {
         cartCommitPendingRef.current = Math.max(0, cartCommitPendingRef.current - 1);
+        // If release was skipped while this commit was still pending, clear the gate now.
+        releaseCartLineMutationGate();
       });
     // Keep the chain alive after failures, and never leave void callers unhandled.
     cartCommitChainRef.current = run.catch(() => {});
@@ -5429,10 +5438,18 @@ export function PosScreen({ standalone = false }) {
   }
 
   /** Park keyboard on Classic entry qty after Find/select (Enter adds the line). */
-  function scheduleFocusEntryQty() {
+  function scheduleFocusEntryQty(opts = {}) {
     // Cancel any pending "focus Scan after add" so it cannot steal qty focus.
     focusSearchAfterAdd.current = false;
+    // Search Enter that selected the row must not also fire qty Enter → add.
+    // Classic: short window (leak only). Modern/backoffice: longer — Add is the
+    // primary control and a leaked Enter + Add click twin-added the line.
+    const defaultIgnore = classicLayout ? 180 : 450;
+    const ignoreEnterMs = opts.ignoreEnterMs ?? defaultIgnore;
+    ignoreEntryQtyEnterUntilRef.current = Date.now() + Math.max(0, ignoreEnterMs);
+    const gen = ++entryQtyFocusGenRef.current;
     const focusQty = () => {
+      if (gen !== entryQtyFocusGenRef.current) return false;
       const el = qtyInputRef.current;
       if (!el || el.disabled) return false;
       el.focus({ preventScroll: true });
@@ -5450,7 +5467,12 @@ export function PosScreen({ standalone = false }) {
     });
   }
 
+  function cancelScheduledEntryQtyFocus() {
+    entryQtyFocusGenRef.current += 1;
+  }
+
   function clearClassicEntryFields() {
+    cancelScheduledEntryQtyFocus();
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
@@ -5747,21 +5769,24 @@ export function PosScreen({ standalone = false }) {
         }
 
         // Create Order + External POS: paint warmed catalog immediately (fuzzy / multi-field).
-        // Backoffice "live" mode still paints local first for snappy typing, then always
-        // refreshes from /products so Available stock is current.
+        // Backoffice "live" mode skips IndexedDB entirely — search hits /products only.
         const preferLiveSearch =
           !standalone &&
           resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
-        try {
-          localPaint = await paintFromOffline();
-          if (seq === searchSeq.current && localPaint.length) {
-            seedRetailAndIndex(localPaint);
-            commitSearchResults(localPaint);
-            setSearching(false);
-            finishRetailPackages(localPaint);
+        if (!preferLiveSearch) {
+          try {
+            localPaint = await paintFromOffline();
+            if (seq === searchSeq.current && localPaint.length) {
+              seedRetailAndIndex(localPaint);
+              commitSearchResults(localPaint);
+              setSearching(false);
+              finishRetailPackages(localPaint);
+            }
+          } catch {
+            /* fall through to API */
           }
-        } catch {
-          /* fall through to API */
+        } else {
+          localPaint = [];
         }
 
         // IndexedDB mode + External POS: skip /products when local hits exist (perf),
@@ -5835,13 +5860,22 @@ export function PosScreen({ standalone = false }) {
         applyRemoteMerge(res.data);
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
-        // Network drop mid-search: keep local paint or fall back to offline catalog.
+        // Network drop mid-search: keep local paint when using device catalog.
+        // Live backoffice mode does not fall back to IndexedDB.
+        const preferLiveSearch =
+          !standalone &&
+          resolveBackofficeProductSearchMode(capabilities?.module_settings) === "live";
         try {
-          if (localPaint.length) {
+          if (!preferLiveSearch && localPaint.length) {
             commitSearchResults(localPaint);
             if (standalone) {
               setStatusMessage("Offline catalog — prices from last sync.");
             }
+            return;
+          }
+          if (preferLiveSearch) {
+            commitSearchResults([], { allowEmpty: true });
+            setStatusMessage("Cannot reach server for live product search.");
             return;
           }
           const list = await paintFromOffline();
@@ -8759,6 +8793,9 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Please wait — finishing cart update before adding items.");
       return;
     }
+    // Stop a pending search→qty focus from racing this Add (felt like a second add).
+    cancelScheduledEntryQtyFocus();
+    ignoreEntryQtyEnterUntilRef.current = Date.now() + 400;
     // Arm before any work so a second Enter / barcode cannot twin this add.
     armCartLineMutationGate();
     if (swapDraftRef.current?.product) {
@@ -9052,6 +9089,11 @@ export function PosScreen({ standalone = false }) {
 
   function handleQuantityEnter() {
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
+      return;
+    }
+    // Search Enter → park → focus qty: the same Enter must not also add the line.
+    // Cashiers then use Add (or a deliberate second Enter on qty).
+    if (Date.now() < ignoreEntryQtyEnterUntilRef.current) {
       return;
     }
     const parkedProduct = selectedProductRef.current ?? selectedProduct;
@@ -10286,6 +10328,9 @@ export function PosScreen({ standalone = false }) {
     }
 
     setStatusMessage(null);
+    // Drop any in-flight add/qty/swap after Clear — otherwise a late commit can keep
+    // cartLineMutationGate stuck ("Please wait — finishing cart update…") forever.
+    cartCommitGenerationRef.current += 1;
     const working = cartRef.current ?? liveCart;
     const serverCartId = isServerPosCartId(working.id) ? working.id : null;
     let nextCart = withEditDraftDirty({ ...working, lines: [] });
@@ -10350,7 +10395,13 @@ export function PosScreen({ standalone = false }) {
           detail: "Saving this till so cleared lines do not come back.",
         },
       );
+      // Always unlock Scan/Add after Clear — pending-commit races must not leave the gate armed.
+      cartLineMutationGateRef.current = false;
+      setStatusMessage((prev) =>
+        prev === "Please wait — finishing cart update before adding items." ? "Cart cleared." : prev,
+      );
     } catch (e) {
+      cartLineMutationGateRef.current = false;
       if (
         isPosNetworkDropError(e) ||
         isMissingTemporaryCartError(e) ||
@@ -17395,7 +17446,11 @@ export function PosScreen({ standalone = false }) {
               <button
                 type="button"
                 disabled={busy || lineBusy || addLineBlocked}
-                onClick={handleAddLine}
+                onMouseDown={(e) => {
+                  // Keep focus from jumping to qty mid-click (search park schedules qty focus).
+                  e.preventDefault();
+                }}
+                onClick={() => void handleAddLine()}
                 className="theme-primary-btn pos-add-line-btn flex min-w-[8rem] flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-bold uppercase shadow-sm disabled:opacity-50"
               >
                 <span className="text-base">{editingLineId ? "✓" : "+"}</span>

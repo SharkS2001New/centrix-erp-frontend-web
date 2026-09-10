@@ -742,7 +742,7 @@ export function OrganizationPlatformSalesSettings({
               ]}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Live search always loads current branch stock from the server. Device catalog is
+              Live search queries the server only (no device IndexedDB catalog). Device catalog is
               faster for busy desks but can briefly show stale Available qty until stock refreshes.
               Distribution profiles default to live.
             </p>
