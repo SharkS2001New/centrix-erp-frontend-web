@@ -142,12 +142,12 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
 
     const last = Number((await idbGetMeta(CATALOG_STOCK_OVERLAY_META_KEY)) ?? 0);
     if (!force && last && Date.now() - last < POS_OFFLINE_STOCK_TTL_MS) {
-      // TTL says overlay is fresh, but memory may still be stock-stripped
-      // (warm painted master rows, overlay aborted, or Find raced ahead).
+      // TTL says overlay ran recently, but some memory rows may still lack
+      // branch_stock (partial overlay / pre-missingAsZero data).
       const sample = samplePosSearchCatalogProducts(40);
-      const sampleMissing =
-        sample.length > 0 && sample.every((row) => productStockFieldsMissing(row));
-      if (!sampleMissing) {
+      const anyMissing =
+        sample.length > 0 && sample.some((row) => productStockFieldsMissing(row));
+      if (!anyMissing) {
         const skipped = { skipped: true, count: 0, ageMs: Date.now() - last };
         notifyPosOfflineCatalogStock(skipped);
         return skipped;
@@ -175,7 +175,9 @@ export async function refreshPosOfflineCatalogStock(options = {}) {
         notifyPosOfflineCatalogStock(none);
         return none;
       }
-      const withStock = mergeProductsWithLiveStock(existing, stockByCode);
+      const withStock = mergeProductsWithLiveStock(existing, stockByCode, {
+        missingAsZero: true,
+      });
       await idbPutCatalogProducts(withStock);
       const overlayAt = Date.now();
       await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, overlayAt);
@@ -275,7 +277,7 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
     // Keep Available current even when the product master TTL has not expired.
     const forceStock =
       existing.length > 0 &&
-      existing.slice(0, 40).every((row) => productStockFieldsMissing(row));
+      existing.slice(0, 40).some((row) => productStockFieldsMissing(row));
     void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
     return { skipped: true, count: existing.length, scopeKey };
   }
@@ -6093,7 +6095,9 @@ export async function syncPosOfflineOutbox({
               const stockByCode = await fetchStockLevelsMap(null, branchId).catch(() => null);
               if (stockByCode) {
                 const existing = await idbGetCatalogProducts(codes).catch(() => []);
-                const merged = mergeProductsWithLiveStock(existing, stockByCode);
+                const merged = mergeProductsWithLiveStock(existing, stockByCode, {
+                  missingAsZero: true,
+                });
                 if (merged && merged.length) {
                   await idbPutCatalogProducts(merged).catch(() => {});
                   try {

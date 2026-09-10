@@ -111,12 +111,25 @@ export function stockRowToProductFields(stock, product = null) {
 }
 
 /** Overlay live stock quantities onto a product row (catalog fields unchanged). */
-export function mergeProductWithLiveStock(product, stockByCode) {
+export function mergeProductWithLiveStock(product, stockByCode, options = {}) {
   if (!product) return product;
   const code = product.product_code;
   if (!code) return product;
   const stock = stockByCode?.get?.(String(code)) ?? stockByCode?.[String(code)];
-  if (!stock) return product;
+  if (!stock) {
+    // Full catalog overlay: SKUs absent from stock-on-hand still need branch_stock
+    // so Find Available shows "0" instead of permanent "…".
+    if (options.missingAsZero) {
+      return {
+        ...product,
+        ...stockRowToProductFields(
+          { shop_quantity: 0, store_quantity: 0, available_shop_quantity: 0, available_store_quantity: 0 },
+          product,
+        ),
+      };
+    }
+    return product;
+  }
   return { ...product, ...stockRowToProductFields(stock, product) };
 }
 
@@ -221,8 +234,9 @@ export async function hydrateProductLiveStock(product, branchId, request, option
 
 /** @param {Array<object>} products
  *  @param {Map<string, object> | Record<string, object>} stockByCode
+ *  @param {{ missingAsZero?: boolean }} [options]
  */
-export function mergeProductsWithLiveStock(products, stockByCode) {
+export function mergeProductsWithLiveStock(products, stockByCode, options = {}) {
   if (!Array.isArray(products) || !stockByCode) return products ?? [];
-  return products.map((product) => mergeProductWithLiveStock(product, stockByCode));
+  return products.map((product) => mergeProductWithLiveStock(product, stockByCode, options));
 }

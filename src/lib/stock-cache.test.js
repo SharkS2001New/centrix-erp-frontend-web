@@ -3,6 +3,7 @@ import {
   productStockFieldsMissing,
   hydrateProductLiveStock,
   mergeProductStockFields,
+  mergeProductWithLiveStock,
   productStockOverlaySame,
 } from "@/lib/stock-cache";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
@@ -110,5 +111,20 @@ describe("hydrateProductLiveStock", () => {
     expect(productStockOverlaySame(a, b)).toBe(true);
     expect(productStockOverlaySame(a, c)).toBe(false);
     expect(productStockOverlaySame({ product_code: "1" }, a)).toBe(false);
+  });
+
+  it("missingAsZero stamps branch_stock so Find does not stay on …", () => {
+    const map = new Map();
+    const merged = mergeProductWithLiveStock(
+      { product_code: "NO-STOCK-ROW", product_name: "X" },
+      map,
+      { missingAsZero: true },
+    );
+    expect(productStockFieldsMissing(merged)).toBe(false);
+    expect(merged.stock_available_shop).toBe(0);
+    expect(merged.branch_stock).toMatchObject({
+      shop_available: 0,
+      store_available: 0,
+    });
   });
 });
