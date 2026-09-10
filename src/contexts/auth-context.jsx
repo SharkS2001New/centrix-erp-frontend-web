@@ -41,6 +41,7 @@ import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { useCookieAuth } from "@/lib/auth-config";
 import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
+import { invalidatePosOfflineProductCatalog } from "@/lib/pos-offline";
 import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
 import {
   capabilitiesAccessStampChanged,
@@ -237,6 +238,9 @@ export function AuthProvider({ children }) {
     capabilitiesRefreshPromise.current = null;
     capabilitiesRefreshGen.current += 1;
     clearLocalPrintingSettingsCache();
+    // Drop previous org's IndexedDB product catalogue before session swap — soft
+    // org switch / re-login kept SKUs for 90 minutes and 422'd on branch product GET.
+    void invalidatePosOfflineProductCatalog();
 
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
     setStoredCompanyCode(res.organization?.company_code);
@@ -658,6 +662,7 @@ export function AuthProvider({ children }) {
     clearLocalPrintingSettingsCache();
     invalidateReferenceDataCache();
     invalidateReportBuilderTemplateCache();
+    void invalidatePosOfflineProductCatalog();
     capabilitiesRefreshAt.current = 0;
     capabilitiesRefreshPromise.current = null;
     capabilitiesRefreshGen.current += 1;

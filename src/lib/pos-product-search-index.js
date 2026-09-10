@@ -543,8 +543,8 @@ export function sameSearchResultList(prev, next) {
   return true;
 }
 
-/** Test helper — clear in-memory index. */
-export function resetPosSearchCatalogForTests() {
+/** Clear in-memory POS product search index (org switch / catalog rewarm). */
+export function resetPosSearchCatalog() {
   catalogByCode = null;
   entryByCode = null;
   indexedEntries = null;
@@ -552,4 +552,9 @@ export function resetPosSearchCatalogForTests() {
   exactCodeIndex = null;
   indexWarmedAt = null;
   catalogVersion += 1;
+}
+
+/** @deprecated Use {@link resetPosSearchCatalog}. */
+export function resetPosSearchCatalogForTests() {
+  resetPosSearchCatalog();
 }

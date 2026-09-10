@@ -32,13 +32,14 @@ describe("chunkPickingLinesForPrint", () => {
       quantity_label: "1 Bag",
     }));
     const shortChunks = chunkPickingLinesForPrint(shortLines);
-    expect(shortChunks[0].length).toBeGreaterThan(24);
+    expect(shortChunks[0].length).toBeGreaterThan(12);
     expect(shortChunks[0].length).toBeLessThanOrEqual(PICKING_LIST_LINES_PER_PAGE);
     // A 1-line middle sheet is the overflow bug: last row of page 1 spills, then
     // page-break-after:always leaves the rest of that leaf blank.
     for (let i = 0; i < shortChunks.length - 1; i += 1) {
       expect(shortChunks[i].length).toBeGreaterThan(1);
     }
+    expect(shortChunks.flat()).toHaveLength(shortLines.length);
 
     const tallLines = Array.from({ length: 40 }, (_, i) => ({
       line_no: i + 1,
@@ -50,6 +51,7 @@ describe("chunkPickingLinesForPrint", () => {
     const tallChunks = chunkPickingLinesForPrint(tallLines);
     expect(tallChunks[0].length).toBeGreaterThan(0);
     expect(tallChunks[0].length).toBeLessThan(shortChunks[0].length);
+    expect(tallChunks.flat()).toHaveLength(tallLines.length);
   });
 
   it("returns one empty chunk when there are no lines", () => {
@@ -92,9 +94,27 @@ describe("chunkPickingLinesForPrint", () => {
       summaryReserveMm: 40,
       bottomSafetyMm: 0,
     });
-    // Short rows are ~7.2mm → 100mm budget holds ~13 lines, not stop early for summary.
-    expect(chunks[0].length).toBeGreaterThanOrEqual(13);
+    // Short rows are ~8.6mm → 100mm budget holds ~11 lines, not stop early for summary.
+    expect(chunks[0].length).toBeGreaterThanOrEqual(11);
     expect(chunks.flat()).toHaveLength(lines.length);
+  });
+
+  it("keeps every line across pages for a long sales picking list", () => {
+    const lines = Array.from({ length: 48 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: i === 21 ? "ANAB PK 386" : `ITEM ${i + 1}`,
+      quantity_label: i === 21 ? "5 bags" : "1 Bag",
+      price_label: i === 21 ? "3,745 per bags" : "100 per bag",
+      line_total: i === 21 ? 18725 : 100,
+    }));
+    const chunks = chunkPickingLinesForPrint(lines);
+    expect(chunks.flat()).toHaveLength(48);
+    expect(chunks.flat().map((l) => l.line_no)).toEqual(
+      Array.from({ length: 48 }, (_, i) => i + 1),
+    );
+    expect(chunks.some((chunk) => chunk.some((l) => l.product_name === "ANAB PK 386"))).toBe(
+      true,
+    );
   });
 });
 
@@ -233,10 +253,35 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toMatch(/page-break-after:\s*always/);
     expect(html).toMatch(/display:\s*grid/);
     expect(html).toContain('class="has-doc-print-edge-footer"');
-    expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
-    expect(html).toMatch(/@media print[\s\S]*\.print-page\s*\{[\s\S]*?width:\s*100%/);
-    expect(html).toMatch(/\.col-total\s*\{[^}]*white-space:\s*nowrap/);
-    expect(html).toContain("4% 22% 18% 20% 14% 22%");
+    // Sheet must be 100% of padded body — fixed 210mm + 12mm sides clipped Line amount.
+    expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*100%/);
+    expect(html).not.toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
+    expect(html).toMatch(/\.col-total\s*\{[^}]*overflow-wrap:\s*anywhere/);
+    expect(html).toContain("minmax(0, 27.5%)");
+  });
+
+  it("keeps large line amounts in the HTML for every row", () => {
+    const lines = Array.from({ length: 28 }, (_, i) => ({
+      product_name: i === 21 ? "ANAB PK 386" : `ITEM ${i + 1}`,
+      quantity_label: i === 21 ? "5 bags" : "6 bale",
+      wholesale_unit_prices: [i === 21 ? 3745 : 1935],
+      wholesale_pack_label: i === 21 ? "bags" : "bale",
+      line_total: i === 21 ? 18725 : 11610,
+    }));
+    const html = buildPickingListHtml({
+      pickingList: {
+        layout: "sales",
+        list_number: "PK-CLIP",
+        lines,
+      },
+      layout: "sales",
+    });
+
+    expect(html).toContain("ANAB PK 386");
+    expect(html).toContain("18,725.00");
+    expect(html).toContain("11,610.00");
+    expect(html).toContain("ITEM 1");
+    expect(html).toContain("ITEM 28");
   });
 
   it("titles combined lists with natural-language route names", () => {

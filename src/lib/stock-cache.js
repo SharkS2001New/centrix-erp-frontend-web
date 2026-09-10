@@ -183,6 +183,9 @@ export async function hydrateProductLiveStock(product, branchId, request, option
     if (branchId) searchParams.branch_id = branchId;
     const row = await request(`/products/${encodeURIComponent(product.product_code)}`, {
       searchParams,
+      loading: false,
+      // Stale offline-catalog SKUs after org switch must not open the system-issue modal.
+      reportIssues: false,
     });
     return mergeProductStockFields(product, row ?? {});
   } catch {

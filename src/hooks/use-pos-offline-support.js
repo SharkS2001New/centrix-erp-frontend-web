@@ -614,6 +614,20 @@ export function usePosOfflineSupport({
   }, [enabled, fullyOnline]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
+  // Org change: force catalogue rewarm (TTL otherwise keeps the previous tenant's SKUs).
+  const catalogOrgRef = useRef(null);
+  useEffect(() => {
+    if (!enabled || !organizationId) return undefined;
+    const prev = catalogOrgRef.current;
+    catalogOrgRef.current = organizationId;
+    if (prev != null && String(prev) !== String(organizationId)) {
+      void warmPosOfflineCatalog({ force: true }).catch((err) => {
+        console.warn("POS catalog rewarm after org change failed", err);
+      });
+    }
+    return undefined;
+  }, [enabled, organizationId]);
+
   useEffect(() => {
     if (!sellOffline || !userId || !organizationId) return undefined;
     let cancelled = false;
@@ -627,6 +641,9 @@ export function usePosOfflineSupport({
         if (result.wiped) {
           await refreshCounts();
           await prepare();
+        } else {
+          // Ensure scope stamp matches this org even when TTL would skip.
+          await warmPosOfflineCatalog({ force: false });
         }
       } catch (err) {
         console.warn("POS offline owner isolation failed", err);

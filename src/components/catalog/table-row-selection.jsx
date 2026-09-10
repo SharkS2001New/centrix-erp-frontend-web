@@ -263,6 +263,20 @@ export function BatchDeleteButton({ count, busy, onClick }) {
   );
 }
 
+/** Cancel a previous POS order without deleting lines first. */
+export function BatchCancelOrderButton({ busy, onClick, label = "Cancel order" }) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className="rounded-lg border border-red-600 bg-white px-4 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:hover:bg-red-950/40"
+    >
+      {busy ? "Cancelling…" : label}
+    </button>
+  );
+}
+
 export function TableTreeCornerIcon() {
   return (
     <svg

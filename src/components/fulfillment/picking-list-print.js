@@ -298,16 +298,25 @@ function normalizePickingLines(lines, uomByProductCode) {
   });
 }
 
-/** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
+/** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid.
+ *  minmax(0, …) keeps long prices / line amounts inside the printable width
+ *  (12mm body sides) instead of clipping past the right paper edge.
+ */
 function salesPickingGridColumns(showTonnage = true) {
-  return showTonnage ? "4% 22% 18% 20% 14% 22%" : "4% 26% 22% 22% 26%";
+  return showTonnage
+    ? "minmax(0, 3.5%) minmax(0, 23%) minmax(0, 16%) minmax(0, 18%) minmax(0, 12%) minmax(0, 27.5%)"
+    : "minmax(0, 3.5%) minmax(0, 28%) minmax(0, 18%) minmax(0, 20%) minmax(0, 30.5%)";
 }
 
 function distributionPickingGridColumns(includeShelfLocation = true, showTonnage = true) {
   if (includeShelfLocation) {
-    return showTonnage ? "5% 10% 26% 12% 12% 12% 13%" : "5% 12% 32% 17% 17% 17%";
+    return showTonnage
+      ? "minmax(0, 5%) minmax(0, 10%) minmax(0, 26%) minmax(0, 12%) minmax(0, 12%) minmax(0, 12%) minmax(0, 13%)"
+      : "minmax(0, 5%) minmax(0, 12%) minmax(0, 32%) minmax(0, 17%) minmax(0, 17%) minmax(0, 17%)";
   }
-  return showTonnage ? "5% 38% 13% 13% 13% 18%" : "5% 46% 16% 16% 17%";
+  return showTonnage
+    ? "minmax(0, 5%) minmax(0, 38%) minmax(0, 13%) minmax(0, 13%) minmax(0, 13%) minmax(0, 18%)"
+    : "minmax(0, 5%) minmax(0, 46%) minmax(0, 16%) minmax(0, 16%) minmax(0, 17%)";
 }
 
 function buildSalesPickingHead(showTonnage = true) {
@@ -399,18 +408,21 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
 /**
  * A4 line-area budgets (mm) after page chrome (header / continued label / column head).
  * The 30mm edge footer is a fixed overlay — do not subtract it from this flowing
- * line area or pages stop early with a large blank band. Trim only ~1 row from the
- * previous 210 / 258 values so the last line cannot spill onto a nearly empty sheet.
+ * line area or pages stop early with a large blank band.
+ *
+ * Budgets stay conservative vs measured row height so Chromium never clips the last
+ * few lines of a .print-page (those clipped rows are lost — they do not flow to the
+ * next sheet). Prefer a short last page over missing item numbers mid-list.
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 205,
+  first: 175,
   /** Line area after continued label + column head on later pages. */
-  continued: 254,
+  continued: 230,
   /** Summary box + signature blocks reserved on the last page only. */
-  summaryReserve: 52,
-  /** Extra empty margin after the last item on a page (~½ row). */
-  bottomSafety: 4,
+  summaryReserve: 56,
+  /** Empty margin after the last item on a page (~1 row) so the last line cannot spill. */
+  bottomSafety: 10,
 };
 
 /** Estimate print height of one picking row from its content (taller when multi-line). */
@@ -418,13 +430,14 @@ export function estimatePickingLineHeightMm(line) {
   let textLines = 1;
   if (String(line?.retail_breakdown ?? "").trim()) textLines += 1;
   const qty = String(line?.quantity_label ?? "").trim();
-  if (qty.length > 32) textLines += 1;
+  if (qty.length > 28) textLines += 1;
   const price = String(line?.price_label ?? "").trim();
-  if (price.length > 40) textLines += 1;
+  if (price.length > 36) textLines += 1;
   const name = String(line?.product_name ?? "").trim();
-  if (name.length > 34) textLines += 1;
-  // Single-line row: 8px padding × 2 + 11px type + hairline ≈ 7.2mm.
-  return 7.2 + Math.max(0, textLines - 1) * 3.4;
+  if (name.length > 28) textLines += 1;
+  // Slightly taller than paint so packing under-fills rather than clipping.
+  // Single-line row ≈ 8px pad × 2 + 11–12px type + hairline ≈ 8.6mm.
+  return 8.6 + Math.max(0, textLines - 1) * 3.8;
 }
 
 function sumEstimatedPickingHeightMm(lines) {
@@ -499,14 +512,13 @@ function pickingListPrintStyles(
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
-    /* Screen preview is a physical A4 sheet. Print uses 100% of the padded body
-       (12mm sides) so the Line amount column is not clipped past 210mm. */
+    /* Always 100% of the padded body (12mm sides). A fixed 210mm sheet + body
+       padding overflowed past A4 and clipped Line amount on the right edge. */
     .print-page {
-      width: 210mm;
+      width: 100%;
       max-width: 100%;
       box-sizing: border-box;
-      padding: ${px(24)};
-      /* Stay inside A4 minus the 30mm document edge footer. */
+      padding: ${px(20)} ${px(8)};
       padding-bottom: 6mm;
       overflow: visible;
       page-break-after: always;
@@ -517,8 +529,15 @@ function pickingListPrintStyles(
       break-after: auto;
     }
     .page, .sheet, .print-page { position: static; z-index: 1; overflow: visible; }
+    .sheet {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: visible;
+    }
     .pick-lines {
       width: 100%;
+      max-width: 100%;
       display: block;
       overflow: visible;
     }
@@ -527,14 +546,22 @@ function pickingListPrintStyles(
       display: grid;
       grid-template-columns: ${gridColumns};
       width: 100%;
-      column-gap: 0;
+      max-width: 100%;
+      column-gap: ${px(4)};
       align-items: start;
       box-sizing: border-box;
+    }
+    .pick-head > div,
+    .pick-line > div {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     /* Block wraps beat <table>/<tr> for Chromium print fragmentation. */
     .pick-line-wrap {
       display: block;
       width: 100%;
+      max-width: 100%;
       overflow: visible;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -578,31 +605,38 @@ function pickingListPrintStyles(
       padding: ${px(8)} 0;
       font-weight: 700;
     }
-    .pick-head > div { padding: 0 ${px(6)}; }
+    .pick-head > div { padding: 0 ${px(4)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
       padding: ${px(8)} 0;
     }
-    .pick-line > div { padding: 0 ${px(6)}; }
+    .pick-line > div { padding: 0 ${px(4)}; }
     .col-no { text-align: center; }
-    .col-price { overflow-wrap: break-word; }
+    .col-product .main,
+    .col-qty,
+    .col-price {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .col-weight {
       text-align: right;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
       font-variant-numeric: tabular-nums;
     }
     .col-total {
       text-align: right;
-      white-space: nowrap;
       overflow: visible;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       font-variant-numeric: tabular-nums;
     }
-    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: ${px(220)}; }
+    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: 100%; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
     .summary-box { margin-top: ${px(16)}; padding: ${px(12)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
-    .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; }
+    .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; gap: ${px(12)}; }
+    .summary-row strong { text-align: right; overflow-wrap: anywhere; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body.has-doc-print-edge-footer {
@@ -612,7 +646,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(8, true)} ${px(4, true)} 8mm;
+        padding: ${px(6, true)} ${px(2, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -651,16 +685,24 @@ function pickingListPrintStyles(
       padding: ${px(8)} 0;
       font-weight: 700;
     }
-    .pick-head > div { padding: 0 ${px(6)}; }
+    .pick-head > div { padding: 0 ${px(4)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
       padding: ${px(8)} 0;
     }
-    .pick-line > div { padding: 0 ${px(6)}; }
+    .pick-line > div { padding: 0 ${px(4)}; }
     .col-no { text-align: center; }
+    .col-product .main,
+    .col-qty,
+    .col-picked,
+    .col-shortage {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .col-qty, .col-picked, .col-shortage, .col-weight, .col-total {
       text-align: right;
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
     }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
     .pick-line.shortage { background: #fff7ed; }
@@ -668,7 +710,8 @@ function pickingListPrintStyles(
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
     .summary-box { margin-top: ${px(16)}; padding: ${px(12)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
-    .summary-row { display: flex; justify-content: space-between; font-size: ${px(12)}; margin: ${px(4)} 0; }
+    .summary-row { display: flex; justify-content: space-between; font-size: ${px(12)}; margin: ${px(4)} 0; gap: ${px(12)}; }
+    .summary-row strong { text-align: right; overflow-wrap: anywhere; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body.has-doc-print-edge-footer {
@@ -678,7 +721,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(8, true)} ${px(4, true)} 8mm;
+        padding: ${px(6, true)} ${px(2, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }

@@ -87,6 +87,7 @@ import {
   resolveCheckoutStatus,
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
+  canCancelOrder,
 } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
@@ -101,7 +102,9 @@ import {
   showPosLineDiscountField,
   showPosOrderDiscountInput,
   resolveOrderPrintDocumentType,
+  isOrderCancellationApprovalEnabled,
 } from "@/lib/sales-settings";
+import { canDirectCancelOrders } from "@/lib/approval-permissions";
 import {
   buildAdvisedDiscountMap,
   draftLinesMatchAdvisedDiscounts,
@@ -188,6 +191,7 @@ import { ClassicPosCartTable } from "./classic-pos-cart-table";
 import {
   BatchActionBar,
   BatchDeleteButton,
+  BatchCancelOrderButton,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
@@ -10645,6 +10649,178 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  /**
+   * Cancel a previous Cash Sales # online without deleting lines first.
+   * Status cancel (or approval request) — same outcome as Sales & Orders cancel.
+   */
+  async function cancelPreviousOrderFromEdit() {
+    const live = cartRef.current ?? cart;
+    if (!standalone || !isPreviousOrderEditSession(live)) {
+      setStatusMessage("Open a previous order to cancel it.");
+      return;
+    }
+    const saleId = Number(
+      live.superseded_sale_id ?? editSourceSale?.id ?? live.server_sale_id ?? 0,
+    );
+    const saleForGate = editSourceSale
+      ? { ...editSourceSale, id: editSourceSale.id ?? (saleId || null) }
+      : {
+          id: saleId || null,
+          status: live.workflow_status ?? live.status ?? "completed",
+          payment_status: live.payment_status ?? "paid",
+          order_num: live.held_order_num,
+          pos_order_num: live.pos_order_num,
+        };
+    if (!canCancelOrder(saleForGate, channelWorkflow, capabilities)) {
+      setStatusMessage("This order cannot be cancelled.");
+      notifyError("This order cannot be cancelled.");
+      return;
+    }
+
+    const ticketLabel = formatPosBrowseLabel(live);
+    const needsApproval =
+      isOrderCancellationApprovalEnabled(capabilities?.module_settings) &&
+      !canDirectCancelOrders({ hasPermission, capabilities });
+
+    const ok = await confirm({
+      title: needsApproval ? "Request cancellation" : "Cancel order",
+      message: needsApproval
+        ? `Request cancellation for Cash Sales #${ticketLabel}? Managers must approve. You do not need to delete the lines first.`
+        : `Cancel Cash Sales #${ticketLabel}? Stock will be restored and the order marked cancelled. You do not need to delete the lines first.`,
+      confirmLabel: needsApproval ? "Request cancel" : "Cancel order",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    skipEditAutosaveRef.current = true;
+    cartCommitGenerationRef.current += 1;
+    setBusy(true);
+    setStatusMessage(needsApproval ? "Requesting cancellation…" : "Cancelling order…");
+
+    try {
+      // Never-synced offline sale — drop the local outbox row.
+      const offlineUuid =
+        live.offline_client_sale_uuid != null &&
+        String(live.offline_client_sale_uuid).trim()
+          ? String(live.offline_client_sale_uuid).trim()
+          : null;
+      if (!saleId && offlineUuid) {
+        await idbDeleteOutboxSale(offlineUuid).catch(() => {});
+        await clearPreviousOrderEditDraft().catch(() => {});
+        setEditSourceSale(null);
+        clearClassicLineSelection();
+        clearLineEntry();
+        setSelectedLineId(null);
+        setSelectedLineIds(new Set());
+        await startFreshWorkspace({ discardPreviousOrderEdit: true });
+        setStatusMessage(`Cash Sales #${ticketLabel} removed (was not yet on the server).`);
+        void refreshOfflineCounts();
+        return;
+      }
+
+      if (!saleId) {
+        setStatusMessage("Cannot cancel — missing sale id.");
+        notifyError("Cannot cancel — missing sale id.");
+        return;
+      }
+
+      // Offline: queue empty-line cancel via the existing previous-order outbox path.
+      if (offlineMode || networkStatus === "offline") {
+        const emptyCart = withEditDraftDirty({
+          ...live,
+          lines: [],
+          superseded_sale_id: saleId,
+          _editDraftDirty: true,
+        });
+        cartRef.current = emptyCart;
+        setCart(emptyCart);
+        await persistPreviousOrderLocalDraft(emptyCart, { immediate: true });
+        await queuePreviousOrderEditOutboxNow({ force: true });
+        await clearPreviousOrderEditDraft().catch(() => {});
+        setEditSourceSale(null);
+        clearLineEntry();
+        setSelectedLineId(null);
+        setSelectedLineIds(new Set());
+        await startFreshWorkspace({ discardPreviousOrderEdit: true });
+        setStatusMessage(
+          `Cash Sales #${ticketLabel} queued to cancel when back online.`,
+        );
+        void flushOutboxNow({ includeErrors: false });
+        void refreshOfflineCounts();
+        return;
+      }
+
+      if (needsApproval) {
+        const reason = window.prompt("Reason for cancellation (required):");
+        if (!reason || reason.trim().length < 3) {
+          if (reason !== null) {
+            notifyError("Cancellation reason must be at least 3 characters.");
+          }
+          setStatusMessage(null);
+          return;
+        }
+        await apiRequest(`/sales/orders/${saleId}/request-cancellation`, {
+          method: "POST",
+          body: { reason: reason.trim() },
+        });
+        notifySuccess("Cancellation request sent to managers for approval.");
+        setStatusMessage(
+          `Cancellation requested for Cash Sales #${ticketLabel}.`,
+        );
+      } else {
+        const cancelled = await apiRequest(`/sales/orders/${saleId}/transition`, {
+          method: "POST",
+          body: { status: "cancelled" },
+        });
+        if (cancelled) {
+          setCompletedSale(cancelled);
+          markSaleForReprint(cancelled);
+        }
+        notifySuccess(`Cash Sales #${ticketLabel} cancelled.`);
+        setStatusMessage(`Cash Sales #${ticketLabel} cancelled.`);
+      }
+
+      // Drop any pending previous-order edit outbox for this session.
+      if (offlineUuid) {
+        await idbDeleteOutboxSale(offlineUuid).catch(() => {});
+      }
+      const orderNum = Number(live.held_order_num);
+      const prevEditUuid =
+        Number.isFinite(orderNum) && orderNum > 0 ? `prev-edit-${orderNum}` : null;
+      if (prevEditUuid && prevEditUuid !== offlineUuid) {
+        await idbDeleteOutboxSale(prevEditUuid).catch(() => {});
+      }
+      await clearPreviousOrderEditDraft().catch(() => {});
+      setEditSourceSale(null);
+      // Strip edit markers so F8/fresh does not treat this as a revise leave.
+      const cleared = stripPreviousOrderEditSession({
+        ...live,
+        lines: [],
+        payment_adjustments: undefined,
+        _editDraftDirty: undefined,
+      });
+      cartRef.current = cleared;
+      setCart(cleared);
+      clearLineEntry();
+      setSelectedLineId(null);
+      setSelectedLineIds(new Set());
+      await startFreshWorkspace({ discardPreviousOrderEdit: true });
+      if (enablePosOrderEdit) {
+        void loadCompletedPosOrders();
+      }
+      void refreshOfflineCounts();
+    } catch (e) {
+      const message =
+        e instanceof ApiError ? e.message : "Could not cancel the order. Try again.";
+      setStatusMessage(message);
+      notifyError(message);
+    } finally {
+      setBusy(false);
+      skipEditAutosaveRef.current = false;
+      cartLineMutationGateRef.current = false;
+    }
+  }
+
   function clearLineEntry() {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
@@ -17876,6 +18052,19 @@ export function PosScreen({ standalone = false }) {
                     </>
                   )}
                 </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void cancelPreviousOrderFromEdit()}
+                    className="rounded-md border border-red-600 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Cancel order
+                  </button>
+                  <span className="self-center text-[11px] opacity-80">
+                    Cancels online without deleting lines. Delete removes selected items only.
+                  </span>
+                </div>
               </div>
             </div>
           ) : null}
@@ -18535,6 +18724,16 @@ export function PosScreen({ standalone = false }) {
                 disabled={busy || !cart?.lines?.length}
                 onClick={clearAllLines}
               />
+              {isCartEditSession ? (
+                <PosActionButton
+                  label="Cancel order"
+                  title="Cancel this previous order online without deleting lines first"
+                  icon="✕"
+                  iconClass="pos-cart-action-icon--warn"
+                  disabled={busy}
+                  onClick={() => void cancelPreviousOrderFromEdit()}
+                />
+              ) : null}
               <PosActionButton
                 label="Hold"
                 title={
@@ -19013,7 +19212,24 @@ export function PosScreen({ standalone = false }) {
             busy={busy || lineBusy}
             onClick={() => void removeSelectedLines()}
           />
+          {isCartEditSession ? (
+            <BatchCancelOrderButton
+              busy={busy || lineBusy}
+              onClick={() => void cancelPreviousOrderFromEdit()}
+            />
+          ) : null}
         </BatchActionBar>
+      ) : null}
+      {classicLayout && standalone && isCartEditSession && selectedLineCount === 0 ? (
+        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center gap-3 rounded-full border border-red-200 bg-white px-5 py-3 shadow-lg dark:border-red-900 dark:bg-slate-900">
+          <span className="text-sm text-slate-600 dark:text-slate-300">
+            Editing Cash Sales #{formatPosBrowseLabel(cart)}
+          </span>
+          <BatchCancelOrderButton
+            busy={busy || lineBusy}
+            onClick={() => void cancelPreviousOrderFromEdit()}
+          />
+        </div>
       ) : null}
     </div>
   );

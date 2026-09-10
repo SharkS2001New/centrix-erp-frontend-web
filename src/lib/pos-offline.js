@@ -12,6 +12,7 @@ import {
   hasPosSearchCatalog,
   hydratePosSearchIndex,
   isPosSearchIndexSnapshotValid,
+  resetPosSearchCatalog,
   searchPosCatalogIndexAsync,
   serializePosSearchIndex,
   setPosSearchCatalog,
@@ -140,6 +141,34 @@ function sortCatalog(products, query) {
 }
 
 const SEARCH_INDEX_META_KEY = "search_index_v1";
+/** Org+branch stamp so login / switch-org never reuses another tenant's SKUs. */
+export const POS_OFFLINE_CATALOG_SCOPE_META_KEY = "catalog_scope_key";
+
+function resolvePosOfflineCatalogScopeKey() {
+  const orgId =
+    Number(getStoredOrganization()?.id ?? getStoredUser()?.organization_id ?? 0) || 0;
+  const branchId = Number(getStoredUser()?.branch_id ?? 0) || 0;
+  if (!orgId) return "";
+  return `org:${orgId}:branch:${branchId || "none"}`;
+}
+
+/**
+ * Drop IndexedDB + in-memory product catalogue without touching carts/outbox.
+ * Call on login / organization switch so the till cannot search another org's SKUs.
+ */
+export async function invalidatePosOfflineProductCatalog() {
+  resetPosSearchCatalog();
+  try {
+    await idbClearStore("catalog");
+    await idbSetMeta("catalog_warmed_at", 0);
+    await idbSetMeta("catalog_count", 0);
+    await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, 0);
+    await idbSetMeta(SEARCH_INDEX_META_KEY, null);
+    await idbSetMeta(POS_OFFLINE_CATALOG_SCOPE_META_KEY, null);
+  } catch (err) {
+    console.warn("[pos] catalog invalidate failed", err);
+  }
+}
 
 async function persistPosSearchIndexSnapshot(warmedAt) {
   try {
@@ -171,8 +200,11 @@ async function tryHydratePosSearchIndex(products, warmedAt) {
 
 /** Warm lean product catalog into IndexedDB for offline search. */
 export async function warmPosOfflineCatalog({ force = false } = {}) {
+  const scopeKey = resolvePosOfflineCatalogScopeKey();
+  const lastScopeKey = String((await idbGetMeta(POS_OFFLINE_CATALOG_SCOPE_META_KEY)) ?? "");
+  const scopeChanged = Boolean(scopeKey) && lastScopeKey !== scopeKey;
   const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
-  if (!force && last && Date.now() - last < POS_OFFLINE_CATALOG_TTL_MS) {
+  if (!force && !scopeChanged && last && Date.now() - last < POS_OFFLINE_CATALOG_TTL_MS) {
     const existing = await idbGetAllCatalog();
     if (existing.length && !hasPosSearchCatalog()) {
       const hydrated = await tryHydratePosSearchIndex(existing, last);
@@ -186,7 +218,13 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
       existing.length > 0 &&
       existing.slice(0, 40).every((row) => productStockFieldsMissing(row));
     void refreshPosOfflineCatalogStock({ force: forceStock }).catch(() => {});
-    return { skipped: true, count: existing.length };
+    return { skipped: true, count: existing.length, scopeKey };
+  }
+
+  // Org/branch changed (or forced): clear memory immediately so Find cannot paint
+  // the previous tenant's SKUs while /products pages load.
+  if (force || scopeChanged) {
+    resetPosSearchCatalog();
   }
 
   const products = [];
@@ -220,11 +258,19 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   await idbSetMeta("catalog_count", products.length);
   // Clear stock overlay stamp so the forced refresh below always runs.
   await idbSetMeta(CATALOG_STOCK_OVERLAY_META_KEY, 0);
+  if (scopeKey) {
+    await idbSetMeta(POS_OFFLINE_CATALOG_SCOPE_META_KEY, scopeKey);
+  }
   setPosSearchCatalog(products, { warmedAt });
   void persistPosSearchIndexSnapshot(warmedAt);
 
   const stock = await refreshPosOfflineCatalogStock({ force: true }).catch(() => null);
-  return { skipped: false, count: Number(stock?.count ?? products.length) };
+  return {
+    skipped: false,
+    count: Number(stock?.count ?? products.length),
+    scopeKey,
+    scopeChanged,
+  };
 }
 
 /**
