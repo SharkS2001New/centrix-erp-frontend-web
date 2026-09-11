@@ -299,13 +299,13 @@ function normalizePickingLines(lines, uomByProductCode) {
 }
 
 /** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid.
- *  minmax(0, …) keeps long prices / line amounts inside the printable width
- *  (12mm body sides) instead of clipping past the right paper edge.
+ *  Line amount uses minmax(22mm, …) so values like 1,641,725.00 never get squeezed
+ *  off the A4 right edge; product / qty / price share the rest and wrap.
  */
 function salesPickingGridColumns(showTonnage = true) {
   return showTonnage
-    ? "minmax(0, 3.5%) minmax(0, 23%) minmax(0, 16%) minmax(0, 18%) minmax(0, 12%) minmax(0, 27.5%)"
-    : "minmax(0, 3.5%) minmax(0, 28%) minmax(0, 18%) minmax(0, 20%) minmax(0, 30.5%)";
+    ? "minmax(0, 3%) minmax(0, 22%) minmax(0, 15%) minmax(0, 16%) minmax(0, 11%) minmax(22mm, 1fr)"
+    : "minmax(0, 3%) minmax(0, 26%) minmax(0, 17%) minmax(0, 18%) minmax(22mm, 1fr)";
 }
 
 function distributionPickingGridColumns(includeShelfLocation = true, showTonnage = true) {
@@ -415,27 +415,43 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 235,
+  first: 228,
   /** Line area after continued label + column head on later pages. */
-  continued: 268,
+  continued: 258,
   /** Summary box + signature blocks reserved on the last page only. */
   summaryReserve: 42,
   /** Empty margin after the last item on a page so the last line cannot spill. */
-  bottomSafety: 2,
+  bottomSafety: 8,
 };
 
-/** Estimate print height of one picking row from its content (taller when multi-line). */
+/** Soft-wrap line count for a narrow print column (conservative chars/line). */
+function estimateWrappedTextLines(text, charsPerLine) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return 0;
+  const perLine = Math.max(8, charsPerLine);
+  return raw.split(/\n/).reduce((sum, part) => {
+    const chunk = part.trim();
+    if (!chunk) return sum;
+    return sum + Math.max(1, Math.ceil(chunk.length / perLine));
+  }, 0);
+}
+
+/**
+ * Estimate print height of one picking row from its content (taller when multi-line).
+ * Qty/price columns are narrow (~17–18% of A4); long retail breakdowns must count
+ * every wrap line or Chromium clips the last item(s) between pages (e.g. missing #34).
+ */
 export function estimatePickingLineHeightMm(line) {
-  let textLines = 1;
-  if (String(line?.retail_breakdown ?? "").trim()) textLines += 1;
-  const qty = String(line?.quantity_label ?? "").trim();
-  if (qty.length > 28) textLines += 1;
-  const price = String(line?.price_label ?? "").trim();
-  if (price.length > 36) textLines += 1;
-  const name = String(line?.product_name ?? "").trim();
-  if (name.length > 28) textLines += 1;
-  // Compact print rows: ~3px pad × 2 + 11px type + hairline ≈ 6.0mm.
-  return 6.0 + Math.max(0, textLines - 1) * 2.8;
+  const nameLines = Math.max(1, estimateWrappedTextLines(line?.product_name, 22));
+  const qtyMain = String(line?.quantity_label ?? "").trim();
+  const qtyGhost = String(line?.retail_breakdown ?? "").trim();
+  const qtyText = qtyGhost ? `${qtyMain}\n(${qtyGhost})` : qtyMain;
+  // ~17% of ~186mm content ≈ 14–16 chars at 11px — use 13 for safety.
+  const qtyLines = Math.max(1, estimateWrappedTextLines(qtyText, 13));
+  const priceLines = Math.max(1, estimateWrappedTextLines(line?.price_label, 15));
+  const textLines = Math.max(nameLines, qtyLines, priceLines);
+  // Compact print rows: pad + 11px type + hairline ≈ 6.0mm; wrapped lines ~3.1mm.
+  return 6.0 + Math.max(0, textLines - 1) * 3.1;
 }
 
 function sumEstimatedPickingHeightMm(lines) {
@@ -516,7 +532,7 @@ function pickingListPrintStyles(
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
-      padding: ${px(12)} ${px(8)};
+      padding: ${px(12)} ${px(4)};
       padding-bottom: 2mm;
       overflow: visible;
       page-break-after: always;
@@ -603,12 +619,12 @@ function pickingListPrintStyles(
       padding: ${px(3)} 0;
       font-weight: 700;
     }
-    .pick-head > div { padding: 0 ${px(4)}; }
+    .pick-head > div { padding: 0 ${px(2)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
       padding: ${px(3)} 0;
     }
-    .pick-line > div { padding: 0 ${px(4)}; }
+    .pick-line > div { padding: 0 ${px(2)}; }
     .col-no { text-align: center; }
     .col-product .main,
     .col-qty,
@@ -624,8 +640,7 @@ function pickingListPrintStyles(
     .col-total {
       text-align: right;
       overflow: visible;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: 100%; }
@@ -634,7 +649,7 @@ function pickingListPrintStyles(
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
     .summary-box { margin-top: ${px(6)}; padding: ${px(6)} ${px(8)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; gap: ${px(12)}; }
-    .summary-row strong { text-align: right; overflow-wrap: anywhere; }
+    .summary-row strong { text-align: right; white-space: nowrap; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body.has-doc-print-edge-footer {
@@ -644,7 +659,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(4, true)} ${px(2, true)} 2mm;
+        padding: ${px(4, true)} 0 2mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -654,6 +669,7 @@ function pickingListPrintStyles(
       }
       .pick-head { font-size: ${px(11, true)}; }
       .pick-line { font-size: ${px(11, true)}; }
+      .col-total { font-size: ${px(10, true)}; }
       .pick-line-wrap {
         break-inside: avoid !important;
         page-break-inside: avoid !important;

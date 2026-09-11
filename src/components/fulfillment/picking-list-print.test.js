@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPickingListHtml,
   chunkPickingLinesForPrint,
+  estimatePickingLineHeightMm,
   formatRouteNamesPhrase,
   isSalesPickingLayout,
   PICKING_LIST_LINES_PER_PAGE,
@@ -52,6 +53,33 @@ describe("chunkPickingLinesForPrint", () => {
     expect(tallChunks[0].length).toBeGreaterThan(0);
     expect(tallChunks[0].length).toBeLessThan(shortChunks[0].length);
     expect(tallChunks.flat()).toHaveLength(tallLines.length);
+  });
+
+  it("does not drop line numbers across page breaks when qty wraps tall", () => {
+    // Reproduces clipped #34: under-estimated multi-line qty packed past A4, Chromium
+    // clipped the last wrap then page 2 started at the next index.
+    const lines = Array.from({ length: 40 }, (_, i) => {
+      const tall = i === 13 || i === 30;
+      return {
+        line_no: i + 1,
+        product_name: tall ? "KAMANDE LARGE 50KG" : `ITEM ${i + 1}`,
+        quantity_label: tall ? "15 bag, 400 kg" : "6 bale",
+        retail_breakdown: tall
+          ? "50 kg, 30 kg, 25 kg, 25 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg, 20 kg"
+          : "",
+        price_label: tall
+          ? "6,715 per bag, 135, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152 per kg"
+          : "1,935 per bale",
+        line_total: tall ? 155555 : 11610,
+      };
+    });
+    const chunks = chunkPickingLinesForPrint(lines);
+    const nos = chunks.flat().map((line) => line.line_no);
+    expect(nos).toEqual(lines.map((line) => line.line_no));
+    expect(estimatePickingLineHeightMm(lines[13])).toBeGreaterThan(14);
+    for (let i = 0; i < chunks.length - 1; i += 1) {
+      expect(chunks[i].length).toBeGreaterThan(1);
+    }
   });
 
   it("returns one empty chunk when there are no lines", () => {
@@ -291,8 +319,8 @@ describe("buildPickingListHtml sales layout", () => {
     // Sheet must be 100% of padded body — fixed 210mm + 12mm sides clipped Line amount.
     expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*100%/);
     expect(html).not.toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
-    expect(html).toMatch(/\.col-total\s*\{[^}]*overflow-wrap:\s*anywhere/);
-    expect(html).toContain("minmax(0, 30.5%)");
+    expect(html).toMatch(/\.col-total\s*\{[^}]*white-space:\s*nowrap/);
+    expect(html).toContain("minmax(22mm, 1fr)");
   });
 
   it("keeps large line amounts in the HTML for every row", () => {
