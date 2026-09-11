@@ -15803,40 +15803,22 @@ export function PosScreen({ standalone = false }) {
       replace = true;
     }
 
-    // Session / ← / Find often still hold a cancelled revision id after a prior edit.
-    // Resolve the live Cash Sales # and load items before restore-to-cart.
-    if (standalone && !offlineMode) {
-      try {
-        const liveId = await resolveLivePosSaleIdForEdit({
-          saleId,
-          orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
-          posOrderNum:
-            saleSnapshot?.pos_order_num ??
-            resolvePosBrowseNumber(saleSnapshot) ??
-            null,
-          posOrderDate: saleSnapshot?.pos_order_date ?? null,
-        });
-        if (liveId && Number(liveId) !== Number(saleId)) {
-          saleId = liveId;
-        }
-        const liveSale = await fetchPosSaleForEditRequest(saleId);
-        if (isRestorablePosSaleForEdit(liveSale)) {
-          if (liveSale.id) saleId = liveSale.id;
-          if (liveSale.items?.length) {
-            saleSnapshot = { ...(saleSnapshot ?? {}), ...liveSale };
-          }
-        }
-      } catch {
-        /* restore-to-cart and later fallbacks still run */
-      }
-    }
-
     // Already editing this sale on the till — skip KRA/network round-trip.
     const liveCart = cartRef.current ?? cart;
+    const snapshotTicket = Number(
+      saleSnapshot?.pos_order_num ?? resolvePosBrowseNumber(saleSnapshot) ?? 0,
+    );
+    const liveEditTicket = Number(
+      liveCart?.pos_order_num ?? liveCart?.held_order_num ?? 0,
+    );
     const alreadyEditingSameSale =
-      Number(liveCart?.superseded_sale_id) === Number(saleId) &&
       (liveCart?.lines?.length ?? 0) > 0 &&
-      !liveCart?._optimistic_restore;
+      !liveCart?._optimistic_restore &&
+      (Number(liveCart?.superseded_sale_id) === Number(saleId) ||
+        (isPreviousOrderEditSession(liveCart) &&
+          snapshotTicket > 0 &&
+          liveEditTicket > 0 &&
+          snapshotTicket === liveEditTicket));
     if (alreadyEditingSameSale) {
       beginPreviousOrderEditSession();
       const sourceSale = saleSnapshot?.id ? saleSnapshot : editSourceSale;
@@ -15938,9 +15920,9 @@ export function PosScreen({ standalone = false }) {
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
       paintedOptimistic = true;
-      // Keep soft loading until restore-to-cart applies — unlocking early let
-      // cashiers edit, then the authoritative cart wiped those lines.
-      beginLoadingIfNeeded();
+      // Lines are on screen — drop the loader. restore-to-cart / KRA continue
+      // in the background; applyAuthoritativeRestoredCart keeps cashier edits.
+      unlockTillEarly(browseNum);
       return true;
     };
 
@@ -16261,29 +16243,9 @@ export function PosScreen({ standalone = false }) {
       } else {
         beginLoadingIfNeeded();
       }
-      void fetchPosSaleForEditRequest(saleId)
-        .then((sale) => {
-          void cacheServerSaleForOfflineEdit(sale);
-          if (paintedOptimistic) {
-            hydrateSaleTenders(sale);
-            return;
-          }
-          if (!restoreActive) {
-            hydrateSaleTenders(sale);
-            return;
-          }
-          paintOptimisticFromSale(sale);
-          hydrateSaleTenders(sale);
-        })
-        .catch(() => {
-          /* restore-to-cart still provides the authoritative cart */
-        });
-
-      if (!paintedOptimistic) beginLoadingIfNeeded();
 
       // Fast cart restore (stock + KRA finish afterResponse on the API).
-      // Session / local-mirror ids can be a cancelled revision after a prior edit —
-      // restore that tombstone, then retry on the live Cash Sales # head.
+      // Start immediately — do not wait on live-id search / GET.
       const restoreDeviceId = posDeviceIdForRestoreRequest(saleSnapshot);
       const postRestoreToCart = (id) =>
         apiRequest(`/sales/orders/${id}/restore-to-cart`, {
@@ -16295,22 +16257,93 @@ export function PosScreen({ standalone = false }) {
           loading: false,
           reportIssues: false,
         });
-      let restoredRaw;
-      try {
-        restoredRaw = await postRestoreToCart(saleId);
-      } catch (restoreErr) {
-        const liveId = await resolveLivePosSaleIdForEdit({
-          saleId,
-          orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
-          posOrderNum: saleSnapshot?.pos_order_num ?? null,
-          posOrderDate: saleSnapshot?.pos_order_date ?? null,
-        }).catch(() => null);
-        if (liveId && Number(liveId) !== Number(saleId)) {
-          saleId = liveId;
-          restoredRaw = await postRestoreToCart(liveId);
-        } else {
+      const restoreToCartWithLiveRetry = async () => {
+        try {
+          return await postRestoreToCart(saleId);
+        } catch (restoreErr) {
+          const liveId = await resolveLivePosSaleIdForEdit({
+            saleId,
+            orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
+            posOrderNum: saleSnapshot?.pos_order_num ?? null,
+            posOrderDate: saleSnapshot?.pos_order_date ?? null,
+          }).catch(() => null);
+          if (liveId && Number(liveId) !== Number(saleId)) {
+            saleId = liveId;
+            return await postRestoreToCart(liveId);
+          }
           throw restoreErr;
         }
+      };
+      const restorePromise = restoreToCartWithLiveRetry();
+
+      // Live revision + tenders in parallel — do not block the till or restore-to-cart.
+      void (async () => {
+        try {
+          const liveId = await resolveLivePosSaleIdForEdit({
+            saleId,
+            orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
+            posOrderNum:
+              saleSnapshot?.pos_order_num ??
+              resolvePosBrowseNumber(saleSnapshot) ??
+              null,
+            posOrderDate: saleSnapshot?.pos_order_date ?? null,
+          });
+          if (liveId && Number(liveId) !== Number(saleId)) {
+            saleId = liveId;
+          }
+          const liveSale = await fetchPosSaleForEditRequest(saleId);
+          if (!isRestorablePosSaleForEdit(liveSale)) return;
+          if (liveSale.id) saleId = liveSale.id;
+          void cacheServerSaleForOfflineEdit(liveSale);
+          if (liveSale.items?.length) {
+            saleSnapshot = { ...(saleSnapshot ?? {}), ...liveSale };
+            if (restoreActive && !paintedOptimistic) {
+              paintOptimisticFromSale(liveSale);
+            }
+            hydrateSaleTenders(liveSale);
+          }
+        } catch {
+          /* restore-to-cart still provides the authoritative cart */
+        }
+      })();
+
+      if (!paintedOptimistic) beginLoadingIfNeeded();
+      let restoredRaw;
+      try {
+        restoredRaw = await Promise.race([
+          restorePromise,
+          new Promise((_, reject) => {
+            window.setTimeout(() => {
+              reject(
+                Object.assign(new Error("restore-to-cart timed out"), {
+                  code: "RESTORE_TIMEOUT",
+                }),
+              );
+            }, 8_000);
+          }),
+        ]);
+      } catch (restoreErr) {
+        if (restoreErr?.code === "RESTORE_TIMEOUT") {
+          // Till stays usable on painted lines; bind TemporaryCart when the API returns.
+          void restorePromise
+            .then((raw) => {
+              if (restoreGen !== previousOrderRestoreGenRef.current) return;
+              applyAuthoritativeRestoredCart(raw);
+            })
+            .catch(() => {});
+          if (paintedOptimistic) {
+            restoreActive = false;
+            const live = cartRef.current;
+            if (live?._optimistic_restore) {
+              const { _optimistic_restore: _omit, ...clean } = live;
+              beginPreviousOrderEditSession();
+              cartRef.current = clean;
+              setCart(clean);
+            }
+            return;
+          }
+        }
+        throw restoreErr;
       }
       restoreActive = false;
       if (restoreGen !== previousOrderRestoreGenRef.current) {
