@@ -7,8 +7,12 @@ import { getCheckoutPaymentConfig, isTillFloatWorkflowEnabled } from "@/lib/sale
 import { getOrderWorkflow } from "@/lib/order-workflow";
 import { isStkPushEnabled } from "@/lib/finance-settings";
 import { isPosMpesaPaymentsEnabled } from "@/lib/platform-org-features";
-import { resolvePaymentMethodByCode } from "@/lib/sales";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import {
+  collectPaymentSplitsFromCheckoutBody,
+  resolveCollectPaymentMethods,
+  saleCollectableBalance,
+} from "@/lib/collect-sale-payment";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 
@@ -141,54 +145,42 @@ export function SalePosPaymentPanel({
           );
         }
 
-        const splits =
-          Array.isArray(body.payment_splits) && body.payment_splits.length > 0
-            ? body.payment_splits
-            : [
-                {
-                  method_code: String(body.payment_method_code ?? "CASH").toUpperCase(),
-                  amount: body.pay_now,
-                  reference_number: body.payment_reference || null,
-                },
-              ];
-
+        const due = saleCollectableBalance(sale, balanceDue);
+        const { splits } = collectPaymentSplitsFromCheckoutBody(body, due);
+        // Resolve every method first — posting cash then failing M-Pesa left the order paid.
+        const resolved = resolveCollectPaymentMethods(splits, paymentMethods);
         const sessionId = await resolveFloatSessionId();
 
-        let updated = sale;
-        for (const split of splits) {
-          const code = String(split.method_code ?? "CASH").toUpperCase();
-          const method = resolvePaymentMethodByCode(paymentMethods, code);
-          if (!method) {
-            throw new ApiError(
-              `Payment method "${code}" is not set up. Enable it under Settings → Sales → Recording payments, or use an enabled method.`,
-              422,
-            );
-          }
-          updated = await apiRequest(`/sales/${sale.id}/payments`, {
-            method: "POST",
-            body: {
-              payment_method_id: method.id,
-              amount: split.amount,
-              reference_number: split.reference_number || null,
-              ...(sessionId ? { float_session_id: sessionId } : {}),
-            },
-          });
+        const updated = await apiRequest(`/sales/${sale.id}/payments`, {
+          method: "POST",
+          body: {
+            ...(sessionId ? { float_session_id: sessionId } : {}),
+            payments: resolved.map((row) => ({
+              payment_method_id: row.payment_method_id,
+              amount: row.amount,
+              reference_number: row.reference_number,
+            })),
+          },
+        });
+        try {
+          await onPaid?.(updated);
+        } catch {
+          // Tenders are already on the sale — do not tell the cashier payment failed.
         }
-        await onPaid?.(updated);
         return updated;
       } catch (e) {
-        const message = e instanceof ApiError ? e.message : "Payment failed";
+        const message =
+          e instanceof ApiError || e instanceof Error ? e.message : "Payment failed";
         setError(message);
         return null;
       } finally {
         setSaving(false);
       }
     },
-    [sale?.id, paymentMethods, methodsError, resolveFloatSessionId, onPaid],
+    [sale, balanceDue, paymentMethods, methodsError, resolveFloatSessionId, onPaid],
   );
 
-  const billTotal =
-    balanceDue ?? Math.max(0, Number(sale?.order_total ?? 0) - Number(sale?.amount_paid ?? 0));
+  const billTotal = saleCollectableBalance(sale, balanceDue);
 
   return (
     <PosPaymentPanel

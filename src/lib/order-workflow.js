@@ -814,7 +814,7 @@ export const ORDER_METRICS_EXCLUDED_STATUSES = new Set(["cancelled", "expired"])
 const QUEUE_EXCLUDED_STATUSES = new Set(["draft", "held", "cancelled", "expired"]);
 
 /** Fulfillment steps that may show a payment badge when balance remains. */
-const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set(["processed", "delivered"]);
+const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set(["processed", "delivered", "completed"]);
 
 export function salesOrderQueueTitle(pageName) {
   const trimmed = String(pageName ?? "").trim();
@@ -1137,6 +1137,10 @@ export function isPaymentCollectWorkflowStatus(status, capabilities = null) {
 }
 
 export function saleBalanceDue(sale, totalPaid = null) {
+  if (sale?.balance_due != null && sale.balance_due !== "") {
+    const ar = Number(sale.balance_due);
+    if (Number.isFinite(ar)) return Math.max(0, ar);
+  }
   const paid = totalPaid ?? Number(sale?.amount_paid ?? 0);
   return Math.max(0, Number(sale?.order_total ?? 0) - paid);
 }
@@ -1183,7 +1187,6 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
   if (
     workflowStatus === "cancelled"
     || workflowStatus === "expired"
-    || workflowStatus === "completed"
     || workflowStatus === "draft"
     || workflowStatus === "held"
   ) {
@@ -1394,7 +1397,7 @@ export function paymentStatusForCollectionQueue(slug) {
 }
 
 /** Workflow statuses that should never show a second payment badge. */
-const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "held", "completed"]);
+const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "held"]);
 
 /** Workflow statuses where payment is the primary meaning — no second payment badge. */
 const PAYMENT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment", "paid"]);
@@ -1434,11 +1437,20 @@ function resolveSalePaymentBucket(sale, totalPaid = null) {
   const status = String(sale?.status ?? "").toLowerCase();
   if (status === "cancelled" || status === "expired") return "unpaid";
   const total = Number(sale?.order_total ?? 0);
+  const eps = 0.01;
+  if (sale?.balance_due != null && sale.balance_due !== "") {
+    const balance = Number(sale.balance_due);
+    if (Number.isFinite(balance)) {
+      if (balance <= eps) return "paid";
+      const paidFromBalance = total - balance;
+      if (paidFromBalance > eps) return "partial";
+      return "unpaid";
+    }
+  }
   const paid =
     totalPaid != null && Number.isFinite(Number(totalPaid))
       ? Number(totalPaid)
       : Number(sale?.amount_paid ?? 0);
-  const eps = 0.01;
   if (total <= eps || paid + eps >= total) return "paid";
   if (paid > eps) return "partial";
   return "unpaid";
@@ -1481,11 +1493,19 @@ export function resolveOrderWorkflowActions(
 ) {
   const { disableWorkflowActions = false } = options;
   const status = String(sale?.status ?? "").toLowerCase();
-  if (!sale || status === "completed") {
+  if (!sale) {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
   }
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
+
+  if (status === "completed") {
+    return {
+      showCollectPayment: canRecordOrderPayment(sale, totalPaid, capabilities),
+      advanceStatus: null,
+      balanceDue,
+    };
+  }
 
   if (disableWorkflowActions) {
     return { showCollectPayment: false, advanceStatus: null, balanceDue };

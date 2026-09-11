@@ -94,9 +94,32 @@ describe("chunkPickingLinesForPrint", () => {
       summaryReserveMm: 40,
       bottomSafetyMm: 0,
     });
-    // Short rows are ~8.6mm → 100mm budget holds ~11 lines, not stop early for summary.
+    // Short rows are ~7.2mm → 100mm budget holds ~13 lines, not stop early for summary.
     expect(chunks[0].length).toBeGreaterThanOrEqual(11);
     expect(chunks.flat()).toHaveLength(lines.length);
+  });
+
+  it("fits a typical 20-line sales picking list on one A4 page", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: i === 13 ? "KAMANDE LARGE 50KG" : `ITEM ${i + 1}`,
+      quantity_label: i === 13 ? "2 bag, 128 kg" : "10 kg",
+      price_label: i === 13 ? "6,715 per bag, 135, 141 per kg" : "100 per kg",
+    }));
+    const chunks = chunkPickingLinesForPrint(lines);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toHaveLength(20);
+
+    const html = buildPickingListHtml({
+      pickingList: {
+        layout: "sales",
+        list_number: "PK-20260910-121",
+        lines,
+      },
+      layout: "sales",
+    });
+    expect(html.match(/class="print-page"/g)?.length ?? 0).toBe(1);
+    expect(html).not.toContain("Page 1 of 2");
   });
 
   it("keeps every line across pages for a long sales picking list", () => {
@@ -131,7 +154,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain("Quantity");
     expect(html).toContain("Price");
     expect(html).toContain("Line amount");
-    expect(html).toContain("Weight");
+    expect(html).not.toContain('col-weight">Weight');
     expect(html).toContain("Picking list tonnage");
     expect(html).toContain("Totals Value of Order");
     expect(html).not.toContain(">Shortage<");
@@ -257,7 +280,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*100%/);
     expect(html).not.toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
     expect(html).toMatch(/\.col-total\s*\{[^}]*overflow-wrap:\s*anywhere/);
-    expect(html).toContain("minmax(0, 27.5%)");
+    expect(html).toContain("minmax(0, 30.5%)");
   });
 
   it("keeps large line amounts in the HTML for every row", () => {

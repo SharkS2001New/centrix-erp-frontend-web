@@ -19,6 +19,7 @@ import {
   MAX_POS_CASH_CHANGE,
   posCashChangeDue,
 } from "@/lib/checkout-payment-splits";
+import { shouldPrefillRemainingCashOnComplete } from "@/lib/collect-sale-payment";
 import {
   customerCreditSummary,
   validateCustomerCreditSale,
@@ -926,6 +927,17 @@ export function PosPaymentPanel({
     // Invoice / credit (I): cashier left tenders at 0 on purpose. Autofilling cash
     // to the bill total would flip is_credit_sale off and save the order as paid.
     if (!adjustmentMode && hasCreditCustomer) {
+      return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };
+    }
+    // Collect payment installments: never invent cash to close the bill.
+    // Filling remaining cash on Complete/PageDown turned a typed M-Pesa partial
+    // into a full settlement (and a later failed second split still left cash posted).
+    if (
+      !shouldPrefillRemainingCashOnComplete({
+        allowPartialPayment: cfg.allowPartialPayment,
+        adjustmentMode,
+      })
+    ) {
       return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };
     }
     const parsedCash = parseDecimalInput(cashAmount);
@@ -2343,7 +2355,9 @@ export function PosPaymentPanel({
             className={POS_DIALOG_PRIMARY_BTN}
           >
             <span className="text-lg">✓</span>
-            Complete payment
+            {cfg.allowPartialPayment && amountPaid + 0.01 < checkoutTotal
+              ? "Record payment"
+              : "Complete payment"}
           </button>
           <button
             type="button"
@@ -2709,7 +2723,9 @@ export function PosPaymentPanel({
 
       <p className="theme-text-muted mt-3 text-[11px] leading-relaxed">
         {[
-          "Page Down — complete payment",
+          cfg.allowPartialPayment
+            ? "Page Down — record entered amount"
+            : "Page Down — complete payment",
           "Enter — fill remaining balance",
           "C — cash",
           cfg.enableMpesaAmount ? "M — M-Pesa" : null,

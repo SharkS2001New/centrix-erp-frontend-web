@@ -25,7 +25,7 @@ import {
   formatRouteNamesPhrase,
 } from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
-import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
+import { formatTonnage, summarizePickingTonnage } from "@/lib/load-weight";
 import {
   getMobileSheetsDefaultDateRange,
   shouldShowMobilePickingLists,
@@ -565,7 +565,6 @@ export default function MobilePickingSheetsScreen() {
                       <th className="px-3 py-2 text-left">Product Name</th>
                       <th className="px-3 py-2 text-left">Quantity</th>
                       <th className="px-3 py-2 text-left">Price</th>
-                      <th className="px-3 py-2 text-right">Weight</th>
                       <th className="px-3 py-2 text-right">Line amount</th>
                     </tr>
                   </thead>
@@ -585,9 +584,6 @@ export default function MobilePickingSheetsScreen() {
                         </td>
                         <td className="px-3 py-2 text-xs">
                           {formatPickingPriceLabel(line) || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {line.weight_missing ? "—" : formatTonnage(pickingLineWeightKg(line))}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatSaleKes(line.line_total)}

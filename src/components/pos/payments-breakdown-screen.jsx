@@ -24,6 +24,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
+import { normalizePaymentsBreakdownSearchQuery } from "@/lib/payments-breakdown-search";
 import { formatPaymentsBreakdownOrderLabel } from "@/lib/sales";
 
 const TENDER_LABELS = {
@@ -240,6 +241,7 @@ export function PaymentsBreakdownScreen({
   const [floatSessionId, setFloatSessionId] = useState("");
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
+  const searchQ = normalizePaymentsBreakdownSearchQuery(debouncedQ);
   const [methodCode, setMethodCode] = useState("CASH");
   /** Print/CSV: current tender tab only, or every visible tab. */
   const [printScope, setPrintScope] = useState("active");
@@ -291,7 +293,7 @@ export function PaymentsBreakdownScreen({
           cashier_id: cashierId || undefined,
           float_session_id: hideSessionFilter ? undefined : floatSessionId || undefined,
           method_code: methodCode || undefined,
-          q: debouncedQ.trim() || undefined,
+          q: searchQ || undefined,
           page,
           per_page: pageSize,
         },
@@ -315,7 +317,7 @@ export function PaymentsBreakdownScreen({
     cashierId,
     floatSessionId,
     methodCode,
-    debouncedQ,
+    searchQ,
     page,
     pageSize,
     apiPath,
@@ -384,9 +386,9 @@ export function PaymentsBreakdownScreen({
       branch_id: branchId || undefined,
       cashier_id: cashierId || undefined,
       float_session_id: floatSessionId || undefined,
-      q: debouncedQ.trim() || undefined,
+      q: searchQ || undefined,
     }),
-    [fromDate, toDate, branchId, cashierId, floatSessionId, debouncedQ],
+    [fromDate, toDate, branchId, cashierId, floatSessionId, searchQ],
   );
 
   const branchName = useMemo(() => {

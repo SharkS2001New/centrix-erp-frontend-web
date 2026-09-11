@@ -5083,16 +5083,28 @@ export function PosScreen({ standalone = false }) {
             forceEmpty: true,
             applyState: false,
           });
-        } else if ((bootstrapped.lines?.length ?? 0) > 0) {
-          // Sticky cart still held failed-sync / prior sale lines — wipe before first scan.
-          // Do not setCart(empty) here; that blanked optimistic rows mid-add.
+        }
+        if (
+          bootstrapped &&
+          isServerPosCartId(bootstrapped.id) &&
+          ((bootstrapped.lines?.length ?? 0) > 0 ||
+            isServerCartConsumed(bootstrapped.id) ||
+            bootstrapped.held_order_num ||
+            bootstrapped.superseded_sale_id)
+        ) {
+          // Sticky cart still held previous-order / failed-sync lines — wipe before
+          // the first new-order POST or Sugar 2kg lands twice (optimistic + leftover).
           bootstrapped = await wipeTemporaryCartLines(bootstrapped);
         }
         if (bootstrapped && pendingOptimistic.length) {
           // Keep the instantly painted rows while TemporaryCart finishes creating.
           const merged = {
             ...bootstrapped,
-            lines: mergePreservedOptimisticLines(bootstrapped.lines, pendingOptimistic, cartMergeOptions()),
+            lines: mergePreservedOptimisticLines(
+              bootstrapped.lines,
+              current.lines,
+              cartMergeOptions(),
+            ),
           };
           adoptLiveServerCart(merged.id);
           cartRef.current = merged;
@@ -13667,6 +13679,13 @@ export function PosScreen({ standalone = false }) {
       editAutosaveTimerRef.current = null;
     }
 
+    // Same as F8: drop in-flight edit line commits and block restore-to-cart from
+    // landing on this till. Reusing the sticky TemporaryCart after Alt+P made the
+    // first new-order scan POST a second Sugar 2kg next to the restored edit line.
+    cartCommitGenerationRef.current += 1;
+    cartLineMutationGateRef.current = false;
+    endPreviousOrderEditSession({ holdTillForNewOrder: true });
+
     const deleteCartId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
     if (deleteCartId) markServerCartConsumed(deleteCartId);
 
@@ -13727,9 +13746,9 @@ export function PosScreen({ standalone = false }) {
     void clearPreviousOrderEditDraft().catch(() => {});
     void clearLocalPosCart().catch(() => {});
 
-    // Await line clear BEFORE outbox flush. DELETE /lines wipes held_order_num /
-    // superseded_sale_id; if sync reused that cart id mid-clear it would mint a
-    // new order_num. Outbox rows now force restore-to-cart (server_cart_id null).
+    // Wipe the edit TemporaryCart in the background. Do not adopt that cart id
+    // onto the new order — first scan bootstraps a clean cart. Outbox already
+    // flushing from Alt+P; the fresh-workspace hold defers restore-to-cart.
     const clearPromise =
       deleteCartId != null
         ? apiRequest(`/sales/carts/${deleteCartId}/lines`, {
@@ -13739,78 +13758,24 @@ export function PosScreen({ standalone = false }) {
           }).catch(() => null)
         : Promise.resolve(null);
 
-    // Soft bootstrap — do not block the till; first scan creates/loads a TemporaryCart.
     void (async () => {
       try {
         await clearPromise;
-        void flushOutboxNow();
         if (generation !== freshWorkspaceGenerationRef.current) return;
-        const next = await loadCashierCart({
-          skipEditDraftRestore: true,
-          applyState: false,
-        });
-        if (generation !== freshWorkspaceGenerationRef.current) return;
-        let cleaned = stripOfflineSaleMarkers(stripPreviousOrderEditSession(next));
-        if (
-          deleteCartId != null &&
-          (Number(cleaned?.id) === Number(deleteCartId) ||
-            (isServerPosCartId(cleaned?.id) && isServerCartConsumed(cleaned.id)))
-        ) {
-          cleaned = {
-            ...cleaned,
-            lines: [],
-            held_order_num: null,
-            superseded_sale_id: null,
-            order_discount: 0,
-            payment_adjustments: undefined,
-            _editDraftDirty: undefined,
-          };
-        }
-        // Never reattach a previous-order session after a successful edit print.
-        cleaned = stripPreviousOrderEditSession({
-          ...cleaned,
-          lines: Array.isArray(cleaned?.lines) ? cleaned.lines : [],
-          payment_adjustments: undefined,
-          _editDraftDirty: undefined,
-        });
-        if ((cleaned.lines?.length ?? 0) > 0) {
-          cleaned = { ...cleaned, lines: [] };
-        }
         const live = cartRef.current;
-        if (generation !== freshWorkspaceGenerationRef.current) return;
-        // Sync refresh may have repainted the old edit over the placeholder — wipe again.
+        if ((live?.lines?.length ?? 0) > 0) return;
         if (
           live &&
           !isFreshWorkspacePlaceholder(live) &&
-          ((live.lines?.length ?? 0) > 0 ||
-            live.held_order_num ||
-            live.superseded_sale_id ||
-            live.offline_client_sale_uuid)
+          (live.held_order_num || live.superseded_sale_id || live.offline_client_sale_uuid)
         ) {
           const stillSameEdit =
             (held != null && Number(live.held_order_num) === Number(held)) ||
             (superseded != null && Number(live.superseded_sale_id) === Number(superseded));
           if (stillSameEdit || isPreviousOrderEditSession(live)) {
             applyFreshWorkspacePlaceholder(live, nextPos);
-          } else if ((live.lines?.length ?? 0) > 0) {
-            // Cashier already started a real new order — leave it.
-            return;
           }
         }
-        const merged = mergeFreshWorkspaceCart(
-          isFreshWorkspacePlaceholder(cartRef.current)
-            ? cleaned
-            : stripPreviousOrderEditSession({ ...cleaned, lines: [] }),
-          nextPos,
-        );
-        if (generation !== freshWorkspaceGenerationRef.current) return;
-        adoptLiveServerCart(merged?.id);
-        cartRef.current = merged;
-        setCart(merged);
-        const displayPos =
-          resolvePosNextBrowseNumber(merged) ??
-          (nextPos != null ? nextPos : null);
-        setEditOrderNo(displayPos != null ? String(displayPos) : "");
       } catch {
         /* placeholder remains — next scan will ensureCart */
       } finally {
