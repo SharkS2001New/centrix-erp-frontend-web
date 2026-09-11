@@ -387,6 +387,7 @@ import {
   computePreviousOrderEditPaymentDelta,
   computePreviousOrderEditSignedDelta,
   previousOrderAdjustmentsMatchDelta,
+  resolvePreviousOrderEditPriorTotal,
 } from "@/lib/pos-edit-payment-adjustment";
 
 const cartToolbarBtnClassName =
@@ -520,7 +521,8 @@ function cartHasStalePreviousOrderMarkers(cart, sourceSale) {
 }
 
 /**
- * True when Alt+P / F8 / F10 must collect top-up or return method / queue sync.
+ * True when Alt+P / F10 must collect top-up or return method / queue sync.
+ * F8 / double-click clear the workspace without this prompt.
  * Recovers when `_editDraftDirty` was lost but totals or lines still differ.
  */
 function previousOrderEditNeedsPaymentBreakdown(cart, sourceSale, { cashRound = false } = {}) {
@@ -998,6 +1000,14 @@ function sessionOrderMatchesBrowseNum(row, trimmed) {
   const browse = resolvePosBrowseNumber(row);
   if (browse != null && String(browse) === String(trimmed)) return true;
   return false;
+}
+
+function fetchPosSaleForEditRequest(saleId) {
+  return apiRequest(`/sales/${saleId}`, {
+    searchParams: { with_items: 1 },
+    loading: false,
+    reportIssues: false,
+  });
 }
 
 function previousOrderLoadErrorMessage(error) {
@@ -3380,8 +3390,7 @@ export function PosScreen({ standalone = false }) {
       // Server list fetch succeeded — mirror recent receipts so offline edit can reopen them.
       if (serverOrders.length > 0) {
         void prefetchServerSalesForOfflineEdit(serverOrders, {
-          fetchSale: (id) =>
-            apiRequest(`/sales/${id}`, { loading: false, reportIssues: false }),
+          fetchSale: (id) => fetchPosSaleForEditRequest(id),
           limit: 15,
         });
       }
@@ -3508,15 +3517,16 @@ export function PosScreen({ standalone = false }) {
           .filter((row) => row?.id != null)
           .filter((row) => Number(row.order_num) < TOMBSTONE_MIN)
           .filter((row) => !row?.fulfillment_meta?.superseded_by_edit)
+          .filter((row) => isRestorablePosSaleForEdit(row))
           .filter((row) => {
-            const status = String(row.status ?? "").toLowerCase();
-            if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
             if (cashierId != null) {
               const rowCashier = row.cashier_id ?? row.created_by;
               if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
             }
-            if (activeFloatId != null && Number(row.float_session_id ?? 0) !== activeFloatId) {
-              return false;
+            if (activeFloatId != null) {
+              const rowSession = Number(row.float_session_id ?? 0);
+              // Same rule as ← browse: unstamped rows stay findable.
+              if (rowSession > 0 && rowSession !== activeFloatId) return false;
             }
             return true;
           })
@@ -14467,59 +14477,24 @@ export function PosScreen({ standalone = false }) {
       setReplacingLineId(null);
       replacingLineIdRef.current = null;
     } else if (hasLines || editingPrevious || activeOfflineEdit) {
-      const editSummary = summarizeLocalPosCart(activeCart);
-      const kraFiscalize = editingPrevious
-        ? shouldSubmitKraOnCheckout(
-            capabilities?.module_settings,
-            capabilities,
-            editSummary?.total ?? editSummary?.amountDue,
-          )
-        : false;
-
-      // Same finish step as Alt+P — only when this previous order was actually changed.
+      // F8 / double-click: clear and start a new order. Do not open Payment Breakdown
+      // (that is Alt+P). Queue a real previous-order edit in the background only.
       if (
         editingPrevious &&
-        previousOrderEditNeedsPaymentBreakdown(activeCart, editSourceSale, {
-          cashRound: enablePosCashRounding,
-        })
+        !activeOfflineEdit &&
+        editedOrderHasLocalDraftChanges(activeCart)
       ) {
         try {
-          if (kraFiscalize || lineBusyRef.current) {
-            await runBlockingTask(waitForCartLineSavesToFinish, {
-              message: kraFiscalize ? "Preparing revised receipt…" : "Saving cart changes…",
-              detail: kraFiscalize
-                ? "Please wait before payment breakdown."
-                : "Please wait while the current line finishes saving.",
-            });
-          } else {
-            await waitForCartLineSavesToFinish();
-          }
-          await ensurePreviousOrderPaymentAdjustment(cartRef.current ?? activeCart);
+          await ensurePreviousOrderPaymentAdjustment(cartRef.current ?? activeCart, {
+            provisional: true,
+          });
+          const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
+          flushPreviousOrderEditOutboxInBackground(
+            queuedHeldOrderNum,
+            freshWorkspaceGenerationRef.current,
+          );
         } catch (e) {
-          skipEditAutosaveRef.current = false;
-          if (e instanceof Error && /cancel/i.test(e.message)) return;
-          const message =
-            e instanceof Error
-              ? e.message
-              : "Enter how the refund or top-up was paid before starting a new order.";
-          setStatusMessage(message);
-          if (standalone) notifyError(message);
-          return;
-        }
-
-        if (!activeOfflineEdit || offlineMode || activeCart?.offline) {
-          // skipEditAutosaveRef is already true — force-queue so F8 / double-click leave
-          // still syncs (and background-fiscalizes) without requiring Alt+P.
-          // Also queue while offline so the revise is waiting when the link returns.
-          try {
-            const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
-            flushPreviousOrderEditOutboxInBackground(
-              queuedHeldOrderNum,
-              freshWorkspaceGenerationRef.current,
-            );
-          } catch (e) {
-            console.warn("Could not queue previous-order edit before new order", e);
-          }
+          console.warn("Could not queue previous-order edit before new order", e);
         }
       }
     }
@@ -15733,6 +15708,42 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    // External POS TemporaryCart is sticky. An empty on-screen workspace can still
+    // have leftover server lines — restore without replace then fails the FIND/Edit.
+    const workspaceCart = cartRef.current ?? cart;
+    const workspaceLineCount = workspaceCart?.lines?.length ?? 0;
+    if (workspaceLineCount === 0) {
+      replace = true;
+    }
+
+    // Session / ← / Find often still hold a cancelled revision id after a prior edit.
+    // Resolve the live Cash Sales # and load items before restore-to-cart.
+    if (standalone && !offlineMode) {
+      try {
+        const liveId = await resolveLivePosSaleIdForEdit({
+          saleId,
+          orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
+          posOrderNum:
+            saleSnapshot?.pos_order_num ??
+            resolvePosBrowseNumber(saleSnapshot) ??
+            null,
+          posOrderDate: saleSnapshot?.pos_order_date ?? null,
+        });
+        if (liveId && Number(liveId) !== Number(saleId)) {
+          saleId = liveId;
+        }
+        const liveSale = await fetchPosSaleForEditRequest(saleId);
+        if (isRestorablePosSaleForEdit(liveSale)) {
+          if (liveSale.id) saleId = liveSale.id;
+          if (liveSale.items?.length) {
+            saleSnapshot = { ...(saleSnapshot ?? {}), ...liveSale };
+          }
+        }
+      } catch {
+        /* restore-to-cart and later fallbacks still run */
+      }
+    }
+
     // Already editing this sale on the till — skip KRA/network round-trip.
     const liveCart = cartRef.current ?? cart;
     const alreadyEditingSameSale =
@@ -15759,7 +15770,7 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
+    const hasOpenLines = workspaceLineCount > 0;
     if (hasOpenLines && !replace) {
       const ok = await confirm({
         title: "Load previous order",
@@ -16159,7 +16170,7 @@ export function PosScreen({ standalone = false }) {
       } else {
         beginLoadingIfNeeded();
       }
-      void apiRequest(`/sales/${saleId}`)
+      void fetchPosSaleForEditRequest(saleId)
         .then((sale) => {
           void cacheServerSaleForOfflineEdit(sale);
           if (paintedOptimistic) {
@@ -16341,10 +16352,7 @@ export function PosScreen({ standalone = false }) {
       try {
         let remoteSale = null;
         try {
-          remoteSale = await apiRequest(`/sales/${saleId}`, {
-            loading: false,
-            reportIssues: false,
-          });
+          remoteSale = await fetchPosSaleForEditRequest(saleId);
         } catch {
           remoteSale = null;
         }
@@ -16359,10 +16367,7 @@ export function PosScreen({ standalone = false }) {
           }).catch(() => null);
           if (liveId && Number(liveId) !== Number(saleId)) {
             saleId = liveId;
-            remoteSale = await apiRequest(`/sales/${liveId}`, {
-              loading: false,
-              reportIssues: false,
-            }).catch(() => null);
+            remoteSale = await fetchPosSaleForEditRequest(liveId).catch(() => null);
           }
         }
         if (restoreGen !== previousOrderRestoreGenRef.current) {
@@ -16615,7 +16620,7 @@ export function PosScreen({ standalone = false }) {
               for_pos_order_edit: 1,
               channel: "pos",
               order_source: "pos",
-              with_items: 0,
+              with_items: 1,
               sort: "-created_at",
               ...(cashierId != null ? { cashier_id: cashierId } : {}),
               ...(activeFloatId != null ? { float_session_id: activeFloatId } : {}),
