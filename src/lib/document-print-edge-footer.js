@@ -10,7 +10,7 @@ import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";
 export const DOCUMENT_PRINT_EDGE_BODY_TOP = "10mm";
 export const DOCUMENT_PRINT_EDGE_BODY_SIDES = "12mm";
 /** Clearance above the fixed print footer — keep tight so A4 sheets are not half-blank. */
-export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "16mm";
+export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "5mm";
 
 /** @deprecated Prefer body padding constants. @page margins must remain 0. */
 export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "0";
@@ -21,7 +21,7 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   const footerPx = (base, print = false) =>
     orgPrintSectionPx(base, generalSettings, { variant, section: "footer", print });
   return `
-  body.has-doc-print-edge-footer { padding-bottom: 48px; }
+  body.has-doc-print-edge-footer { padding-bottom: 20px; }
   .doc-print-edge-footer {
     position: fixed;
     left: 0;

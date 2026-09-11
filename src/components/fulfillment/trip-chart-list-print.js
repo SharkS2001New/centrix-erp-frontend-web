@@ -8,6 +8,9 @@ import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
+  DOCUMENT_PRINT_EDGE_BODY_BOTTOM,
+  DOCUMENT_PRINT_EDGE_BODY_SIDES,
+  DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
@@ -135,6 +138,84 @@ export function buildTripChartCustomerRows({ sales, orders } = {}) {
     }));
 }
 
+/**
+ * A4 line-area budgets (mm) — same approach as picking list.
+ * Explicit chunking + CSS grid rows (not <table>/<tr>): Chromium still clips
+ * table rows at the page edge even with page-break-inside:avoid (row #36 vanished).
+ */
+export const TRIP_CHART_PAGE_BUDGET_MM = {
+  /** Line area after org header + title + column head on page 1. */
+  first: 235,
+  /** Line area after continued label + column head on later pages. */
+  continued: 268,
+  /** Summary box + signature blocks reserved on the last page only. */
+  summaryReserve: 52,
+  /** Empty margin after the last stop so the last line cannot spill. */
+  bottomSafety: 2,
+};
+
+/** Compact stop row: ~3px pad × 2 + 11px type + hairline ≈ 6.0mm; long names wrap. */
+export function estimateTripChartRowHeightMm(row) {
+  const name = String(row?.customer_name ?? "").trim();
+  const extra = name.length > 42 ? 1 : 0;
+  return 6.0 + extra * 2.8;
+}
+
+function sumTripChartHeightMm(rows) {
+  return (rows ?? []).reduce((sum, row) => sum + estimateTripChartRowHeightMm(row), 0);
+}
+
+/**
+ * Pack customer stops onto A4 pages by estimated height so no stop is clipped
+ * between sheets (row 36 must appear on page 2, not vanish).
+ */
+export function chunkTripChartRowsForPrint(rows, options = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return [[]];
+
+  const firstBudget = Number(options.firstBudgetMm ?? TRIP_CHART_PAGE_BUDGET_MM.first);
+  const continuedBudget = Number(options.continuedBudgetMm ?? TRIP_CHART_PAGE_BUDGET_MM.continued);
+  const summaryReserve = Number(options.summaryReserveMm ?? TRIP_CHART_PAGE_BUDGET_MM.summaryReserve);
+  const bottomSafety = Number(options.bottomSafetyMm ?? TRIP_CHART_PAGE_BUDGET_MM.bottomSafety);
+
+  const pages = [];
+  let index = 0;
+  let pageIndex = 0;
+
+  while (index < list.length) {
+    const fullBudget =
+      (pageIndex === 0 ? firstBudget : continuedBudget) - bottomSafety;
+    const chunk = [];
+    let used = 0;
+
+    while (index < list.length) {
+      const row = list[index];
+      const height = estimateTripChartRowHeightMm(row);
+      const remainingAfter = list.slice(index + 1);
+      const remainingHeight = sumTripChartHeightMm(remainingAfter);
+      const restWithThis = height + remainingHeight;
+      const fitsAsLastPage = used + restWithThis + summaryReserve <= fullBudget;
+      const budget = fitsAsLastPage ? fullBudget - summaryReserve : fullBudget;
+
+      if (chunk.length > 0 && used + height > budget) {
+        break;
+      }
+      chunk.push(row);
+      used += height;
+      index += 1;
+    }
+
+    if (chunk.length === 0) {
+      chunk.push(list[index]);
+      index += 1;
+    }
+    pages.push(chunk);
+    pageIndex += 1;
+  }
+
+  return pages;
+}
+
 function tripChartListPrintStyles(generalSettings) {
   const printPx = createOrgPrintPx(generalSettings, "trip_chart");
   const px = printPx.body;
@@ -147,59 +228,179 @@ function tripChartListPrintStyles(generalSettings) {
     * { box-sizing: border-box; }
     html { height: auto; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .page { padding: ${px(24)}; position: static; }
-    .org-header { text-align: center; margin-bottom: ${px(12)}; }
-    .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
+    .print-page {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: ${px(12)} ${px(8)};
+      padding-bottom: 2mm;
+      overflow: visible;
+      page-break-after: always;
+      break-after: page;
+      position: static;
+      z-index: 1;
+    }
+    .print-page:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .sheet {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: visible;
+    }
+    .org-header { text-align: center; margin-bottom: ${px(6)}; }
+    .org-logo { max-height: ${px(40)}; margin-bottom: ${px(4)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
-    .title-block { text-align: center; margin-bottom: ${px(16)}; }
-    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
-    .meta-line { font-size: ${px(11)}; margin: ${px(2)} 0; color: #334155; }
-    table { width: 100%; border-collapse: collapse; margin-top: ${px(8)}; page-break-inside: auto; }
-    thead { display: table-header-group; }
-    tbody tr { page-break-inside: avoid; break-inside: avoid; }
-    th, td { border: 1px solid #cbd5e1; padding: ${px(6)} ${px(8)}; font-size: ${px(11)}; vertical-align: top; }
-    th { background: #f1f5f9; text-align: left; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; font-size: ${px(10)}; }
-    .col-no { width: 8%; text-align: center; }
-    .col-customer { width: 62%; }
-    .col-total { width: 30%; text-align: right; white-space: nowrap; }
-    td.col-total { font-variant-numeric: tabular-nums; font-weight: 600; }
-    .summary-box {
-      margin-top: ${px(14)};
-      border: 1px solid #94a3b8;
-      border-radius: ${px(6)};
-      padding: ${px(10)} ${px(12)};
-      background: #f8fafc;
+    .title-block { text-align: center; margin-bottom: ${px(8)}; }
+    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(2)}; }
+    .meta-line { font-size: ${px(11)}; margin: ${px(1)} 0; color: #334155; }
+    .continued-label {
+      font-size: ${px(11)};
+      color: #64748b;
+      margin: 0 0 ${px(4)};
+    }
+    /* Block wraps beat <table>/<tr> for Chromium print fragmentation (same as picking list). */
+    .stop-lines {
+      width: 100%;
+      max-width: 100%;
+      display: block;
+      overflow: visible;
+    }
+    .stop-head,
+    .stop-line {
+      display: grid;
+      grid-template-columns: minmax(0, 8%) minmax(0, 62%) minmax(0, 30%);
+      width: 100%;
+      max-width: 100%;
+      column-gap: ${px(4)};
+      align-items: start;
+      box-sizing: border-box;
+      font-size: ${px(11)};
+    }
+    .stop-head > div,
+    .stop-line > div {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      padding: 0 ${px(4)};
+    }
+    .stop-line-wrap {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      overflow: visible;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+      -webkit-column-break-inside: avoid;
+    }
+    .stop-head {
+      border-bottom: 2px solid #0f172a;
+      padding: ${px(3)} 0;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-size: ${px(10)};
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .stop-line {
+      border-bottom: 1px solid #cbd5e1;
+      padding: ${px(3)} 0;
+    }
+    .col-no { text-align: center; }
+    .col-total {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
+    .summary-box,
+    .signatures,
+    .doc-footer {
       page-break-inside: avoid;
       break-inside: avoid;
+    }
+    .summary-box {
+      margin-top: ${px(8)};
+      border: 1px solid #94a3b8;
+      border-radius: ${px(6)};
+      padding: ${px(8)} ${px(10)};
+      background: #f8fafc;
     }
     .summary-row {
       display: flex;
       justify-content: space-between;
-      gap: ${px(16)};
+      gap: ${px(12)};
       font-size: ${px(12)};
-      padding: ${px(3)} 0;
+      padding: ${px(2)} 0;
     }
-    .summary-row.strong { font-weight: 700; font-size: ${px(13)}; border-top: 1px solid #cbd5e1; margin-top: ${px(4)}; padding-top: ${px(8)}; }
+    .summary-row.strong { font-weight: 700; font-size: ${px(13)}; border-top: 1px solid #cbd5e1; margin-top: ${px(4)}; padding-top: ${px(6)}; }
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: ${px(24)};
-      margin-top: ${px(28)};
-      page-break-inside: avoid;
-      break-inside: avoid;
+      gap: ${px(16)};
+      margin-top: ${px(12)};
     }
-    .signatures h3 { font-size: ${px(11)}; margin: 0 0 ${px(10)}; text-transform: uppercase; letter-spacing: 0.04em; }
-    .signatures .line { font-size: ${px(11)}; margin: ${px(10)} 0; }
-    .doc-footer { margin-top: ${px(20)}; font-size: ${px(10)}; color: #64748b; page-break-inside: avoid; }
+    .signatures h3 { font-size: ${px(11)}; margin: 0 0 ${px(8)}; text-transform: uppercase; letter-spacing: 0.04em; }
+    .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
+    .doc-footer { margin-top: ${px(12)}; font-size: ${px(10)}; color: #64748b; }
     @media print {
+      body.has-doc-print-edge-footer {
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+      }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: ${px(12, true)}; }
-      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
-      tbody tr {
-        page-break-inside: avoid !important;
+      .print-page {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: ${px(4, true)} ${px(2, true)} 2mm;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .print-page:last-of-type {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+      .stop-head { font-size: ${px(10, true)}; }
+      .stop-line { font-size: ${px(11, true)}; }
+      .stop-line-wrap {
         break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid-page !important;
+        -webkit-column-break-inside: avoid !important;
       }
     }
   `;
+}
+
+function buildTripChartHead() {
+  return `
+    <div class="stop-head" role="row">
+      <div class="col-no">No.</div>
+      <div class="col-customer">Customer Name</div>
+      <div class="col-total">Order Total</div>
+    </div>`;
+}
+
+function buildTripChartLineRows(rows) {
+  if (!rows.length) {
+    return `<div class="stop-line-wrap"><div class="stop-line empty">No delivery stops on this trip chart.</div></div>`;
+  }
+  return rows
+    .map(
+      (row) => `
+      <div class="stop-line-wrap">
+        <div class="stop-line" role="row">
+          <div class="col-no">${row.line_no}</div>
+          <div class="col-customer">${escapeHtml(row.customer_name)}</div>
+          <div class="col-total">KES ${formatKes(row.order_total)}</div>
+        </div>
+      </div>`,
+    )
+    .join("");
 }
 
 export function buildTripChartListHtml({
@@ -248,41 +449,18 @@ export function buildTripChartListHtml({
   const remainingKg =
     tonnage.vehicleMaxKg != null ? Math.max(0, tonnage.vehicleMaxKg - tonnage.totalKg) : null;
 
-  const rowHtml =
-    rows.length > 0
-      ? rows
-          .map(
-            (row) => `
-      <tr>
-        <td class="col-no">${row.line_no}</td>
-        <td class="col-customer">${escapeHtml(row.customer_name)}</td>
-        <td class="col-total">KES ${formatKes(row.order_total)}</td>
-      </tr>`,
-          )
-          .join("")
-      : `<tr><td colspan="3" style="text-align:center;color:#64748b;padding:16px;">No delivery stops on this trip chart.</td></tr>`;
-
   const printedByName = resolvePrintedByUser(printedBy);
   const printedAt = formatPrintDisplayDate(new Date());
   const footerBody = documentFooterHtmlFromText(documentFooterText);
   const footerHtml = footerBody ? `<div class="doc-footer">${footerBody}</div>` : "";
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Trip Chart List${meta.tripCode ? ` — ${escapeHtml(meta.tripCode)}` : ""}</title>
-  <style>${tripChartListPrintStyles(generalSettings)}
-  ${orgDocumentTemplateCss(printSettings?.trip_chart_document_template, { layout: "classic" })}</style>
-</head>
-<body class="has-doc-print-edge-footer">
-  <div class="page">
-    ${buildReportOrgHeaderHtml(branding, {
-      layout: "a4",
-      logoLayout: branding.logoLayout ?? null,
-    })}
+  const pageChunks = chunkTripChartRowsForPrint(rows);
+  const totalPages = pageChunks.length;
+  const docTitle = "TRIP CHART LIST";
+
+  const titleBlockHtml = `
     <div class="title-block">
-      <p class="doc-title">TRIP CHART LIST</p>
+      <p class="doc-title">${docTitle}</p>
       ${meta.tripCode ? `<p class="meta-line">Trip Chart No: ${escapeHtml(meta.tripCode)}</p>` : ""}
       <p class="meta-line">Route: ${escapeHtml(meta.routeNames)}</p>
       ${meta.scheduledDate ? `<p class="meta-line">Date: ${escapeHtml(formatPrintDisplayDate(meta.scheduledDate))}</p>` : ""}
@@ -294,17 +472,9 @@ export function buildTripChartListHtml({
       <p class="meta-line">Picking list tonnage: ${escapeHtml(pickingTonnageLabel)}</p>`
           : ""
       }
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th class="col-no">No.</th>
-          <th class="col-customer">Customer Name</th>
-          <th class="col-total">Order Total</th>
-        </tr>
-      </thead>
-      <tbody>${rowHtml}</tbody>
-    </table>
+    </div>`;
+
+  const summaryHtml = `
     <div class="summary-box">
       <div class="summary-row"><span>Customers delivering to</span><strong>${customerCount}</strong></div>
       <div class="summary-row"><span>Orders on trip</span><strong>${orderCount}</strong></div>
@@ -337,11 +507,53 @@ export function buildTripChartListHtml({
         <div class="line">Date: _________________________</div>
       </div>
     </div>
-    ${footerHtml}
-  </div>
+    ${footerHtml}`;
+
+  const pagesHtml = pageChunks
+    .map((chunk, pageIndex) => {
+      const isFirst = pageIndex === 0;
+      const isLast = pageIndex === totalPages - 1;
+      const pageLabel =
+        totalPages > 1
+          ? `<p class="continued-label">${
+              isFirst
+                ? `Page ${pageIndex + 1} of ${totalPages}`
+                : `${docTitle}${meta.tripCode ? ` — ${escapeHtml(meta.tripCode)}` : ""} — continued · Page ${pageIndex + 1} of ${totalPages}`
+            }</p>`
+          : "";
+      return `
+  <div class="print-page">
+    <div class="sheet">
+      ${isFirst ? buildReportOrgHeaderHtml(branding, {
+        layout: "a4",
+        logoLayout: branding.logoLayout ?? null,
+      }) : ""}
+      ${isFirst ? titleBlockHtml : ""}
+      ${pageLabel}
+      ${buildTripChartHead()}
+      <div class="stop-lines">${buildTripChartLineRows(chunk)}</div>
+      ${isLast ? summaryHtml : ""}
+    </div>
+  </div>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Trip Chart List${meta.tripCode ? ` — ${escapeHtml(meta.tripCode)}` : ""}</title>
+  <style>${tripChartListPrintStyles(generalSettings)}
+  ${orgDocumentTemplateCss(printSettings?.trip_chart_document_template, { layout: "classic" })}</style>
+</head>
+<body class="has-doc-print-edge-footer">
+  ${pagesHtml}
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy: printedByName,
     printedAt,
+    // Playwright PDF does not bump CSS counters — avoid "Page 0 of 0".
+    // Multi-page sheets already show "Page X of Y" in the document body.
+    pageLabel: totalPages > 1 ? "hide" : "Page 1 of 1",
   })}
 </body>
 </html>`;

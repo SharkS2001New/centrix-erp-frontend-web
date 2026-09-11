@@ -19,7 +19,7 @@ describe("print document baseline", () => {
     expect(html).not.toContain("centrix-print-landscape");
     // Clearance for the fixed edge footer must be body padding, not @page bottom margin.
     expect(html).toMatch(
-      /body\.has-doc-print-edge-footer\s*\{[^}]*padding:\s*10mm\s+12mm\s+16mm\s+12mm\s*!important/,
+      /body\.has-doc-print-edge-footer\s*\{[^}]*padding:\s*10mm\s+12mm\s+5mm\s+12mm\s*!important/,
     );
   });
 
