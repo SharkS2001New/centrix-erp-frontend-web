@@ -68,4 +68,87 @@ describe("wipeTemporaryCartLines", () => {
       setPosPaymentDialogOpen(false);
     }
   });
+
+  it("leaves a clean new-sale cart when the TemporaryCart has no edit markers", async () => {
+    apiRequest.mockResolvedValueOnce({
+      id: 12,
+      lines: [{ product_code: "A", quantity: 1 }],
+      held_order_num: null,
+      superseded_sale_id: null,
+    });
+    const { ensureServerCartAbandonedForNewSale } = await import("@/lib/pos-offline");
+    const next = await ensureServerCartAbandonedForNewSale({
+      id: 12,
+      lines: [{ product_code: "A", quantity: 1 }],
+      held_order_num: 9,
+      superseded_sale_id: 3,
+    });
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(next.held_order_num).toBeUndefined();
+    expect(next.superseded_sale_id).toBeUndefined();
+    expect(next.lines).toEqual([{ product_code: "A", quantity: 1 }]);
+  });
+
+  it("abandons leftover previous-order markers then replays the new sale lines", async () => {
+    apiRequest
+      .mockResolvedValueOnce({
+        id: 12,
+        lines: [{ product_code: "OLD", quantity: 1 }],
+        held_order_num: 9,
+        superseded_sale_id: 3,
+      })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({
+        id: 12,
+        lines: [],
+        held_order_num: null,
+        superseded_sale_id: null,
+      })
+      .mockResolvedValueOnce({
+        id: 12,
+        lines: [{ product_code: "NEW", quantity: 2 }],
+      });
+    const { ensureServerCartAbandonedForNewSale } = await import("@/lib/pos-offline");
+    const next = await ensureServerCartAbandonedForNewSale({
+      id: 12,
+      lines: [{ product_code: "NEW", quantity: 2, unit_price: 10 }],
+      held_order_num: 9,
+      superseded_sale_id: 3,
+    });
+    expect(apiRequest).toHaveBeenCalledWith(
+      "/sales/carts/12/lines",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(apiRequest).toHaveBeenCalledWith(
+      "/sales/carts/12/lines",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    expect(next.held_order_num).toBeUndefined();
+    expect(next.superseded_sale_id).toBeUndefined();
+    expect(next.lines).toEqual([{ product_code: "NEW", quantity: 2 }]);
+  });
+
+  it("refuses new-sale checkout when leftover edit markers cannot be abandoned", async () => {
+    apiRequest
+      .mockResolvedValueOnce({
+        id: 12,
+        held_order_num: 9,
+        superseded_sale_id: 3,
+      })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({
+        id: 12,
+        held_order_num: 9,
+        superseded_sale_id: 3,
+      });
+    const { ensureServerCartAbandonedForNewSale } = await import("@/lib/pos-offline");
+    await expect(
+      ensureServerCartAbandonedForNewSale({
+        id: 12,
+        lines: [{ product_code: "NEW", quantity: 1 }],
+        held_order_num: 9,
+        superseded_sale_id: 3,
+      }),
+    ).rejects.toThrow(/detach the previous order/i);
+  });
 });

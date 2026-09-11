@@ -247,12 +247,15 @@ import {
   isMissingTemporaryCartError,
   isServerPosCartId,
   wipeTemporaryCartLines,
+  ensureServerCartAbandonedForNewSale,
   isBackgroundPreviousOrderEditSyncActive,
   getBackgroundPreviousOrderEditSyncCartId,
   findInFlightPreviousOrderEditOutbox,
   formatPreviousOrderEditUploadBlockMessage,
   setLiveTemporaryCartOccupancy,
   clearLiveTemporaryCartOccupancy,
+  armPosFreshWorkspaceSyncHold,
+  clearPosFreshWorkspaceSyncHold,
   isPosOfflineCheckoutInFlight,
   setPosPaymentDialogOpen,
   isFreshOfflinePosNewSale,
@@ -560,9 +563,18 @@ function stripPreviousOrderEditSession(cart) {
     server_sale_id: _serverSale,
     server_cart_id: _serverCart,
     _editDraftDirty: _dirty,
+    previous_order_edit: _prevEdit,
+    payment_adjustments: _adjustments,
+    original_order_total: _originalTotal,
     ...rest
   } = cart;
   return rest;
+}
+
+/** New-order workspace: never keep leftover revise markers from the sticky TemporaryCart. */
+function stripLeakedPreviousOrderEditForNewSale(cart) {
+  if (!cart) return cart;
+  return stripPreviousOrderEditSession(cart);
 }
 
 function stripOfflineSaleMarkers(cart) {
@@ -2455,6 +2467,21 @@ export function PosScreen({ standalone = false }) {
   const completedSaleRef = useRef(null);
   /** Sale loaded for POS order edit — used for Reprint receipt while revising. */
   const [editSourceSale, setEditSourceSale] = useState(null);
+  /** True only after the cashier intentionally opened a previous receipt for edit. */
+  const previousOrderEditSessionRef = useRef(false);
+
+  function beginPreviousOrderEditSession() {
+    previousOrderEditSessionRef.current = true;
+    clearPosFreshWorkspaceSyncHold();
+  }
+
+  function endPreviousOrderEditSession({ holdTillForNewOrder = false } = {}) {
+    previousOrderEditSessionRef.current = false;
+    setEditSourceSale(null);
+    if (holdTillForNewOrder) {
+      armPosFreshWorkspaceSyncHold();
+    }
+  }
   const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
   /** Live print step — F10 keyup must not read a stale shortcut snapshot. */
   const receiptPrintStatusRef = useRef(null);
@@ -2654,6 +2681,7 @@ export function PosScreen({ standalone = false }) {
 
   /** Drop workspace to a blank new-order shell without waiting on the network. */
   function applyFreshWorkspacePlaceholder(activeCart, peekNextPos) {
+    endPreviousOrderEditSession();
     heldRestoreGenerationRef.current += 1;
     const placeholder = {
       id: "pending-fresh",
@@ -3997,7 +4025,17 @@ export function PosScreen({ standalone = false }) {
       clearLiveTemporaryCartOccupancy();
       return undefined;
     }
-    setLiveTemporaryCartOccupancy(cart);
+    let published = cart;
+    if (
+      !previousOrderEditSessionRef.current &&
+      (cart?.held_order_num || cart?.superseded_sale_id || cart?.previous_order_edit)
+    ) {
+      const cleaned = stripLeakedPreviousOrderEditForNewSale(cart);
+      cartRef.current = cleaned;
+      setCart(cleaned);
+      published = cleaned;
+    }
+    setLiveTemporaryCartOccupancy(published);
     return undefined;
   }, [standalone, cart]);
 
@@ -4009,6 +4047,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       window.clearInterval(heartbeat);
       clearLiveTemporaryCartOccupancy();
+      clearPosFreshWorkspaceSyncHold();
     };
   }, [standalone]);
 
@@ -4571,6 +4610,7 @@ export function PosScreen({ standalone = false }) {
             ...(draft._editDraftDirty ? { _editDraftDirty: true } : {}),
           };
           if (applyState) {
+            beginPreviousOrderEditSession();
             cartRef.current = resumed;
             setCart(resumed);
             if (showRouteOrderUi && resumed?.route_id) {
@@ -4594,6 +4634,15 @@ export function PosScreen({ standalone = false }) {
       ((full.lines?.length ?? 0) > 0 || full.held_order_num || full.superseded_sale_id)
     ) {
       full = await wipeTemporaryCartLines(full);
+    }
+    if (forceEmpty) {
+      full = stripLeakedPreviousOrderEditForNewSale(stripOfflineSaleMarkers(full));
+    } else if (
+      full?.held_order_num &&
+      (full.superseded_sale_id || full.offline_client_sale_uuid) &&
+      (full.lines?.length ?? 0) > 0
+    ) {
+      beginPreviousOrderEditSession();
     }
 
     if (applyState) {
@@ -5534,6 +5583,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   function healPreviousOrderEditMarkers(cartNow) {
+    if (!previousOrderEditSessionRef.current) return cartNow;
     if (
       cartNow?.held_order_num &&
       !cartNow.superseded_sale_id &&
@@ -5550,6 +5600,7 @@ export function PosScreen({ standalone = false }) {
 
   /** True when F10 must not open a full new-sale CHECKOUT on a loaded receipt. */
   function isUntouchedPreviousOrderCheckout(cartNow) {
+    if (!previousOrderEditSessionRef.current) return false;
     const healed = healPreviousOrderEditMarkers(cartNow);
     if (!isPreviousOrderEditSession(healed) && !(editSourceSale?.id && healed?.held_order_num)) {
       return false;
@@ -12472,12 +12523,30 @@ export function PosScreen({ standalone = false }) {
       return null;
     }
 
-    // Heal markers from the opened receipt if a line wipe dropped them mid-edit.
-    if (
+    const intendedPreviousOrderEdit = Boolean(previousOrderEditSessionRef.current);
+
+    // New-order checkout must never revise a previous receipt — leftover
+    // TemporaryCart held_order_num / superseded_sale_id (or a stale editSourceSale)
+    // used to re-attach the old sale and overwrite it.
+    if (!intendedPreviousOrderEdit) {
+      if (
+        activeCart.held_order_num ||
+        activeCart.superseded_sale_id ||
+        activeCart.previous_order_edit ||
+        editSourceSale
+      ) {
+        const cleaned = stripLeakedPreviousOrderEditForNewSale(activeCart);
+        activeCart = cleaned;
+        cartRef.current = cleaned;
+        setCart(cleaned);
+        setEditSourceSale(null);
+      }
+    } else if (
       activeCart.held_order_num &&
       !activeCart.superseded_sale_id &&
       editSourceSale?.id
     ) {
+      // Heal markers from the opened receipt if a line wipe dropped them mid-edit.
       activeCart = {
         ...activeCart,
         superseded_sale_id: Number(editSourceSale.id),
@@ -12486,21 +12555,38 @@ export function PosScreen({ standalone = false }) {
       setCart(activeCart);
     }
 
-    if (cartHasStalePreviousOrderMarkers(activeCart, editSourceSale)) {
-      const cleaned = {
-        ...stripPreviousOrderEditSession(activeCart),
-        payment_adjustments: undefined,
-        original_order_total: undefined,
-      };
+    if (intendedPreviousOrderEdit && cartHasStalePreviousOrderMarkers(activeCart, editSourceSale)) {
+      const cleaned = stripLeakedPreviousOrderEditForNewSale(activeCart);
       activeCart = cleaned;
       cartRef.current = cleaned;
       setCart(cleaned);
       setEditSourceSale(null);
+      previousOrderEditSessionRef.current = false;
+    }
+
+    if (!intendedPreviousOrderEdit && standalone && isServerPosCartId(activeCart.id)) {
+      try {
+        const abandoned = await ensureServerCartAbandonedForNewSale(activeCart);
+        if (abandoned) {
+          activeCart = abandoned;
+          cartRef.current = abandoned;
+          setCart(abandoned);
+        }
+      } catch (e) {
+        setPaymentError(
+          e instanceof Error
+            ? e.message
+            : "Could not start this as a new order. Press New order (F8) and try again.",
+        );
+        return null;
+      }
     }
 
     const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);
     const isPreviousOrderCashEdit = Boolean(
-      activeCart.held_order_num && activeCart.superseded_sale_id,
+      intendedPreviousOrderEdit &&
+        activeCart.held_order_num &&
+        activeCart.superseded_sale_id,
     );
 
     if (
@@ -13046,7 +13132,7 @@ export function PosScreen({ standalone = false }) {
               capabilities,
               summary?.total,
             );
-      if (checkoutCart?.held_order_num) {
+      if (isPreviousOrderCashEdit && checkoutCart?.held_order_num) {
         if (body.customer_num) {
           rememberPosOrderCustomer(checkoutCart.held_order_num, {
             name: body.customer_name_override,
@@ -13072,7 +13158,9 @@ export function PosScreen({ standalone = false }) {
         ...checkoutInput,
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
-        ...(checkoutCart?.held_order_num ? { order_num: checkoutCart.held_order_num } : {}),
+        ...(isPreviousOrderCashEdit && checkoutCart?.held_order_num
+          ? { order_num: checkoutCart.held_order_num }
+          : {}),
         ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         ...(onlinePosFields.pos_order_num != null
           ? { pos_order_num: onlinePosFields.pos_order_num }
@@ -14366,6 +14454,8 @@ export function PosScreen({ standalone = false }) {
     if (freshWorkspaceInFlightRef.current) return;
     freshWorkspaceInFlightRef.current = true;
     try {
+    // New-order workspace immediately — F10 during this clear must not revise the old receipt.
+    endPreviousOrderEditSession({ holdTillForNewOrder: true });
     // Same unlock as Clear all / Refresh: drop in-flight adds and force the Scan/Add
     // gate open. Without this, F8 during/after a line save left pickProduct/handleAddLine
     // stuck on "Please wait — finishing cart update…".
@@ -14403,11 +14493,6 @@ export function PosScreen({ standalone = false }) {
         activeCart?.offline_client_sale_uuid &&
         !activeCart?.superseded_sale_id,
     );
-
-    // Esc discard only applies while a previous-order edit is open.
-    if (discardPreviousOrderEdit && !editingPrevious) {
-      return;
-    }
 
     // Don't block "leave previous order / clear lines" on unrelated busy flags — that
     // forced cashiers to press F8 twice. Checkout already gates on paymentOpen above.
@@ -14452,6 +14537,7 @@ export function PosScreen({ standalone = false }) {
         Number(showing) === Number(expectedNext)
       ) {
         skipEditAutosaveRef.current = false;
+        endPreviousOrderEditSession({ holdTillForNewOrder: true });
         clearLineEntry();
         focusProductSearch();
         setStatusMessage("New order — scan or search a product.");
@@ -15573,6 +15659,7 @@ export function PosScreen({ standalone = false }) {
           },
         });
         const restoredCart = presentLocalOfflineCart(localCart);
+        beginPreviousOrderEditSession();
         cartRef.current = restoredCart;
         setCart(restoredCart);
         setSelectedLineId(null);
@@ -15751,6 +15838,7 @@ export function PosScreen({ standalone = false }) {
       (liveCart?.lines?.length ?? 0) > 0 &&
       !liveCart?._optimistic_restore;
     if (alreadyEditingSameSale) {
+      beginPreviousOrderEditSession();
       const sourceSale = saleSnapshot?.id ? saleSnapshot : editSourceSale;
       if (sourceSale) setEditSourceSale(sourceSale);
       const browseNum = resolvePosBrowseNumber(liveCart);
@@ -15838,6 +15926,7 @@ export function PosScreen({ standalone = false }) {
       if (!restoreActive) return false;
       const optimistic = buildOptimisticPreviousOrderCart(saleId, source, cartRef.current);
       if (!optimistic || (optimistic.lines?.length ?? 0) === 0) return false;
+      beginPreviousOrderEditSession();
       cartRef.current = optimistic;
       setCart(optimistic);
       setEditSourceSale(source);
@@ -15873,6 +15962,7 @@ export function PosScreen({ standalone = false }) {
             }
           : {}),
       };
+      beginPreviousOrderEditSession();
       cartRef.current = clean;
       setCart(clean);
       persistPreviousOrderLocalDraft(clean, { immediate: false });
@@ -15989,6 +16079,7 @@ export function PosScreen({ standalone = false }) {
         };
       }
       const { _optimistic_restore: _omitOptimistic, ...clean } = nextCart;
+      beginPreviousOrderEditSession();
       cartRef.current = clean;
       setCart(clean);
       persistPreviousOrderLocalDraft(clean, { immediate: dirty || liveChanged });
@@ -16418,6 +16509,11 @@ export function PosScreen({ standalone = false }) {
         cartRef.current = previousCartSnapshot;
         setCart(previousCartSnapshot);
         setEditSourceSale(previousEditSource);
+        if (isPreviousOrderEditSession(previousCartSnapshot)) {
+          beginPreviousOrderEditSession();
+        } else {
+          endPreviousOrderEditSession({ holdTillForNewOrder: true });
+        }
       } else if (keepSoftEdits) {
         markPreviousOrderDraftDirtyNow();
       }
@@ -17549,17 +17645,18 @@ export function PosScreen({ standalone = false }) {
           actions.cancelPendingLineEntry?.();
           return;
         }
-        // Previous-order edit already changed (or just browsing the restored cart):
-        // Esc discards the draft (original receipt unchanged) and opens a blank workspace.
-        if (state.isCartEditSession && !modalOpen) {
-          void actions.startFreshWorkspace?.({ discardPreviousOrderEdit: true });
+        // External POS: Esc clears to a new order — same workspace reset as F8 / double-click.
+        // Previous-order: discard the draft (original receipt stays sold). New order: wipe lines.
+        if (state.standalone && !modalOpen) {
+          void (async () => {
+            await actions.startFreshWorkspace?.(
+              state.isCartEditSession ? { discardPreviousOrderEdit: true } : {},
+            );
+            actions.focusProductSearch();
+          })();
           return;
         }
-        if (state.standalone) {
-          actions.focusProductSearch();
-          return;
-        }
-        // Open workspace: reset entry row and focus Scan code.
+        // Backoffice Create Order: reset entry row and focus Scan.
         actions.focusProductSearch();
         return;
       }

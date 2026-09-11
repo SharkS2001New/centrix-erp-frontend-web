@@ -29,7 +29,7 @@ vi.mock("@/lib/pos-offline-db", async (importOriginal) => {
 });
 
 describe("previous-order edit till isolation", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     apiRequest.mockReset();
     localCart = null;
     try {
@@ -37,6 +37,12 @@ describe("previous-order edit till isolation", () => {
     } catch {
       /* vitest may omit localStorage */
     }
+    const {
+      clearLiveTemporaryCartOccupancy,
+      clearPosFreshWorkspaceSyncHold,
+    } = await import("@/lib/pos-offline");
+    clearLiveTemporaryCartOccupancy();
+    clearPosFreshWorkspaceSyncHold();
   });
 
   it("detects till-busy defer errors so sync leaves the row pending", async () => {
@@ -198,5 +204,46 @@ describe("previous-order edit till isolation", () => {
 
     expect(result.wipedOrphans).toBe(false);
     expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it("defers sync while a fresh new-order workspace hold is armed", async () => {
+    const {
+      armPosFreshWorkspaceSyncHold,
+      clearPosFreshWorkspaceSyncHold,
+      assertPosTillAvailableForSync,
+      isPreviousOrderEditTillBusyError,
+    } = await import("@/lib/pos-offline");
+    armPosFreshWorkspaceSyncHold(60_000);
+
+    await expect(
+      assertPosTillAvailableForSync({
+        stickyCart: { id: 42, lines: [] },
+        allowWipeOrphans: true,
+      }),
+    ).rejects.toSatisfy((err) => isPreviousOrderEditTillBusyError(err));
+
+    expect(apiRequest).not.toHaveBeenCalled();
+    clearPosFreshWorkspaceSyncHold();
+  });
+
+  it("does not treat an empty sticky cart as a crash leftover during F8 new-order hold", async () => {
+    const {
+      armPosFreshWorkspaceSyncHold,
+      setLiveTemporaryCartOccupancy,
+      assertPosTillAvailableForSync,
+      isPreviousOrderEditTillBusyError,
+      isLiveTemporaryCartOccupied,
+    } = await import("@/lib/pos-offline");
+    armPosFreshWorkspaceSyncHold(60_000);
+    setLiveTemporaryCartOccupancy({ id: "pending-fresh", lines: [] });
+    expect(isLiveTemporaryCartOccupied()).toBe(true);
+
+    await expect(
+      assertPosTillAvailableForSync({
+        stickyCart: { id: 55, lines: [] },
+        allowWipeOrphans: true,
+      }),
+    ).rejects.toSatisfy((err) => isPreviousOrderEditTillBusyError(err));
+    expect(isLiveTemporaryCartOccupied()).toBe(true);
   });
 });

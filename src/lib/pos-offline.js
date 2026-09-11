@@ -1228,9 +1228,26 @@ const LIVE_TEMPORARY_CART_LS_KEY = "centrix.pos.live_temporary_cart_v1";
 const LIVE_TEMPORARY_CART_TTL_MS = 5 * 60 * 1000;
 
 let liveTemporaryCartOccupancy = null;
+/** F8 / Esc / new-order workspace — outbox must not restore-to-cart onto this till. */
+let freshWorkspaceSyncHoldUntil = 0;
+const FRESH_WORKSPACE_SYNC_HOLD_MS = LIVE_TEMPORARY_CART_TTL_MS;
 
 export const POS_TILL_BUSY_SYNC_MESSAGE =
   "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.";
+
+export function armPosFreshWorkspaceSyncHold(ms = FRESH_WORKSPACE_SYNC_HOLD_MS) {
+  const duration = Number(ms);
+  freshWorkspaceSyncHoldUntil =
+    Date.now() + (Number.isFinite(duration) && duration > 0 ? duration : FRESH_WORKSPACE_SYNC_HOLD_MS);
+}
+
+export function clearPosFreshWorkspaceSyncHold() {
+  freshWorkspaceSyncHoldUntil = 0;
+}
+
+export function isPosFreshWorkspaceSyncHoldActive() {
+  return Date.now() < freshWorkspaceSyncHoldUntil;
+}
 
 export function isBackgroundPreviousOrderEditSyncActive() {
   return backgroundPreviousOrderEditSyncDepth > 0;
@@ -1464,11 +1481,12 @@ export function setLiveTemporaryCartOccupancy(cart) {
     cart?.held_order_num &&
       (cart?.superseded_sale_id || cart?.offline_client_sale_uuid),
   );
+  const isPendingFresh = String(cart?.id ?? "") === "pending-fresh";
   const offlineLocal =
     Boolean(cart?.offline) ||
     String(cart?.id ?? "") === "active" ||
     String(cart?.id ?? "").startsWith("offline:") ||
-    String(cart?.id ?? "") === "pending-fresh";
+    isPendingFresh;
 
   // Mid-checkout: IDB may already be cleared but the till UI still owns this sale.
   if (isPosOfflineCheckoutInFlight() || posPaymentDialogOpen) {
@@ -1479,6 +1497,20 @@ export function setLiveTemporaryCartOccupancy(cart) {
       updatedAt: Date.now(),
       checkoutInFlight: isPosOfflineCheckoutInFlight(),
       paymentDialogOpen: posPaymentDialogOpen,
+    });
+    return;
+  }
+
+  // F8 / Esc new-order hold — keep the till claimed so a queued previous-order
+  // edit cannot restore-to-cart onto this TemporaryCart. Post-checkout blank
+  // workspaces must stay unclaimed so the edit they just finished can upload.
+  if (isPosFreshWorkspaceSyncHoldActive() && !isEdit) {
+    writeLiveTemporaryCartOccupancy({
+      cartId: serverId ?? -1,
+      lineCount: Math.max(lineCount, 1),
+      isEdit: false,
+      updatedAt: Date.now(),
+      freshWorkspaceHold: true,
     });
     return;
   }
@@ -1518,7 +1550,7 @@ export function readLiveTemporaryCartOccupancy() {
     if (!row?.updatedAt || now - Number(row.updatedAt) > LIVE_TEMPORARY_CART_TTL_MS) {
       return null;
     }
-    if ((row.lineCount ?? 0) > 0 || row.isEdit) return row;
+    if ((row.lineCount ?? 0) > 0 || row.isEdit || row.freshWorkspaceHold) return row;
     return null;
   };
 
@@ -1564,6 +1596,9 @@ export async function assertPosTillAvailableForSync({
   if (isPosOfflineCheckoutInFlight()) {
     throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
   }
+  if (isPosFreshWorkspaceSyncHoldActive()) {
+    throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+  }
   const local = await idbGetLocalCart("active").catch(() => null);
   if (isLocalPosCartBusy(local)) {
     throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
@@ -1577,7 +1612,11 @@ export async function assertPosTillAvailableForSync({
       stickyEmpty &&
       occ &&
       Number(stickyCart.id) === Number(occ.cartId);
-    if (occPointsAtEmptySticky) {
+    if (
+      occPointsAtEmptySticky &&
+      !occ.freshWorkspaceHold &&
+      !isPosFreshWorkspaceSyncHoldActive()
+    ) {
       clearLiveTemporaryCartOccupancy();
     } else {
       throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
@@ -1651,6 +1690,97 @@ export async function wipeTemporaryCartLines(cart, options = {}) {
     held_order_num: preserveEditMarkers ? hadHeld : null,
     superseded_sale_id: preserveEditMarkers ? hadSuperseded : null,
   };
+}
+
+function posCartLineReplayPayload(row) {
+  return {
+    product_code: row.product_code,
+    quantity: row.quantity,
+    unit_price: row.unit_price,
+    display_unit_price:
+      row.display_unit_price != null ? Number(row.display_unit_price) : undefined,
+    amount: row.amount != null ? Number(row.amount) : undefined,
+    uom: row.uom,
+    on_wholesale_retail: row.on_wholesale_retail,
+    discount_given: Number(row.discount_given ?? 0),
+    product_vat: row.product_vat != null ? Number(row.product_vat) : undefined,
+  };
+}
+
+/**
+ * New-order checkout must not reuse a TemporaryCart still stamped as a previous-order
+ * edit. DELETE /lines abandons held_order_num / superseded_sale_id; replay current lines.
+ */
+export async function ensureServerCartAbandonedForNewSale(cart) {
+  if (!cart || !isServerPosCartId(cart.id)) return cart;
+  const cartId = Number(cart.id);
+  let existing = cart;
+  try {
+    existing = await apiRequest(`/sales/carts/${cartId}`, {
+      loading: false,
+      reportIssues: false,
+    });
+  } catch {
+    existing = cart;
+  }
+  if (!existing?.held_order_num && !existing?.superseded_sale_id) {
+    return stripLeakedEditMarkersFromCart(cart);
+  }
+  const lines = Array.isArray(cart.lines) ? cart.lines : [];
+  await wipeTemporaryCartLines(existing, { force: true });
+  let abandoned = false;
+  try {
+    const after = await apiRequest(`/sales/carts/${cartId}`, {
+      loading: false,
+      reportIssues: false,
+    });
+    abandoned = !after?.held_order_num && !after?.superseded_sale_id;
+  } catch (err) {
+    abandoned = isMissingTemporaryCartError(err);
+  }
+  if (!abandoned) {
+    throw new Error(
+      "Could not detach the previous order from this till cart. Press New order (F8) and try again.",
+    );
+  }
+  if (lines.length === 0) {
+    return stripLeakedEditMarkersFromCart({ ...cart, id: cartId, lines: [] });
+  }
+  const linePayload = lines
+    .filter((row) => row?.product_code && Number(row.quantity) > 0)
+    .map(posCartLineReplayPayload);
+  try {
+    const updated = await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "PUT",
+      body: {
+        lines: linePayload,
+        order_discount: Number(cart.order_discount ?? 0) || 0,
+      },
+      loading: false,
+      reportIssues: false,
+    });
+    return stripLeakedEditMarkersFromCart({
+      ...cart,
+      ...(updated && typeof updated === "object" ? updated : {}),
+      id: cartId,
+      lines: Array.isArray(updated?.lines) ? updated.lines : lines,
+    });
+  } catch {
+    return stripLeakedEditMarkersFromCart({ ...cart, id: cartId, lines });
+  }
+}
+
+function stripLeakedEditMarkersFromCart(cart) {
+  if (!cart) return cart;
+  const {
+    held_order_num: _held,
+    superseded_sale_id: _superseded,
+    previous_order_edit: _prev,
+    payment_adjustments: _adj,
+    original_order_total: _orig,
+    ...rest
+  } = cart;
+  return rest;
 }
 
 export {
