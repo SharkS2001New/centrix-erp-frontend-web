@@ -431,6 +431,43 @@ export function lineDeleteExclusionKey(ref, productCode) {
   return code ? `${key}::${code}` : key;
 }
 
+/**
+ * True when this add commit already painted an optimistic row.
+ * pending-fresh → TemporaryCart id swap must not stack a second BanjaB/Kamande.
+ * Combine-off still allows a *later* add of the same SKU (painted is null).
+ */
+export function isOptimisticAddAlreadyPainted({
+  paintedOptimisticLine = null,
+  liveLines = [],
+  productCode,
+  onWholesaleRetail = 0,
+  combineIdenticalLines = true,
+} = {}) {
+  const live = Array.isArray(liveLines) ? liveLines : [];
+  const code = String(productCode ?? "");
+  const mode = Number(onWholesaleRetail ?? 0) ? 1 : 0;
+  const sameSkuMode = (line) =>
+    Boolean(line?._optimistic) &&
+    String(line.product_code ?? "") === code &&
+    (Number(line.on_wholesale_retail ?? 0) ? 1 : 0) === mode;
+
+  if (paintedOptimisticLine) {
+    const token = cartLineRef(paintedOptimisticLine);
+    if (
+      token &&
+      live.some((line) => line?._optimistic && String(cartLineRef(line)) === String(token))
+    ) {
+      return true;
+    }
+    // Token reminted after ensureCart — same SKU+mode optimistic is still this add.
+    if (live.some(sameSkuMode)) return true;
+    return false;
+  }
+
+  if (combineIdenticalLines === false) return false;
+  return live.some(sameSkuMode);
+}
+
 /** True when two cart rows share any id / update_code / client_line_id. */
 export function cartLinesShareIdentity(a, b) {
   if (a == null || b == null) return false;

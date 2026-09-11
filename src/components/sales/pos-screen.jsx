@@ -177,6 +177,7 @@ import {
   preserveClientLineSkuAfterMutation,
   findCartLineIndexByRef,
   findMergeableCartLine,
+  isOptimisticAddAlreadyPainted,
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
   normalizeCartResponse,
@@ -7125,25 +7126,13 @@ export function PosScreen({ standalone = false }) {
     // used to push BanjaB twice before the first POST landed).
     // When combine is off, only treat *this* commit's optimistic token as painted —
     // another Sugar line in flight must not block a second intentional add.
-    const optimisticAddAlreadyPainted = (() => {
-      const live = cartRef.current?.lines ?? [];
-      if (painted?.optimisticLine) {
-        const token = cartLineRef(painted.optimisticLine);
-        if (
-          token &&
-          live.some((line) => line?._optimistic && String(cartLineRef(line)) === String(token))
-        ) {
-          return true;
-        }
-        if (combineIdenticalLinesRef.current === false) return false;
-      }
-      return live.some(
-        (line) =>
-          line?._optimistic &&
-          String(line.product_code) === String(product.product_code) &&
-          Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
-      );
-    })();
+    const optimisticAddAlreadyPainted = isOptimisticAddAlreadyPainted({
+      paintedOptimisticLine: painted?.optimisticLine ?? null,
+      liveLines: cartRef.current?.lines ?? [],
+      productCode: product.product_code,
+      onWholesaleRetail: onWholesaleRetailFlag ? 1 : 0,
+      combineIdenticalLines: combineIdenticalLinesRef.current !== false,
+    });
     if (
       activeCart?.id &&
       !optimisticAddAlreadyPainted &&
@@ -10800,23 +10789,26 @@ export function PosScreen({ standalone = false }) {
                         code && pendingSwappedAwayProductCodesRef.current.has(code),
                     ),
                 );
+                const matched = [];
+                for (const t of targets) {
+                  const found = findCartLineForEdit(remoteLines, t, {
+                    preferProductCode: t.product_code,
+                  });
+                  if (found) matched.push(found);
+                }
+                const byFullSku = remoteLines.filter((row) =>
+                  codesFullyRemoved.has(String(row?.product_code ?? "").trim()),
+                );
+                const toDelete = [...matched, ...byFullSku];
                 refsToDelete = [
                   ...new Set(
-                    remoteLines
-                      .filter((row) =>
-                        codesFullyRemoved.has(String(row?.product_code ?? "").trim()),
-                      )
+                    toDelete
                       .map((row) => serverPersistedCartLineRef(row))
                       .filter((ref) => ref != null && String(ref).trim() !== "")
                       .map(String),
                   ),
                 ];
-                for (const row of remoteLines) {
-                  if (!codesFullyRemoved.has(String(row?.product_code ?? "").trim())) {
-                    continue;
-                  }
-                  registerPendingLineDeletes([row]);
-                }
+                registerPendingLineDeletes(toDelete);
               } catch {
                 /* keep local exclusions; paint below */
               }
@@ -12553,15 +12545,6 @@ export function PosScreen({ standalone = false }) {
       };
       cartRef.current = activeCart;
       setCart(activeCart);
-    }
-
-    if (intendedPreviousOrderEdit && cartHasStalePreviousOrderMarkers(activeCart, editSourceSale)) {
-      const cleaned = stripLeakedPreviousOrderEditForNewSale(activeCart);
-      activeCart = cleaned;
-      cartRef.current = cleaned;
-      setCart(cleaned);
-      setEditSourceSale(null);
-      previousOrderEditSessionRef.current = false;
     }
 
     if (!intendedPreviousOrderEdit && standalone && isServerPosCartId(activeCart.id)) {
@@ -15920,6 +15903,7 @@ export function PosScreen({ standalone = false }) {
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
       paintedOptimistic = true;
+      persistPreviousOrderLocalDraft(optimistic, { immediate: false });
       // Lines are on screen — drop the loader. restore-to-cart / KRA continue
       // in the background; applyAuthoritativeRestoredCart keeps cashier edits.
       unlockTillEarly(browseNum);

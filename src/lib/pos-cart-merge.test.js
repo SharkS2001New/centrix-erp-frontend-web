@@ -12,6 +12,7 @@ import {
   filterCartLinesExcludedProductCodes,
   findCartLineForEdit,
   findModeConvertibleCartLine,
+  isOptimisticAddAlreadyPainted,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
   preserveClientLineSkuAfterMutation,
@@ -29,6 +30,51 @@ describe("cartLineRef", () => {
     expect(
       cartLineRef({ id: "pending-1", client_line_id: "cli-9", update_code: "" }),
     ).toBe("cli-9");
+  });
+});
+
+describe("isOptimisticAddAlreadyPainted", () => {
+  const kamande = {
+    id: "pending-k",
+    product_code: "KAMANDE",
+    on_wholesale_retail: 0,
+    _optimistic: true,
+  };
+
+  it("treats this commit as painted after pending-fresh remints the token", () => {
+    expect(
+      isOptimisticAddAlreadyPainted({
+        paintedOptimisticLine: { ...kamande, id: "pending-old" },
+        liveLines: [{ ...kamande, id: "pending-k", update_code: "CLU-K" }],
+        productCode: "KAMANDE",
+        onWholesaleRetail: 0,
+        combineIdenticalLines: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("allows a later same-SKU add when combine is off and this commit has not painted", () => {
+    expect(
+      isOptimisticAddAlreadyPainted({
+        paintedOptimisticLine: null,
+        liveLines: [kamande],
+        productCode: "KAMANDE",
+        onWholesaleRetail: 0,
+        combineIdenticalLines: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks a second paint of the same add when combine is on", () => {
+    expect(
+      isOptimisticAddAlreadyPainted({
+        paintedOptimisticLine: null,
+        liveLines: [kamande],
+        productCode: "KAMANDE",
+        onWholesaleRetail: 0,
+        combineIdenticalLines: true,
+      }),
+    ).toBe(true);
   });
 });
 
