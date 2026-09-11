@@ -3526,9 +3526,38 @@ function isRestorablePosSaleForEdit(sale) {
 
 function isOrderNotEditableSyncError(err) {
   const msg = String(err?.message ?? err ?? "").toLowerCase();
-  return /cannot be edited|legacy materialized orders cannot be edited|expired orders cannot be edited/.test(
+  return /cannot be edited|legacy materialized orders cannot be edited|expired orders cannot be edited|already (been )?edited|superseded|no longer (available|exists)|sale (is |has been )?cancelled/.test(
     msg,
   );
+}
+
+/**
+ * Live server sale id for Cash Sales # / previous-order FIND.
+ * Walks cancelled tombstones to the current revision so restore-to-cart is not
+ * pointed at a superseded id from the session list or local mirror.
+ */
+export async function resolveLivePosSaleIdForEdit({
+  saleId = null,
+  orderNum = 0,
+  posOrderNum = null,
+  posOrderDate = null,
+} = {}) {
+  const ticket = posOrderNum != null ? Number(posOrderNum) : null;
+  return findLiveSaleIdForPreviousOrderEdit({
+    superseded_sale_id: saleId,
+    server_sale_id: saleId,
+    order_num: orderNum,
+    sale_payload: {
+      order_num: orderNum,
+      pos_order_num: Number.isFinite(ticket) ? ticket : null,
+      pos_order_date: posOrderDate,
+    },
+    checkout_body: {
+      order_num: orderNum,
+      pos_order_num: Number.isFinite(ticket) ? ticket : null,
+      pos_order_date: posOrderDate,
+    },
+  });
 }
 
 function previousOrderEditOrgOrderNum(row) {

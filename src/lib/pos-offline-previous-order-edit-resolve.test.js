@@ -44,6 +44,8 @@ describe("previous-order edit live sale resolution", () => {
 
   it("detects the backend cannot-be-edited sync error", () => {
     expect(isOrderNotEditableSyncError(new Error("This order cannot be edited."))).toBe(true);
+    expect(isOrderNotEditableSyncError(new Error("This sale has been cancelled"))).toBe(true);
+    expect(isOrderNotEditableSyncError(new Error("Receipt superseded by a later edit"))).toBe(true);
     expect(isOrderNotEditableSyncError(new Error("Network error"))).toBe(false);
   });
 

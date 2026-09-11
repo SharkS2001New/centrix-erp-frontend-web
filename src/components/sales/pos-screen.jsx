@@ -261,6 +261,8 @@ import {
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
   isHiddenFromPosOrderBrowse,
+  isRestorablePosSaleForEdit,
+  resolveLivePosSaleIdForEdit,
   cacheServerSaleForOfflineEdit,
   claimNextLocalPosTicketForSale,
   prefetchServerSalesForOfflineEdit,
@@ -996,6 +998,16 @@ function sessionOrderMatchesBrowseNum(row, trimmed) {
   const browse = resolvePosBrowseNumber(row);
   if (browse != null && String(browse) === String(trimmed)) return true;
   return false;
+}
+
+function previousOrderLoadErrorMessage(error) {
+  if (error instanceof ApiError && error.message) {
+    return dedupeErrorMessage(error.message);
+  }
+  if (error instanceof Error && error.message && error.name !== "AbortError") {
+    return dedupeErrorMessage(error.message);
+  }
+  return "Could not load order for editing";
 }
 
 /** Digits / S0168-style tokens → order # lookup; otherwise treat as customer name search. */
@@ -15953,7 +15965,7 @@ export function PosScreen({ standalone = false }) {
           previousOrderEditContentSignatureFromCart(restoredCart);
 
       let nextCart = restoredCart;
-      if (dirty || swapActive || liveChanged) {
+      if (live && (dirty || swapActive || liveChanged)) {
         // Keep cashier edits / in-progress swap; bind to the real server cart id for sync.
         nextCart = {
           ...restoredCart,
@@ -16089,10 +16101,7 @@ export function PosScreen({ standalone = false }) {
         }
       } catch (e) {
         restoreFailedTicketField();
-        const message =
-          e instanceof Error
-            ? dedupeErrorMessage(e.message)
-            : "Could not load order for editing";
+        const message = previousOrderLoadErrorMessage(e);
         setOrderEditError(message);
         setStatusMessage(message);
         if (standalone) notifyError(message);
@@ -16171,14 +16180,36 @@ export function PosScreen({ standalone = false }) {
       if (!paintedOptimistic) beginLoadingIfNeeded();
 
       // Fast cart restore (stock + KRA finish afterResponse on the API).
+      // Session / local-mirror ids can be a cancelled revision after a prior edit —
+      // restore that tombstone, then retry on the live Cash Sales # head.
       const restoreDeviceId = posDeviceIdForRestoreRequest(saleSnapshot);
-      const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
-        method: "POST",
-        body: {
-          replace,
-          ...(restoreDeviceId ? { pos_device_id: restoreDeviceId } : {}),
-        },
-      });
+      const postRestoreToCart = (id) =>
+        apiRequest(`/sales/orders/${id}/restore-to-cart`, {
+          method: "POST",
+          body: {
+            replace,
+            ...(restoreDeviceId ? { pos_device_id: restoreDeviceId } : {}),
+          },
+          loading: false,
+          reportIssues: false,
+        });
+      let restoredRaw;
+      try {
+        restoredRaw = await postRestoreToCart(saleId);
+      } catch (restoreErr) {
+        const liveId = await resolveLivePosSaleIdForEdit({
+          saleId,
+          orderNum: Number(saleSnapshot?.order_num ?? 0) || 0,
+          posOrderNum: saleSnapshot?.pos_order_num ?? null,
+          posOrderDate: saleSnapshot?.pos_order_date ?? null,
+        }).catch(() => null);
+        if (liveId && Number(liveId) !== Number(saleId)) {
+          saleId = liveId;
+          restoredRaw = await postRestoreToCart(liveId);
+        } else {
+          throw restoreErr;
+        }
+      }
       restoreActive = false;
       if (restoreGen !== previousOrderRestoreGenRef.current) {
         return;
@@ -16305,6 +16336,67 @@ export function PosScreen({ standalone = false }) {
       } catch {
         /* keep original error */
       }
+      // Online FIND: open from GET /sales/{id} lines when restore-to-cart rejected a
+      // stale id and the till has no synced mirror yet.
+      try {
+        let remoteSale = null;
+        try {
+          remoteSale = await apiRequest(`/sales/${saleId}`, {
+            loading: false,
+            reportIssues: false,
+          });
+        } catch {
+          remoteSale = null;
+        }
+        if (!isRestorablePosSaleForEdit(remoteSale)) {
+          const liveId = await resolveLivePosSaleIdForEdit({
+            saleId,
+            orderNum: Number(saleSnapshot?.order_num ?? remoteSale?.order_num ?? 0) || 0,
+            posOrderNum:
+              saleSnapshot?.pos_order_num ?? remoteSale?.pos_order_num ?? null,
+            posOrderDate:
+              saleSnapshot?.pos_order_date ?? remoteSale?.pos_order_date ?? null,
+          }).catch(() => null);
+          if (liveId && Number(liveId) !== Number(saleId)) {
+            saleId = liveId;
+            remoteSale = await apiRequest(`/sales/${liveId}`, {
+              loading: false,
+              reportIssues: false,
+            }).catch(() => null);
+          }
+        }
+        if (restoreGen !== previousOrderRestoreGenRef.current) {
+          return;
+        }
+        if (isRestorablePosSaleForEdit(remoteSale) && remoteSale?.items?.length) {
+          const applied = applyLocalPreviousOrderEditCart(remoteSale);
+          if (applied) {
+            hydrateOfflineProductsForEditCart(applied.clean);
+            void cacheServerSaleForOfflineEdit(remoteSale);
+            const label = applied.browseNum;
+            const kraFiscalize = shouldSubmitKraOnCheckout(
+              capabilities?.module_settings,
+              capabilities,
+              summarizeLocalPosCart(applied.clean)?.total,
+            );
+            const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
+            setOrderEditError(null);
+            setStatusMessage(
+              label != null
+                ? `Cash Sales #${label} loaded — ${editHint}`
+                : `Order loaded — ${editHint}`,
+            );
+            if (standalone) {
+              notifySuccess(
+                previousOrderEditModeMessages(label, { kraFiscalize }).loaded,
+              );
+            }
+            return;
+          }
+        }
+      } catch {
+        /* keep original error */
+      }
       if (restoreGen !== previousOrderRestoreGenRef.current) {
         return;
       }
@@ -16324,7 +16416,7 @@ export function PosScreen({ standalone = false }) {
       } else if (keepSoftEdits) {
         markPreviousOrderDraftDirtyNow();
       }
-      let message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
+      let message = previousOrderLoadErrorMessage(e);
       if (
         !replace &&
         (message.toLowerCase().includes("already has items") ||
@@ -16477,7 +16569,8 @@ export function PosScreen({ standalone = false }) {
           (row) =>
             String(row.pos_order_num) === ticketNum &&
             !row?.fulfillment_meta?.superseded_by_edit &&
-            !isOfflinePendingSaleId(row.id),
+            !isOfflinePendingSaleId(row.id) &&
+            !isHiddenFromPosOrderBrowse(row),
         );
         if (sessionMatch?.id) {
           if (offlineMode) {
@@ -16538,7 +16631,8 @@ export function PosScreen({ standalone = false }) {
           (row) =>
             row?.id != null &&
             Number(row.order_num) < TOMBSTONE_MIN &&
-            !row?.fulfillment_meta?.superseded_by_edit,
+            !row?.fulfillment_meta?.superseded_by_edit &&
+            isRestorablePosSaleForEdit(row),
         );
         if (matchPos && ticketNum != null) {
           return (
