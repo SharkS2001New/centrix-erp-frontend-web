@@ -9,6 +9,10 @@ export function DiscountApprovalReasonDialog({
   onSubmit,
   onCancel,
   busy = false,
+  title = "Order discount approval",
+  description = "Enter one reason for all discounts on this order. You will not be asked again for additional line discounts.",
+  submitLabel = "Submit reason",
+  placeholder = "e.g. Customer loyalty, negotiated price…",
 }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -61,12 +65,9 @@ export function DiscountApprovalReasonDialog({
       >
         <form onSubmit={handleSubmit} className="text-center">
           <h2 id={`${fieldId}-title`} className="theme-heading text-base font-semibold">
-            Order discount approval
+            {title}
           </h2>
-          <p className="theme-subtext mt-2 text-sm">
-            Enter one reason for all discounts on this order. You will not be asked again for
-            additional line discounts.
-          </p>
+          <p className="theme-subtext mt-2 text-sm">{description}</p>
 
           <div className="mt-5 text-left">
             <label htmlFor={`${fieldId}-reason`} className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -80,7 +81,7 @@ export function DiscountApprovalReasonDialog({
               disabled={busy}
               required
               aria-required="true"
-              placeholder="e.g. Customer loyalty, negotiated price…"
+              placeholder={placeholder}
               className={`${inputClassName()} w-full resize-y`}
               onChange={(event) => {
                 setReason(event.target.value);
@@ -104,7 +105,7 @@ export function DiscountApprovalReasonDialog({
               disabled={busy}
               className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {busy ? "Submitting…" : "Submit reason"}
+              {busy ? "Submitting…" : submitLabel}
             </button>
           </div>
         </form>

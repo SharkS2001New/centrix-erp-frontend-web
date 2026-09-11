@@ -2,7 +2,7 @@
 
 import { notifyError, notifySuccess } from "@/lib/notify";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
@@ -60,6 +60,7 @@ import {
 } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
+import { DiscountApprovalReasonDialog } from "@/components/sales/discount-approval-reason-dialog";
 import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
 import { canDirectCancelOrders } from "@/lib/approval-permissions";
 import { canCollectSalePayments } from "@/lib/access-control";
@@ -593,6 +594,24 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [editOrderOpen, setEditOrderOpen] = useState(false);
   const [editError, setEditError] = useState(null);
   const [taxonomyLoaded, setTaxonomyLoaded] = useState(false);
+  const [cancelReasonDialogOpen, setCancelReasonDialogOpen] = useState(false);
+  const cancelReasonResolverRef = useRef(null);
+
+  const requestCancelApprovalReason = useCallback(
+    () =>
+      new Promise((resolve) => {
+        cancelReasonResolverRef.current = resolve;
+        setCancelReasonDialogOpen(true);
+      }),
+    [],
+  );
+
+  const closeCancelReasonDialog = useCallback((result = null) => {
+    setCancelReasonDialogOpen(false);
+    const resolve = cancelReasonResolverRef.current;
+    cancelReasonResolverRef.current = null;
+    resolve?.(result);
+  }, []);
 
   const loadSale = useCallback(async () => {
     setLoading(true);
@@ -811,16 +830,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   async function requestOrderCancellation() {
     if (!sale?.id) return;
-    const reason = window.prompt("Reason for cancellation (required):");
-    if (!reason || reason.trim().length < 3) {
-      if (reason !== null) notifyError("Cancellation reason must be at least 3 characters.");
-      return;
-    }
+    const reason = await requestCancelApprovalReason();
+    if (!reason) return;
     setTransitionBusy(true);
     try {
       await apiRequest(`/sales/orders/${sale.id}/request-cancellation`, {
         method: "POST",
-        body: { reason: reason.trim() },
+        body: { reason },
       });
       notifySuccess("Cancellation request sent to managers for approval.");
     } catch (e) {
@@ -1319,6 +1335,17 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
         </>
       ) : null}
+
+      <DiscountApprovalReasonDialog
+        open={cancelReasonDialogOpen}
+        busy={transitionBusy}
+        title="Cancellation reason"
+        description="Managers need a reason before they can approve this cancellation."
+        submitLabel="Submit reason"
+        placeholder="e.g. Customer changed mind, duplicate order…"
+        onSubmit={closeCancelReasonDialog}
+        onCancel={() => closeCancelReasonDialog(null)}
+      />
 
       <SalePosPaymentPanel
         open={paymentModalOpen}

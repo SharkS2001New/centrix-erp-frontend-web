@@ -218,7 +218,7 @@ export function usePosOfflineSupport({
     if (!enabled || !fullyOnline) return null;
     try {
       if (catalogOnly) {
-        const warm = await warmPosOfflineCatalog({ force: false });
+        const warm = await warmPosOfflineCatalog({ force: false, awaitStock: true });
         setCatalogReady(Number(warm?.count ?? 0) > 0);
         return {
           catalogCount: Number(warm?.count ?? 0),
@@ -597,12 +597,12 @@ export function usePosOfflineSupport({
       if (cancelled) return;
       void refreshPosOfflineCatalogStock({ force }).catch(() => {});
     };
-    // First overlay on workspace open (External POS prepare also awaits this).
-    tick(!catalogOnly);
+    // First overlay is awaited in prepare() on workspace open — do not force
+    // a second catalog stock crawl here or on every tab focus.
     const timer = window.setInterval(() => tick(false), POS_OFFLINE_STOCK_TTL_MS);
-    const onFocus = () => tick(true);
+    const onFocus = () => tick(false);
     const onVisible = () => {
-      if (document.visibilityState === "visible") tick(true);
+      if (document.visibilityState === "visible") tick(false);
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
@@ -612,7 +612,7 @@ export function usePosOfflineSupport({
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [enabled, fullyOnline, catalogOnly]);
+  }, [enabled, fullyOnline]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   // Org change: force catalogue rewarm (TTL otherwise keeps the previous tenant's SKUs).

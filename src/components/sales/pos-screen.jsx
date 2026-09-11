@@ -1399,7 +1399,7 @@ function posSearchAvailableQty(product, sellFromShop, posSalesConfig, sellWholes
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, organization, hasPermission, logout } = useAuth();
+  const { user, capabilities, organization, hasPermission, logout, refreshCapabilities } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
   const orgPosThemeTemplate = useMemo(
     () => resolveExternalPosThemeTemplate(capabilities),
@@ -1766,6 +1766,8 @@ export function PosScreen({ standalone = false }) {
   const orgTodayKey = todayCalendarDate(capabilities?.general?.timezone ?? "Africa/Nairobi");
   const [discountReasonDialogOpen, setDiscountReasonDialogOpen] = useState(false);
   const discountReasonResolverRef = useRef(null);
+  const [cancelReasonDialogOpen, setCancelReasonDialogOpen] = useState(false);
+  const cancelReasonResolverRef = useRef(null);
 
   const requestDiscountApprovalReason = useCallback(async (cart) => {
     const existing = existingOrderDiscountApprovalReason(cart);
@@ -1780,6 +1782,22 @@ export function PosScreen({ standalone = false }) {
     setDiscountReasonDialogOpen(false);
     const resolve = discountReasonResolverRef.current;
     discountReasonResolverRef.current = null;
+    resolve?.(result);
+  }, []);
+
+  const requestCancelApprovalReason = useCallback(
+    () =>
+      new Promise((resolve) => {
+        cancelReasonResolverRef.current = resolve;
+        setCancelReasonDialogOpen(true);
+      }),
+    [],
+  );
+
+  const closeCancelReasonDialog = useCallback((result = null) => {
+    setCancelReasonDialogOpen(false);
+    const resolve = cancelReasonResolverRef.current;
+    cancelReasonResolverRef.current = null;
     resolve?.(result);
   }, []);
 
@@ -3858,12 +3876,12 @@ export function PosScreen({ standalone = false }) {
       void refreshPosOfflineCatalogStock({ force, branchId }).catch(() => {});
     };
 
-    // First stock load when External POS / Create Order opens — not on Find.
-    tick(Boolean(standalone));
+    // First stock overlay is awaited in prepare() on workspace open.
+    // Interval / tab-focus stay TTL-gated so Find never waits on a stock crawl.
     const timer = window.setInterval(() => tick(false), POS_OFFLINE_STOCK_TTL_MS);
-    const onFocus = () => tick(true);
+    const onFocus = () => tick(false);
     const onVisible = () => {
-      if (document.visibilityState === "visible") tick(true);
+      if (document.visibilityState === "visible") tick(false);
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
@@ -3875,6 +3893,13 @@ export function PosScreen({ standalone = false }) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [offlineMode, productBranchParams?.branch_id, user?.branch_id]);
+
+  // Create Order: pick up Live/Fast search mode without a full page reload.
+  useEffect(() => {
+    if (standalone) return undefined;
+    void refreshCapabilities({ maxAgeMs: 0 }).catch(() => {});
+    return undefined;
+  }, [standalone, refreshCapabilities]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
   // Pause while offline, and also while a continued offline / queued-edit cart is open
@@ -4248,6 +4273,7 @@ export function PosScreen({ standalone = false }) {
     xReportOpen ||
     closeSessionOpen ||
     discountReasonDialogOpen ||
+    cancelReasonDialogOpen ||
     Boolean(autoHeldPrompt) ||
     Boolean(editAdjustmentDialog) ||
     Boolean(ticketSyncConflict) ||
@@ -6051,6 +6077,39 @@ export function PosScreen({ standalone = false }) {
       }
       // Keep the prior list visible while this query is in flight. Clearing early when the
       // query lengthens (yab → yabal) blanked the dropdown before index/API responded.
+      const stampMissingIdbStock = (list) => {
+        const missingCodes = (list ?? [])
+          .filter((row) => productStockFieldsMissing(row))
+          .map((row) => row?.product_code)
+          .filter(Boolean);
+        if (!missingCodes.length) return;
+        const paintSeq = seq;
+        void getPosOfflineProducts(missingCodes)
+          .then((idbRows) => {
+            const byCode = new Map(
+              (idbRows ?? [])
+                .filter((row) => row?.product_code && !productStockFieldsMissing(row))
+                .map((row) => [String(row.product_code), row]),
+            );
+            if (!byCode.size) return;
+            upsertPosSearchProducts([...byCode.values()]);
+            if (paintSeq !== searchSeq.current) return;
+            setSearchResults((prev) => {
+              if (!prev?.length) return prev;
+              let changed = false;
+              const next = prev.map((row) => {
+                const idb = byCode.get(String(row?.product_code ?? ""));
+                if (!idb) return row;
+                const merged = mergeProductStockFields(row, idb);
+                if (merged !== row) changed = true;
+                return merged;
+              });
+              return changed ? next : prev;
+            });
+          })
+          .catch(() => {});
+      };
+
       /** Offline/index search is already ranked — paint fast from memory; stock is background. */
       const paintFromOffline = async () => {
         const local = await searchOffline(trimmed, rankOpts.limit);
@@ -6068,37 +6127,7 @@ export function PosScreen({ standalone = false }) {
 
         // If POS-open overlay already wrote Available to IndexedDB, stamp it
         // without hitting stock APIs (search stays local).
-        const missingCodes = stamped
-          .filter((row) => productStockFieldsMissing(row))
-          .map((row) => row?.product_code)
-          .filter(Boolean);
-        if (missingCodes.length) {
-          const paintSeq = seq;
-          void getPosOfflineProducts(missingCodes)
-            .then((idbRows) => {
-              const byCode = new Map(
-                (idbRows ?? [])
-                  .filter((row) => row?.product_code && !productStockFieldsMissing(row))
-                  .map((row) => [String(row.product_code), row]),
-              );
-              if (!byCode.size) return;
-              upsertPosSearchProducts([...byCode.values()]);
-              if (paintSeq !== searchSeq.current) return;
-              setSearchResults((prev) => {
-                if (!prev?.length) return prev;
-                let changed = false;
-                const next = prev.map((row) => {
-                  const idb = byCode.get(String(row?.product_code ?? ""));
-                  if (!idb) return row;
-                  const merged = mergeProductStockFields(row, idb);
-                  if (merged !== row) changed = true;
-                  return merged;
-                });
-                return changed ? next : prev;
-              });
-            })
-            .catch(() => {});
-        }
+        stampMissingIdbStock(stamped);
         return stamped;
       };
 
@@ -6122,7 +6151,15 @@ export function PosScreen({ standalone = false }) {
       const applyRemoteMerge = (remoteRaw) => {
         if (seq !== searchSeq.current || abort.signal.aborted) return;
         const remote = sellableSearchResults(
-          (remoteRaw ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+          (remoteRaw ?? []).map((p) => {
+            const enriched = enrichProductForLpo(p, uomMap, vatMap);
+            const code = enriched?.product_code;
+            if (!code) return enriched;
+            if (!productStockFieldsMissing(enriched)) return enriched;
+            const local = getPosSearchProduct(code);
+            if (!local || productStockFieldsMissing(local)) return enriched;
+            return mergeProductStockFields(enriched, local);
+          }),
         );
         let list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
         // Remote can return empty or unrelated rows while local index already matched.
@@ -6138,6 +6175,16 @@ export function PosScreen({ standalone = false }) {
         // Keep local hits when the API merge is empty — avoids dropdown blink.
         commitSearchResults(list, { allowEmpty: !localPaint.length });
         finishRetailPackages(list);
+        stampMissingIdbStock(list);
+      };
+
+      const salesProductSearchParams = {
+        per_page: 40,
+        q: trimmed,
+        fields: "lean",
+        status: "active",
+        sales_stock: 1,
+        ...productBranchParams,
       };
 
       let localPaint = [];
@@ -6164,13 +6211,7 @@ export function PosScreen({ standalone = false }) {
           setSearching(true);
           try {
             const res = await apiRequest("/products", {
-              searchParams: {
-                per_page: 40,
-                q: trimmed,
-                fields: "lean",
-                status: "active",
-                ...productBranchParams,
-              },
+              searchParams: salesProductSearchParams,
               signal: abort.signal,
               loading: false,
               reportIssues: false,
@@ -6209,13 +6250,7 @@ export function PosScreen({ standalone = false }) {
         // Local catalog miss: wait on the network.
         setSearching(true);
         const res = await apiRequest("/products", {
-          searchParams: {
-            per_page: 40,
-            q: trimmed,
-            fields: "lean",
-            status: "active",
-            ...productBranchParams,
-          },
+          searchParams: salesProductSearchParams,
           signal: abort.signal,
           loading: false,
           reportIssues: false,
@@ -8240,9 +8275,9 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     // Classic / local drafts enqueue without freezing the grid — allow swap while a
-    // parallel line save finishes. Hard checkout busy still blocks (except soft loads).
+    // parallel line save finishes. Create Order queues the same way as External POS.
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !classicLayout && !localDraftEdit) {
+    if (lineBusy && !classicLayout && !standalone && !localDraftEdit) {
       setStatusMessage("Please wait — saving the previous line, then swap again.");
       return;
     }
@@ -9512,41 +9547,9 @@ export function PosScreen({ standalone = false }) {
     };
 
     // Always serialize line adds — rapid Enter/click must not create duplicate rows.
-    // External POS / Classic: no blocking overlay. unlockUiEarly paints Sugar then frees
-    // the till so Kamande can be searched/added while TemporaryCart finishes in queue.
-    // Backoffice Create Order still uses the overlay for slower rematerialize paths.
-    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    const queueWithoutBlockingOverlay =
-      classicLayout || standalone || localDraftEdit;
-    if (queueWithoutBlockingOverlay) {
-      void enqueueCartCommit(run)
-        .catch((e) => {
-          lastAddLineDedupeRef.current = { key: null, at: 0 };
-          setStatusMessage(
-            e instanceof ApiError
-              ? e.message
-              : wasEditing
-                ? "Failed to update line"
-                : "Failed to add line",
-          );
-        })
-        .finally(() => {
-          healStuckCartLineSaveGate();
-          releaseCartLineMutationGate();
-        });
-      return;
-    }
-    void runWithLineSaveOverlay(
-      async () => {
-        await enqueueCartCommit(run);
-      },
-      {
-        message: wasEditing ? "Updating line…" : "Adding item…",
-        detail: "Saving this line — please wait until it finishes.",
-        // Fast POS / Create Order adds stay silent; overlay only if save is slow.
-        showAfterMs: 400,
-      },
-    )
+    // Queue without a blocking overlay so the next SKU can be searched/added while
+    // TemporaryCart finishes. unlockUiEarly paints the line then frees Scan.
+    void enqueueCartCommit(run)
       .catch((e) => {
         lastAddLineDedupeRef.current = { key: null, at: 0 };
         setStatusMessage(
@@ -9558,16 +9561,8 @@ export function PosScreen({ standalone = false }) {
         );
       })
       .finally(() => {
-        // Always free Scan/park after this add's overlay — drifted pending/depth
-        // used to leave pickProduct dead until a full page reload.
-        if (
-          lineSaveOverlayDepthRef.current <= 0 &&
-          cartCommitPendingRef.current <= 0
-        ) {
-          cartLineMutationGateRef.current = false;
-        } else {
-          releaseCartLineMutationGate();
-        }
+        healStuckCartLineSaveGate();
+        releaseCartLineMutationGate();
       });
   }
 
@@ -9989,7 +9984,7 @@ export function PosScreen({ standalone = false }) {
       clearSwapChrome();
     }
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (!classicLayout && !localDraftEdit && (busy || lineBusy)) {
+    if (!classicLayout && !standalone && !localDraftEdit && (busy || lineBusy)) {
       setStatusMessage("Please wait — saving the previous line, then press Enter again.");
       return;
     }
@@ -11099,6 +11094,17 @@ export function PosScreen({ standalone = false }) {
     });
     if (!ok) return;
 
+    let cancellationReason = null;
+    const willRequestOnlineApproval =
+      needsApproval &&
+      Boolean(saleId) &&
+      !offlineMode &&
+      networkStatus !== "offline";
+    if (willRequestOnlineApproval) {
+      cancellationReason = await requestCancelApprovalReason();
+      if (!cancellationReason) return;
+    }
+
     skipEditAutosaveRef.current = true;
     cartCommitGenerationRef.current += 1;
     setBusy(true);
@@ -11158,17 +11164,9 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (needsApproval) {
-        const reason = window.prompt("Reason for cancellation (required):");
-        if (!reason || reason.trim().length < 3) {
-          if (reason !== null) {
-            notifyError("Cancellation reason must be at least 3 characters.");
-          }
-          setStatusMessage(null);
-          return;
-        }
         await apiRequest(`/sales/orders/${saleId}/request-cancellation`, {
           method: "POST",
-          body: { reason: reason.trim() },
+          body: { reason: String(cancellationReason ?? "").trim() },
         });
         notifySuccess("Cancellation request sent to managers for approval.");
         setStatusMessage(
@@ -17263,6 +17261,7 @@ export function PosScreen({ standalone = false }) {
     zReportOpen,
     autoHeldPrompt: Boolean(autoHeldPrompt),
     discountReasonDialogOpen,
+    cancelReasonDialogOpen,
     preparingNextOpen,
     previousOrderLoading,
     autoHeldBusy: Boolean(autoHeldBusy),
@@ -17366,6 +17365,7 @@ export function PosScreen({ standalone = false }) {
         || state.zReportOpen
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
+        || state.cancelReasonDialogOpen
         || state.preparingNextOpen
         || state.previousOrderLoading
         || state.autoHeldBusy
@@ -17390,6 +17390,7 @@ export function PosScreen({ standalone = false }) {
       if (state.zReportOpen) return "Z-report";
       if (state.autoHeldPrompt) return "auto-held order";
       if (state.discountReasonDialogOpen) return "discount reason";
+      if (state.cancelReasonDialogOpen) return "cancellation reason";
       if (state.preparingNextOpen) return "preparing next order";
       if (state.previousOrderLoading) return "loading order";
       if (state.autoHeldBusy) return "auto-held order";
@@ -18643,6 +18644,16 @@ export function PosScreen({ standalone = false }) {
                     </>
                   )}
                 </p>
+                {classicLayout ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void cancelPreviousOrderFromEdit()}
+                    className="mt-2 rounded-md border border-red-600 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:hover:bg-red-950/40"
+                  >
+                    Cancel order
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -19677,6 +19688,15 @@ export function PosScreen({ standalone = false }) {
         onSubmit={closeDiscountReasonDialog}
         onCancel={() => closeDiscountReasonDialog(null)}
       />
+      <DiscountApprovalReasonDialog
+        open={cancelReasonDialogOpen}
+        title="Cancellation reason"
+        description="Managers need a reason before they can approve this cancellation."
+        submitLabel="Submit reason"
+        placeholder="e.g. Customer changed mind, duplicate order…"
+        onSubmit={closeCancelReasonDialog}
+        onCancel={() => closeCancelReasonDialog(null)}
+      />
 
       <PosPriceCheckerModal
         open={priceCheckerOpen}
@@ -19797,17 +19817,6 @@ export function PosScreen({ standalone = false }) {
             />
           ) : null}
         </BatchActionBar>
-      ) : null}
-      {classicLayout && standalone && isCartEditSession && selectedLineCount === 0 ? (
-        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center gap-3 rounded-full border border-red-200 bg-white px-5 py-3 shadow-lg dark:border-red-900 dark:bg-slate-900">
-          <span className="text-sm text-slate-600 dark:text-slate-300">
-            Editing Cash Sales #{formatPosBrowseLabel(cart)}
-          </span>
-          <BatchCancelOrderButton
-            busy={busy || lineBusy}
-            onClick={() => void cancelPreviousOrderFromEdit()}
-          />
-        </div>
       ) : null}
     </div>
   );

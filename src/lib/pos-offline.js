@@ -262,8 +262,8 @@ async function tryHydratePosSearchIndex(products, warmedAt) {
 /**
  * Warm lean product catalog into IndexedDB for offline search.
  * @param {{ force?: boolean, awaitStock?: boolean }} [options]
- *   awaitStock — External POS open: wait for the first stock overlay so Find
- *   already has Available. Search never waits on this.
+ *   awaitStock — POS / Create Order open: wait for the first stock overlay so
+ *   Find already has Available. Search never waits on this.
  */
 export async function warmPosOfflineCatalog({ force = false, awaitStock = false } = {}) {
   const scopeKey = resolvePosOfflineCatalogScopeKey();
@@ -6477,6 +6477,7 @@ export function isLocalFirstCashCheckout(body) {
 /** Prepare for offline: catalog + Cash Sales seq peek (no org S# pool). */
 export async function preparePosOfflineReady({ floatSessionId = null } = {}) {
   // First stock overlay runs here — when External POS opens — not on Find.
+  // Create Order catalog-only prepare also awaits stock (see use-pos-offline-support).
   const catalog = await warmPosOfflineCatalog({ force: false, awaitStock: true });
   // Peek only — Cash Sales # is local; org order_num is assigned on sync.
   const numbers = await ensurePosOfflineOrderNumbers({
