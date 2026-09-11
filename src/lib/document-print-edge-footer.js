@@ -9,7 +9,8 @@ import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";
  */
 export const DOCUMENT_PRINT_EDGE_BODY_TOP = "10mm";
 export const DOCUMENT_PRINT_EDGE_BODY_SIDES = "12mm";
-export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "30mm";
+/** Clearance above the fixed print footer — keep tight so A4 sheets are not half-blank. */
+export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "16mm";
 
 /** @deprecated Prefer body padding constants. @page margins must remain 0. */
 export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "0";
@@ -20,14 +21,14 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   const footerPx = (base, print = false) =>
     orgPrintSectionPx(base, generalSettings, { variant, section: "footer", print });
   return `
-  body.has-doc-print-edge-footer { padding-bottom: 72px; }
+  body.has-doc-print-edge-footer { padding-bottom: 48px; }
   .doc-print-edge-footer {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 10;
-    padding: 8px 16px 4px;
+    padding: 4px 16px 3px;
     border-top: 1px dotted #000;
     background: #fff;
     font-size: ${footerPx(9)};
@@ -115,7 +116,10 @@ export function buildDocumentPrintEdgeFooterHtml({
   })();
 
   const useCssPageCounters = pageLabel === "auto" || pageLabel === "css";
-  const pageRightHtml = useCssPageCounters
+  const hidePageLabel = pageLabel === "hide" || pageLabel === "";
+  const pageRightHtml = hidePageLabel
+    ? `<span class="print-footer-right"></span>`
+    : useCssPageCounters
     ? `<span class="print-footer-right">Page <span class="print-footer-page-counter"></span></span>`
     : `<span class="print-footer-right">${escapeHtml(pageLabel)}</span>`;
 

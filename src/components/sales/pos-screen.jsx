@@ -6975,6 +6975,17 @@ export function PosScreen({ standalone = false }) {
         targetLineRef = cartLineRef(offlineMerge);
       }
       const preserveOfflineIdentity = isActiveOfflineEditSession(working);
+      // unlockUiEarly already painted this add. A pending previous-order-edit outbox
+      // forces the IndexedDB path — minting a new client_line_id here inserted Sugar
+      // a second time (combine-off showed two qty-1 rows).
+      const paintedSource =
+        !intendedEdit && painted?.optimisticLine
+          ? (working?.lines ?? []).find(
+              (row) =>
+                cartLinesShareIdentity(row, painted.optimisticLine) ||
+                String(cartLineRef(row)) === String(cartLineRef(painted.optimisticLine)),
+            ) ?? painted.optimisticLine
+          : null;
       const editSourceLine =
         intendedEdit
           ? (working?.lines ?? []).find(
@@ -6984,7 +6995,7 @@ export function PosScreen({ standalone = false }) {
                 cartLineMatchesRef(row, editingId) ||
                 (resolvedMergeTarget && cartLinesShareIdentity(row, resolvedMergeTarget)),
             ) ?? resolvedMergeTarget
-          : resolvedMergeTarget;
+          : resolvedMergeTarget ?? paintedSource;
       const localLine = {
         client_line_id: String(
           editSourceLine?.client_line_id ??

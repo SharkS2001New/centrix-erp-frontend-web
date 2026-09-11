@@ -407,22 +407,21 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
 
 /**
  * A4 line-area budgets (mm) after page chrome (header / continued label / column head).
- * The 30mm edge footer is a fixed overlay — do not subtract it from this flowing
- * line area or pages stop early with a large blank band.
+ * The edge footer is a fixed overlay — do not subtract its full band from this flowing
+ * line area or pages stop early with a large blank region above the footer.
  *
- * Budgets stay conservative vs measured row height so Chromium never clips the last
- * few lines of a .print-page (those clipped rows are lost — they do not flow to the
- * next sheet). Prefer a short last page over missing item numbers mid-list.
+ * Budgets stay slightly conservative vs measured row height so Chromium never clips the
+ * last few lines of a .print-page. Prefer a short last page over missing item numbers.
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 208,
+  first: 222,
   /** Line area after continued label + column head on later pages. */
-  continued: 248,
+  continued: 258,
   /** Summary box + signature blocks reserved on the last page only. */
-  summaryReserve: 48,
+  summaryReserve: 42,
   /** Empty margin after the last item on a page so the last line cannot spill. */
-  bottomSafety: 5,
+  bottomSafety: 3,
 };
 
 /** Estimate print height of one picking row from its content (taller when multi-line). */
@@ -435,8 +434,8 @@ export function estimatePickingLineHeightMm(line) {
   if (price.length > 36) textLines += 1;
   const name = String(line?.product_name ?? "").trim();
   if (name.length > 28) textLines += 1;
-  // Compact print rows: ~5px pad × 2 + 11px type + hairline ≈ 7.2mm.
-  return 7.2 + Math.max(0, textLines - 1) * 3.2;
+  // Compact print rows: ~3px pad × 2 + 11px type + hairline ≈ 6.0mm.
+  return 6.0 + Math.max(0, textLines - 1) * 2.8;
 }
 
 function sumEstimatedPickingHeightMm(lines) {
@@ -518,7 +517,7 @@ function pickingListPrintStyles(
       max-width: 100%;
       box-sizing: border-box;
       padding: ${px(12)} ${px(8)};
-      padding-bottom: 3mm;
+      padding-bottom: 2mm;
       overflow: visible;
       page-break-after: always;
       break-after: page;
@@ -580,7 +579,7 @@ function pickingListPrintStyles(
     .continued-label {
       font-size: ${px(11)};
       color: #64748b;
-      margin: 0 0 ${px(8)};
+      margin: 0 0 ${px(4)};
     }
   `;
 
@@ -591,23 +590,23 @@ function pickingListPrintStyles(
     ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .org-header { text-align: center; margin-bottom: ${px(8)}; }
-    .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
+    .org-header { text-align: center; margin-bottom: ${px(4)}; }
+    .org-logo { max-height: ${px(40)}; margin-bottom: ${px(4)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
-    .title-block { text-align: center; margin-bottom: ${px(10)}; }
-    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
-    .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
+    .title-block { text-align: center; margin-bottom: ${px(6)}; }
+    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(2)}; }
+    .meta-line { font-size: ${px(12)}; margin: ${px(1)} 0; color: #334155; }
     .pick-head,
     .pick-line { font-size: ${px(12)}; }
     .pick-head {
       border-bottom: 2px solid #0f172a;
-      padding: ${px(5)} 0;
+      padding: ${px(3)} 0;
       font-weight: 700;
     }
     .pick-head > div { padding: 0 ${px(4)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
-      padding: ${px(5)} 0;
+      padding: ${px(3)} 0;
     }
     .pick-line > div { padding: 0 ${px(4)}; }
     .col-no { text-align: center; }
@@ -630,10 +629,10 @@ function pickingListPrintStyles(
       font-variant-numeric: tabular-nums;
     }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: 100%; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(16)}; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(16)}; margin-top: ${px(8)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
-    .summary-box { margin-top: ${px(10)}; padding: ${px(10)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
+    .summary-box { margin-top: ${px(6)}; padding: ${px(6)} ${px(8)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; gap: ${px(12)}; }
     .summary-row strong { text-align: right; overflow-wrap: anywhere; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
@@ -645,7 +644,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(4, true)} ${px(2, true)} 3mm;
+        padding: ${px(4, true)} ${px(2, true)} 2mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -671,23 +670,23 @@ function pickingListPrintStyles(
     ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .org-header { text-align: center; margin-bottom: ${px(8)}; }
-    .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
+    .org-header { text-align: center; margin-bottom: ${px(4)}; }
+    .org-logo { max-height: ${px(40)}; margin-bottom: ${px(4)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
-    .title-block { text-align: center; margin-bottom: ${px(10)}; }
-    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
-    .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
+    .title-block { text-align: center; margin-bottom: ${px(6)}; }
+    .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(2)}; }
+    .meta-line { font-size: ${px(12)}; margin: ${px(1)} 0; color: #334155; }
     .pick-head,
     .pick-line { font-size: ${px(12)}; }
     .pick-head {
       border-bottom: 2px solid #0f172a;
-      padding: ${px(5)} 0;
+      padding: ${px(3)} 0;
       font-weight: 700;
     }
     .pick-head > div { padding: 0 ${px(4)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
-      padding: ${px(5)} 0;
+      padding: ${px(3)} 0;
     }
     .pick-line > div { padding: 0 ${px(4)}; }
     .col-no { text-align: center; }
@@ -705,10 +704,10 @@ function pickingListPrintStyles(
     }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
     .pick-line.shortage { background: #fff7ed; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(16)}; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(16)}; margin-top: ${px(8)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
-    .summary-box { margin-top: ${px(10)}; padding: ${px(10)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
+    .summary-box { margin-top: ${px(6)}; padding: ${px(6)} ${px(8)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(12)}; margin: ${px(4)} 0; gap: ${px(12)}; }
     .summary-row strong { text-align: right; overflow-wrap: anywhere; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
@@ -720,7 +719,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(4, true)} ${px(2, true)} 3mm;
+        padding: ${px(4, true)} ${px(2, true)} 2mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -902,8 +901,9 @@ export function buildPickingListHtml({
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy: printedByName,
     printedAt,
-    // Fixed footers repeat on every sheet — use CSS page counters when multi-page.
-    pageLabel: totalPages > 1 ? "auto" : "Page 1 of 1",
+    // Playwright PDF (print agent) does not increment CSS page counters — "Page 0 of 0".
+    // Multi-page sheets already print "Page X of Y" in the document header.
+    pageLabel: totalPages > 1 ? "hide" : "Page 1 of 1",
   })}
 </body>
 </html>`;

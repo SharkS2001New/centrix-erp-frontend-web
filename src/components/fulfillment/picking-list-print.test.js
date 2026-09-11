@@ -94,9 +94,21 @@ describe("chunkPickingLinesForPrint", () => {
       summaryReserveMm: 40,
       bottomSafetyMm: 0,
     });
-    // Short rows are ~7.2mm → 100mm budget holds ~13 lines, not stop early for summary.
+    // Short rows are ~6.0mm → 100mm budget holds ~16 lines, not stop early for summary.
     expect(chunks[0].length).toBeGreaterThanOrEqual(11);
     expect(chunks.flat()).toHaveLength(lines.length);
+  });
+
+  it("packs more than 26 short sales lines onto the first A4 page", () => {
+    const lines = Array.from({ length: 36 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: `ITEM ${i + 1}`,
+      quantity_label: "10 kg",
+      price_label: "100 per kg",
+    }));
+    const chunks = chunkPickingLinesForPrint(lines);
+    expect(chunks[0].length).toBeGreaterThan(26);
+    expect(chunks.flat()).toHaveLength(36);
   });
 
   it("fits a typical 20-line sales picking list on one A4 page", () => {
@@ -191,7 +203,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(pageCount).toBeGreaterThan(1);
     expect(html).toContain("Page 1 of");
     expect(html).toContain("continued · Page");
-    expect(html).toContain("print-footer-page-counter");
+    expect(html).not.toMatch(/class="print-footer-page-counter"/);
     expect(html).toContain("ITEM 1");
     expect(html).toContain("ITEM 45");
   });

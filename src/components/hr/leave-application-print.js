@@ -5,6 +5,7 @@ import {
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
+import { leaveDurationLabel } from "@/lib/leave-duration";
 import {
   buildDocumentPrintEdgeFooterHtml,
   DOCUMENT_PRINT_EDGE_BODY_SIDES,
@@ -52,13 +53,7 @@ function deductFromLabel(value) {
 }
 
 function durationLabel(record) {
-  if (record?.duration_type === "half_day") {
-    const period = record?.half_day_period === "afternoon" ? "Afternoon" : "Morning";
-    return `Half day (${period})`;
-  }
-  const days = Number(record?.total_days ?? record?.days_deducted ?? 0);
-  if (days <= 0) return "Full day(s)";
-  return days === 1 ? "1 working day" : `${days} working days`;
+  return leaveDurationLabel(record);
 }
 
 function statusLabel(status) {

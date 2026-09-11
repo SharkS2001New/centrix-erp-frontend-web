@@ -2182,8 +2182,9 @@ export async function upsertLocalPosCartLine(
   }
 
   if (idx >= 0) {
+    const { _optimistic: _dropOptimistic, ...existing } = lines[idx];
     lines[idx] = {
-      ...lines[idx],
+      ...existing,
       ...line,
       // Keep the first identity so qty/F12/swap edits update the same row
       // (LightStores: WHERE update_no=@UpdateCode AND user_id=@USERID).

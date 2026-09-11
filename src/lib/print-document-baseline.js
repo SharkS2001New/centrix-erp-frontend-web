@@ -56,7 +56,7 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
       right: 0 !important;
       bottom: 0 !important;
       margin: 0 !important;
-      padding: 3px ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 1.5mm !important;
+      padding: 2px ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 1mm !important;
       border-top: 1px dotted #000;
       background: #fff !important;
       z-index: 9999 !important;

@@ -6,6 +6,12 @@ import { Field, formatShortDate, inputClassName } from "@/components/catalog/cat
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import {
+  isSingleDateLeaveDuration,
+  LEAVE_DURATION_TYPES,
+  leaveHoursAreValid,
+  parseLeaveHours,
+} from "@/lib/leave-duration";
 
 const LEAVE_TYPE_OPTIONS = [
   { value: "unpaid", label: "Unpaid leave" },
@@ -51,6 +57,10 @@ export function buildOffDayEmptyForm(extra, row) {
           : resolveBalancePool(row),
     duration_type: row?.duration_type ?? "full_day",
     half_day_period: row?.half_day_period ?? "morning",
+    hours:
+      row?.duration_type === "hourly"
+        ? String(parseLeaveHours(row?.total_hours) || 1)
+        : "1",
     notes: row?.notes ?? "",
   };
 }
@@ -61,16 +71,18 @@ export function buildOffDayBody(form) {
   const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? "unpaid");
   const leaveType =
     deductFrom === "annual" ? "annual" : deductFrom === "sick" ? "sick" : deductFrom === "unpaid" ? "unpaid" : "other";
+  const singleDate = isSingleDateLeaveDuration(form.duration_type);
 
   return {
     employee_id: Number(form.employee_id),
     start_date: form.start_date,
-    end_date: form.duration_type === "half_day" ? form.start_date : form.end_date,
+    end_date: singleDate ? form.start_date : form.end_date,
     assignment_kind: assignmentKind,
     deduct_from: deductFrom,
     leave_type: leaveType,
     duration_type: form.duration_type,
     half_day_period: form.duration_type === "half_day" ? form.half_day_period : null,
+    ...(form.duration_type === "hourly" ? { hours: parseLeaveHours(form.hours) } : {}),
     notes: form.notes.trim() || null,
   };
 }
@@ -84,6 +96,10 @@ export function validateOffDayForm(form, extra) {
   if (!form.start_date) return "Start date is required.";
   if (form.duration_type === "half_day") {
     if (!form.half_day_period) return "Select morning or afternoon for half day.";
+  } else if (form.duration_type === "hourly") {
+    if (!leaveHoursAreValid(form.hours)) {
+      return "Enter how many hours of leave to apply for (at least 0.25).";
+    }
   } else if (!form.end_date) {
     return "End date is required.";
   } else if (form.end_date < form.start_date) {
@@ -146,6 +162,8 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
 
   const isLeave = form.assignment_kind !== "off_day";
   const isHalfDay = form.duration_type === "half_day";
+  const isHourly = form.duration_type === "hourly";
+  const isSingleDate = isSingleDateLeaveDuration(form.duration_type);
   const salaryDeductible = !isLeave && Boolean(form.salary_deductible);
   const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? (isLeave ? "unpaid" : "off_days"));
   const exceptLeaveId = extra?.editingRow?.id;
@@ -204,8 +222,13 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
       setLeavePreview?.(null);
       return;
     }
-    const endDate = isHalfDay ? form.start_date : form.end_date;
+    const endDate = isSingleDate ? form.start_date : form.end_date;
     if (!endDate) {
+      setPreview(null);
+      setLeavePreview?.(null);
+      return;
+    }
+    if (isHourly && !leaveHoursAreValid(form.hours)) {
       setPreview(null);
       setLeavePreview?.(null);
       return;
@@ -220,6 +243,7 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
         end_date: endDate,
         duration_type: form.duration_type,
         half_day_period: isHalfDay ? form.half_day_period : "",
+        ...(isHourly ? { hours: parseLeaveHours(form.hours) } : {}),
         assignment_kind: form.assignment_kind === "off_day" ? "off_day" : "leave",
         deduct_from: deductFrom,
         ...(exceptLeaveId ? { except_leave_id: exceptLeaveId } : {}),
@@ -250,24 +274,36 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
     form.end_date,
     form.duration_type,
     form.half_day_period,
+    form.hours,
     form.assignment_kind,
     deductFrom,
     isHalfDay,
+    isHourly,
+    isSingleDate,
     exceptLeaveId,
     setLeavePreview,
   ]);
 
   const previewLabel = useMemo(() => {
     if (previewLoading) return "Calculating…";
-    if (!preview) return "Select employee and dates to see totals.";
-    const days = Number(preview.working_days ?? preview.total_days);
-    const dayLabel = days === 1 ? "1 working day" : `${days} working days`;
-    const hours = Number(preview.total_hours);
-    if (salaryDeductible) {
-      return `${dayLabel} · deductible from salary (${hours} hour${hours === 1 ? "" : "s"})`;
+    if (!preview) {
+      return isHourly
+        ? "Select employee, date, and hours to see totals."
+        : "Select employee and dates to see totals.";
     }
-    return `${dayLabel} · ${hours} hour${hours === 1 ? "" : "s"} from balance`;
-  }, [preview, previewLoading, salaryDeductible]);
+    const days = Number(preview.working_days ?? preview.total_days);
+    const hours = Number(preview.total_hours);
+    const hourLabel = hours === 1 ? "1 hour" : `${hours} hours`;
+    const dayLabel =
+      days === 1 ? "1 working day" : `${Number(days.toFixed(4))} working day${days === 1 ? "" : "s"}`;
+    const span = isHourly ? hourLabel : `${dayLabel} · ${hourLabel}`;
+    if (salaryDeductible) {
+      return `${span} · deductible from salary`;
+    }
+    return isHourly
+      ? `${span} · ${Number(days.toFixed(4))} day${days === 1 ? "" : "s"} from balance`
+      : `${span} from balance`;
+  }, [preview, previewLoading, salaryDeductible, isHourly]);
 
   const employeeOptions = useMemo(() => {
     if (!form.employee_id || !employeeLabel) return [];
@@ -387,7 +423,7 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
             setForm((prev) => ({
               ...prev,
               start_date: e.target.value,
-              end_date: prev.duration_type === "half_day" ? e.target.value : prev.end_date,
+              end_date: isSingleDateLeaveDuration(prev.duration_type) ? e.target.value : prev.end_date,
             }))
           }
           required
@@ -403,13 +439,17 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
             setForm((prev) => ({
               ...prev,
               duration_type,
-              end_date: duration_type === "half_day" ? prev.start_date : prev.end_date,
+              end_date: isSingleDateLeaveDuration(duration_type) ? prev.start_date : prev.end_date,
+              hours: duration_type === "hourly" ? prev.hours || "1" : prev.hours,
             }));
           }}
           className={inputClassName()}
         >
-          <option value="full_day">Full day(s)</option>
-          <option value="half_day">Half day (single date)</option>
+          {LEAVE_DURATION_TYPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </Field>
 
@@ -423,6 +463,23 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
             { value: "afternoon", label: "Afternoon" },
           ]}
         />
+      ) : isHourly ? (
+        <Field label="Hours">
+          <input
+            type="number"
+            min="0.25"
+            step="0.25"
+            max="24"
+            value={form.hours}
+            onChange={(e) => setForm((prev) => ({ ...prev, hours: e.target.value }))}
+            required
+            className={inputClassName()}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Time off on the start date — e.g. 1 hour to attend an appointment. Deducted from the leave
+            balance as a fraction of the shift.
+          </p>
+        </Field>
       ) : (
         <Field label="End date">
           <input

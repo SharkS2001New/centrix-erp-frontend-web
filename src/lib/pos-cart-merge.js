@@ -844,6 +844,7 @@ export function buildOptimisticCartLine(product, lineBody, finalComputed) {
   return {
     id: token,
     update_code: token,
+    client_line_id: token,
     product_code: product.product_code,
     product_name: product.product_name,
     unit_price: lineBody.unit_price,

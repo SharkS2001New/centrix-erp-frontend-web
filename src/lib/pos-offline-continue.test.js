@@ -245,6 +245,44 @@ describe("continueOpenCartThroughOutage", () => {
     expect(cart.lines[0].quantity).toBe(3);
   });
 
+  it("persists an already-painted optimistic add without a second row when combine is off", async () => {
+    const token = "pending-banjab-1";
+    let cart = {
+      id: "active",
+      offline: true,
+      lines: [
+        {
+          id: token,
+          update_code: token,
+          client_line_id: token,
+          product_code: "13248085",
+          quantity: 1,
+          unit_price: 160,
+          amount: 160,
+          on_wholesale_retail: 1,
+          _optimistic: true,
+        },
+      ],
+    };
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        id: token,
+        update_code: token,
+        client_line_id: token,
+        product_code: "13248085",
+        quantity: 1,
+        unit_price: 160,
+        amount: 160,
+        on_wholesale_retail: 1,
+      },
+      { combineIdenticalLines: false },
+    );
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0].product_code).toBe("13248085");
+    expect(cart.lines[0]._optimistic).toBeUndefined();
+  });
+
   it("F12/qty edit updates by shared id when client_line_id and CLU- ref differ (combine off)", async () => {
     let cart = {
       id: "active",

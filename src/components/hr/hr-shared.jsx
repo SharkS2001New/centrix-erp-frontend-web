@@ -923,7 +923,12 @@ export function buildPayrollAttendanceNote(payroll, { forReceipt = false } = {})
     );
   }
   if (unpaidLeave > 0) {
-    parts.push(`${formatPayrollDays(unpaidLeave)} unpaid / requested off`);
+    const unpaidHours = Number(attendance.unpaid_leave_hours ?? payroll.unpaid_leave_hours ?? 0);
+    parts.push(
+      unpaidHours > 0.009
+        ? `${formatPayrollDays(unpaidLeave)} unpaid leave (${formatPayrollDays(unpaidHours)} h)`
+        : `${formatPayrollDays(unpaidLeave)} unpaid / requested off`,
+    );
   }
   if (deductibleOff > 0 && unpaidLeave <= 0) {
     parts.push(`${formatPayrollDays(deductibleOff)} requested off (deductible)`);

@@ -22,6 +22,7 @@ import {
   HrOffDayAssignmentFields,
   validateOffDayForm,
 } from "@/components/hr/hr-off-day-assignment-fields";
+import { leaveDurationLabel } from "@/lib/leave-duration";
 
 function formatLocalDate(d) {
   const y = d.getFullYear();
@@ -58,6 +59,9 @@ function formatPeriod(record) {
 }
 
 function formatDays(record) {
+  if (record.duration_type === "hourly") {
+    return leaveDurationLabel(record);
+  }
   if (record.total_days == null) return "—";
   const days =
     record.deduct_from === "unpaid"

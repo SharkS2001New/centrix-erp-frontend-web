@@ -694,6 +694,7 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     const next = applyOptimisticCartMutation(prev, optimistic, {
       combineIdenticalLines: false,
     });
+    expect(optimistic.client_line_id).toBe(optimistic.id);
     expect(next.lines).toHaveLength(2);
     expect(next.lines.map((line) => line.quantity)).toEqual([2, 10]);
   });

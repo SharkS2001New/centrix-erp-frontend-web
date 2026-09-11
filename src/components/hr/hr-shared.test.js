@@ -154,6 +154,28 @@ describe("payroll attendance breakdown copy", () => {
     );
   });
 
+  it("shows unpaid hourly leave in hours on the payroll note", () => {
+    const hourlyUnpaid = {
+      use_attendance_proration: true,
+      paid_work_days: 21.88,
+      expected_work_days: 22,
+      scheduled_work_days: 22,
+      unpaid_leave_days: 0.13,
+      unpaid_leave_hours: 1,
+      attendance: {
+        paid_days: 21.88,
+        expected_days: 22,
+        scheduled_work_days: 22,
+        absent_days: 0,
+        unpaid_leave_days: 0.13,
+        unpaid_leave_hours: 1,
+      },
+    };
+    expect(buildPayrollAttendanceNote(hourlyUnpaid)).toBe(
+      "21.88 of 22 payable days · 0.13 unpaid leave (1 h)",
+    );
+  });
+
   it("uses compact copy on payslip receipts only", () => {
     expect(payableAmountDaysHint(payroll, { forReceipt: true })).toBe("26 workdays");
     expect(buildPayrollAttendanceNote(payroll, { forReceipt: true })).toBe(
