@@ -135,6 +135,9 @@ function isClientNetworkIssueMessage(message, context = {}) {
     return (
       normalized.includes("request timed out")
       || normalized.includes("check your connection")
+      || normalized.includes("check your internet")
+      || normalized.includes("internet connection")
+      || normalized.includes("network_unavailable")
       || normalized.includes("connection timed out")
       || normalized.includes("connection lost")
       || normalized.includes("network request failed")

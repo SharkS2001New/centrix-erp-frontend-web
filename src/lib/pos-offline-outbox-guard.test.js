@@ -28,6 +28,11 @@ describe("isHealableOutboxSyncError", () => {
         message: "Cart is empty.",
       }),
     ).toBe(false);
+    expect(
+      isHealableOutboxSyncError({
+        message: "Product not found or is not available at this branch.",
+      }),
+    ).toBe(false);
   });
 });
 

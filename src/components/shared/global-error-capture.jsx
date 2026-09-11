@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { canSeeServerErrorDetail } from "@/lib/auth-storage";
-import { isAbortError, isPermissionDeniedError } from "@/lib/api";
+import { ApiError, isAbortError, isNetworkFetchError, isPermissionDeniedError } from "@/lib/api";
 import { emitSystemIssue } from "@/lib/system-issue-dispatcher";
 import { logApiErrorIssue } from "@/lib/system-issue-reports";
 
@@ -45,9 +45,17 @@ function rejectionMessage(reason) {
   return "Unhandled promise rejection";
 }
 
-function isBenignNetworkFailure(reason) {
+function isBenignClientFailure(reason) {
+  if (isNetworkFetchError(reason) || isPermissionDeniedError(reason)) {
+    return true;
+  }
+  if (reason instanceof ApiError && reason.status > 0 && reason.status < 500) {
+    return true;
+  }
   const message = reason instanceof Error ? reason.message : String(reason ?? "");
-  return /failed to fetch|networkerror|load failed|network request failed/i.test(message);
+  return /failed to fetch|networkerror|load failed|network request failed|internet connection|product not found or is not available/i.test(
+    message,
+  );
 }
 
 export function GlobalErrorCapture() {
@@ -57,10 +65,7 @@ export function GlobalErrorCapture() {
         return;
       }
       const message = event.error instanceof Error ? event.error.message : event.message;
-      if (isBenignNetworkFailure(message)) {
-        return;
-      }
-      if (isPermissionDeniedError(event.error ?? message)) {
+      if (isBenignClientFailure(event.error ?? message)) {
         return;
       }
       void reportUnhandledError(message, {
@@ -77,13 +82,8 @@ export function GlobalErrorCapture() {
         event.preventDefault?.();
         return;
       }
-      // Transient connectivity blips are already surfaced by apiRequest when caught;
-      // don't open a system-issue prompt for every Failed to fetch.
-      if (isBenignNetworkFailure(reason)) {
-        event.preventDefault?.();
-        return;
-      }
-      if (isPermissionDeniedError(reason)) {
+      // Transient connectivity / expected 4xx — already toasted; do not page admins.
+      if (isBenignClientFailure(reason)) {
         event.preventDefault?.();
         return;
       }

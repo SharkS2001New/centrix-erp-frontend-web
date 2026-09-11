@@ -3897,44 +3897,77 @@ async function resolvePreviousOrderEditCartId(row) {
 
   async function restoreFromSale(saleId) {
     if (!saleId) return null;
-    // Sticky TemporaryCart is shared with the live till. Never restore-to-cart over a
-    // cashier's in-progress new sale — that left previous-order lines on the next ticket
-    // when this sync later failed.
+    const seed = {
+      channel: "pos",
+      ...(row.cart_seed?.branch_id ? { branch_id: row.cart_seed.branch_id } : {}),
+      ...(row.cart_seed?.till_id ? { till_id: row.cart_seed.till_id } : {}),
+    };
+    const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? saleId ?? 0);
+    const editOrderNum = previousOrderEditOrgOrderNum(row);
+
+    let sticky = null;
+    let dedicated = null;
     try {
-      const seed = {
-        channel: "pos",
-        ...(row.cart_seed?.branch_id ? { branch_id: row.cart_seed.branch_id } : {}),
-        ...(row.cart_seed?.till_id ? { till_id: row.cart_seed.till_id } : {}),
-      };
-      const sticky = await apiRequest("/sales/carts", {
+      sticky = await apiRequest("/sales/carts", {
         method: "POST",
         body: seed,
         loading: false,
         reportIssues: false,
       });
-      const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? saleId ?? 0);
-      const editOrderNum = previousOrderEditOrgOrderNum(row);
-      await assertPosTillAvailableForSync({
-        stickyCart: sticky,
-        editSaleId,
-        editOrderNum,
-        allowWipeOrphans: true,
+    } catch {
+      /* sticky probe failed */
+    }
+    try {
+      dedicated = await apiRequest("/sales/carts", {
+        method: "POST",
+        body: { ...seed, offline_sync: true },
+        loading: false,
+        reportIssues: false,
       });
-    } catch (guardErr) {
-      if (isPreviousOrderEditTillBusyError(guardErr)) {
-        throw guardErr;
-      }
-      /* sticky probe failed — continue to restore */
+    } catch {
+      /* dedicated cart create failed */
     }
 
-    try {
-      const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+    const stickyId = sticky?.id != null ? Number(sticky.id) : null;
+    const dedicatedId = dedicated?.id != null ? Number(dedicated.id) : null;
+    // New API: offline_sync creates a cart that is not the till's sticky row.
+    const supportsDedicated =
+      stickyId != null && dedicatedId != null && stickyId !== dedicatedId;
+
+    if (!supportsDedicated) {
+      // Old API shares the till cart — never restore over an in-progress new sale.
+      try {
+        await assertPosTillAvailableForSync({
+          stickyCart: sticky,
+          editSaleId,
+          editOrderNum,
+          allowWipeOrphans: true,
+        });
+      } catch (guardErr) {
+        if (isPreviousOrderEditTillBusyError(guardErr)) {
+          throw guardErr;
+        }
+      }
+    }
+
+    const restoreBody = { replace: true };
+    if (supportsDedicated) {
+      restoreBody.offline_sync = true;
+      restoreBody.cart_id = dedicatedId;
+    }
+
+    async function postRestore(targetSaleId) {
+      const restored = await apiRequest(`/sales/orders/${targetSaleId}/restore-to-cart`, {
         method: "POST",
-        body: { replace: true },
+        body: restoreBody,
         loading: false,
         reportIssues: false,
       });
       return restored?.id ? Number(restored.id) : null;
+    }
+
+    try {
+      return await postRestore(saleId);
     } catch (restoreErr) {
       if (!isOrderNotEditableSyncError(restoreErr)) {
         throw restoreErr;
@@ -3950,13 +3983,7 @@ async function resolvePreviousOrderEditCartId(row) {
       if (!retrySaleId || retrySaleId === saleId) {
         throw restoreErr;
       }
-      const restored = await apiRequest(`/sales/orders/${retrySaleId}/restore-to-cart`, {
-        method: "POST",
-        body: { replace: true },
-        loading: false,
-        reportIssues: false,
-      });
-      return restored?.id ? Number(restored.id) : null;
+      return await postRestore(retrySaleId);
     }
   }
 
@@ -3970,15 +3997,21 @@ async function resolvePreviousOrderEditCartId(row) {
         // Finish/F8 already cleared held_order_num / superseded_sale_id on this cart.
         cartId = null;
       } else {
-        const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
-        const editOrderNum = previousOrderEditOrgOrderNum(row);
-        await assertPosTillAvailableForSync({
-          stickyCart: existing,
-          editSaleId,
-          editOrderNum,
-          allowWipeOrphans: true,
-        });
-        return cartId;
+        const occ = readLiveTemporaryCartOccupancy();
+        if (occ && Number(occ.cartId) === Number(cartId)) {
+          // This cart is the live till — restore onto a dedicated outbox cart instead.
+          cartId = null;
+        } else {
+          const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
+          const editOrderNum = previousOrderEditOrgOrderNum(row);
+          await assertPosTillAvailableForSync({
+            stickyCart: existing,
+            editSaleId,
+            editOrderNum,
+            allowWipeOrphans: true,
+          });
+          return cartId;
+        }
       }
     } catch (err) {
       if (isPreviousOrderEditTillBusyError(err)) {
@@ -5799,6 +5832,17 @@ const OUTBOX_FAILURE_REPORT_COOLDOWN_MS = 60_000;
 function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
   const message = err?.message ?? "Sync failed";
   const httpStatus = err instanceof ApiError ? err.status : null;
+  // 422/4xx validation (missing SKU, cart empty) belongs on the till overlay —
+  // not Platform → System errors.
+  if (
+    typeof httpStatus === "number" &&
+    httpStatus >= 400 &&
+    httpStatus < 500 &&
+    httpStatus !== 408 &&
+    httpStatus !== 429
+  ) {
+    return;
+  }
   const reportKey = [
     row.client_sale_uuid ?? "",
     row.sync_kind ?? "sale",
@@ -6310,6 +6354,17 @@ export async function syncPosOfflineOutbox({
       // Till is selling — leave the edit pending and try again later. Do not mark
       // sync_status=error or open Sync failed; that would look like sales are blocked.
       if (isPreviousOrderEditTillBusyError(err)) {
+        await withPosOfflineExclusiveLock(async () => {
+          const latest = (await idbGetOutboxSale(row.client_sale_uuid)) ?? row;
+          if (latest.sync_status === "editing") return;
+          await idbPutOutboxSale({
+            ...latest,
+            sync_status: "pending",
+            sync_started_at_ms: null,
+            revision_at_sync: null,
+            updated_at_ms: Date.now(),
+          });
+        });
         results.push({
           ok: false,
           deferred: true,

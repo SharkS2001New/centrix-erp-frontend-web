@@ -78,4 +78,17 @@ describe("system-issue-reports slow gating", () => {
       "Cannot read properties",
     );
   });
+
+  it("does not submit connectivity toasts as errors", async () => {
+    const { postSystemIssueReportRaw } = await import("./system-issue-api");
+    const { logApiErrorIssue } = await import("./system-issue-reports");
+
+    await logApiErrorIssue({
+      path: "/sales/orders/queues/booked",
+      method: "CLIENT",
+      status: 0,
+      message: "Please check your internet connection and try again.",
+    });
+    expect(postSystemIssueReportRaw).not.toHaveBeenCalled();
+  });
 });
