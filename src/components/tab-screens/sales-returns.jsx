@@ -168,18 +168,21 @@ export function SalesReturnsScreen() {
     setBusyId(row.id);
     try {
       if (type === "approve") {
-        const approveRequest = () =>
-          apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+        await apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+        notifySuccess(
+          `${row.return_no} approved. Stock restored — KRA credit runs in the background when the agent is online.`,
+        );
+      } else if (type === "retry-kra") {
+        const retryRequest = () =>
+          apiRequest(`/customer-returns/${row.id}/retry-kra`, { method: "POST" });
         if (kraDeviceEnabled) {
-          await runQueuedTask(approveRequest, {
-            message: "Please wait while the credit note is submitted to the KRA device…",
+          await runQueuedTask(retryRequest, {
+            message: "Retrying KRA credit note via Centrix KRA Agent…",
           });
         } else {
-          await approveRequest();
+          await retryRequest();
         }
-        notifySuccess(
-          `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
-        );
+        notifySuccess(`${row.return_no} — KRA credit retry finished.`);
       } else if (type === "reject") {
         await apiRequest(`/customer-returns/${row.id}/reject`, {
           method: "POST",

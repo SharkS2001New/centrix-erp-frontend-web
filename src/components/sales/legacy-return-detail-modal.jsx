@@ -107,12 +107,19 @@ export function LegacyReturnDetailModal({
                         ? creditNote.kra_cu_inv_no ??
                           creditNote.kra_invoice_number ??
                           "Fiscalized"
-                        : creditNote.kra_status === "failed"
-                          ? "Failed"
-                          : creditNote.kra_status ?? "—"
+                        : creditNote.kra_status === "pending"
+                          ? "Queued for retry"
+                          : creditNote.kra_status === "failed"
+                            ? "Failed"
+                            : creditNote.kra_status ?? "—"
                     }
                   />
                 </>
+              ) : null}
+              {creditNote?.kra_status === "pending" && creditNote?.kra_error_message ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {creditNote.kra_error_message}
+                </p>
               ) : null}
               {creditNote?.kra_status === "failed" && creditNote?.kra_error_message ? (
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

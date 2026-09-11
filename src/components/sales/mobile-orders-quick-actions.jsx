@@ -263,11 +263,20 @@ function ReturnsModal({
       });
       const count = Number(res?.approved_count ?? 0);
       const errs = Array.isArray(res?.errors) ? res.errors : [];
+      const approvedRows = Array.isArray(res?.data) ? res.data : [];
+      const kraPending = approvedRows.some((row) => {
+        const status = row?.credit_note?.kra_status ?? row?.creditNote?.kra_status;
+        return status === "pending";
+      });
       if (count > 0) {
         notifySuccess(
-          count === 1
-            ? "1 return approved — stock restocked."
-            : `${count} returns approved — stock restocked.`,
+          kraPending
+            ? count === 1
+              ? "1 return approved — stock restocked. KRA credit queued until the agent is online."
+              : `${count} returns approved — stock restocked. KRA credit queued until the agent is online.`
+            : count === 1
+              ? "1 return approved — stock restocked."
+              : `${count} returns approved — stock restocked.`,
         );
       }
       if (errs.length) {

@@ -93,11 +93,18 @@ export function CustomerReturnActionDialog({
       ? {
           title: isCreditNote ? "Approve credit note?" : "Approve customer return?",
           message: isCreditNote
-            ? `Approve ${returnNo}? The order will be adjusted and a credit note issued.`
-            : `Approve ${returnNo}? Stock will be restocked, the order adjusted, and a credit note issued.`,
+            ? `Approve ${returnNo}? The order will be adjusted and a credit note issued. KRA fiscalization runs in the background.`
+            : `Approve ${returnNo}? Stock will be restocked and the order adjusted. KRA credit runs in the background when the agent is online.`,
           confirmLabel: isCreditNote ? "Approve credit note" : "Approve return",
           confirmClass: "bg-emerald-600 hover:bg-emerald-700 text-white",
         }
+      : type === "retry-kra"
+        ? {
+            title: "Retry KRA credit note?",
+            message: `Submit the fiscal credit for ${returnNo} via Centrix KRA Agent / Comstore now.`,
+            confirmLabel: "Retry KRA credit",
+            confirmClass: "bg-amber-600 hover:bg-amber-700 text-white",
+          }
       : type === "reject"
         ? {
             title: approved

@@ -180,6 +180,18 @@ export function CustomerReturnDetailModal({
                   }
                 />
               ) : null}
+              {(row.credit_note?.kra_status ?? row.creditNote?.kra_status) === "pending" ? (
+                <DetailRow
+                  label="KRA credit note"
+                  value={
+                    <span className="text-amber-700">
+                      {row.credit_note?.kra_error_message ??
+                        row.creditNote?.kra_error_message ??
+                        "Queued — will retry when Centrix KRA Agent is online"}
+                    </span>
+                  }
+                />
+              ) : null}
               {(row.credit_note?.kra_status ?? row.creditNote?.kra_status) === "failed" ? (
                 <DetailRow
                   label="KRA credit note"
@@ -191,6 +203,21 @@ export function CustomerReturnDetailModal({
                     </span>
                   }
                 />
+              ) : null}
+              {canManage &&
+              ["pending", "failed"].includes(
+                row.credit_note?.kra_status ?? row.creditNote?.kra_status ?? "",
+              ) ? (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => onRequestAction?.("retry-kra", row)}
+                    disabled={busy}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Retry KRA credit
+                  </button>
+                </div>
               ) : null}
               <DetailRow
                 label="Approved"
