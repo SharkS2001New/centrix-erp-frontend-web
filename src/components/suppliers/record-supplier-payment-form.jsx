@@ -175,11 +175,22 @@ export function RecordSupplierPaymentForm({
           })),
         );
         if (initialLpoNo) {
-          const exists = purchases.some((p) => String(p.lpo_no) === String(initialLpoNo));
-          if (!exists) {
+          const match = purchases.find((p) => String(p.lpo_no) === String(initialLpoNo));
+          if (!match) {
             setFormError((prev) =>
               prev ||
               `LPO ${lpoRowDisplayNumber({ lpo_no: initialLpoNo })} was not found for this supplier. Pick another LPO or leave unlinked.`,
+            );
+          } else if (Number(match.balance_due ?? 0) <= 0) {
+            setForm((p) => ({
+              ...p,
+              lpo_no: "",
+              lpo_supplier_invoice_id: "",
+              amount_paid: "",
+            }));
+            setFormError((prev) =>
+              prev ||
+              `LPO ${lpoRowDisplayNumber({ lpo_no: initialLpoNo })} is already fully paid. Pick another LPO or leave unlinked.`,
             );
           }
         }
@@ -209,6 +220,12 @@ export function RecordSupplierPaymentForm({
   const selectedLpo = useMemo(
     () => lpoOptions.find((l) => String(l.lpo_no) === String(form.lpo_no)),
     [lpoOptions, form.lpo_no],
+  );
+
+  // Hide fully settled LPOs from the payment picker (still kept in lpoOptions for deep-links).
+  const payableLpoOptions = useMemo(
+    () => lpoOptions.filter((l) => Number(l.balance_due ?? 0) > 0),
+    [lpoOptions],
   );
 
   // Same pattern as receiving goods / returns: invoices are scoped to the chosen LPO.
@@ -363,6 +380,18 @@ export function RecordSupplierPaymentForm({
 
     if (form.lpo_no && !lpoOptions.some((l) => String(l.lpo_no) === String(form.lpo_no))) {
       setFormError("Selected LPO does not belong to this supplier.");
+      return;
+    }
+
+    if (
+      form.lpo_no &&
+      selectedLpo &&
+      Number(selectedLpo.balance_due ?? 0) <= 0 &&
+      !manual
+    ) {
+      setFormError(
+        "This LPO is already fully paid. Pick another LPO or enable manual payable amount.",
+      );
       return;
     }
 
@@ -563,7 +592,7 @@ export function RecordSupplierPaymentForm({
                 placeholder="General payment (supplier account)"
                 options={[
                   { value: "", label: "General payment (supplier account)" },
-                  ...lpoOptions.map((l) => ({
+                  ...payableLpoOptions.map((l) => ({
                     value: String(l.lpo_no),
                     label: `${lpoRowDisplayNumber(l)}${
                       l.supplier_invoice_no ? ` · inv ${l.supplier_invoice_no}` : ""
