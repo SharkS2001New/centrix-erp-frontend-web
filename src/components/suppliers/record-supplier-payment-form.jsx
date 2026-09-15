@@ -74,7 +74,7 @@ export function RecordSupplierPaymentForm({
   backHref,
   backLabel,
   pageTitle = "Record supplier payment",
-  pageSubtitle = "Post a payment to reduce accounts payable. Link to an LPO or supplier invoice when paying for a specific purchase.",
+  pageSubtitle = "Post a payment to reduce accounts payable. Link to an LPO, then a supplier invoice when paying for a specific purchase.",
 }) {
   const { capabilities } = useAuth();
   const today = todayLocalDateString();
@@ -211,18 +211,27 @@ export function RecordSupplierPaymentForm({
     [lpoOptions, form.lpo_no],
   );
 
+  // Same pattern as receiving goods / returns: invoices are scoped to the chosen LPO.
+  const invoicesForSelectedLpo = useMemo(() => {
+    if (!form.lpo_no) return [];
+    return invoiceOptions.filter((inv) => String(inv.lpo_no) === String(form.lpo_no));
+  }, [invoiceOptions, form.lpo_no]);
+
   const selectedInvoice = useMemo(() => {
     if (form.lpo_supplier_invoice_id) {
-      return invoiceOptions.find((inv) => String(inv.id) === String(form.lpo_supplier_invoice_id)) ?? null;
+      return (
+        invoicesForSelectedLpo.find(
+          (inv) => String(inv.id) === String(form.lpo_supplier_invoice_id),
+        ) ?? null
+      );
     }
     if (!form.lpo_no) return null;
     // Header-only invoice numbers have no document id — match by LPO.
     return (
-      invoiceOptions.find(
-        (inv) => !inv.id && String(inv.lpo_no) === String(form.lpo_no),
-      ) ?? null
+      invoicesForSelectedLpo.find((inv) => !inv.id && String(inv.lpo_no) === String(form.lpo_no)) ??
+      null
     );
-  }, [invoiceOptions, form.lpo_supplier_invoice_id, form.lpo_no]);
+  }, [invoicesForSelectedLpo, form.lpo_supplier_invoice_id, form.lpo_no]);
 
   function onInvoiceSelect(next) {
     if (!next) {
@@ -233,7 +242,7 @@ export function RecordSupplierPaymentForm({
       }));
       return;
     }
-    const inv = invoiceOptions.find((row) => {
+    const inv = invoicesForSelectedLpo.find((row) => {
       if (row.id) return String(row.id) === String(next);
       return `lpo:${row.lpo_no}` === String(next);
     });
@@ -249,18 +258,27 @@ export function RecordSupplierPaymentForm({
 
   function onLpoSelect(next) {
     setForm((p) => {
-      const matchingInvoice = invoiceOptions.find(
-        (inv) => String(inv.lpo_no) === String(next) && inv.id,
-      );
+      if (!next) {
+        return {
+          ...p,
+          lpo_no: "",
+          lpo_supplier_invoice_id: "",
+          amount_paid: "",
+        };
+      }
+      const forLpo = invoiceOptions.filter((inv) => String(inv.lpo_no) === String(next));
+      const keepCurrent =
+        p.lpo_supplier_invoice_id &&
+        forLpo.some((inv) => String(inv.id) === String(p.lpo_supplier_invoice_id));
+      const matchingInvoice = forLpo.find((inv) => inv.id);
       return {
         ...p,
         lpo_no: next,
-        lpo_supplier_invoice_id:
-          next && matchingInvoice && String(p.lpo_supplier_invoice_id) === String(matchingInvoice.id)
-            ? p.lpo_supplier_invoice_id
-            : next && matchingInvoice
-              ? String(matchingInvoice.id)
-              : "",
+        lpo_supplier_invoice_id: keepCurrent
+          ? p.lpo_supplier_invoice_id
+          : matchingInvoice
+            ? String(matchingInvoice.id)
+            : "",
         amount_paid: "",
       };
     });
@@ -350,9 +368,13 @@ export function RecordSupplierPaymentForm({
 
     if (
       form.lpo_supplier_invoice_id &&
-      !invoiceOptions.some((inv) => String(inv.id) === String(form.lpo_supplier_invoice_id))
+      !invoicesForSelectedLpo.some((inv) => String(inv.id) === String(form.lpo_supplier_invoice_id))
     ) {
-      setFormError("Selected supplier invoice does not belong to this supplier.");
+      setFormError(
+        form.lpo_no
+          ? "Selected supplier invoice does not belong to this LPO."
+          : "Select an LPO before linking a supplier invoice.",
+      );
       return;
     }
 
@@ -452,7 +474,7 @@ export function RecordSupplierPaymentForm({
           <div className="grid gap-5 md:grid-cols-2">
             <p className="text-xs text-slate-500 md:col-span-2">
               Payments appear on the supplier profile under Payments and in Supplier payments.
-              Link to an LPO or search a supplier invoice to allocate the payment.
+              Link to an LPO first, then search a supplier invoice for that LPO.
             </p>
 
             <Field label="Supplier">
@@ -533,35 +555,6 @@ export function RecordSupplierPaymentForm({
               </Field>
             ) : null}
 
-            <Field label="Link payment to supplier invoice">
-              <SearchableSelect
-                value={
-                  form.lpo_supplier_invoice_id
-                    ? String(form.lpo_supplier_invoice_id)
-                    : selectedInvoice && !selectedInvoice.id
-                      ? `lpo:${selectedInvoice.lpo_no}`
-                      : ""
-                }
-                onChange={onInvoiceSelect}
-                disabled={!supplierId || loadingSupplier}
-                placeholder="Search invoice #…"
-                options={[
-                  { value: "", label: "No invoice link" },
-                  ...invoiceOptions.map((inv) => ({
-                    value: inv.id ? String(inv.id) : `lpo:${inv.lpo_no}`,
-                    label: `${inv.supplier_invoice_number}${
-                      inv.po_number || inv.lpo_seq
-                        ? ` · ${lpoRowDisplayNumber(inv)}`
-                        : ""
-                    } — ${formatSupplierKes(inv.balance_due)} due`,
-                  })),
-                ]}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Optional. Search by supplier invoice number — also selects the related LPO.
-              </p>
-            </Field>
-
             <Field label="Link payment to LPO">
               <SearchableSelect
                 value={form.lpo_no}
@@ -584,6 +577,41 @@ export function RecordSupplierPaymentForm({
               />
               <p className="mt-1 text-xs text-slate-500">
                 Optional. Allocates this payment to a purchase order for balance and history.
+              </p>
+            </Field>
+
+            <Field label="Link payment to supplier invoice">
+              <SearchableSelect
+                value={
+                  form.lpo_supplier_invoice_id
+                    ? String(form.lpo_supplier_invoice_id)
+                    : selectedInvoice && !selectedInvoice.id
+                      ? `lpo:${selectedInvoice.lpo_no}`
+                      : ""
+                }
+                onChange={onInvoiceSelect}
+                disabled={!supplierId || loadingSupplier || !form.lpo_no}
+                placeholder={
+                  form.lpo_no ? "Search invoice # for this LPO…" : "Select an LPO first"
+                }
+                options={[
+                  {
+                    value: "",
+                    label: form.lpo_no
+                      ? invoicesForSelectedLpo.length
+                        ? "No invoice link"
+                        : "No invoices on this LPO"
+                      : "Select an LPO first",
+                  },
+                  ...invoicesForSelectedLpo.map((inv) => ({
+                    value: inv.id ? String(inv.id) : `lpo:${inv.lpo_no}`,
+                    label: `${inv.supplier_invoice_number} — ${formatSupplierKes(inv.balance_due)} due`,
+                  })),
+                ]}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Optional. Search invoice numbers linked to the selected LPO (same as receiving
+                goods).
               </p>
             </Field>
 
