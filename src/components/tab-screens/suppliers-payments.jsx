@@ -1,12 +1,12 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
@@ -27,10 +27,13 @@ import { SUPPLIER_PAYMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { formatSupplierKes, formatSupplierPaymentReference } from "@/components/suppliers/suppliers-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 
 export function SuppliersPaymentsScreen() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const confirm = useConfirm();
+  const canDelete = hasPermission("purchasing.manage");
   const searchParams = useSearchParams();
   const presetSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier");
 
@@ -40,6 +43,7 @@ export function SuppliersPaymentsScreen() {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [supplierFilter, setSupplierFilter] = useState(presetSupplier ?? "all");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -110,6 +114,27 @@ export function SuppliersPaymentsScreen() {
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
+  }
+
+  async function deletePayment(row) {
+    const ok = await confirm(
+      confirmDeleteOptions(
+        "this supplier payment",
+        `Delete the ${formatSupplierKes(row.amount_paid)} payment to ${row.supplier_name ?? "this supplier"} dated ${formatShortDate(row.date_paid)}? This restores the payable balance and reverses the accounting entry when one was posted.`,
+      ),
+    );
+    if (!ok) return;
+
+    setDeletingId(row.id);
+    try {
+      await apiRequest(`/supplier-payments/${row.id}`, { method: "DELETE" });
+      notifySuccess("Supplier payment deleted.");
+      await loadData();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete payment");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const buildExportSearchParams = useCallback(
@@ -229,15 +254,17 @@ export function SuppliersPaymentsScreen() {
                     <th className="px-4 py-2.5 text-right">Amount</th>
                     <th className="px-4 py-2.5">Type</th>
                     <th className="px-4 py-2.5">LPO</th>
+                    <th className="px-4 py-2.5">Invoice</th>
                     <th className="px-4 py-2.5">Method</th>
                     <th className="px-4 py-2.5">Reference</th>
                     <th className="px-4 py-2.5">Paid by</th>
+                    {canDelete ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {payments.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={canDelete ? 10 : 9} className="px-4 py-12 text-center text-slate-500">
                         No payments found.
                       </td>
                     </tr>
@@ -278,11 +305,26 @@ export function SuppliersPaymentsScreen() {
                         <td className="px-4 py-3 font-mono text-slate-700">
                           {row.lpo_no ? lpoRowDisplayNumber(row) : "—"}
                         </td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {row.supplier_invoice_number || "—"}
+                        </td>
                         <td className="px-4 py-3 text-slate-700">{row.payment_method}</td>
                         <td className="px-4 py-3 text-slate-600">
                           {formatSupplierPaymentReference(row)}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{row.paid_by_name}</td>
+                        <td className="px-4 py-3 text-slate-600">{row.paid_by_name ?? "—"}</td>
+                        {canDelete ? (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              disabled={deletingId === row.id}
+                              onClick={() => void deletePayment(row)}
+                              className="text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+                            >
+                              {deletingId === row.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   )}

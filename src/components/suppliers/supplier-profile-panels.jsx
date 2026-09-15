@@ -1,11 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   DetailDrawer,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { apiRequest, ApiError } from "@/lib/api";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
+import { useAuth } from "@/contexts/auth-context";
 import { PaymentStatusBadge, formatSupplierKes, formatSupplierPaymentReference } from "./suppliers-shared";
 
 export function PurchasesPanel({ items, supplierId, onSelectLpo }) {
@@ -85,11 +90,36 @@ export function PurchasesPanel({ items, supplierId, onSelectLpo }) {
   );
 }
 
-export function PaymentsPanel({ items, supplier }) {
+export function PaymentsPanel({ items, supplier, onChanged }) {
+  const { hasPermission } = useAuth();
+  const confirm = useConfirm();
+  const canDelete = hasPermission("purchasing.manage");
+  const [deletingId, setDeletingId] = useState(null);
   const supplierId = supplier?.id;
   const newPaymentHref = supplierId
     ? `/suppliers/payments/new?supplier_id=${supplierId}`
     : "/suppliers/payments/new";
+
+  async function deletePayment(row) {
+    const ok = await confirm(
+      confirmDeleteOptions(
+        "this supplier payment",
+        `Delete the ${formatSupplierKes(row.amount_paid)} payment dated ${formatShortDate(row.date_paid)}? This restores the payable balance.`,
+      ),
+    );
+    if (!ok) return;
+
+    setDeletingId(row.id);
+    try {
+      await apiRequest(`/supplier-payments/${row.id}`, { method: "DELETE" });
+      notifySuccess("Supplier payment deleted.");
+      onChanged?.();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete payment");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <>
@@ -125,9 +155,11 @@ export function PaymentsPanel({ items, supplier }) {
                 <th className="py-2 pr-3 text-right">Amount</th>
                 <th className="py-2 pr-3">Type</th>
                 <th className="py-2 pr-3">LPO #</th>
+                <th className="py-2 pr-3">Invoice</th>
                 <th className="py-2 pr-3">Method</th>
                 <th className="py-2 pr-3">Reference</th>
                 <th className="py-2 pr-3">Paid by</th>
+                {canDelete ? <th className="py-2 text-right">Actions</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -156,11 +188,26 @@ export function PaymentsPanel({ items, supplier }) {
                   <td className="py-2.5 pr-3 font-mono text-slate-700">
                     {row.lpo_no ? lpoRowDisplayNumber(row) : "—"}
                   </td>
+                  <td className="py-2.5 pr-3 text-slate-700">
+                    {row.supplier_invoice_number || "—"}
+                  </td>
                   <td className="py-2.5 pr-3 text-slate-700">{row.payment_method}</td>
                   <td className="py-2.5 pr-3 text-slate-600">
                     {formatSupplierPaymentReference(row)}
                   </td>
                   <td className="py-2.5 pr-3 text-slate-600">{row.paid_by_name}</td>
+                  {canDelete ? (
+                    <td className="py-2.5 text-right">
+                      <button
+                        type="button"
+                        disabled={deletingId === row.id}
+                        onClick={() => void deletePayment(row)}
+                        className="text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+                      >
+                        {deletingId === row.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

@@ -49,6 +49,7 @@ export function PaymentStatusBadge({ status }) {
 
 export const EMPTY_SUPPLIER_PAYMENT_FORM = {
   lpo_no: "",
+  lpo_supplier_invoice_id: "",
   payment_method_id: "",
   amount_paid: "",
   manual_amount: false,
@@ -58,6 +59,15 @@ export const EMPTY_SUPPLIER_PAYMENT_FORM = {
   date_paid: new Date().toISOString().slice(0, 10),
   notes: "",
 };
+
+/** Local calendar YYYY-MM-DD for date inputs (avoids UTC off-by-one). */
+export function todayLocalDateString() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 /** @typedef {'cheque'|'mpesa'|'cash'|'bank'|'other'} SupplierPaymentMethodKind */
 

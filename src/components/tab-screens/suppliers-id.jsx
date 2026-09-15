@@ -226,7 +226,11 @@ export function SuppliersIdScreen() {
                 />
               )}
               {tab === "payments" && (
-                <PaymentsPanel items={summary?.payments ?? []} supplier={supplier} />
+                <PaymentsPanel
+                  items={summary?.payments ?? []}
+                  supplier={supplier}
+                  onChanged={() => void loadData()}
+                />
               )}
               {tab === "documents" && (
                 <DocumentsPanel

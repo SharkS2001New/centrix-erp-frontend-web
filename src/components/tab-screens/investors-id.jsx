@@ -535,7 +535,7 @@ export function InvestorsIdScreen() {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Cash contributed" value={formatKesCompact(summary.cash_contributed ?? 0)} />
         <StatCard label="Stock contributed" value={formatKesCompact(summary.stock_contributed ?? 0)} />
-        <StatCard label="Stock value (on hand)" value={formatKesCompact(summary.stock_value ?? 0)} />
+        <StatCard label="Stock value (available)" value={formatKesCompact(summary.stock_value ?? 0)} />
         <StatCard label="Cash pool" value={formatKesCompact(summary.cash_pool_balance ?? 0)} />
       </div>
 

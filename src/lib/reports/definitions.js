@@ -745,7 +745,7 @@ export const REPORT_DEFINITIONS = {
 
   "stock-valuation": {
     title: "Stock Valuation",
-    subtitle: "Available qty; stock value at last cost (on-hand ÷ conversion × unit cost)",
+    subtitle: "Available qty and stock value at last cost (available ÷ conversion × unit cost)",
     section: "Inventory",
     apiPath: "/reports/stock-valuation",
     dateColumn: null,

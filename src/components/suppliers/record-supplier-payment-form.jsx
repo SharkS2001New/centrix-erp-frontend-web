@@ -12,6 +12,7 @@ import {
   formatSupplierKes,
   getSupplierPaymentMethodKind,
   supplierPaymentReferenceMeta,
+  todayLocalDateString,
   validateSupplierPaymentReference,
 } from "./suppliers-shared";
 import { useAuth } from "@/contexts/auth-context";
@@ -73,11 +74,13 @@ export function RecordSupplierPaymentForm({
   backHref,
   backLabel,
   pageTitle = "Record supplier payment",
-  pageSubtitle = "Post a payment to reduce accounts payable. Link to an LPO when paying for a specific purchase.",
+  pageSubtitle = "Post a payment to reduce accounts payable. Link to an LPO or supplier invoice when paying for a specific purchase.",
 }) {
   const { capabilities } = useAuth();
+  const today = todayLocalDateString();
   const [form, setForm] = useState(() => ({
     ...EMPTY_SUPPLIER_PAYMENT_FORM,
+    date_paid: today,
     lpo_no: initialLpoNo ? String(initialLpoNo) : "",
   }));
   const [supplierId, setSupplierId] = useState(
@@ -87,6 +90,7 @@ export function RecordSupplierPaymentForm({
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [supplierOwing, setSupplierOwing] = useState(null);
   const [lpoOptions, setLpoOptions] = useState([]);
+  const [invoiceOptions, setInvoiceOptions] = useState([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingSupplier, setLoadingSupplier] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -133,6 +137,7 @@ export function RecordSupplierPaymentForm({
     if (!supplierId) {
       setSupplierOwing(null);
       setLpoOptions([]);
+      setInvoiceOptions([]);
       return;
     }
     let cancelled = false;
@@ -151,6 +156,22 @@ export function RecordSupplierPaymentForm({
             supplier_invoice_no: p.supplier_invoice_no,
             items_fully_received: Boolean(p.items_fully_received ?? p.can_pay),
             can_pay: Boolean(p.can_pay ?? p.items_fully_received),
+            received_payable_total: p.received_payable_total,
+          })),
+        );
+        setInvoiceOptions(
+          (summary.invoices ?? []).map((inv) => ({
+            id: inv.id != null ? String(inv.id) : "",
+            lpo_no: inv.lpo_no,
+            supplier_invoice_number: inv.supplier_invoice_number,
+            invoice_date: inv.invoice_date,
+            invoice_amount: inv.invoice_amount,
+            balance_due: inv.balance_due,
+            amount_paid: inv.amount_paid,
+            can_pay: Boolean(inv.can_pay),
+            total_amount: inv.total_amount,
+            po_number: inv.po_number,
+            lpo_seq: inv.lpo_seq,
           })),
         );
         if (initialLpoNo) {
@@ -167,6 +188,7 @@ export function RecordSupplierPaymentForm({
         if (!cancelled) {
           setSupplierOwing(null);
           setLpoOptions([]);
+          setInvoiceOptions([]);
           setFormError("Could not load supplier purchases for LPO allocation.");
         }
       })
@@ -188,6 +210,61 @@ export function RecordSupplierPaymentForm({
     () => lpoOptions.find((l) => String(l.lpo_no) === String(form.lpo_no)),
     [lpoOptions, form.lpo_no],
   );
+
+  const selectedInvoice = useMemo(() => {
+    if (form.lpo_supplier_invoice_id) {
+      return invoiceOptions.find((inv) => String(inv.id) === String(form.lpo_supplier_invoice_id)) ?? null;
+    }
+    if (!form.lpo_no) return null;
+    // Header-only invoice numbers have no document id — match by LPO.
+    return (
+      invoiceOptions.find(
+        (inv) => !inv.id && String(inv.lpo_no) === String(form.lpo_no),
+      ) ?? null
+    );
+  }, [invoiceOptions, form.lpo_supplier_invoice_id, form.lpo_no]);
+
+  function onInvoiceSelect(next) {
+    if (!next) {
+      setForm((p) => ({
+        ...p,
+        lpo_supplier_invoice_id: "",
+        amount_paid: "",
+      }));
+      return;
+    }
+    const inv = invoiceOptions.find((row) => {
+      if (row.id) return String(row.id) === String(next);
+      return `lpo:${row.lpo_no}` === String(next);
+    });
+    if (!inv) return;
+    setForm((p) => ({
+      ...p,
+      lpo_supplier_invoice_id: inv.id ? String(inv.id) : "",
+      lpo_no: inv.lpo_no != null ? String(inv.lpo_no) : p.lpo_no,
+      amount_paid: "",
+    }));
+    setFormError(null);
+  }
+
+  function onLpoSelect(next) {
+    setForm((p) => {
+      const matchingInvoice = invoiceOptions.find(
+        (inv) => String(inv.lpo_no) === String(next) && inv.id,
+      );
+      return {
+        ...p,
+        lpo_no: next,
+        lpo_supplier_invoice_id:
+          next && matchingInvoice && String(p.lpo_supplier_invoice_id) === String(matchingInvoice.id)
+            ? p.lpo_supplier_invoice_id
+            : next && matchingInvoice
+              ? String(matchingInvoice.id)
+              : "",
+        amount_paid: "",
+      };
+    });
+  }
 
   const systemBalanceDue = useMemo(() => {
     if (selectedLpo) return Number(selectedLpo.balance_due ?? 0);
@@ -257,8 +334,25 @@ export function RecordSupplierPaymentForm({
       return;
     }
 
+    if (!form.date_paid) {
+      setFormError("Enter the date paid.");
+      return;
+    }
+    if (form.date_paid > today) {
+      setFormError("Date paid cannot be in the future. Use today or a past date.");
+      return;
+    }
+
     if (form.lpo_no && !lpoOptions.some((l) => String(l.lpo_no) === String(form.lpo_no))) {
       setFormError("Selected LPO does not belong to this supplier.");
+      return;
+    }
+
+    if (
+      form.lpo_supplier_invoice_id &&
+      !invoiceOptions.some((inv) => String(inv.id) === String(form.lpo_supplier_invoice_id))
+    ) {
+      setFormError("Selected supplier invoice does not belong to this supplier.");
       return;
     }
 
@@ -300,6 +394,9 @@ export function RecordSupplierPaymentForm({
         method: "POST",
         body: {
           lpo_no: form.lpo_no ? Number(form.lpo_no) : null,
+          lpo_supplier_invoice_id: form.lpo_supplier_invoice_id
+            ? Number(form.lpo_supplier_invoice_id)
+            : null,
           payment_method_id: Number(form.payment_method_id),
           amount_paid: amount,
           manual_amount: manual,
@@ -355,7 +452,7 @@ export function RecordSupplierPaymentForm({
           <div className="grid gap-5 md:grid-cols-2">
             <p className="text-xs text-slate-500 md:col-span-2">
               Payments appear on the supplier profile under Payments and in Supplier payments.
-              Link to an LPO to track payables per purchase order.
+              Link to an LPO or search a supplier invoice to allocate the payment.
             </p>
 
             <Field label="Supplier">
@@ -436,23 +533,48 @@ export function RecordSupplierPaymentForm({
               </Field>
             ) : null}
 
+            <Field label="Link payment to supplier invoice">
+              <SearchableSelect
+                value={
+                  form.lpo_supplier_invoice_id
+                    ? String(form.lpo_supplier_invoice_id)
+                    : selectedInvoice && !selectedInvoice.id
+                      ? `lpo:${selectedInvoice.lpo_no}`
+                      : ""
+                }
+                onChange={onInvoiceSelect}
+                disabled={!supplierId || loadingSupplier}
+                placeholder="Search invoice #…"
+                options={[
+                  { value: "", label: "No invoice link" },
+                  ...invoiceOptions.map((inv) => ({
+                    value: inv.id ? String(inv.id) : `lpo:${inv.lpo_no}`,
+                    label: `${inv.supplier_invoice_number}${
+                      inv.po_number || inv.lpo_seq
+                        ? ` · ${lpoRowDisplayNumber(inv)}`
+                        : ""
+                    } — ${formatSupplierKes(inv.balance_due)} due`,
+                  })),
+                ]}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Optional. Search by supplier invoice number — also selects the related LPO.
+              </p>
+            </Field>
+
             <Field label="Link payment to LPO">
               <SearchableSelect
                 value={form.lpo_no}
-                onChange={(next) =>
-                  setForm((p) => ({
-                    ...p,
-                    lpo_no: next,
-                    amount_paid: "",
-                  }))
-                }
+                onChange={onLpoSelect}
                 disabled={!supplierId || loadingSupplier}
                 placeholder="General payment (supplier account)"
                 options={[
                   { value: "", label: "General payment (supplier account)" },
                   ...lpoOptions.map((l) => ({
                     value: String(l.lpo_no),
-                    label: `${lpoRowDisplayNumber(l)} — ${formatSupplierKes(l.balance_due)} due${
+                    label: `${lpoRowDisplayNumber(l)}${
+                      l.supplier_invoice_no ? ` · inv ${l.supplier_invoice_no}` : ""
+                    } — ${formatSupplierKes(l.balance_due)} due${
                       Number(l.total_amount) > 0
                         ? ` (total ${formatSupplierKes(l.total_amount)})`
                         : " (no LPO total)"
@@ -573,9 +695,21 @@ export function RecordSupplierPaymentForm({
                 type="date"
                 className={inputClassName()}
                 value={form.date_paid}
-                onChange={(e) => setForm((p) => ({ ...p, date_paid: e.target.value }))}
+                max={today}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setForm((p) => ({ ...p, date_paid: next }));
+                  if (next && next > today) {
+                    setFormError("Date paid cannot be in the future. Use today or a past date.");
+                  } else {
+                    setFormError((prev) =>
+                      prev && /future/i.test(prev) ? null : prev,
+                    );
+                  }
+                }}
                 required
               />
+              <p className="mt-1 text-xs text-slate-500">Today or a past date only.</p>
             </Field>
 
             <div className="md:col-span-2">
