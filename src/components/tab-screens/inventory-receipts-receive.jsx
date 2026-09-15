@@ -84,6 +84,7 @@ export function InventoryReceiptsReceiveScreen() {
   const [form, setForm] = useState({ ...EMPTY_RECEIVE_FORM });
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [prefillDone, setPrefillDone] = useState(false);
@@ -327,6 +328,20 @@ export function InventoryReceiptsReceiveScreen() {
       notifyError("Select the supplier invoice that covers these items.");
       return;
     }
+    if (supplierInvoices.length > 1) {
+      const missingAmount = supplierInvoices.filter(
+        (inv) => !(Number(inv.invoice_amount) > 0),
+      );
+      if (missingAmount.length > 0) {
+        notifyError(
+          "This LPO has more than one invoice. Enter each invoice amount so accounts can pay against the correct invoice number.",
+        );
+        const firstMissing = missingAmount[0];
+        setEditingInvoice(firstMissing);
+        setInvoiceModalOpen(true);
+        return;
+      }
+    }
 
     const receiptRef = makeReceiptRef(form.invoice_number);
     setSaving(true);
@@ -512,7 +527,10 @@ export function InventoryReceiptsReceiveScreen() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setInvoiceModalOpen(true)}
+                    onClick={() => {
+                      setEditingInvoice(null);
+                      setInvoiceModalOpen(true);
+                    }}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
                   >
                     {supplierInvoices.length ? "Attach another" : "Attach invoice"}
@@ -528,6 +546,10 @@ export function InventoryReceiptsReceiveScreen() {
                     invoices={supplierInvoices}
                     selectedInvoiceId={selectedInvoiceId}
                     onSelect={(id) => applyInvoiceSelection(id, supplierInvoices)}
+                    onEdit={(inv) => {
+                      setEditingInvoice(inv);
+                      setInvoiceModalOpen(true);
+                    }}
                   />
                 )}
               </section>
@@ -784,9 +806,19 @@ export function InventoryReceiptsReceiveScreen() {
       {form.lpo_no && form.supplier_id ? (
         <SupplierInvoiceModal
           open={invoiceModalOpen}
-          onClose={() => setInvoiceModalOpen(false)}
+          onClose={() => {
+            setInvoiceModalOpen(false);
+            setEditingInvoice(null);
+          }}
           lpoNo={form.lpo_no}
           supplierId={form.supplier_id}
+          invoice={editingInvoice}
+          existingInvoiceCount={
+            editingInvoice
+              ? supplierInvoices.filter((inv) => String(inv.id) !== String(editingInvoice.id))
+                  .length
+              : supplierInvoices.length
+          }
           onSaved={async () => {
             await loadLpo(form.lpo_no);
           }}

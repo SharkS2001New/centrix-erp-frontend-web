@@ -73,6 +73,7 @@ export function LpoLpoNoReceiveScreen() {
   const [printingGrn, setPrintingGrn] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const { uomById } = useInventoryCatalogMaps(uoms);
 
   const draftValue = useMemo(
@@ -214,6 +215,19 @@ export function LpoLpoNoReceiveScreen() {
     if (!selectedInvoiceId) {
       notifyError("Select the supplier invoice that covers these items.");
       return;
+    }
+    if (supplierInvoices.length > 1) {
+      const missingAmount = supplierInvoices.filter(
+        (inv) => !(Number(inv.invoice_amount) > 0),
+      );
+      if (missingAmount.length > 0) {
+        notifyError(
+          "This LPO has more than one invoice. Enter each invoice amount so accounts can pay against the correct invoice number.",
+        );
+        setEditingInvoice(missingAmount[0]);
+        setInvoiceModalOpen(true);
+        return;
+      }
     }
 
     setSaving(true);
@@ -372,7 +386,10 @@ export function LpoLpoNoReceiveScreen() {
               </div>
               <button
                 type="button"
-                onClick={() => setInvoiceModalOpen(true)}
+                onClick={() => {
+                  setEditingInvoice(null);
+                  setInvoiceModalOpen(true);
+                }}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
               >
                 {supplierInvoices.length ? "Attach another" : "Attach invoice"}
@@ -388,6 +405,10 @@ export function LpoLpoNoReceiveScreen() {
                 invoices={supplierInvoices}
                 selectedInvoiceId={selectedInvoiceId}
                 onSelect={(id) => setSelectedInvoiceId(String(id))}
+                onEdit={(inv) => {
+                  setEditingInvoice(inv);
+                  setInvoiceModalOpen(true);
+                }}
               />
             )}
           </section>
@@ -613,9 +634,19 @@ export function LpoLpoNoReceiveScreen() {
       {lpo?.supplier_id ? (
         <SupplierInvoiceModal
           open={invoiceModalOpen}
-          onClose={() => setInvoiceModalOpen(false)}
+          onClose={() => {
+            setInvoiceModalOpen(false);
+            setEditingInvoice(null);
+          }}
           lpoNo={lpoNo}
           supplierId={lpo.supplier_id}
+          invoice={editingInvoice}
+          existingInvoiceCount={
+            editingInvoice
+              ? supplierInvoices.filter((inv) => String(inv.id) !== String(editingInvoice.id))
+                  .length
+              : supplierInvoices.length
+          }
           onSaved={async () => {
             await load();
           }}

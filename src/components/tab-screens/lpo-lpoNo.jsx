@@ -529,6 +529,13 @@ export function LpoLpoNoScreen() {
         lpoNo={lpoNo}
         supplierId={lpo?.supplier_id}
         invoice={invoiceModal?.mode === "edit" ? invoiceModal.invoice : null}
+        existingInvoiceCount={
+          invoiceModal?.mode === "edit" && invoiceModal.invoice
+            ? (lpo?.supplier_invoices ?? []).filter(
+                (inv) => String(inv.id) !== String(invoiceModal.invoice.id),
+              ).length
+            : (lpo?.supplier_invoices ?? []).length
+        }
       />
     </div>
   );

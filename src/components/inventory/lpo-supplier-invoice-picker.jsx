@@ -3,11 +3,24 @@
 import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
 import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 
+function formatKes(amount) {
+  return Number(amount).toLocaleString("en-KE", {
+    style: "currency",
+    currency: "KES",
+    minimumFractionDigits: 2,
+  });
+}
+
+function hasInvoiceAmount(inv) {
+  return inv?.invoice_amount != null && inv.invoice_amount !== "" && Number(inv.invoice_amount) > 0;
+}
+
 export function LpoSupplierInvoicePicker({
   invoices,
   selectedInvoiceId,
   onSelect,
   onAttachAnother,
+  onEdit,
   attachLabel = "Attach invoice",
 }) {
   if (!invoices?.length) {
@@ -18,10 +31,20 @@ export function LpoSupplierInvoicePicker({
     );
   }
 
+  const multiInvoice = invoices.length > 1;
   const selected = invoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
+  const missingAmounts = multiInvoice
+    ? invoices.filter((inv) => !hasInvoiceAmount(inv))
+    : [];
 
   return (
     <div className="space-y-2">
+      {multiInvoice && missingAmounts.length > 0 ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          This LPO has more than one invoice. Enter each invoice amount so accounts can search the
+          invoice number and pay the correct balance.
+        </p>
+      ) : null}
       {selected?.has_document ? (
         <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
           <ProtectedFileLink
@@ -36,13 +59,16 @@ export function LpoSupplierInvoicePicker({
       ) : null}
       {invoices.map((inv) => {
         const isSelected = String(selectedInvoiceId) === String(inv.id);
+        const amountMissing = multiInvoice && !hasInvoiceAmount(inv);
         return (
           <label
             key={inv.id}
             className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
               isSelected
                 ? "border-[var(--theme-primary)] bg-[var(--theme-primary-muted)]"
-                : "border-slate-200 bg-slate-50"
+                : amountMissing
+                  ? "border-amber-300 bg-amber-50/60"
+                  : "border-slate-200 bg-slate-50"
             }`}
           >
             <input
@@ -55,14 +81,12 @@ export function LpoSupplierInvoicePicker({
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-slate-900">{inv.supplier_invoice_number}</span>
-                {inv.invoice_amount != null && inv.invoice_amount !== "" ? (
+                {hasInvoiceAmount(inv) ? (
                   <span className="text-xs font-medium text-slate-600">
-                    {Number(inv.invoice_amount).toLocaleString("en-KE", {
-                      style: "currency",
-                      currency: "KES",
-                      minimumFractionDigits: 2,
-                    })}
+                    {formatKes(inv.invoice_amount)}
                   </span>
+                ) : multiInvoice ? (
+                  <span className="text-xs font-medium text-amber-800">Amount required</span>
                 ) : null}
               </span>
               <span className="block text-xs text-slate-500">
@@ -82,6 +106,19 @@ export function LpoSupplierInvoicePicker({
                   Document missing — re-attach recommended
                 </span>
               )}
+              {onEdit ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit(inv);
+                  }}
+                  className="mt-1 block text-xs font-medium text-[#185FA5] hover:underline"
+                >
+                  {hasInvoiceAmount(inv) ? "Edit invoice / amount" : "Set invoice amount"}
+                </button>
+              ) : null}
             </span>
           </label>
         );
