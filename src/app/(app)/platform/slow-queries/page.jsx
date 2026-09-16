@@ -286,7 +286,7 @@ export default function PlatformSlowQueriesPage() {
   return (
     <CatalogPageShell
       title="Slow queries"
-      description={`Centrix database only (${databaseName}). Digests from other schemas on this MySQL server are hidden.`}
+      description={`Centrix database only (${databaseName}). Other MySQL schemas on this server (WordPress, etc.) are hidden.`}
       breadcrumb={
         <AdminBreadcrumb
           items={[
@@ -346,7 +346,8 @@ export default function PlatformSlowQueriesPage() {
               ) : slowTables.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-6 text-slate-500">
-                    No table size data yet.
+                    No table size data for <code className="rounded bg-slate-100 px-1">{databaseName}</code>
+                    . Refresh after API deploy, or check DB user can read information_schema / SHOW TABLE STATUS.
                   </td>
                 </tr>
               ) : (

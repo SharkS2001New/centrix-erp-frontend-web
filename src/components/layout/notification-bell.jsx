@@ -155,6 +155,7 @@ export function NotificationBell() {
     try {
       const res = await apiRequest("/notifications?limit=10", {
         loading: false,
+        reportIssues: false,
         searchParams: workspaceParams,
       });
       const rows = Array.isArray(res?.data) ? res.data : [];

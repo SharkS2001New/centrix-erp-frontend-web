@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { apiRequest, ApiError } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiRequest, ApiError, operationalPruneStream } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -15,6 +15,10 @@ function labelForKey(key) {
   return String(key || "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function stamp() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 const RETENTION_FIELDS = [
@@ -96,6 +100,7 @@ function defaultForm(retention = {}) {
 
 export default function PlatformDataRetentionPage() {
   const confirm = useConfirm();
+  const logEndRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,6 +109,12 @@ export default function PlatformDataRetentionPage() {
   const [lastResult, setLastResult] = useState(null);
   const [optimizeTables, setOptimizeTables] = useState(true);
   const [form, setForm] = useState(() => defaultForm());
+  const [runLogs, setRunLogs] = useState([]);
+
+  const appendLog = useCallback((message, tone = "info") => {
+    if (!message) return;
+    setRunLogs((prev) => [...prev, { id: `${Date.now()}-${prev.length}`, at: stamp(), message, tone }]);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +132,10 @@ export default function PlatformDataRetentionPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+  }, [runLogs]);
 
   async function saveSettings(e) {
     e?.preventDefault?.();
@@ -151,40 +166,59 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: dryRun ? "Preview prune?" : "Run operational prune now?",
       message: dryRun
-        ? "Counts rows that would be deleted. Nothing is removed."
-        : `Deletes data older than the timers below.${
+        ? "Counts rows that would be deleted. Nothing is removed. Live logs appear as each step runs."
+        : `Deletes data older than the timers below (same as nightly erp:prune-operational-data).${
             optimizeTables
               ? "\n\nOPTIMIZE TABLE will run afterward to reclaim disk (may lock tables briefly)."
               : ""
-          }`,
+          }\n\nYou will see step-by-step logs as each table is cleaned.`,
       confirmLabel: dryRun ? "Preview" : "Run prune",
     });
     if (!ok) return;
 
     setRunning(true);
+    setRunLogs([]);
+    appendLog(dryRun ? "Starting dry run…" : "Starting operational prune…", "info");
+
     try {
-      const res = await apiRequest("/admin/operational-prune", {
-        method: "POST",
-        body: {
+      const done = await operationalPruneStream(
+        {
           dry_run: dryRun,
           optimize_tables: !dryRun && optimizeTables,
         },
-      });
-      setLastResult(res);
-      if (res.status) {
-        setStatus(res.status);
-        setForm(defaultForm(res.status?.retention ?? {}));
+        {
+          onEvent: (event) => {
+            if (event?.message) {
+              const tone =
+                event.event === "error"
+                  ? "error"
+                  : event.phase === "done" && event.event === "step"
+                    ? "ok"
+                    : "info";
+              appendLog(event.message, tone);
+            }
+          },
+        },
+      );
+
+      if (done) {
+        setLastResult(done);
+        if (done.status) {
+          setStatus(done.status);
+          setForm(defaultForm(done.status?.retention ?? {}));
+        }
       }
       notifySuccess(
         dryRun
-          ? `Would delete ${res.total ?? 0} rows across retention tables.`
-          : `Pruned ${res.total ?? 0} rows${
-              (res.optimized_tables ?? []).length
-                ? `; optimized ${(res.optimized_tables ?? []).length} tables`
+          ? `Would delete ${done?.total ?? 0} rows across retention tables.`
+          : `Pruned ${done?.total ?? 0} rows${
+              (done?.optimized_tables ?? []).length
+                ? `; optimized ${(done?.optimized_tables ?? []).length} tables`
                 : ""
             }.`,
       );
     } catch (err) {
+      appendLog(err instanceof ApiError ? err.message : "Prune failed.", "error");
       notifyError(err instanceof ApiError ? err.message : "Prune failed.");
     } finally {
       setRunning(false);
@@ -195,24 +229,39 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: `Optimize ${tableName}?`,
       message:
-        "Runs OPTIMIZE TABLE to reclaim disk after deletes. May lock this table briefly — prefer off-peak hours for large tables.",
+        "Runs OPTIMIZE TABLE to reclaim disk after deletes. May lock this table briefly — prefer off-peak hours for large tables. Progress shows in the live log.",
       confirmLabel: "Optimize",
     });
     if (!ok) return;
 
     setOptimizing(tableName);
+    setRunLogs([]);
+    appendLog(`Starting OPTIMIZE TABLE \`${tableName}\`…`, "info");
     try {
-      const res = await apiRequest("/admin/operational-prune/optimize", {
-        method: "POST",
-        body: { tables: [tableName] },
-      });
-      if (res.status) {
-        setStatus(res.status);
-        setForm(defaultForm(res.status?.retention ?? {}));
+      const done = await operationalPruneStream(
+        { optimize_only: true, tables: [tableName] },
+        {
+          onEvent: (event) => {
+            if (event?.message) {
+              appendLog(event.message, event.event === "error" ? "error" : "ok");
+            }
+          },
+        },
+      );
+      if (done?.status) {
+        setStatus(done.status);
+        setForm(defaultForm(done.status?.retention ?? {}));
       }
       notifySuccess(`Optimized ${tableName}.`);
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Optimize failed.");
+      const message =
+        err instanceof ApiError && err.status === 404
+          ? "Optimize API route is missing. Redeploy/restart the backend (php artisan route:clear), then retry."
+          : err instanceof ApiError
+            ? err.message
+            : "Optimize failed.";
+      appendLog(message, "error");
+      notifyError(message);
     } finally {
       setOptimizing(null);
     }
@@ -222,24 +271,39 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: "Optimize all retention tables?",
       message:
-        "Runs OPTIMIZE TABLE on every listed table. Can take several minutes and briefly lock large tables (e.g. hikvision_agent_commands).",
+        "Runs OPTIMIZE TABLE on every listed table. Can take several minutes and briefly lock large tables. Live logs show each table as it finishes.",
       confirmLabel: "Optimize all",
     });
     if (!ok) return;
 
     setOptimizing("all");
+    setRunLogs([]);
+    appendLog("Starting OPTIMIZE on all retention tables…", "info");
     try {
-      const res = await apiRequest("/admin/operational-prune/optimize", {
-        method: "POST",
-        body: {},
-      });
-      if (res.status) {
-        setStatus(res.status);
-        setForm(defaultForm(res.status?.retention ?? {}));
+      const done = await operationalPruneStream(
+        { optimize_only: true },
+        {
+          onEvent: (event) => {
+            if (event?.message) {
+              appendLog(event.message, event.event === "error" ? "error" : "ok");
+            }
+          },
+        },
+      );
+      if (done?.status) {
+        setStatus(done.status);
+        setForm(defaultForm(done.status?.retention ?? {}));
       }
-      notifySuccess(`Optimized ${(res.optimized_tables ?? []).length} tables.`);
+      notifySuccess(`Optimized ${(done?.optimized_tables ?? []).length} tables.`);
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Optimize failed.");
+      const message =
+        err instanceof ApiError && err.status === 404
+          ? "Optimize API route is missing. Redeploy/restart the backend (php artisan route:clear), then retry."
+          : err instanceof ApiError
+            ? err.message
+            : "Optimize failed.";
+      appendLog(message, "error");
+      notifyError(message);
     } finally {
       setOptimizing(null);
     }
@@ -248,11 +312,12 @@ export default function PlatformDataRetentionPage() {
   const tables = status?.tables ?? [];
   const deleted = lastResult?.deleted ?? null;
   const busy = loading || running || saving || Boolean(optimizing);
+  const scheduleTime = status?.schedule_time || form.prune_time || "03:40";
 
   return (
     <CatalogPageShell
       title="Data retention"
-      description="Set prune timers, reclaim disk on large tables, and run the same cleanup as the nightly schedule."
+      description={`Set prune timers, reclaim disk on large tables, and run the same cleanup as nightly erp:prune-operational-data (${scheduleTime}). Live logs show each delete step.`}
       breadcrumb={
         <AdminBreadcrumb
           items={[
@@ -400,6 +465,41 @@ export default function PlatformDataRetentionPage() {
           </p>
         </section>
       </div>
+
+      <section className="mt-4 rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-white">Live prune log</h2>
+          <span className="text-[11px] text-slate-400">
+            {running || optimizing
+              ? "Streaming steps…"
+              : runLogs.length
+                ? `${runLogs.length} line(s)`
+                : "Run prune or optimize to see step-by-step output"}
+          </span>
+        </div>
+        <div className="mt-3 max-h-72 overflow-y-auto rounded border border-slate-800 bg-black/40 px-3 py-2 font-mono text-xs leading-relaxed">
+          {runLogs.length === 0 ? (
+            <p className="text-slate-500">Waiting for a run…</p>
+          ) : (
+            runLogs.map((line) => (
+              <div
+                key={line.id}
+                className={
+                  line.tone === "error"
+                    ? "text-rose-300"
+                    : line.tone === "ok"
+                      ? "text-emerald-300"
+                      : "text-slate-200"
+                }
+              >
+                <span className="mr-2 text-slate-500">[{line.at}]</span>
+                {line.message}
+              </div>
+            ))
+          )}
+          <div ref={logEndRef} />
+        </div>
+      </section>
 
       {deleted ? (
         <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4">

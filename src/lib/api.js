@@ -771,6 +771,81 @@ export async function aiChatStream(body, { onEvent, signal } = {}) {
   return donePayload;
 }
 
+/**
+ * Stream operational prune / optimize (SSE). Calls onEvent for status, step, done, error.
+ */
+export async function operationalPruneStream(body, { onEvent, signal } = {}) {
+  const url = buildApiUrl("/admin/operational-prune/stream");
+  const token = getToken();
+  const headers = {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: JSON.stringify(body ?? {}),
+    signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
+  }
+
+  if (!res.body) {
+    throw new ApiError("Prune stream ended without a response body.", res.status);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      for (const line of block.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        let event;
+        try {
+          event = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        onEvent?.(event);
+        if (event.event === "done") {
+          donePayload = event;
+        }
+        if (event.event === "error") {
+          throw new ApiError(event.message || "Prune failed", 502, event);
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  return donePayload;
+}
+
 /** Multipart upload (e.g. customer shop image, org logo). */
 export async function apiUpload(path, file, fieldName = "image", compressOptions = {}) {
   const preset =
