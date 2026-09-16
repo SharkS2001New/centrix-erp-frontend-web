@@ -395,8 +395,9 @@ export function buildReportQueryParams(
     if (reportSendsDateColumn(reportKey)) {
       searchParams.date_column = reportDateColumn(reportKey);
     }
-    if (fromDate) searchParams.from_date = fromDate;
-    if (toDate) searchParams.to_date = toDate;
+    const clamped = clampReportDateRange(fromDate, toDate, 90);
+    if (clamped.fromDate) searchParams.from_date = clamped.fromDate;
+    if (clamped.toDate) searchParams.to_date = clamped.toDate;
   }
 
   if (branchId && !reportHidesBranchFilter(reportKey)) {
@@ -412,4 +413,41 @@ export function buildReportQueryParams(
   }
 
   return searchParams;
+}
+
+/** Keep report From/To inside a hot window (default max 90 inclusive days). */
+export function clampReportDateRange(fromDate, toDate, maxDays = 90) {
+  if (!fromDate && !toDate) {
+    return { fromDate: fromDate || null, toDate: toDate || null };
+  }
+  const to = toDate ? new Date(`${toDate}T00:00:00`) : new Date();
+  let from = fromDate ? new Date(`${fromDate}T00:00:00`) : new Date(to);
+  if (Number.isNaN(to.getTime()) || Number.isNaN(from.getTime())) {
+    return { fromDate: fromDate || null, toDate: toDate || null };
+  }
+  if (from > to) {
+    const tmp = from;
+    from = to;
+    // swap
+    const swappedTo = tmp;
+    const spanMs = swappedTo - from;
+    const spanDays = Math.floor(spanMs / 86400000) + 1;
+    if (spanDays > maxDays) {
+      from = new Date(swappedTo);
+      from.setDate(from.getDate() - (maxDays - 1));
+    }
+    return {
+      fromDate: from.toISOString().slice(0, 10),
+      toDate: swappedTo.toISOString().slice(0, 10),
+    };
+  }
+  const spanDays = Math.floor((to - from) / 86400000) + 1;
+  if (spanDays > maxDays) {
+    from = new Date(to);
+    from.setDate(from.getDate() - (maxDays - 1));
+  }
+  return {
+    fromDate: from.toISOString().slice(0, 10),
+    toDate: to.toISOString().slice(0, 10),
+  };
 }

@@ -62,7 +62,7 @@ export default function PlatformDatabaseBackupsPage() {
       schedule_enabled: settings.enabled !== false,
       frequency: settings.frequency || "daily",
       schedule_time: settings.schedule_time || "02:00",
-      retention_days: String(settings.retention_days ?? 7),
+      retention_days: String(settings.retention_days ?? 3),
     });
   }, []);
 
@@ -150,7 +150,7 @@ export default function PlatformDatabaseBackupsPage() {
           schedule_enabled: Boolean(scheduleForm.schedule_enabled),
           frequency: scheduleForm.frequency,
           schedule_time: scheduleForm.schedule_time,
-          retention_days: Number(scheduleForm.retention_days) || 7,
+          retention_days: Number(scheduleForm.retention_days) || 3,
         },
       });
       if (res.schedule) applySchedule(res.schedule);
@@ -163,7 +163,7 @@ export default function PlatformDatabaseBackupsPage() {
   }
 
   const scheduleLabel = schedule?.effective?.label || "Daily (default)";
-  const retentionDays = schedule?.effective?.retention_days ?? 7;
+  const retentionDays = schedule?.effective?.retention_days ?? 3;
 
   return (
     <CatalogPageShell
@@ -255,7 +255,7 @@ export default function PlatformDatabaseBackupsPage() {
           </label>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">
-          Hourly snapshots grow quickly — 2–3 days of retention is usually enough if R2 offsite is on.
+          Default is 3 days — older local backups are deleted automatically after each run. Keep R2 offsite for longer recovery.
         </p>
         <div className="mt-3">
           <PrimaryButton type="submit" showIcon={false} disabled={savingSchedule || loading}>

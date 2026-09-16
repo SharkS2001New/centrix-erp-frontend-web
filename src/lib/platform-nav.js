@@ -84,6 +84,18 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Backup status and restore operations.",
       },
       {
+        href: "/platform/slow-queries",
+        label: "Slow queries",
+        icon: "chart",
+        description: "MySQL digests with Centrix AI fast and permanent fixes.",
+      },
+      {
+        href: "/platform/data-retention",
+        label: "Data retention",
+        icon: "database",
+        description: "Run operational prune now — Hikvision, attendance, and related cleanup.",
+      },
+      {
         href: "/platform/health",
         label: "Infrastructure health",
         icon: "alert",
