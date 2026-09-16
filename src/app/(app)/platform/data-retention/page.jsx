@@ -17,19 +17,100 @@ function labelForKey(key) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const RETENTION_FIELDS = [
+  {
+    key: "hikvision_access_events_days",
+    label: "Hikvision events / missed punches",
+    hint: "Days to keep raw punches & forgotten alerts for reconciliation",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "attendance_days",
+    label: "Attendance + clock sessions",
+    hint: "Day-level attendance kept after the date (min 30)",
+    min: 30,
+    max: 365,
+  },
+  {
+    key: "hikvision_agent_commands_completed_days",
+    label: "Hikvision commands (completed)",
+    hint: "Leftover completed device command payloads",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "hikvision_agent_commands_failed_days",
+    label: "Hikvision commands (failed / expired)",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "kra_agent_commands_completed_days",
+    label: "KRA commands (completed)",
+    hint: "Aligned with Hikvision by default so agent junk does not pile up",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "kra_agent_commands_failed_days",
+    label: "KRA commands (failed / expired)",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "released_stock_reservations_days",
+    label: "Released stock reservations",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "audit_logs_days",
+    label: "Audit logs",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "cancelled_sales_days",
+    label: "Cancelled orders (hard delete)",
+    min: 1,
+    max: 90,
+  },
+  {
+    key: "expired_sales_days",
+    label: "Expired orders (hard delete)",
+    min: 1,
+    max: 90,
+  },
+];
+
+function defaultForm(retention = {}) {
+  const form = {
+    prune_time: retention.prune_time || "03:40",
+  };
+  for (const field of RETENTION_FIELDS) {
+    form[field.key] = String(retention[field.key] ?? "");
+  }
+  return form;
+}
+
 export default function PlatformDataRetentionPage() {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [optimizing, setOptimizing] = useState(null);
   const [status, setStatus] = useState(null);
   const [lastResult, setLastResult] = useState(null);
   const [optimizeTables, setOptimizeTables] = useState(true);
+  const [form, setForm] = useState(() => defaultForm());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiRequest("/admin/operational-prune");
       setStatus(res);
+      setForm(defaultForm(res?.retention ?? {}));
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load retention status.");
     } finally {
@@ -41,12 +122,37 @@ export default function PlatformDataRetentionPage() {
     void load();
   }, [load]);
 
+  async function saveSettings(e) {
+    e?.preventDefault?.();
+    setSaving(true);
+    try {
+      const body = {
+        prune_time: form.prune_time || "03:40",
+      };
+      for (const field of RETENTION_FIELDS) {
+        const n = Number(form[field.key]);
+        if (Number.isFinite(n)) body[field.key] = n;
+      }
+      const res = await apiRequest("/admin/operational-prune/settings", {
+        method: "PUT",
+        body,
+      });
+      setStatus(res);
+      setForm(defaultForm(res?.retention ?? {}));
+      notifySuccess("Retention timers saved.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function runPrune({ dryRun }) {
     const ok = await confirm({
       title: dryRun ? "Preview prune?" : "Run operational prune now?",
       message: dryRun
         ? "Counts rows that would be deleted. Nothing is removed."
-        : `Deletes expired Hikvision commands/events, attendance older than retention, stock holds, and audit noise.${
+        : `Deletes data older than the timers below.${
             optimizeTables
               ? "\n\nOPTIMIZE TABLE will run afterward to reclaim disk (may lock tables briefly)."
               : ""
@@ -65,7 +171,10 @@ export default function PlatformDataRetentionPage() {
         },
       });
       setLastResult(res);
-      if (res.status) setStatus(res.status);
+      if (res.status) {
+        setStatus(res.status);
+        setForm(defaultForm(res.status?.retention ?? {}));
+      }
       notifySuccess(
         dryRun
           ? `Would delete ${res.total ?? 0} rows across retention tables.`
@@ -75,21 +184,75 @@ export default function PlatformDataRetentionPage() {
                 : ""
             }.`,
       );
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Prune failed.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Prune failed.");
     } finally {
       setRunning(false);
     }
   }
 
-  const retention = status?.retention ?? {};
+  async function optimizeTable(tableName) {
+    const ok = await confirm({
+      title: `Optimize ${tableName}?`,
+      message:
+        "Runs OPTIMIZE TABLE to reclaim disk after deletes. May lock this table briefly — prefer off-peak hours for large tables.",
+      confirmLabel: "Optimize",
+    });
+    if (!ok) return;
+
+    setOptimizing(tableName);
+    try {
+      const res = await apiRequest("/admin/operational-prune/optimize", {
+        method: "POST",
+        body: { tables: [tableName] },
+      });
+      if (res.status) {
+        setStatus(res.status);
+        setForm(defaultForm(res.status?.retention ?? {}));
+      }
+      notifySuccess(`Optimized ${tableName}.`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Optimize failed.");
+    } finally {
+      setOptimizing(null);
+    }
+  }
+
+  async function optimizeAllTables() {
+    const ok = await confirm({
+      title: "Optimize all retention tables?",
+      message:
+        "Runs OPTIMIZE TABLE on every listed table. Can take several minutes and briefly lock large tables (e.g. hikvision_agent_commands).",
+      confirmLabel: "Optimize all",
+    });
+    if (!ok) return;
+
+    setOptimizing("all");
+    try {
+      const res = await apiRequest("/admin/operational-prune/optimize", {
+        method: "POST",
+        body: {},
+      });
+      if (res.status) {
+        setStatus(res.status);
+        setForm(defaultForm(res.status?.retention ?? {}));
+      }
+      notifySuccess(`Optimized ${(res.optimized_tables ?? []).length} tables.`);
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Optimize failed.");
+    } finally {
+      setOptimizing(null);
+    }
+  }
+
   const tables = status?.tables ?? [];
   const deleted = lastResult?.deleted ?? null;
+  const busy = loading || running || saving || Boolean(optimizing);
 
   return (
     <CatalogPageShell
       title="Data retention"
-      description="Run the same operational prune as the nightly schedule — Hikvision agent data, missed punches, attendance older than 2 months, and related cleanup."
+      description="Set prune timers, reclaim disk on large tables, and run the same cleanup as the nightly schedule."
       breadcrumb={
         <AdminBreadcrumb
           items={[
@@ -104,7 +267,7 @@ export default function PlatformDataRetentionPage() {
             type="button"
             className={SECONDARY_BTN_CLASS}
             onClick={() => void load()}
-            disabled={loading || running}
+            disabled={busy}
           >
             {loading ? "Loading…" : "Refresh"}
           </button>
@@ -112,15 +275,11 @@ export default function PlatformDataRetentionPage() {
             type="button"
             className={SECONDARY_BTN_CLASS}
             onClick={() => void runPrune({ dryRun: true })}
-            disabled={loading || running}
+            disabled={busy}
           >
             Preview (dry run)
           </button>
-          <PrimaryButton
-            type="button"
-            onClick={() => void runPrune({ dryRun: false })}
-            disabled={loading || running}
-          >
+          <PrimaryButton type="button" onClick={() => void runPrune({ dryRun: false })} disabled={busy}>
             {running ? "Running…" : "Run prune now"}
           </PrimaryButton>
         </div>
@@ -132,7 +291,7 @@ export default function PlatformDataRetentionPage() {
           className="mt-0.5"
           checked={optimizeTables}
           onChange={(e) => setOptimizeTables(e.target.checked)}
-          disabled={running}
+          disabled={busy}
         />
         <span>
           After prune, run <span className="font-medium">OPTIMIZE TABLE</span> on retention tables
@@ -140,46 +299,64 @@ export default function PlatformDataRetentionPage() {
         </span>
       </label>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-900">Retention windows</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Nightly schedule: {status?.schedule_time ?? "03:40"} (Africa/Nairobi server time).
+            Nightly schedule uses these timers (server timezone Africa/Nairobi).
           </p>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">Hikvision events / missed punches</dt>
-              <dd className="font-medium">{retention.hikvision_access_events_days ?? 7} days</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">Attendance + clock sessions</dt>
-              <dd className="font-medium">{retention.attendance_days ?? 60} days</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">Hikvision agent commands (leftovers)</dt>
-              <dd className="font-medium">
-                {retention.hikvision_agent_commands_completed_days ?? 1} /{" "}
-                {retention.hikvision_agent_commands_failed_days ?? 2} days
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">KRA agent commands (completed)</dt>
-              <dd className="font-medium">{retention.kra_agent_commands_completed_days ?? 30} days</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">Released stock reservations</dt>
-              <dd className="font-medium">{retention.released_stock_reservations_days ?? 14} days</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-600">Audit logs</dt>
-              <dd className="font-medium">{retention.audit_logs_days ?? 10} days</dd>
-            </div>
-          </dl>
+          <form className="mt-3 space-y-3" onSubmit={(e) => void saveSettings(e)}>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Prune time</span>
+              <input
+                type="time"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                value={form.prune_time}
+                onChange={(e) => setForm((f) => ({ ...f, prune_time: e.target.value }))}
+                disabled={busy}
+              />
+            </label>
+            {RETENTION_FIELDS.map((field) => (
+              <label key={field.key} className="block text-sm">
+                <span className="mb-1 flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-600">{field.label}</span>
+                  <span className="text-[11px] text-slate-400">days</span>
+                </span>
+                <input
+                  type="number"
+                  min={field.min}
+                  max={field.max}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={form[field.key]}
+                  onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                  disabled={busy}
+                />
+                {field.hint ? <span className="mt-1 block text-[11px] text-slate-500">{field.hint}</span> : null}
+              </label>
+            ))}
+            <PrimaryButton type="submit" showIcon={false} disabled={busy}>
+              {saving ? "Saving…" : "Save timers"}
+            </PrimaryButton>
+          </form>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-slate-900">Table sizes (approx.)</h2>
-          <p className="mt-1 text-xs text-slate-500">From information_schema — row counts are estimates.</p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Table sizes (approx.)</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                From information_schema — row counts are estimates. Optimize reclaim disk after deletes.
+              </p>
+            </div>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              onClick={() => void optimizeAllTables()}
+              disabled={busy || tables.length === 0}
+            >
+              {optimizing === "all" ? "Optimizing…" : "Optimize all"}
+            </button>
+          </div>
           {loading && !tables.length ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>
           ) : (
@@ -189,7 +366,8 @@ export default function PlatformDataRetentionPage() {
                   <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-500">
                     <th className="py-2 pr-3 font-medium">Table</th>
                     <th className="py-2 pr-3 font-medium text-right">MB</th>
-                    <th className="py-2 font-medium text-right">Rows</th>
+                    <th className="py-2 pr-3 font-medium text-right">Rows</th>
+                    <th className="py-2 font-medium text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -197,8 +375,18 @@ export default function PlatformDataRetentionPage() {
                     <tr key={row.name} className="border-b border-slate-50">
                       <td className="py-2 pr-3 font-mono text-xs text-slate-800">{row.name}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
-                      <td className="py-2 text-right tabular-nums text-slate-600">
+                      <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
                         {Number(row.rows || 0).toLocaleString()}
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          type="button"
+                          className={SECONDARY_BTN_CLASS}
+                          onClick={() => void optimizeTable(row.name)}
+                          disabled={busy}
+                        >
+                          {optimizing === row.name ? "…" : "Optimize"}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -206,6 +394,10 @@ export default function PlatformDataRetentionPage() {
               </table>
             </div>
           )}
+          <p className="mt-3 text-[11px] text-slate-500">
+            Tip: run <span className="font-medium">Run prune now</span> first to delete old rows, then
+            Optimize on the largest tables (e.g. hikvision_agent_commands) to shrink disk use.
+          </p>
         </section>
       </div>
 
