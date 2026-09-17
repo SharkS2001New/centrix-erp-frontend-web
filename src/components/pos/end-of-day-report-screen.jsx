@@ -817,10 +817,10 @@ export function EndOfDayReportScreen({
         );
         setCashierOptions(
           rows
-            .map((u) => ({
-              value: String(u.id),
-              label: u.full_name?.trim() || u.username || `User #${u.id}`,
-            }))
+      .map((u) => ({
+        value: String(u.id),
+        label: u.full_name?.trim() || u.username || `User #${u.id}`,
+      }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         );
       })
@@ -1061,19 +1061,19 @@ export function EndOfDayReportScreen({
   const expensesHref = buildExpensesHref({ fromDate: periodStart, toDate: periodEnd });
 
   const handleEodPrint = useCallback(() => {
-      if (!report) return;
+    if (!report) return;
     const periodLabel = isMonthly
       ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
       : formatReportDate(saleDate);
     void printEodReport(report, {
-        organizationName: organization?.org_name ?? organization?.name ?? "",
-        branchName,
-        cashierName: cashierName ?? "All cashiers",
+      organizationName: organization?.org_name ?? organization?.name ?? "",
+      branchName,
+      cashierName: cashierName ?? "All cashiers",
       sessionLabel: selectedSessionLabel,
       periodLabel,
       isMonthly,
       showFloat: showTillPanels,
-        showDiscounts: discountsEnabled,
+      showDiscounts: discountsEnabled,
       showCashVariance,
       actualCash: cashReconciliation?.actualCash,
       variance: cashReconciliation?.variance,
@@ -1083,31 +1083,31 @@ export function EndOfDayReportScreen({
       grossSalesExVat,
       netSalesExVat,
       cashierSalesRows,
-        userName: user?.full_name ?? user?.username,
+      userName: user?.full_name ?? user?.username,
       printedAt: formatAppDateTime(new Date()),
-      });
+    });
   }, [
-      branchName,
+    branchName,
     cashReconciliation,
-      cashierName,
+    cashierName,
     cashierSalesRows,
-      discountsEnabled,
+    discountsEnabled,
     expectedNetSales,
     grossSalesExVat,
     isMonthly,
     netSalesExVat,
-      organization?.name,
-      organization?.org_name,
+    organization?.name,
+    organization?.org_name,
     paymentLines,
     periodEnd,
     periodStart,
-      report,
+    report,
     showTillPanels,
     saleDate,
     selectedSessionLabel,
     showCashVariance,
-      user?.full_name,
-      user?.username,
+    user?.full_name,
+    user?.username,
   ]);
 
   return (
@@ -1154,7 +1154,7 @@ export function EndOfDayReportScreen({
               onChange={(e) => {
                 setBranchId(e.target.value);
                 setCashierId("");
-              setFloatSessionId("");
+                setFloatSessionId("");
               }}
               options={[
                 { value: "", label: "All branches" },
@@ -1166,26 +1166,26 @@ export function EndOfDayReportScreen({
           <label className="theme-subtext mb-1 block text-xs font-medium">Cashier / user</label>
             <FilterSelect
               value={cashierId}
-            onChange={(e) => {
-              setCashierId(e.target.value);
-              setFloatSessionId("");
-            }}
+              onChange={(e) => {
+                setCashierId(e.target.value);
+                setFloatSessionId("");
+              }}
               options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
             />
           </div>
         {showTillPanels ? (
-          <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
-            <FilterSelect
-              value={floatSessionId}
-              onChange={(e) => setFloatSessionId(e.target.value)}
-              options={[
-                { value: "", label: "All sessions" },
-                ...sessionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
-              ]}
-            />
-          </div>
-        ) : null}
+            <div>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
+              <FilterSelect
+                value={floatSessionId}
+                onChange={(e) => setFloatSessionId(e.target.value)}
+                options={[
+                  { value: "", label: "All sessions" },
+                  ...sessionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+                ]}
+              />
+            </div>
+          ) : null}
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
             <FilterSelect
@@ -1258,7 +1258,7 @@ export function EndOfDayReportScreen({
               />
             ) : null}
             {!hideExpensesStat ? (
-              <StatCard label="Total expenses" value={formatTillKes(report?.total_expenses ?? 0)} hint="Till session expenses" />
+            <StatCard label="Total expenses" value={formatTillKes(report?.total_expenses ?? 0)} hint="Till session expenses" />
             ) : null}
           </div>
 

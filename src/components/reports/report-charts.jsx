@@ -134,8 +134,8 @@ export function DonutChart({ segments, loading, emptyMessage = "No data for this
   return (
     <div className="flex flex-wrap items-center gap-6">
       <div className="relative shrink-0">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Distribution chart">
-          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Distribution chart">
+        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
             <circle
               cx={size / 2}
               cy={size / 2}
@@ -144,9 +144,9 @@ export function DonutChart({ segments, loading, emptyMessage = "No data for this
               stroke="var(--theme-border, #e2e8f0)"
               strokeWidth={stroke}
             />
-            {circleElements}
-          </g>
-        </svg>
+          {circleElements}
+        </g>
+      </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Total</p>
           <p className="text-sm font-semibold text-slate-800">{formatKesCompact(total)}</p>
@@ -220,9 +220,9 @@ export function ReportBarChart({
           {aggregated.map((p, i) => (
             <div
               key={`${p.label}-${i}`}
-              className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-              style={{ height: chartHeight }}
-            >
+            className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+            style={{ height: chartHeight }}
+          >
               <span className="max-w-full truncate text-[9px] font-medium tabular-nums text-slate-500">
                 {formatKesCompact(p.value)}
               </span>
@@ -319,8 +319,8 @@ export function ReportHorizontalBarChart({
                       width: `${Math.max(pct, pct > 0 ? 2 : 0)}%`,
                       background: `linear-gradient(90deg, ${color} 0%, ${color}cc 100%)`,
                     }}
-                    title={`${p.label}: ${formatReportKes(p.value)}`}
-                  />
+              title={`${p.label}: ${formatReportKes(p.value)}`}
+            />
                 </div>
               </div>
               <span className="min-w-[4.5rem] text-right text-xs font-semibold tabular-nums text-slate-700">
