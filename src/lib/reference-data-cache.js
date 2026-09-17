@@ -84,6 +84,32 @@ export function fetchSuppliersCached(organizationId) {
   });
 }
 
+/**
+ * Resolve supplier names for a page of products — avoids crawling the full org list.
+ * @param {number|string|null|undefined} organizationId
+ * @param {Array<number|string>} ids
+ * @returns {Promise<Array<{id: number, supplier_name?: string, supplier_code?: string}>>}
+ */
+export async function fetchSuppliersByIds(organizationId, ids) {
+  const unique = [
+    ...new Set(
+      (ids ?? [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  if (unique.length === 0) return [];
+
+  const res = await apiRequest("/reference/suppliers", {
+    searchParams: {
+      ids: unique.join(","),
+      per_page: Math.min(200, Math.max(unique.length, 1)),
+    },
+    loading: false,
+  });
+  return res?.data ?? [];
+}
+
 export function fetchUomsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "uoms");

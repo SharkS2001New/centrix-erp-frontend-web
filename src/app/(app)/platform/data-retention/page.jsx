@@ -110,6 +110,10 @@ export default function PlatformDataRetentionPage() {
   const [optimizeTables, setOptimizeTables] = useState(true);
   const [form, setForm] = useState(() => defaultForm());
   const [runLogs, setRunLogs] = useState([]);
+  const [oneOffDays, setOneOffDays] = useState("7");
+  const [maxRows, setMaxRows] = useState("25000");
+  const [tableDays, setTableDays] = useState({});
+  const [pruningTable, setPruningTable] = useState(null);
 
   const appendLog = useCallback((message, tone = "info") => {
     if (!message) return;
@@ -162,30 +166,53 @@ export default function PlatformDataRetentionPage() {
     }
   }
 
-  async function runPrune({ dryRun }) {
+  function pruneTargetForTable(tableName) {
+    if (tableName === "employee_clock_sessions") return "employee_attendance";
+    const allowed = new Set([
+      "hikvision_agent_commands",
+      "hikvision_access_events",
+      "employee_attendance",
+      "kra_agent_commands",
+      "stock_reservations",
+      "audit_logs",
+    ]);
+    return allowed.has(tableName) ? tableName : null;
+  }
+
+  async function runPrune({ dryRun, targets = null, days = null, rowLimit = null }) {
+    const daysLabel =
+      days != null ? `older than ${days} day(s)` : "older than the saved retention timers";
+    const limitLabel = rowLimit != null ? `\nMax rows this run: ${rowLimit.toLocaleString()}` : "";
+    const targetLabel = targets?.length ? `\n\nTables: ${targets.join(", ")}` : "";
     const ok = await confirm({
-      title: dryRun ? "Preview prune?" : "Run operational prune now?",
+      title: dryRun ? "Preview prune?" : "Delete old data now?",
       message: dryRun
-        ? "Counts rows that would be deleted. Nothing is removed. Live logs appear as each step runs."
-        : `Deletes data older than the timers below (same as nightly erp:prune-operational-data).${
+        ? `Counts rows ${daysLabel}.${limitLabel}${targetLabel}\nNothing is removed. Live logs show each step.`
+        : `Deletes data ${daysLabel}.${limitLabel}${targetLabel}${
             optimizeTables
-              ? "\n\nOPTIMIZE TABLE will run afterward to reclaim disk (may lock tables briefly)."
+              ? "\n\nOPTIMIZE TABLE will run afterward (may lock briefly)."
               : ""
-          }\n\nYou will see step-by-step logs as each table is cleaned.`,
-      confirmLabel: dryRun ? "Preview" : "Run prune",
+          }\n\nProof of run = Live prune log (“Deleted N …”), not the MB column alone.`,
+      confirmLabel: dryRun ? "Preview" : "Delete",
     });
     if (!ok) return;
 
     setRunning(true);
+    if (targets?.length === 1) setPruningTable(targets[0]);
     setRunLogs([]);
     appendLog(dryRun ? "Starting dry run…" : "Starting operational prune…", "info");
 
     try {
+      const body = {
+        dry_run: dryRun,
+        optimize_tables: !dryRun && optimizeTables,
+      };
+      if (days != null) body.days = days;
+      if (rowLimit != null) body.max_rows = rowLimit;
+      if (targets?.length) body.targets = targets;
+
       const done = await operationalPruneStream(
-        {
-          dry_run: dryRun,
-          optimize_tables: !dryRun && optimizeTables,
-        },
+        body,
         {
           onEvent: (event) => {
             if (event?.message) {
@@ -222,7 +249,28 @@ export default function PlatformDataRetentionPage() {
       notifyError(err instanceof ApiError ? err.message : "Prune failed.");
     } finally {
       setRunning(false);
+      setPruningTable(null);
     }
+  }
+
+  async function deleteTableOlderThan(tableName) {
+    const target = pruneTargetForTable(tableName);
+    if (!target) {
+      notifyError("This table cannot be pruned from here.");
+      return;
+    }
+    const days = Number(tableDays[tableName] ?? oneOffDays);
+    const rowLimit = Number(maxRows);
+    if (!Number.isFinite(days) || days < 1 || days > 365) {
+      notifyError("Enter days between 1 and 365.");
+      return;
+    }
+    await runPrune({
+      dryRun: false,
+      targets: [target],
+      days,
+      rowLimit: Number.isFinite(rowLimit) && rowLimit > 0 ? rowLimit : null,
+    });
   }
 
   async function optimizeTable(tableName) {
@@ -311,7 +359,7 @@ export default function PlatformDataRetentionPage() {
 
   const tables = status?.tables ?? [];
   const deleted = lastResult?.deleted ?? null;
-  const busy = loading || running || saving || Boolean(optimizing);
+  const busy = loading || running || saving || Boolean(optimizing) || Boolean(pruningTable);
   const scheduleTime = status?.schedule_time || form.prune_time || "03:40";
 
   return (
@@ -327,7 +375,33 @@ export default function PlatformDataRetentionPage() {
         />
       }
       actions={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            Older than
+            <input
+              type="number"
+              min={1}
+              max={365}
+              className="w-16 rounded border border-slate-200 px-2 py-1.5 text-sm"
+              value={oneOffDays}
+              onChange={(e) => setOneOffDays(e.target.value)}
+              disabled={busy}
+            />
+            days
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            Max rows
+            <input
+              type="number"
+              min={1}
+              max={500000}
+              className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm"
+              value={maxRows}
+              onChange={(e) => setMaxRows(e.target.value)}
+              disabled={busy}
+              title="Caps how many rows this run deletes"
+            />
+          </label>
           <button
             type="button"
             className={SECONDARY_BTN_CLASS}
@@ -339,13 +413,33 @@ export default function PlatformDataRetentionPage() {
           <button
             type="button"
             className={SECONDARY_BTN_CLASS}
-            onClick={() => void runPrune({ dryRun: true })}
+            onClick={() => {
+              const days = Number(oneOffDays);
+              const rowLimit = Number(maxRows);
+              void runPrune({
+                dryRun: true,
+                days: Number.isFinite(days) ? days : null,
+                rowLimit: Number.isFinite(rowLimit) && rowLimit > 0 ? rowLimit : null,
+              });
+            }}
             disabled={busy}
           >
             Preview (dry run)
           </button>
-          <PrimaryButton type="button" onClick={() => void runPrune({ dryRun: false })} disabled={busy}>
-            {running ? "Running…" : "Run prune now"}
+          <PrimaryButton
+            type="button"
+            onClick={() => {
+              const days = Number(oneOffDays);
+              const rowLimit = Number(maxRows);
+              void runPrune({
+                dryRun: false,
+                days: Number.isFinite(days) ? days : null,
+                rowLimit: Number.isFinite(rowLimit) && rowLimit > 0 ? rowLimit : null,
+              });
+            }}
+            disabled={busy}
+          >
+            {running && !pruningTable ? "Running…" : "Delete older than N"}
           </PrimaryButton>
         </div>
       }
@@ -408,9 +502,9 @@ export default function PlatformDataRetentionPage() {
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Table sizes (approx.)</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Delete / optimize by table</h2>
               <p className="mt-1 text-xs text-slate-500">
-                From information_schema — row counts are estimates. Optimize reclaim disk after deletes.
+                MB is estimated and often unchanged until many rows are deleted then OPTIMIZE. Use Live log for proof.
               </p>
             </div>
             <button
@@ -432,36 +526,94 @@ export default function PlatformDataRetentionPage() {
                     <th className="py-2 pr-3 font-medium">Table</th>
                     <th className="py-2 pr-3 font-medium text-right">MB</th>
                     <th className="py-2 pr-3 font-medium text-right">Rows</th>
-                    <th className="py-2 font-medium text-right">Action</th>
+                    <th className="py-2 pr-3 font-medium text-right">Older than</th>
+                    <th className="py-2 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tables.map((row) => (
-                    <tr key={row.name} className="border-b border-slate-50">
-                      <td className="py-2 pr-3 font-mono text-xs text-slate-800">{row.name}</td>
+                  {tables.map((row) => {
+                    const target = pruneTargetForTable(row.name);
+                    const daysValue = tableDays[row.name] ?? oneOffDays;
+                    return (
+                    <tr key={row.name} className="border-b border-slate-50 align-top">
+                      <td className="py-2 pr-3">
+                        <div className="font-mono text-xs text-slate-800">{row.name}</div>
+                        {row.note ? (
+                          <p className="mt-1 max-w-xs text-[11px] leading-snug text-slate-500">{row.note}</p>
+                        ) : null}
+                        {row.prunable_rows != null ? (
+                          <p className="mt-0.5 text-[11px] text-amber-800">
+                            Prunable now: {Number(row.prunable_rows).toLocaleString()}
+                          </p>
+                        ) : null}
+                      </td>
                       <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
                         {Number(row.rows || 0).toLocaleString()}
                       </td>
+                      <td className="py-2 pr-3 text-right">
+                        {target ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={365}
+                            className="w-16 rounded border border-slate-200 px-2 py-1 text-right text-xs"
+                            value={daysValue}
+                            onChange={(e) =>
+                              setTableDays((prev) => ({ ...prev, [row.name]: e.target.value }))
+                            }
+                            disabled={busy}
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="py-2 text-right">
-                        <button
-                          type="button"
-                          className={SECONDARY_BTN_CLASS}
-                          onClick={() => void optimizeTable(row.name)}
-                          disabled={busy}
-                        >
-                          {optimizing === row.name ? "…" : "Optimize"}
-                        </button>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {target ? (
+                            <button
+                              type="button"
+                              className={SECONDARY_BTN_CLASS}
+                              onClick={() => void deleteTableOlderThan(row.name)}
+                              disabled={busy}
+                            >
+                              {pruningTable === target ? "…" : "Delete"}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={SECONDARY_BTN_CLASS}
+                            onClick={() => void optimizeTable(row.name)}
+                            disabled={busy}
+                          >
+                            {optimizing === row.name ? "…" : "Optimize"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
-          <p className="mt-3 text-[11px] text-slate-500">
-            Tip: run <span className="font-medium">Run prune now</span> first to delete old rows, then
-            Optimize on the largest tables (e.g. hikvision_agent_commands) to shrink disk use.
+          {(status?.notes ?? []).length > 0 ? (
+            <ul className="mt-3 list-disc space-y-1 pl-4 text-[11px] text-slate-500">
+              {(status?.notes ?? []).map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-[11px] text-slate-500">
+              Delete old rows first, then Optimize. Empty tables (e.g. hikvision_agent_commands at 0 MB)
+              will not shrink further.
+            </p>
+          )}
+          <p className="mt-2 text-[11px] text-slate-500">
+            CLI:{" "}
+            <code className="rounded bg-slate-100 px-1">
+              php artisan erp:prune-operational-data --only=stock_reservations --days=1 --limit=25000 --optimize
+            </code>
           </p>
         </section>
       </div>
@@ -517,7 +669,16 @@ export default function PlatformDataRetentionPage() {
               </li>
             ))}
           </ul>
-          {(lastResult?.optimized_tables ?? []).length > 0 ? (
+          {(lastResult?.optimize_results ?? []).length > 0 ? (
+            <ul className="mt-3 space-y-1 text-xs text-slate-600">
+              {(lastResult.optimize_results ?? []).map((row) => (
+                <li key={row.name}>
+                  {row.name}: {row.before_mb} → {row.after_mb} MB
+                  {row.delta_mb > 0 ? ` (−${row.delta_mb})` : " (no reclaim)"}
+                </li>
+              ))}
+            </ul>
+          ) : (lastResult?.optimized_tables ?? []).length > 0 ? (
             <p className="mt-3 text-xs text-slate-500">
               Optimized: {(lastResult.optimized_tables ?? []).join(", ")}
             </p>

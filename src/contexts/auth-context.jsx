@@ -479,15 +479,16 @@ export function AuthProvider({ children }) {
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
-        const only = workspaces[0];
-        void switchWorkspace(only.id);
+        // Local only — avoid POST /auth/switch-workspace (full capabilities rebuild).
+        // Token already has backoffice channel from login.
+        setStoredWorkspace(workspaces[0].id);
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
       router.replace(resolvePostLoginPath(ctx, caps));
       return caps;
     },
-    [applyAuthPayload, router, switchWorkspace],
+    [applyAuthPayload, router],
   );
 
   const finishAuthenticatedSession = useCallback(
@@ -510,15 +511,14 @@ export function AuthProvider({ children }) {
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
-        const only = workspaces[0];
-        void switchWorkspace(only.id);
+        setStoredWorkspace(workspaces[0].id);
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
       router.replace(resolvePostLoginPath(ctx, caps));
       return caps;
     },
-    [applyAuthPayload, router, switchWorkspace],
+    [applyAuthPayload, router],
   );
 
   const completeTwoFactorLogin = useCallback(

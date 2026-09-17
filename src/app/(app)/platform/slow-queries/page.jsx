@@ -148,6 +148,8 @@ function AdviceModal({ open, onClose, selected, advising, advice, runningKey, on
 export default function PlatformSlowQueriesPage() {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const [tab, setTab] = useState("tables");
   const [digest, setDigest] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -170,6 +172,28 @@ export default function PlatformSlowQueriesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function resetDigests() {
+    const ok = await confirm({
+      title: "Reset query digests?",
+      message:
+        "Clears MySQL performance_schema statement digests so this list starts empty. New traffic refills it. Refresh alone only re-reads the same cumulative counters — that is why yesterday’s queries still appear.",
+      confirmLabel: "Reset digests",
+    });
+    if (!ok) return;
+
+    setResetting(true);
+    try {
+      const res = await apiRequest("/admin/slow-queries/reset", { method: "POST" });
+      setDigest(res);
+      setTab("digests");
+      notifySuccess(res.message || "Digests reset.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to reset digests.");
+    } finally {
+      setResetting(false);
+    }
+  }
 
   async function askAi(row) {
     setSelected(row);
@@ -282,11 +306,12 @@ export default function PlatformSlowQueriesPage() {
   const queries = digest?.queries ?? [];
   const slowTables = digest?.slow_tables ?? [];
   const databaseName = digest?.database || "centrix";
+  const busy = loading || resetting;
 
   return (
     <CatalogPageShell
       title="Slow queries"
-      description={`Centrix database only (${databaseName}). Other MySQL schemas on this server (WordPress, etc.) are hidden.`}
+      description={`Centrix database only (${databaseName}). Digests are cumulative until Reset — Refresh re-reads the same counters.`}
       breadcrumb={
         <AdminBreadcrumb
           items={[
@@ -300,7 +325,15 @@ export default function PlatformSlowQueriesPage() {
           <Link href="/platform/data-retention" className={SECONDARY_BTN_CLASS}>
             Data retention
           </Link>
-          <PrimaryButton type="button" onClick={() => void load()} disabled={loading}>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            onClick={() => void resetDigests()}
+            disabled={busy}
+          >
+            {resetting ? "Resetting…" : "Reset digests"}
+          </button>
+          <PrimaryButton type="button" onClick={() => void load()} disabled={busy}>
             {loading ? "Loading…" : "Refresh"}
           </PrimaryButton>
         </div>
@@ -318,136 +351,162 @@ export default function PlatformSlowQueriesPage() {
         </div>
       ) : null}
 
-      <section className="mt-4">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">Slow table sizes</h2>
-          <p className="text-xs text-slate-500">
-            Largest tables in <code className="rounded bg-slate-100 px-1">{databaseName}</code>
-            . Tables mentioned in slow digests are listed first.
-          </p>
-        </div>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Table</th>
-                <th className="px-3 py-2">Size (MB)</th>
-                <th className="px-3 py-2">Approx. rows</th>
-                <th className="px-3 py-2">In slow queries</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+      <div className="mt-4 flex flex-wrap gap-1 border-b border-slate-200">
+        {[
+          { id: "tables", label: "Slow table sizes" },
+          { id: "digests", label: "Query digests" },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTab(item.id)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              tab === item.id
+                ? "border-[#185FA5] text-[#185FA5]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {digest?.digest_note || digest?.refreshed_at ? (
+        <p className="mt-3 text-xs text-slate-500">
+          {digest?.digest_note ? <span>{digest.digest_note} </span> : null}
+          {digest?.refreshed_at ? (
+            <span>
+              Last read: {new Date(digest.refreshed_at).toLocaleString()}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+
+      {tab === "tables" ? (
+        <section className="mt-4">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <td colSpan={4} className="px-3 py-6 text-slate-500">
-                    Loading table sizes…
-                  </td>
+                  <th className="px-3 py-2">Table</th>
+                  <th className="px-3 py-2">Size (MB)</th>
+                  <th className="px-3 py-2">Approx. rows</th>
+                  <th className="px-3 py-2">In slow queries</th>
                 </tr>
-              ) : slowTables.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-slate-500">
-                    No table size data for <code className="rounded bg-slate-100 px-1">{databaseName}</code>
-                    . Refresh after API deploy, or check DB user can read information_schema / SHOW TABLE STATUS.
-                  </td>
-                </tr>
-              ) : (
-                slowTables.map((table) => (
-                  <tr
-                    key={table.name}
-                    className={`border-t border-slate-100 ${table.in_slow_queries ? "bg-amber-50/50" : ""}`}
-                  >
-                    <td className="px-3 py-2 font-medium text-slate-900">
-                      <code className="text-xs">{table.name}</code>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{table.mb}</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {Number(table.rows ?? 0).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2">
-                      {table.in_slow_queries ? (
-                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-slate-500">
+                      Loading table sizes…
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900">Query digests</h2>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Avg s</th>
-                <th className="px-3 py-2">Total s</th>
-                <th className="px-3 py-2">Runs</th>
-                <th className="px-3 py-2">Rows examined</th>
-                <th className="px-3 py-2">SQL</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-slate-500">
-                    Loading digests…
-                  </td>
-                </tr>
-              ) : queries.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-slate-500">
-                    No Centrix digests yet. Enable performance_schema / slow query logging and generate traffic.
-                  </td>
-                </tr>
-              ) : (
-                queries.map((row) => (
-                  <tr key={row.digest || row.sql} className="border-t border-slate-100 align-top">
-                    <td className="px-3 py-2 font-medium">{row.avg_sec}</td>
-                    <td className="px-3 py-2">{row.total_sec}</td>
-                    <td className="px-3 py-2">{row.exec_count}</td>
-                    <td className="px-3 py-2">{row.rows_examined}</td>
-                    <td className="px-3 py-2">
-                      <code className="block max-w-xl whitespace-pre-wrap break-all text-xs text-slate-700">
-                        {row.sql}
-                      </code>
+                ) : slowTables.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-slate-500">
+                      No table size data for{" "}
+                      <code className="rounded bg-slate-100 px-1">{databaseName}</code>.
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          className={SECONDARY_BTN_CLASS}
-                          onClick={() => void askAi(row)}
-                          disabled={advising}
-                        >
-                          Ask Centrix AI
-                        </button>
-                        {row.cleanup_hint ? (
+                  </tr>
+                ) : (
+                  slowTables.map((table) => (
+                    <tr
+                      key={table.name}
+                      className={`border-t border-slate-100 ${table.in_slow_queries ? "bg-amber-50/50" : ""}`}
+                    >
+                      <td className="px-3 py-2 font-medium text-slate-900">
+                        <code className="text-xs">{table.name}</code>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">{table.mb}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {Number(table.rows ?? 0).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        {table.in_slow_queries ? (
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section className="mt-4">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Avg s</th>
+                  <th className="px-3 py-2">Total s</th>
+                  <th className="px-3 py-2">Runs</th>
+                  <th className="px-3 py-2">Rows examined</th>
+                  <th className="px-3 py-2">SQL</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-6 text-slate-500">
+                      Loading digests…
+                    </td>
+                  </tr>
+                ) : queries.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-6 text-slate-500">
+                      No Centrix digests yet. Generate traffic after Reset, or enable
+                      performance_schema / slow query logging.
+                    </td>
+                  </tr>
+                ) : (
+                  queries.map((row) => (
+                    <tr key={row.digest || row.sql} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-2 font-medium">{row.avg_sec}</td>
+                      <td className="px-3 py-2">{row.total_sec}</td>
+                      <td className="px-3 py-2">{row.exec_count}</td>
+                      <td className="px-3 py-2">{row.rows_examined}</td>
+                      <td className="px-3 py-2">
+                        <code className="block max-w-xl whitespace-pre-wrap break-all text-xs text-slate-700">
+                          {row.sql}
+                        </code>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-col gap-2">
                           <button
                             type="button"
                             className={SECONDARY_BTN_CLASS}
-                            onClick={() => void quickCleanup(row)}
+                            onClick={() => void askAi(row)}
                             disabled={advising}
                           >
-                            Clean up table
+                            Ask Centrix AI
                           </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                          {row.cleanup_hint ? (
+                            <button
+                              type="button"
+                              className={SECONDARY_BTN_CLASS}
+                              onClick={() => void quickCleanup(row)}
+                              disabled={advising}
+                            >
+                              Clean up table
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <AdviceModal
         open={modalOpen}

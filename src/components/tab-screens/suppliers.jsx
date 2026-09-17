@@ -48,6 +48,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
 
 function PlusIcon() {
@@ -72,7 +73,7 @@ export function SuppliersScreen() {
   const [users, setUsers] = useState([]);
   const [contactsModal, setContactsModal] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -112,19 +113,17 @@ export function SuppliersScreen() {
 
   const loadReferenceData = useCallback(async () => {
     try {
+      // Dashboard + users fill stats/columns after the table is already visible.
+      // Never await recalculate-balances — it was blocking first paint for no benefit.
       if (typeof window !== "undefined" && !sessionStorage.getItem("suppliers-balances-synced")) {
-        try {
-          await apiRequest("/suppliers/recalculate-balances", { method: "POST" });
-          sessionStorage.setItem("suppliers-balances-synced", "1");
-        } catch {
-          /* non-blocking */
-        }
+        sessionStorage.setItem("suppliers-balances-synced", "1");
+        void apiRequest("/suppliers/recalculate-balances", { method: "POST" }).catch(() => {});
       }
       const [dashRes, usersData] = await Promise.all([
-        apiRequest("/suppliers/dashboard"),
+        apiRequest("/suppliers/dashboard").catch(() => null),
         fetchUsersCached(user?.organization_id).catch(() => []),
       ]);
-      setDashboard(dashRes);
+      if (dashRes) setDashboard(dashRes);
       setUsers(usersData ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load suppliers");
@@ -158,9 +157,9 @@ export function SuppliersScreen() {
     }
   }, [page, pageSize, debouncedSearch, statusFilter]);
 
-  useTabAwareDataLoad(loadReferenceData);
-
+  // List first — do not wait for dashboard/refs.
   useTabAwareDataLoad(loadSuppliers);
+  useTabAwareDataLoad(loadReferenceData);
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadSuppliers()]);
@@ -187,6 +186,12 @@ export function SuppliersScreen() {
   const pageRowIds = useMemo(() => enriched.map((row) => row.id), [enriched]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: suppliers.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     setPage(1);
@@ -369,8 +374,8 @@ export function SuppliersScreen() {
         </FilterToolbar>
       }
     >
-      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+      <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listRefresh.contentClassName}`}>
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading suppliers…</p>
         ) : (
           <>

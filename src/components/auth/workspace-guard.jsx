@@ -95,8 +95,8 @@ export function WorkspaceGuard({ children }) {
   // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
   // returning to backoffice/platform so Applications and other admin APIs work.
   // Hold the shell until the channel matches — otherwise screens race ahead and 403.
-  // Also persist the active workspace id on the token (Hotel POS / Hotel Backoffice)
-  // so Platform → Active users shows the correct application, not retail "Backoffice".
+  // Do not call switch-workspace after a normal backoffice login just to stamp
+  // active_workspace_id — that rebuilt capabilities and slowed first paint.
   const [channelRestoreError, setChannelRestoreError] = useState(null);
   const [channelRetryToken, setChannelRetryToken] = useState(0);
 
@@ -122,21 +122,21 @@ export function WorkspaceGuard({ children }) {
     }
 
     const syncKey = `${organization?.id ?? ""}:${workspaceId}:${loginChannel ?? ""}`;
+    // Hold the shell only when the Sanctum channel must change (POS ↔ backoffice).
+    // Do not POST /auth/switch-workspace merely to stamp active_workspace_id after login —
+    // that rebuilt capabilities and made login feel slow.
     const needsPosChannelRestore =
       loginChannel === POS_LOGIN_CHANNEL && !isPosWorkspace(workspaceId);
-    const needsWorkspacePersist =
-      loginChannel !== POS_LOGIN_CHANNEL && workspaceSyncedKeyRef.current !== syncKey;
 
-    if (!needsPosChannelRestore && !needsWorkspacePersist) {
+    if (!needsPosChannelRestore) {
+      workspaceSyncedKeyRef.current = syncKey;
       setChannelReady(true);
       setChannelRestoreError(null);
       return;
     }
 
     let cancelled = false;
-    if (needsPosChannelRestore) {
-      setChannelReady(false);
-    }
+    setChannelReady(false);
     setChannelRestoreError(null);
     switchWorkspace(workspaceId)
       .then(() => {
@@ -149,17 +149,12 @@ export function WorkspaceGuard({ children }) {
       .catch((err) => {
         console.error("Failed to restore session workspace/channel", err);
         if (cancelled) return;
-        if (needsPosChannelRestore) {
-          setChannelReady(false);
-          setChannelRestoreError(
-            err instanceof Error && err.message
-              ? err.message
-              : "Could not restore the backoffice session. Try again.",
-          );
-        } else {
-          // Soft-fail workspace label sync — do not block the shell.
-          setChannelReady(true);
-        }
+        setChannelReady(false);
+        setChannelRestoreError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Could not restore the backoffice session. Try again.",
+        );
       });
 
     return () => {

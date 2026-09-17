@@ -54,7 +54,7 @@ import {
   fetchBranchesCached,
   fetchCategoriesCached,
   fetchSubCategoriesCached,
-  fetchSuppliersCached,
+  fetchSuppliersByIds,
   fetchUomsCached,
   fetchUsersCached,
   fetchVatsCached,
@@ -87,7 +87,7 @@ const PRODUCT_COLUMNS = [
   { id: "shop", label: "Shop avail.", defaultVisible: true, align: "center" },
   { id: "store", label: "Store avail.", defaultVisible: true, align: "center" },
   { id: "reorder", label: "Reorder level", defaultVisible: false, align: "right", sortKey: "reorder_point" },
-  { id: "supplier", label: "Supplier", defaultVisible: true },
+  { id: "supplier", label: "Supplier", defaultVisible: false },
   { id: "vat", label: "VAT", defaultVisible: true },
   { id: "pricing", label: "Pricing", defaultVisible: true },
   { id: "updated", label: "Updated by", defaultVisible: true },
@@ -483,7 +483,8 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const loadReferenceData = useCallback(async () => {
     setReferenceWarning(null);
     try {
-      const { criticalResults, deferredResults } = await loadReferenceDataPhased({
+      // Critical filters for the toolbar — do not await VATs/UOMs/users before paint.
+      const { criticalResults } = await loadReferenceDataPhased({
         critical: [
           () => fetchCategoriesCached(user?.organization_id).then((data) => ({ data })),
           () => fetchSubCategoriesCached(user?.organization_id).then((data) => ({ data })),
@@ -492,33 +493,14 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
               .then((data) => ({ data }))
               .catch(() => ({ data: [] })),
         ],
-        deferred: [
-          () =>
-            fetchUsersCached(user?.organization_id)
-              .then((data) => ({ data }))
-              .catch(() => ({ data: [] })),
-          () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
-          () => fetchUomsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
-          () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
-        ],
+        deferred: [],
         concurrency: 3,
       });
 
       const [catRes, subRes, branchRes] = criticalResults;
-      const [userRes, vatRes, uomRes, settingsRes] = deferredResults;
-
-      setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
-      setVats(vatRes.data ?? []);
-      setUoms(uomRes.data ?? []);
       setBranches(branchRes.data ?? []);
-      const settingsRows = settingsRes?.data ?? settingsRes ?? [];
-      const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
-      const threshold = settings?.global_low_stock_threshold;
-      setGlobalReorderThreshold(
-        threshold != null && threshold !== "" ? Number(threshold) : null,
-      );
     } catch (e) {
       setReferenceWarning(
         e instanceof Error ? e.message : "Some catalogue filters could not be loaded.",
@@ -526,26 +508,54 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     } finally {
       setLoading(false);
     }
+
+    // Deferred refs fill columns/forms after first paint.
+    void Promise.all([
+      fetchUsersCached(user?.organization_id).catch(() => []),
+      fetchVatsCached(user?.organization_id).catch(() => []),
+      fetchUomsCached(user?.organization_id).catch(() => []),
+      apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+    ]).then(([usersData, vatsData, uomsData, settingsRes]) => {
+      setUsers(usersData ?? []);
+      setVats(vatsData ?? []);
+      setUoms(uomsData ?? []);
+      const settingsRows = settingsRes?.data ?? settingsRes ?? [];
+      const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
+      const threshold = settings?.global_low_stock_threshold;
+      setGlobalReorderThreshold(
+        threshold != null && threshold !== "" ? Number(threshold) : null,
+      );
+    });
   }, [user?.organization_id]);
 
-  // Supplier crawl is large — load after list paint / when supplier column is shown.
+  // Resolve supplier names for the current page only (no full org crawl).
   useEffect(() => {
     if (!user?.organization_id) return;
     if (!visibleColumnIds.includes("supplier")) return;
+    const ids = products
+      .map((p) => p.supplier_id)
+      .filter((id) => id != null && id !== "");
+    if (ids.length === 0) return;
+
     let cancelled = false;
-    void fetchSuppliersCached(user.organization_id)
-      .then((data) => {
-        if (!cancelled) setSuppliers(data ?? []);
+    void fetchSuppliersByIds(user.organization_id, ids)
+      .then((rows) => {
+        if (cancelled) return;
+        setSuppliers((prev) => {
+          const map = new Map(prev.map((s) => [String(s.id), s]));
+          for (const row of rows) {
+            map.set(String(row.id), row);
+          }
+          return [...map.values()];
+        });
       })
-      .catch(() => {
-        if (!cancelled) setSuppliers([]);
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [user?.organization_id, visibleColumnIds]);
+  }, [user?.organization_id, visibleColumnIds, products]);
 
-  // Warm catalogue form refs after list paint — exclude suppliers (loaded when column shown).
+  // Warm catalogue form refs after list paint — exclude full supplier crawl.
   useEffect(() => {
     const orgId = user?.organization_id;
     void Promise.all([
@@ -833,7 +843,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const pageRowIds = useMemo(() => pageSlice.map((p) => p.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const showInitialLoading = !hasLoadedOnce && (loading || listLoading);
+  const showInitialLoading = !hasLoadedOnce && listLoading;
 
   const subCategoryOptions = useMemo(() => {
     if (categoryFilter === "all") return subCategories;
