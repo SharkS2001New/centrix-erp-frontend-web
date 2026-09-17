@@ -35,6 +35,7 @@ import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatus
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 
 function PlusIcon() {
@@ -60,7 +61,7 @@ export function LpoScreen() {
   const [suppliers, setSuppliers] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [contextMenu, setContextMenu] = useState(null);
   const [printingLpoNo, setPrintingLpoNo] = useState(null);
   const [markingSentLpoNo, setMarkingSentLpoNo] = useState(null);
@@ -76,14 +77,15 @@ export function LpoScreen() {
 
   const loadReferenceData = useCallback(async () => {
     try {
+      // Dashboard + filter options fill in after the table — do not block first paint.
       const [dashRes, suppliersData, statusRes] = await Promise.all([
-        apiRequest("/lpo-mst/dashboard"),
-        fetchSuppliersCached(user?.organization_id),
+        apiRequest("/lpo-mst/dashboard").catch(() => null),
+        fetchSuppliersCached(user?.organization_id).catch(() => []),
         apiRequest("/lpo-statuses", { searchParams: { per_page: 50 } }).catch(() => ({
           data: [],
         })),
       ]);
-      setDashboard(dashRes);
+      if (dashRes) setDashboard(dashRes);
       setSuppliers(suppliersData ?? []);
       setStatuses(statusRes.data ?? statusRes ?? []);
     } catch (e) {
@@ -122,9 +124,16 @@ export function LpoScreen() {
     }
   }, [page, pageSize, debouncedSearch, supplierFilter, statusFilter]);
 
+  // List first — do not wait for dashboard/suppliers/statuses.
+  useTabAwareDataLoad(loadRows);
   useTabAwareDataLoad(loadReferenceData);
 
-  useTabAwareDataLoad(loadRows);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     setPage(1);
@@ -327,7 +336,7 @@ export function LpoScreen() {
 
   return (
     <CatalogPageShell
-      navigationReady={!loading}
+      navigationReady={!tableLoading}
       title="Purchase orders (LPO)"
       subtitle="Procure from suppliers — links to supplier accounts payable and stock receipt"
       action={
@@ -352,7 +361,7 @@ export function LpoScreen() {
               if (statusFilter !== "all") extra.status_code = statusFilter;
               return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
             }}
-            disabled={loading}
+            disabled={tableLoading}
           />
           {canCreate ? (
             <Link
@@ -391,7 +400,7 @@ export function LpoScreen() {
         </FilterToolbar>
       }
     >
-      {dashboard && !loading && (
+      {dashboard ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="POs this month" value={String(dashboard.total_pos ?? 0)} />
           <StatCard label="Total value" value={formatLpoKes(dashboard.total_value)} />
@@ -401,12 +410,14 @@ export function LpoScreen() {
             value={`${dashboard.cleared_count ?? 0} / ${dashboard.partially_received_count ?? 0}`}
           />
         </div>
-      )}
+      ) : null}
 
-      {loading ? (
+      {tableLoading ? (
         <div className="theme-panel theme-table-shell min-h-[280px] rounded-xl shadow-sm" aria-hidden />
       ) : (
-        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+        <div
+          className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listRefresh.contentClassName}`}
+        >
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>

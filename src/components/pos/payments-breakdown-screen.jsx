@@ -18,7 +18,8 @@ import { ReportExportToolbar } from "@/components/reports/report-export-toolbar"
 import { formatAccountingAmount } from "@/lib/accounting-shared";
 import { todayDashboardDateRange } from "@/lib/dashboard-dates";
 import { notifyError } from "@/lib/notify";
-import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
+import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { filterByOrganization } from "@/lib/admin";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -254,7 +255,7 @@ export function PaymentsBreakdownScreen({
 
   useEffect(() => {
     if (!organizationId) return;
-    const tasks = [fetchUsersCached(organizationId)];
+    const tasks = [fetchSalesCapableUsersCached(organizationId)];
     if (showBranchFilter) tasks.push(fetchBranchesCached(organizationId));
     Promise.all(tasks)
       .then(([usersData, branchesData]) => {
@@ -327,6 +328,12 @@ export function PaymentsBreakdownScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const reportRefresh = useReportRefreshUi({
+    loading,
+    hasRows: Boolean((data?.data ?? []).length || (data?.methods ?? []).length),
+  });
+  const tableLoading = reportRefresh.showInitialLoading;
 
   const methods = useMemo(
     () =>
@@ -724,7 +731,7 @@ export function PaymentsBreakdownScreen({
         <PaymentsMethodTabs methods={methods} activeCode={methodCode} onChange={onTabChange} />
       </div>
 
-      {loading ? (
+      {tableLoading ? (
         <p className="theme-subtext text-sm">Loading payments…</p>
       ) : methods.length === 0 ? (
         <div className="theme-panel rounded-xl border border-dashed px-6 py-10 text-center text-sm text-[var(--theme-text-muted)]">
@@ -736,7 +743,9 @@ export function PaymentsBreakdownScreen({
         </div>
       ) : (
         <>
-          <div className="theme-panel theme-table-shell overflow-hidden rounded-xl border shadow-sm">
+          <div
+            className={`theme-panel theme-table-shell overflow-hidden rounded-xl border shadow-sm ${reportRefresh.contentClassName}`}
+          >
             <table className="min-w-full divide-y divide-[var(--theme-border)] text-sm">
               <thead className="bg-[var(--theme-page-bg)] text-left text-xs font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
                 <tr>

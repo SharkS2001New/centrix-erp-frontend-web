@@ -8,6 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import {
   FilterSelect,
   PaginationBar,
@@ -95,7 +96,7 @@ function LegacyOrdersContent() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -143,6 +144,13 @@ function LegacyOrdersContent() {
   }, [page, debouncedSearch, fromDate, toDate, returnsFilter, debouncedMinTotal, debouncedMaxTotal]);
 
   useTabAwareDataLoad(loadData);
+
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading || listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     setPage(1);
@@ -291,7 +299,7 @@ function LegacyOrdersContent() {
         </label>
       </div>
 
-      <div className="theme-panel overflow-x-auto rounded-lg border">
+      <div className={`theme-panel overflow-x-auto rounded-lg border ${listRefresh.contentClassName}`}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
             <tr>
@@ -305,7 +313,7 @@ function LegacyOrdersContent() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {tableLoading ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
                   Loading…

@@ -423,23 +423,24 @@ export function LegacyArchiveReportScreen() {
     setLoadingSales(true);
     setError(null);
     try {
-      const [sumRes, list] = await Promise.all([
-        fetchLegacyArchiveSummary({
-          from_date: applied.fromDate,
-          to_date: applied.toDate,
-        }).catch(() => null),
-        fetchLegacyArchiveSales({
-          channel: applied.q ? "all" : applied.channel,
-          page: applied.page,
-          per_page: pageSize,
-          from_date: applied.fromDate,
-          to_date: applied.toDate,
-          ...(applied.q ? { q: applied.q } : {}),
-          ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
-          ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
-        }),
-      ]);
-      setSummary(sumRes?.summary ?? null);
+      // List first — summary cards fill in asynchronously.
+      void fetchLegacyArchiveSummary({
+        from_date: applied.fromDate,
+        to_date: applied.toDate,
+      })
+        .then((sumRes) => setSummary(sumRes?.summary ?? null))
+        .catch(() => setSummary(null));
+
+      const list = await fetchLegacyArchiveSales({
+        channel: applied.q ? "all" : applied.channel,
+        page: applied.page,
+        per_page: pageSize,
+        from_date: applied.fromDate,
+        to_date: applied.toDate,
+        ...(applied.q ? { q: applied.q } : {}),
+        ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
+        ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
+      });
       setSales(list);
     } catch (err) {
       setError(err?.message ?? "Could not load legacy sales.");

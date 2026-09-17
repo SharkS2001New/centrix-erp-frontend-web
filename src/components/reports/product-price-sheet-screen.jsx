@@ -207,7 +207,6 @@ export function ProductPriceSheetScreen() {
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsButtonRef = useRef(null);
   const [columnsMenuStyle, setColumnsMenuStyle] = useState(null);
-  const [metaReady, setMetaReady] = useState(false);
 
   const sheetExtra = useCallback(() => {
     const extra = {
@@ -233,8 +232,6 @@ export function ProductPriceSheetScreen() {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load price sheet filters");
-    } finally {
-      setMetaReady(true);
     }
   }, [organization?.id]);
 
@@ -264,14 +261,9 @@ export function ProductPriceSheetScreen() {
     }
   }, [page, pageSize, debouncedSearch, sheetExtra]);
 
+  // Report rows and filter meta in parallel — do not wait on categories first.
+  useTabAwareDataLoad(loadPage);
   useTabAwareDataLoad(loadMeta);
-
-  useTabAwareDataLoad(
-    useCallback(() => {
-      if (!metaReady) return;
-      return loadPage();
-    }, [metaReady, loadPage]),
-  );
 
   useEffect(() => {
     setPage(1);

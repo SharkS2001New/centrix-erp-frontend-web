@@ -12,6 +12,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { fetchBranchesCached, fetchRoutesAndUomsCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { filterByOrganization } from "@/lib/admin";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -625,7 +626,9 @@ export default function SalesOrdersListScreen({
       .catch(() => setBranches([]));
   }, [user?.organization_id]);
 
+  // Sellers / routes / UOMs enrich filters and columns after the list has painted.
   useEffect(() => {
+    if (loading) return;
     const orgId = user?.organization_id;
     if (!orgId) {
       setSellers([]);
@@ -639,9 +642,10 @@ export default function SalesOrdersListScreen({
         setSellers(scoped);
       })
       .catch(() => setSellers([]));
-  }, [user?.organization_id]);
+  }, [loading, user?.organization_id]);
 
   useEffect(() => {
+    if (loading) return;
     const orgId = user?.organization_id;
     fetchRoutesAndUomsCached(orgId)
       .then(({ routes, uoms }) => {
@@ -660,7 +664,7 @@ export default function SalesOrdersListScreen({
         setRouteById(new Map());
         setUomById(new Map());
       });
-  }, [user?.organization_id]);
+  }, [loading, user?.organization_id]);
 
   useEffect(() => {
     const saleIds = rows.map((sale) => sale.id).filter(Boolean);
@@ -764,10 +768,15 @@ export default function SalesOrdersListScreen({
       appliedFromDate,
       queueConfig?.dateRangeDays || listDefaultDaysForArchive || ORDERS_HOT_WINDOW_DAYS,
     );
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading || listLoading,
+    hasRows: rows.length > 0,
+  });
   const showArchiveLoading =
     (loading || listLoading) && loadingFromArchive;
-  const showTableLoading = loading || (listLoading && rows.length === 0);
-  const showRefreshOverlay = listLoading && !loading && rows.length > 0 && !showArchiveLoading;
+  const showTableLoading = listRefresh.showInitialLoading;
+  const showRefreshOverlay = listRefresh.isRefreshing && !showArchiveLoading;
 
   const buildOrdersListSearchParams = useCallback(
     (pageNum, perPageNum) => {
@@ -1876,7 +1885,7 @@ export default function SalesOrdersListScreen({
 
   return (
     <CatalogPageShell
-      navigationReady={!loading}
+      navigationReady={!showTableLoading}
       title={
         shopDebtorsBucket === "unpaid"
           ? "Unpaid Debtors"

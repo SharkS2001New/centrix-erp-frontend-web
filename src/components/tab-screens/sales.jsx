@@ -107,51 +107,54 @@ export function SalesScreen() {
         </div>
       }
     >
-      {loading ? (
-        <p className="theme-subtext text-sm">Loading dashboard…</p>
-      ) : (
-        <div className="space-y-8">
-          <DashboardSection title="Today's orders" subtitle="Excluding held orders">
-            <OrderSummaryStats summary={orderSummaryDisplay} hint="Today" />
-          </DashboardSection>
+      <div className="space-y-8">
+        <DashboardSection title="Sales tools">
+          <DashboardQuickLinks links={SALES_LINKS} />
+        </DashboardSection>
 
-          <ReportsDashboardSection compact showFilters workspaceScope="sales" />
+        {loading ? (
+          <p className="theme-subtext text-sm">Loading today’s orders…</p>
+        ) : (
+          <>
+            <DashboardSection title="Today's orders" subtitle="Excluding held orders">
+              <OrderSummaryStats summary={orderSummaryDisplay} hint="Today" />
+            </DashboardSection>
 
-          <DashboardSection
-            title="Recent orders today"
-            action={
-              <Link href="/sales/orders" className="theme-link text-sm">
-                View all
-              </Link>
-            }
-          >
-            <DashboardSummaryTable
-              columns={[
-                { key: "receipt", label: "Receipt", mono: true },
-                { key: "customer", label: "Customer" },
-                { key: "total", label: "Total", align: "right" },
-                {
-                  key: "status",
-                  label: "Status",
-                  render: (row) => <SaleStatusBadge status={row.status} />,
-                },
-                {
-                  key: "placedBy",
-                  label: "Placed by",
-                  render: (row) => <SaleCreatedByCell sale={row.sale} />,
-                },
-              ]}
-              rows={recentOrders}
-              formatValue={(key, value) => (key === "total" ? formatSaleKes(value) : value)}
-              viewAllHref="/sales/orders"
-            />
-          </DashboardSection>
+            <DashboardSection
+              title="Recent orders today"
+              action={
+                <Link href="/sales/orders" className="theme-link text-sm">
+                  View all
+                </Link>
+              }
+            >
+              <DashboardSummaryTable
+                columns={[
+                  { key: "receipt", label: "Receipt", mono: true },
+                  { key: "customer", label: "Customer" },
+                  { key: "total", label: "Total", align: "right" },
+                  {
+                    key: "status",
+                    label: "Status",
+                    render: (row) => <SaleStatusBadge status={row.status} />,
+                  },
+                  {
+                    key: "placedBy",
+                    label: "Placed by",
+                    render: (row) => <SaleCreatedByCell sale={row.sale} />,
+                  },
+                ]}
+                rows={recentOrders}
+                formatValue={(key, value) => (key === "total" ? formatSaleKes(value) : value)}
+                viewAllHref="/sales/orders"
+              />
+            </DashboardSection>
+          </>
+        )}
 
-          <DashboardSection title="Sales tools">
-            <DashboardQuickLinks links={SALES_LINKS} />
-          </DashboardSection>
-        </div>
-      )}
+        {/* Load analytics in parallel — do not wait on today's /sales list. */}
+        <ReportsDashboardSection compact showFilters workspaceScope="sales" />
+      </div>
     </CatalogPageShell>
   );
 }
