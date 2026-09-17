@@ -48,6 +48,7 @@ import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/
 import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -189,16 +190,18 @@ export function UomsScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [uomsData, counts] = await Promise.all([
-        fetchUomsCached(user?.organization_id),
-        fetchProductGroupCountsCached(user?.organization_id),
-      ]);
+      const uomsData = await fetchUomsCached(user?.organization_id);
       setUoms(uomsData ?? []);
-      setProductCountByUom(
-        new Map(
-          Object.entries(counts?.by_unit_id ?? {}).map(([id, n]) => [String(id), Number(n)]),
-        ),
-      );
+      // Product counts enrich the table after paint.
+      void fetchProductGroupCountsCached(user?.organization_id)
+        .then((counts) => {
+          setProductCountByUom(
+            new Map(
+              Object.entries(counts?.by_unit_id ?? {}).map(([id, n]) => [String(id), Number(n)]),
+            ),
+          );
+        })
+        .catch(() => {});
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load units of measure");
     } finally {
@@ -250,6 +253,12 @@ export function UomsScreen() {
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const uomById = useMemo(() => new Map(uoms.map((u) => [String(u.id), u])), [uoms]);
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading,
+    hasRows: uoms.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const formTitle = drawerMode === "create"
     ? hotelCatalogue
@@ -569,8 +578,8 @@ export function UomsScreen() {
         </div>
       }
     >
-      <div className={TABLE_SHELL_CLASS}>
-        {loading ? (
+      <div className={`${TABLE_SHELL_CLASS} ${listRefresh.contentClassName}`}>
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading units…</p>
         ) : (
           <div className="overflow-x-auto">

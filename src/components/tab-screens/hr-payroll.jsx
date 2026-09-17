@@ -51,6 +51,7 @@ import {
   payrollRunFormDefaults,
 } from "@/lib/hr-settings";
 import { useConfirm } from "@/lib/use-confirm";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 export function HrPayrollScreen() {
   const router = useRouter();
@@ -72,6 +73,7 @@ export function HrPayrollScreen() {
   const [runEmployees, setRunEmployees] = useState([]);
   const [runEmpSearch, setRunEmpSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [runForm, setRunForm] = useState(EMPTY_PAYROLL_RUN_FORM);
@@ -97,28 +99,42 @@ export function HrPayrollScreen() {
     [capabilities?.module_settings, runSchedule],
   );
 
-  const loadData = useCallback(async () => {
+  const loadRuns = useCallback(async () => {
+    setListLoading(true);
     try {
-      const [runsRes, periodsRes, summaryRes, deptRes, scheduleRes] = await Promise.all([
-        apiRequest("/payroll-runs", { searchParams: { per_page: 200 } }),
+      const runsRes = await apiRequest("/payroll-runs", { searchParams: { per_page: 200 } });
+      setRuns(runsRes.data ?? []);
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to load payroll");
+    } finally {
+      setListLoading(false);
+      setLoading(false);
+    }
+  }, []);
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const [periodsRes, summaryRes, deptRes, scheduleRes] = await Promise.all([
         apiRequest("/pay-periods", { searchParams: { per_page: 50 } }),
         apiRequest("/employees/summary").catch(() => null),
         apiRequest("/departments", { searchParams: { per_page: 100 } }),
         apiRequest("/payroll/run-schedule").catch(() => null),
       ]);
-      setRuns(runsRes.data ?? []);
       setPeriods(periodsRes.data ?? []);
       if (scheduleRes) setRunSchedule(scheduleRes);
       setPayrollEligibleCount(Number(summaryRes?.payroll_eligible ?? summaryRes?.active ?? 0));
       setDepartments(deptRes.data ?? []);
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load payroll");
-    } finally {
-      setLoading(false);
+      notifyError(e instanceof Error ? e.message : "Failed to load payroll meta");
     }
   }, []);
 
-  useTabAwareDataLoad(loadData);
+  const loadData = useCallback(async () => {
+    await Promise.all([loadRuns(), loadMeta()]);
+  }, [loadRuns, loadMeta]);
+
+  useTabAwareDataLoad(loadRuns);
+  useTabAwareDataLoad(loadMeta);
 
   const refreshData = useCallback(async () => {
     setRefreshing(true);
@@ -128,6 +144,13 @@ export function HrPayrollScreen() {
       setRefreshing(false);
     }
   }, [loadData]);
+
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading || listLoading,
+    hasRows: runs.length > 0 || periods.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const orgPeriods = useMemo(() => {
     if (!organizationId) return periods;
@@ -548,10 +571,10 @@ export function HrPayrollScreen() {
         </button>
       </div>
 
-      {loading ? (
+      {tableLoading ? (
         <p className="text-sm text-slate-500">Loading payroll…</p>
       ) : tab === "runs" ? (
-        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+        <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listRefresh.contentClassName}`}>
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-[15px] font-medium text-slate-900">Payments by month</h2>
             <p className="mt-0.5 text-xs text-slate-500">

@@ -250,33 +250,39 @@ export function HrAttendanceScreen({ mode = "today" }) {
         });
       }
 
-      const results = await Promise.allSettled(requestDefs.map((item) => item.promise));
       const failures = [];
+      let primarySettled = false;
 
-      results.forEach((result, index) => {
-        const { key } = requestDefs[index];
-        if (result.status === "rejected") {
-          const message =
-            result.reason instanceof ApiError
-              ? result.reason.message
-              : result.reason instanceof Error
-                ? result.reason.message
-                : "Request failed";
-          failures.push(message);
-          return;
-        }
-
-        const res = result.value;
-        if (key === "sessions") setSessions(res.data ?? []);
-        if (key === "todayAttendance") setTodayRecords(res.data ?? []);
-        if (key === "fieldSessions") setTodayFieldSessions(res.data ?? []);
-        if (key === "gaps") setGapCounts(res.counts ?? null);
-        if (key === "clockDevices") {
-          const total = Number(res.meta?.total ?? res.total ?? (res.data ?? []).length ?? 0);
-          setClockDeviceCount(Number.isFinite(total) ? total : (res.data ?? []).length);
-        }
-        if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
-      });
+      await Promise.all(
+        requestDefs.map(async ({ key, promise }) => {
+          try {
+            const res = await promise;
+            if (key === "sessions") setSessions(res.data ?? []);
+            if (key === "todayAttendance") setTodayRecords(res.data ?? []);
+            if (key === "fieldSessions") setTodayFieldSessions(res.data ?? []);
+            if (key === "gaps") setGapCounts(res.counts ?? null);
+            if (key === "clockDevices") {
+              const total = Number(res.meta?.total ?? res.total ?? (res.data ?? []).length ?? 0);
+              setClockDeviceCount(Number.isFinite(total) ? total : (res.data ?? []).length);
+            }
+            if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
+          } catch (reason) {
+            const message =
+              reason instanceof ApiError
+                ? reason.message
+                : reason instanceof Error
+                  ? reason.message
+                  : "Request failed";
+            failures.push(message);
+          } finally {
+            // Paint as soon as clock sessions (primary list) settle.
+            if (key === "sessions" && !primarySettled) {
+              primarySettled = true;
+              setActiveLoading(false);
+            }
+          }
+        }),
+      );
 
       if (failures.length === requestDefs.length) {
         notifyError(failures[0] ?? "Failed to load active attendance");

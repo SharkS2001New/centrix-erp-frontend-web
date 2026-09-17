@@ -41,6 +41,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 
@@ -57,7 +58,7 @@ export function HrEmployeesScreen() {
   const [employeeStats, setEmployeeStats] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -119,9 +120,9 @@ export function HrEmployeesScreen() {
     }
   }, [page, pageSize, debouncedSearch, deptFilter, statusFilter]);
 
-  useTabAwareDataLoad(loadReferenceData);
-
+  // List first — departments/summary fill stats after paint.
   useTabAwareDataLoad(loadEmployees);
+  useTabAwareDataLoad(loadReferenceData);
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadEmployees()]);
@@ -146,6 +147,12 @@ export function HrEmployeesScreen() {
   const pageRowIds = useMemo(() => employees.map((e) => e.id), [employees]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: employees.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const stats = useMemo(() => {
     if (employeeStats) {
@@ -353,7 +360,7 @@ export function HrEmployeesScreen() {
         </HrPageActions>
       }
       banner={
-        !loading ? (
+        employeeStats || !tableLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Active employees" value={stats.active.toLocaleString()} />
             <StatCard label="Total employees" value={stats.total.toLocaleString()} />
@@ -389,8 +396,8 @@ export function HrEmployeesScreen() {
         </FilterToolbar>
       }
     >
-      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+      <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listRefresh.contentClassName}`}>
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading employees…</p>
         ) : (
           <>

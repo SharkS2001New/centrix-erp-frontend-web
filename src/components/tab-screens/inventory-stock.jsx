@@ -53,6 +53,7 @@ import {
   TableSelectAllHeader,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
 
@@ -177,13 +178,15 @@ export function InventoryStockScreen() {
   const [subcategories, setSubcategories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [branchId, setBranchId] = useState("");
+  const [branchId, setBranchId] = useState(() =>
+    user?.branch_id != null ? String(user.branch_id) : "",
+  );
   const [retailPackages, setRetailPackages] = useState([]);
   const [totalStockRows, setTotalStockRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [costTotals, setCostTotals] = useState({ shop: 0, store: 0, all: 0 });
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [buildingAllPriceList, setBuildingAllPriceList] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -322,11 +325,12 @@ export function InventoryStockScreen() {
 
   useTabAwareDataLoad(loadReferenceData);
 
+  // Start stock as soon as branch is known — do not wait for category/branch refs.
   useTabAwareDataLoad(
     useCallback(() => {
-      if (loading || !branchId) return;
+      if (!branchId) return;
       return loadStock();
-    }, [loading, branchId, loadStock]),
+    }, [branchId, loadStock]),
   );
 
   useEffect(() => {
@@ -409,6 +413,12 @@ export function InventoryStockScreen() {
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: listLoading || (!branchId && loading),
+    hasRows: pageSlice.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading || (!branchId && loading);
 
   function toggleColumn(id) {
     const col = STOCK_COLUMNS.find((c) => c.id === id);
@@ -688,7 +698,7 @@ export function InventoryStockScreen() {
         </div>
       </div>
 
-      {!loading && pageSlice.length > 0 ? (
+      {!tableLoading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">
           Stock cost totals{listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
           {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
@@ -696,13 +706,13 @@ export function InventoryStockScreen() {
       ) : null}
 
       <InventoryTableShell>
-        {loading || !branchId ? (
+        {tableLoading || !branchId ? (
           <p className="p-8 text-sm text-slate-500">
-            {loading ? "Loading stock…" : "Select a branch to view stock."}
+            {!branchId && !loading ? "Select a branch to view stock." : "Loading stock…"}
           </p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={`overflow-x-auto ${listRefresh.contentClassName}`}>
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">

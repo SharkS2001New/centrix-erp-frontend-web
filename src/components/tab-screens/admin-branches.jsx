@@ -27,6 +27,7 @@ import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -84,21 +85,23 @@ export function AdminBranchesScreen() {
     }
     setLoading(true);
     try {
-      const [branchRes, userRes] = await Promise.all([
-        apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest(adminPath("/users"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-      ]);
+      const branchRes = await apiRequest(adminPath("/branches"), {
+        searchParams: { per_page: 200, ...orgListParams(organizationId) },
+      });
       setBranches(filterByOrganization(branchRes.data, organizationId));
-      setUsers(filterByOrganization(userRes.data, organizationId));
 
-      try {
-        const empRes = await apiRequest(adminPath("/employees"), {
+      // Users + employees enrich counts/managers after the branch list paints.
+      void Promise.all([
+        apiRequest(adminPath("/users"), {
           searchParams: { per_page: 200, ...orgListParams(organizationId) },
-        });
-        setEmployees(filterByOrganization(empRes.data, organizationId));
-      } catch {
-        setEmployees([]);
-      }
+        }).catch(() => ({ data: [] })),
+        apiRequest(adminPath("/employees"), {
+          searchParams: { per_page: 200, ...orgListParams(organizationId) },
+        }).catch(() => ({ data: [] })),
+      ]).then(([userRes, empRes]) => {
+        setUsers(filterByOrganization(userRes.data ?? [], organizationId));
+        setEmployees(filterByOrganization(empRes.data ?? [], organizationId));
+      });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load branches");
     } finally {
@@ -107,6 +110,13 @@ export function AdminBranchesScreen() {
   }, [adminPath, organizationId]);
 
   useTabAwareDataLoad(load);
+
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading,
+    hasRows: branches.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const userCountByBranch = useMemo(() => {
     const map = new Map();
@@ -310,8 +320,8 @@ export function AdminBranchesScreen() {
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
+          <tbody className={`divide-y divide-slate-100 ${listRefresh.contentClassName}`}>
+            {tableLoading ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   Loading…

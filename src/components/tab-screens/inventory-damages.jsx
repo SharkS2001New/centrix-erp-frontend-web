@@ -35,6 +35,7 @@ import { DAMAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 
 export function InventoryDamagesScreen() {
@@ -51,7 +52,7 @@ export function InventoryDamagesScreen() {
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
@@ -85,10 +86,13 @@ export function InventoryDamagesScreen() {
       setTotalPages(parsed.totalPages);
 
       const codes = parsed.items.map((row) => row.product_code).filter(Boolean);
-      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
-        status: "all",
-      });
-      setProducts(catalogProducts ?? []);
+      if (codes.length) {
+        void fetchProductsByCodesCached(user?.organization_id, codes, { status: "all" })
+          .then((catalogProducts) => setProducts(catalogProducts ?? []))
+          .catch(() => setProducts([]));
+      } else {
+        setProducts([]);
+      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load damages");
     } finally {
@@ -97,12 +101,18 @@ export function InventoryDamagesScreen() {
     }
   }, [branchId, fromDate, toDate, page, pageSize, user?.organization_id]);
 
+  useTabAwareDataLoad(loadRows);
   useTabAwareDataLoad(loadReferenceData);
 
-  useTabAwareDataLoad(loadRows);
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading || listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
-    if (!highlightDamageId || loading) return;
+    if (!highlightDamageId || tableLoading) return;
     const key = String(highlightDamageId);
     if (highlightDamageOpenedRef.current === key) return;
 
@@ -127,7 +137,7 @@ export function InventoryDamagesScreen() {
     return () => {
       cancelled = true;
     };
-  }, [highlightDamageId, loading, rows]);
+  }, [highlightDamageId, tableLoading, rows]);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 
@@ -196,7 +206,7 @@ export function InventoryDamagesScreen() {
               from_date: fromDate,
               to_date: toDate,
             })}
-            disabled={loading}
+            disabled={tableLoading}
           />
           <PrimaryLink href="/inventory/damages/new" permission={P.inventory.damages.view}>
             Record damage
@@ -227,11 +237,11 @@ export function InventoryDamagesScreen() {
       </div>
 
       <InventoryTableShell>
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading damages…</p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={`overflow-x-auto ${listRefresh.contentClassName}`}>
               <table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">

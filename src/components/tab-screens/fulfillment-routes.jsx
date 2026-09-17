@@ -108,21 +108,38 @@ export function FulfillmentRoutesScreen() {
   const loadData = useCallback(async () => {
     setListLoading(true);
     try {
-      const searchParamsApi = buildPageParams({
+      const leanParams = buildPageParams({
         page,
         perPage: pageSize,
         q: debouncedSearch,
-        extra: {
-          include_stats: 1,
-          stats_from_date: fromDate,
-          stats_to_date: toDate,
-        },
       });
-      const routeRes = await apiRequest("/routes", { searchParams: searchParamsApi });
+      const routeRes = await apiRequest("/routes", { searchParams: leanParams });
       const parsed = parsePaginator(routeRes);
       setRoutes(parsed.items);
       setTotal(parsed.total);
       setTotalPages(parsed.totalPages);
+
+      // Stats (sales/orders/customers) enrich after first paint.
+      void apiRequest("/routes", {
+        searchParams: buildPageParams({
+          page,
+          perPage: pageSize,
+          q: debouncedSearch,
+          extra: {
+            include_stats: 1,
+            stats_from_date: fromDate,
+            stats_to_date: toDate,
+          },
+        }),
+        loading: false,
+      })
+        .then((statsRes) => {
+          const withStats = parsePaginator(statsRes);
+          setRoutes(withStats.items);
+          setTotal(withStats.total);
+          setTotalPages(withStats.totalPages);
+        })
+        .catch(() => {});
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load routes");
     } finally {

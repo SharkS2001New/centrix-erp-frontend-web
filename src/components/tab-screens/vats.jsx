@@ -27,6 +27,7 @@ import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/
 import { VAT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -75,18 +76,21 @@ export function VatsScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [vatsData, groupCounts, userRes] = await Promise.all([
-        isPlatformManaged
-          ? apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }).then(
-              (res) => res.data ?? res ?? [],
-            )
-          : fetchVatsCached(user?.organization_id),
-        fetchProductGroupCountsCached(user?.organization_id).catch(() => ({ by_vat_id: {} })),
-        apiRequest(adminPath("/users"), { searchParams: { per_page: 200 } }),
-      ]);
+      const vatsData = isPlatformManaged
+        ? await apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }).then(
+            (res) => res.data ?? res ?? [],
+          )
+        : await fetchVatsCached(user?.organization_id);
       setVats(vatsData ?? []);
-      setProductCountByVatId(groupCounts?.by_vat_id ?? {});
-      setUsers(userRes.data ?? []);
+
+      // Counts + users enrich columns after the rates list is visible.
+      void Promise.all([
+        fetchProductGroupCountsCached(user?.organization_id).catch(() => ({ by_vat_id: {} })),
+        apiRequest(adminPath("/users"), { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      ]).then(([groupCounts, userRes]) => {
+        setProductCountByVatId(groupCounts?.by_vat_id ?? {});
+        setUsers(userRes.data ?? []);
+      });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load VAT rates");
     } finally {
@@ -110,6 +114,12 @@ export function VatsScreen() {
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const vatById = useMemo(() => new Map(vats.map((v) => [String(v.id), v])), [vats]);
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading,
+    hasRows: vats.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const drawerTitle = drawerMode === "create" ? "Add VAT rate" : "Edit VAT rate";
 
@@ -244,7 +254,7 @@ export function VatsScreen() {
             columns={VAT_EXPORT_COLUMNS}
             totalCount={vats.length}
             getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            disabled={tableLoading}
           />
           {canCreateVat ? (
             <PrimaryButton onClick={openCreateDrawer}>Add VAT rate</PrimaryButton>
@@ -252,8 +262,8 @@ export function VatsScreen() {
         </div>
       }
     >
-      <div className={TABLE_SHELL_CLASS}>
-        {loading ? (
+      <div className={`${TABLE_SHELL_CLASS} ${listRefresh.contentClassName}`}>
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading VAT rates…</p>
         ) : (
           <div className="overflow-x-auto">

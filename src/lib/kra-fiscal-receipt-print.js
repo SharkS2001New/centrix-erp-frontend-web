@@ -502,7 +502,8 @@ export function buildKraFiscalReceiptPrintDocument(receiptsHtml, { title = "KRA 
 }
 
 export async function buildKraFiscalReceiptDocuments(rows, { orgName = DEFAULT_PRINT_ORG_NAME } = {}) {
-  const enriched = (rows ?? []).map(enrichKraReportRow).filter(Boolean);
+  const hydrated = await hydrateKraRowsForPrint(rows ?? []);
+  const enriched = hydrated.map(enrichKraReportRow).filter(Boolean);
   const qrUrls = await Promise.all(
     enriched.map((entry) =>
       entry.kra?.signatureLink ? kraReceiptQrDataUrl(entry.kra.signatureLink, { size: 140 }) : Promise.resolve(null),
@@ -512,6 +513,49 @@ export async function buildKraFiscalReceiptDocuments(rows, { orgName = DEFAULT_P
   return enriched.map((entry, index) =>
     buildKraFiscalReceiptHtml(entry, { qrDataUrl: qrUrls[index], orgName }),
   );
+}
+
+function kraRowNeedsPayloadHydration(row) {
+  const request = row?.request_payload ?? row?.requestPayload;
+  const response = row?.response_payload ?? row?.responsePayload;
+  const hasRequest = request != null && request !== "" && !(typeof request === "object" && !Object.keys(request).length);
+  const hasResponse = response != null && response !== "" && !(typeof response === "object" && !Object.keys(response).length);
+  return !hasRequest && !hasResponse;
+}
+
+/** List API omits payloads — fetch detail rows before print/preview enrichment. */
+async function hydrateKraRowsForPrint(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const needFetch = list.filter((row) => kraReportRowId(row) != null && kraRowNeedsPayloadHydration(row));
+  if (needFetch.length === 0) {
+    return list;
+  }
+
+  const { apiRequest } = await import("@/lib/api");
+  const fetched = await Promise.all(
+    needFetch.map(async (row) => {
+      const id = kraReportRowId(row);
+      try {
+        const detail = await apiRequest(`/kra-responses/${id}`, {
+          loading: false,
+          reportIssues: false,
+        });
+        return {
+          ...row,
+          ...detail,
+          kra_response_id: row.kra_response_id ?? detail.id ?? id,
+          request_payload: detail.request_payload ?? detail.requestPayload ?? null,
+          response_payload: detail.response_payload ?? detail.responsePayload ?? null,
+          sale_items: detail.sale_items ?? row.sale_items,
+        };
+      } catch {
+        return row;
+      }
+    }),
+  );
+
+  const byId = new Map(fetched.map((row) => [String(kraReportRowId(row)), row]));
+  return list.map((row) => byId.get(String(kraReportRowId(row))) ?? row);
 }
 
 /** Print one or many KRA fiscal receipts. Returns false when the browser blocked the print window. */

@@ -32,6 +32,7 @@ import {
 } from "@/lib/inventory-transfer-routes";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { P } from "@/lib/permission-codes";
 
 function transferLocationLabel(value) {
@@ -107,6 +108,7 @@ export function InventoryTransfersScreen() {
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -118,33 +120,37 @@ export function InventoryTransfersScreen() {
   const [reasonRow, setReasonRow] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setListLoading(true);
     setError(null);
     try {
-      const [res, uomRows] = await Promise.all([
-        apiRequest("/reports/stock-transfers", {
-          searchParams: {
-            from_date: fromDate,
-            to_date: toDate,
-            per_page: pageSize,
-            page,
-            ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
-          },
-        }),
-        fetchUomsCached(user?.organization_id).catch(() => []),
-      ]);
+      const res = await apiRequest("/reports/stock-transfers", {
+        searchParams: {
+          from_date: fromDate,
+          to_date: toDate,
+          per_page: pageSize,
+          page,
+          ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
+        },
+      });
       const parsed = parsePaginator(res);
       const items = parsed.items;
       setRows(items);
       setTotal(parsed.total);
       setTotalPages(parsed.totalPages);
-      setUoms(uomRows ?? []);
+
+      // UOM + product enrich after paint — qty labels fill in when ready.
+      void fetchUomsCached(user?.organization_id)
+        .then((uomRows) => setUoms(uomRows ?? []))
+        .catch(() => setUoms([]));
 
       const codes = items.map((row) => row.product_code).filter(Boolean);
-      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
-        status: "all",
-      }).catch(() => []);
-      setProducts(catalogProducts ?? []);
+      if (codes.length) {
+        void fetchProductsByCodesCached(user?.organization_id, codes, { status: "all" })
+          .then((catalogProducts) => setProducts(catalogProducts ?? []))
+          .catch(() => setProducts([]));
+      } else {
+        setProducts([]);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");
       setRows([]);
@@ -153,10 +159,17 @@ export function InventoryTransfersScreen() {
       setProducts([]);
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
   }, [fromDate, toDate, page, pageSize, appliedSearch, user?.organization_id]);
 
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
+  const listRefresh = useListRefreshUi({
+    loading: false,
+    listLoading: loading || listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useTabAwareDataLoad(load);
 
@@ -178,10 +191,10 @@ export function InventoryTransfersScreen() {
           <button
             type="button"
             onClick={() => void load()}
-            disabled={loading}
+            disabled={listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Stock transfers"
@@ -195,7 +208,7 @@ export function InventoryTransfersScreen() {
               to_date: toDate,
               ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
             })}
-            disabled={loading}
+            disabled={tableLoading}
           />
           <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
             New transfer
@@ -240,7 +253,7 @@ export function InventoryTransfersScreen() {
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-      <div className="overflow-x-auto">
+      <div className={`overflow-x-auto ${listRefresh.contentClassName}`}>
         <table className="min-w-full text-sm">
           <thead className="text-left text-xs uppercase text-slate-500">
             <tr className="border-b border-slate-200">
@@ -253,7 +266,7 @@ export function InventoryTransfersScreen() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {tableLoading ? (
               <tr>
                 <td colSpan={6} className="px-1 py-8 text-center text-slate-500">
                   Loading…

@@ -64,6 +64,7 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { suggestNextTillDefaults, tillDisplayName } from "@/lib/pos-till";
 import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 const EMPTY_FORM = {
   full_name: "",
@@ -128,7 +129,7 @@ export function AdminUsersScreen() {
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [permissionApplications, setPermissionApplications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
@@ -367,9 +368,9 @@ export function AdminUsersScreen() {
     }
   }, [adminPath]);
 
-  useTabAwareDataLoad(loadReferenceData);
-
+  // Users list first — branches/roles/tills fill filters after paint.
   useTabAwareDataLoad(loadUsers);
+  useTabAwareDataLoad(loadReferenceData);
 
   useEffect(() => {
     setPage(1);
@@ -790,6 +791,12 @@ export function AdminUsersScreen() {
   const pageRowIds = useMemo(() => users.map((row) => row.id), [users]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: users.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const pageContent = (
     <CatalogPageShell
@@ -811,7 +818,7 @@ export function AdminUsersScreen() {
             columns={USER_EXPORT_COLUMNS}
             totalCount={totalUsers}
             getSearchParams={() => buildPageParams({ page: 1, perPage: 200, q: debouncedSearch })}
-            disabled={loading}
+            disabled={tableLoading}
           />
           <RbacHelpButton />
           <PrimaryButton type="button" onClick={openCreate}>
@@ -833,7 +840,7 @@ export function AdminUsersScreen() {
         <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Users" }]} />
       ) : null}
 
-        <div className={`${workspaceCardClassName} overflow-x-auto ${listLoading ? "opacity-60" : ""}`}>
+        <div className={`${workspaceCardClassName} overflow-x-auto ${listRefresh.contentClassName}`}>
           <table className="min-w-full text-sm">
             <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
@@ -853,7 +860,7 @@ export function AdminUsersScreen() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
+              {tableLoading ? (
                 <tr>
                     <td colSpan={usersTableColSpan} className="px-4 py-8 text-center text-slate-500">
                     Loading…

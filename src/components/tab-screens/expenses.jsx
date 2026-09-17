@@ -31,6 +31,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
 import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
 
@@ -105,7 +106,7 @@ export function ExpensesScreen() {
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [groupFilter, setGroupFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -187,9 +188,9 @@ export function ExpensesScreen() {
     }
   }, [page, pageSize, debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
-  useTabAwareDataLoad(loadReferenceData);
-
+  // List first — do not wait for groups/users/summary.
   useTabAwareDataLoad(loadExpenses);
+  useTabAwareDataLoad(loadReferenceData);
 
   async function reloadAll() {
     const [statsRes] = await Promise.all([
@@ -208,6 +209,12 @@ export function ExpensesScreen() {
     () => new Map(paymentMethods.map((p) => [p.id, p])),
     [paymentMethods],
   );
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: expenses.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   const stats = useMemo(() => {
     if (expenseStats) {
@@ -286,7 +293,7 @@ export function ExpensesScreen() {
 
   const highlightExpenseOpenedRef = useRef(null);
   useEffect(() => {
-    if (!highlightExpenseId || loading) return;
+    if (!highlightExpenseId || tableLoading) return;
     const key = String(highlightExpenseId);
     if (highlightExpenseOpenedRef.current === key) return;
 
@@ -311,7 +318,7 @@ export function ExpensesScreen() {
     return () => {
       cancelled = true;
     };
-  }, [highlightExpenseId, loading, expenses]);
+  }, [highlightExpenseId, tableLoading, expenses]);
 
   function closeDrawer() {
     setDrawerOpen(false);
@@ -448,7 +455,7 @@ export function ExpensesScreen() {
                 },
               })
             }
-            disabled={loading}
+            disabled={tableLoading}
           />
           <button
           type="button"
@@ -526,8 +533,8 @@ export function ExpensesScreen() {
         />
       </div>
 
-      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+      <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listRefresh.contentClassName}`}>
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading expenses…</p>
         ) : (
           <>
