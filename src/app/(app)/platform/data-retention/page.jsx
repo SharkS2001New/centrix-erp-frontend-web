@@ -204,8 +204,8 @@ export default function PlatformDataRetentionPage() {
 
     try {
       const body = {
-        dry_run: dryRun,
-        optimize_tables: !dryRun && optimizeTables,
+          dry_run: dryRun,
+          optimize_tables: !dryRun && optimizeTables,
       };
       if (days != null) body.days = days;
       if (rowLimit != null) body.max_rows = rowLimit;

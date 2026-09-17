@@ -310,21 +310,21 @@ function HospitalityRoomsManager() {
         });
         notifySuccess(`Created ${Number(roomForm.count)} rooms`);
       } else {
-        const body = {
-          room_type_id: Number(roomForm.room_type_id),
-          room_number: roomForm.room_number.trim(),
-          floor: roomForm.floor.trim() || null,
-          is_active: Boolean(roomForm.is_active),
-        };
+    const body = {
+      room_type_id: Number(roomForm.room_type_id),
+      room_number: roomForm.room_number.trim(),
+      floor: roomForm.floor.trim() || null,
+      is_active: Boolean(roomForm.is_active),
+    };
         if (roomForm.status !== "occupied") {
           body.status = roomForm.status;
         }
-        if (roomMode === "create") {
-          await apiRequest("/hospitality/rooms", { method: "POST", body });
-          notifySuccess("Room created");
-        } else {
-          await apiRequest(`/hospitality/rooms/${editingRoomId}`, { method: "PUT", body });
-          notifySuccess("Room updated");
+      if (roomMode === "create") {
+        await apiRequest("/hospitality/rooms", { method: "POST", body });
+        notifySuccess("Room created");
+      } else {
+        await apiRequest(`/hospitality/rooms/${editingRoomId}`, { method: "PUT", body });
+        notifySuccess("Room updated");
         }
       }
       setRoomDrawer(false);
@@ -468,9 +468,9 @@ function HospitalityRoomsManager() {
           const count =
             item.id === "types" ? roomTypes.length : item.id === "plans" ? ratePlans.length : rooms.length;
           return (
-            <button
+          <button
               key={item.id}
-              type="button"
+            type="button"
               onClick={() => setTab(item.id)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 tab === item.id ? "theme-primary-btn" : "theme-secondary-btn border"
@@ -480,10 +480,10 @@ function HospitalityRoomsManager() {
               {!loading && count ? (
                 <span className="ml-1.5 tabular-nums opacity-80">{count}</span>
               ) : null}
-            </button>
+          </button>
           );
         })}
-      </div>
+        </div>
 
       {loading ? (
         <p className="theme-subtext text-sm">Loading…</p>
@@ -625,8 +625,8 @@ function HospitalityRoomsManager() {
                         row.room_type?.name ?? typeById.get(String(row.room_type_id))?.name ?? "—";
                       const occupied = Boolean(row.occupancy_source) || row.status === "occupied";
                       return (
-                        <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                          <td className="px-3 py-2 font-semibold">{row.room_number}</td>
+                      <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                        <td className="px-3 py-2 font-semibold">{row.room_number}</td>
                           <td className="px-3 py-2">{typeName}</td>
                           <td className="px-3 py-2">{row.floor || "—"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">
@@ -635,7 +635,7 @@ function HospitalityRoomsManager() {
                               : "—"}
                           </td>
                           <td className="px-3 py-2 capitalize">{row.status}</td>
-                          <td className="px-3 py-2">
+                        <td className="px-3 py-2">
                             {occupied ? (
                               <div>
                                 <p>{row.guest_name || "Guest"}</p>
@@ -652,8 +652,8 @@ function HospitalityRoomsManager() {
                           </td>
                           <td className="px-3 py-2 text-xs">
                             {row.pos_sellable ? "Sellable" : occupied ? "In house" : "Not sellable"}
-                          </td>
-                          <td className="px-3 py-2 text-right">
+                        </td>
+                        <td className="px-3 py-2 text-right">
                             {frontDeskEnabled && !occupied && ["vacant", "clean"].includes(row.status) ? (
                               <button
                                 type="button"
@@ -663,14 +663,14 @@ function HospitalityRoomsManager() {
                                 Assign
                               </button>
                             ) : null}
-                            <IconButton title="Edit" onClick={() => openEditRoom(row)}>
-                              <PencilIcon />
-                            </IconButton>
-                            <IconButton title="Delete" onClick={() => void deleteRoom(row)}>
-                              <TrashIcon />
-                            </IconButton>
-                          </td>
-                        </tr>
+                          <IconButton title="Edit" onClick={() => openEditRoom(row)}>
+                            <PencilIcon />
+                          </IconButton>
+                          <IconButton title="Delete" onClick={() => void deleteRoom(row)}>
+                            <TrashIcon />
+                          </IconButton>
+                        </td>
+                      </tr>
                       );
                     })
                   )}
@@ -690,51 +690,51 @@ function HospitalityRoomsManager() {
         error={formError}
         submitLabel={typeMode === "create" ? "Save room type" : "Save changes"}
       >
-        <Field label="Code">
-          <input
+          <Field label="Code">
+            <input
             className={inputClassName()}
-            value={typeForm.code}
-            onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))}
-            required
+              value={typeForm.code}
+              onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))}
+              required
             autoComplete="off"
-          />
-        </Field>
-        <Field label="Name">
-          <input
+            />
+          </Field>
+          <Field label="Name">
+            <input
             className={inputClassName()}
-            value={typeForm.name}
-            onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))}
-            required
-          />
-        </Field>
+              value={typeForm.name}
+              onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+          </Field>
         <Field label="Nightly rate">
-          <input
-            type="number"
-            min="0"
-            step="0.01"
+            <input
+              type="number"
+              min="0"
+              step="0.01"
             className={inputClassName()}
-            value={typeForm.base_rate}
-            onChange={(e) => setTypeForm((p) => ({ ...p, base_rate: e.target.value }))}
-          />
+              value={typeForm.base_rate}
+              onChange={(e) => setTypeForm((p) => ({ ...p, base_rate: e.target.value }))}
+            />
           <p className="theme-subtext mt-1 text-xs">Used on Hotel POS unless a default rate plan overrides it.</p>
-        </Field>
-        <Field label="Max occupancy">
-          <input
-            type="number"
-            min="1"
+          </Field>
+          <Field label="Max occupancy">
+            <input
+              type="number"
+              min="1"
             className={inputClassName()}
-            value={typeForm.max_occupancy}
-            onChange={(e) => setTypeForm((p) => ({ ...p, max_occupancy: e.target.value }))}
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={typeForm.is_active}
-            onChange={(e) => setTypeForm((p) => ({ ...p, is_active: e.target.checked }))}
-          />
-          Active
-        </label>
+              value={typeForm.max_occupancy}
+              onChange={(e) => setTypeForm((p) => ({ ...p, max_occupancy: e.target.value }))}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={typeForm.is_active}
+              onChange={(e) => setTypeForm((p) => ({ ...p, is_active: e.target.checked }))}
+            />
+            Active
+          </label>
       </FormDrawer>
 
       <FormDrawer
@@ -812,30 +812,30 @@ function HospitalityRoomsManager() {
             />
           </Field>
         )}
-        <Field label="Room type">
-          <SearchableSelect
+          <Field label="Room type">
+            <SearchableSelect
             className={inputClassName()}
-            value={roomForm.room_type_id}
-            onChange={(v) => setRoomForm((p) => ({ ...p, room_type_id: v }))}
-            required
-            placeholder="Select type…"
-            options={[
-              { value: "", label: "Select type…" },
-              ...roomTypes.map((t) => ({
-                value: String(t.id),
+              value={roomForm.room_type_id}
+              onChange={(v) => setRoomForm((p) => ({ ...p, room_type_id: v }))}
+              required
+              placeholder="Select type…"
+              options={[
+                { value: "", label: "Select type…" },
+                ...roomTypes.map((t) => ({
+                  value: String(t.id),
                 label: `${t.name}${nightlyRateForType(t, ratePlans) > 0 ? "" : " · no POS rate"}`,
-              })),
-            ]}
-          />
-        </Field>
-        <Field label="Floor">
-          <input
+                })),
+              ]}
+            />
+          </Field>
+          <Field label="Floor">
+            <input
             className={inputClassName()}
-            value={roomForm.floor}
-            onChange={(e) => setRoomForm((p) => ({ ...p, floor: e.target.value }))}
+              value={roomForm.floor}
+              onChange={(e) => setRoomForm((p) => ({ ...p, floor: e.target.value }))}
             placeholder="1"
-          />
-        </Field>
+            />
+          </Field>
         {editingRoom?.occupancy_source ? null : (
           <Field label="Housekeeping status">
             <SearchableSelect
@@ -846,14 +846,14 @@ function HospitalityRoomsManager() {
             />
           </Field>
         )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={roomForm.is_active}
-            onChange={(e) => setRoomForm((p) => ({ ...p, is_active: e.target.checked }))}
-          />
-          Active
-        </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={roomForm.is_active}
+              onChange={(e) => setRoomForm((p) => ({ ...p, is_active: e.target.checked }))}
+            />
+            Active
+          </label>
       </FormDrawer>
 
       <FormDrawer
@@ -915,65 +915,65 @@ function HospitalityRoomsManager() {
         saving={saving}
         error={formError}
         submitLabel={editingPlanId ? "Save changes" : "Save rate plan"}
-      >
-        <Field label="Room type">
-          <SearchableSelect
+        >
+          <Field label="Room type">
+            <SearchableSelect
             className={inputClassName()}
-            required
-            value={planForm.room_type_id}
-            onChange={(v) => setPlanForm((p) => ({ ...p, room_type_id: v }))}
-            placeholder="Select…"
-            options={[
-              { value: "", label: "Select…" },
-              ...roomTypes.map((t) => ({
-                value: String(t.id),
-                label: t.name,
-              })),
-            ]}
-          />
-        </Field>
-        <Field label="Code">
-          <input
+              required
+              value={planForm.room_type_id}
+              onChange={(v) => setPlanForm((p) => ({ ...p, room_type_id: v }))}
+              placeholder="Select…"
+              options={[
+                { value: "", label: "Select…" },
+                ...roomTypes.map((t) => ({
+                  value: String(t.id),
+                  label: t.name,
+                })),
+              ]}
+            />
+          </Field>
+          <Field label="Code">
+            <input
             className={inputClassName()}
-            required
-            value={planForm.code}
-            onChange={(e) => setPlanForm((p) => ({ ...p, code: e.target.value }))}
-          />
-        </Field>
-        <Field label="Name">
-          <input
+              required
+              value={planForm.code}
+              onChange={(e) => setPlanForm((p) => ({ ...p, code: e.target.value }))}
+            />
+          </Field>
+          <Field label="Name">
+            <input
             className={inputClassName()}
-            required
-            value={planForm.name}
-            onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))}
-          />
-        </Field>
-        <Field label="Amount / night">
-          <input
-            type="number"
-            min="0"
-            step="any"
+              required
+              value={planForm.name}
+              onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))}
+            />
+          </Field>
+          <Field label="Amount / night">
+            <input
+              type="number"
+              min="0"
+              step="any"
             className={inputClassName()}
-            value={planForm.amount}
-            onChange={(e) => setPlanForm((p) => ({ ...p, amount: e.target.value }))}
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={planForm.is_default}
-            onChange={(e) => setPlanForm((p) => ({ ...p, is_default: e.target.checked }))}
-          />
-          Default for this room type
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={planForm.is_active}
-            onChange={(e) => setPlanForm((p) => ({ ...p, is_active: e.target.checked }))}
-          />
-          Active
-        </label>
+              value={planForm.amount}
+              onChange={(e) => setPlanForm((p) => ({ ...p, amount: e.target.value }))}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={planForm.is_default}
+              onChange={(e) => setPlanForm((p) => ({ ...p, is_default: e.target.checked }))}
+            />
+            Default for this room type
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={planForm.is_active}
+              onChange={(e) => setPlanForm((p) => ({ ...p, is_active: e.target.checked }))}
+            />
+            Active
+          </label>
       </FormDrawer>
     </CatalogPageShell>
   );

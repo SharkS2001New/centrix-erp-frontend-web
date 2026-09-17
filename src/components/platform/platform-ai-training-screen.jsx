@@ -923,16 +923,16 @@ export function PlatformAiTrainingScreen() {
                   </label>
                   <label className="block text-sm">
                     <span className="theme-heading mb-1 block font-medium">Module scope</span>
-                      <SearchableSelect
-                      className={inputClassName()}
-                      value={form.workspace_id}
-                        nativeEvent
+                    <SearchableSelect
+  className={inputClassName()}
+  value={form.workspace_id}
+  nativeEvent
                       onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
                         options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
                           value: opt.value,
                           label: opt.label,
                         }))}
-                      />
+/>
                   </label>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -1033,15 +1033,15 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
                 <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
                 <SearchableSelect
-                  className={`${inputClassName()} px-2 py-1 text-xs`}
-                  value={filterWorkspace}
-                  nativeEvent
+  className={`${inputClassName()} px-2 py-1 text-xs`}
+  value={filterWorkspace}
+  nativeEvent
                   onChange={(e) => setFilterWorkspace(e.target.value)}
                   options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
                     value: opt.value,
                     label: opt.label,
                   }))}
-                />
+/>
               </div>
 
               <div className="mt-4 shrink-0 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
@@ -1274,8 +1274,8 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
               <label className="mt-3 block max-w-md text-sm">
                 <span className="theme-heading mb-1 block font-medium">Sample data organization</span>
                 <SearchableSelect
-                  className={inputClassName()}
-                  value={previewOrgId}
+  className={inputClassName()}
+  value={previewOrgId}
   nativeEvent
   onChange={((e) => setPreviewOrgId(e.target.value))}
   options={tenantOrgs.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}

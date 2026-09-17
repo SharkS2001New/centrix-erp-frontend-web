@@ -330,56 +330,56 @@ export function HrDeductionsScreen() {
         <button type="button" className={tabClass("other")} onClick={() => setTab("other")}>
           Other deductions
         </button>
-      </div>
+        </div>
 
       {tab === "govt" ? (
         <GovernmentDeductionsAside />
       ) : (
-        <HrCrudPage
-          embedded
-          title="Other deductions"
-          subtitle={
-            <>
+          <HrCrudPage
+            embedded
+            title="Other deductions"
+            subtitle={
+              <>
               Create a deduction and assign employees in one step.{" "}
               <Link
                 href="/reports/other-deductions"
                 className="font-medium text-slate-800 underline-offset-2 hover:underline"
               >
-                View deductions by pay period
-              </Link>
-            </>
-          }
-          addButtonLabel="Add deduction"
-          drawerCreateTitle="Add deduction"
-          drawerWide
-          apiPath="/payroll-deduction-types"
-          loadExtra={loadEmployeesExtra}
-          exportTitle="Other deductions"
-          exportFilename="other-deductions"
-          exportColumns={[
-            { key: "deduction_code", label: "Code" },
-            { key: "name", label: "Type" },
+                  View deductions by pay period
+                </Link>
+              </>
+            }
+            addButtonLabel="Add deduction"
+            drawerCreateTitle="Add deduction"
+            drawerWide
+            apiPath="/payroll-deduction-types"
+            loadExtra={loadEmployeesExtra}
+            exportTitle="Other deductions"
+            exportFilename="other-deductions"
+            exportColumns={[
+              { key: "deduction_code", label: "Code" },
+              { key: "name", label: "Type" },
             { key: "employees", label: "Employees" },
-            { key: "when", label: "When" },
-            { key: "calculation", label: "Calculation" },
+              { key: "when", label: "When" },
+              { key: "calculation", label: "Calculation" },
             { key: "default_display", label: "Amount", align: "right" },
-          ]}
-          getExportRows={({ filtered }) =>
-            filtered.map((r) => ({
-              deduction_code: r.deduction_code ?? "",
-              name: r.name ?? "",
+            ]}
+            getExportRows={({ filtered }) =>
+              filtered.map((r) => ({
+                deduction_code: r.deduction_code ?? "",
+                name: r.name ?? "",
               employees: formatAssigneesColumn(r),
-              when: r.frequency === "one_time" ? "One-time" : "Every cycle",
-              calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-              default_display:
-                r.calc_type === "percentage"
-                  ? `${r.default_percentage ?? 0}%`
-                  : formatHrKesFull(r.default_amount),
-            }))
-          }
-          columns={[
-            { key: "deduction_code", label: "Code" },
-            { key: "name", label: "Type" },
+                when: r.frequency === "one_time" ? "One-time" : "Every cycle",
+                calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+                default_display:
+                  r.calc_type === "percentage"
+                    ? `${r.default_percentage ?? 0}%`
+                    : formatHrKesFull(r.default_amount),
+              }))
+            }
+            columns={[
+              { key: "deduction_code", label: "Code" },
+              { key: "name", label: "Type" },
             {
               key: "employees",
               label: "Employees",
@@ -389,37 +389,37 @@ export function HrDeductionsScreen() {
                 </span>
               ),
             },
-            {
-              key: "frequency",
-              label: "When",
-              render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
-            },
-            {
-              key: "calc_type",
-              label: "Calculation",
-              render: (r) =>
-                r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
-            },
-            {
-              key: "default_amount",
+              {
+                key: "frequency",
+                label: "When",
+                render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
+              },
+              {
+                key: "calc_type",
+                label: "Calculation",
+                render: (r) =>
+                  r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+              },
+              {
+                key: "default_amount",
               label: "Amount",
-              render: (r) =>
-                r.calc_type === "percentage"
-                  ? `${r.default_percentage ?? 0}%`
-                  : formatHrKesFull(r.default_amount),
-            },
-          ]}
+                render: (r) =>
+                  r.calc_type === "percentage"
+                    ? `${r.default_percentage ?? 0}%`
+                    : formatHrKesFull(r.default_amount),
+              },
+            ]}
           searchFilter={(r, q) => {
             const assignees = Array.isArray(r.assigned_employees)
               ? r.assigned_employees.map((e) => e.name ?? "").join(" ")
               : "";
             return `${r.deduction_code} ${r.name} ${assignees}`.toLowerCase().includes(q);
           }}
-          buildEmptyForm={(_, row) => typeFormFromRow(row)}
-          buildBody={(form, orgId) => buildTypeBody(form, orgId)}
-          validateForm={(form) => {
-            if (!form.name?.trim()) return "Type name is required.";
-            if (form.apply_scope === "selected" && !(form.employee_ids ?? []).length) {
+            buildEmptyForm={(_, row) => typeFormFromRow(row)}
+            buildBody={(form, orgId) => buildTypeBody(form, orgId)}
+            validateForm={(form) => {
+              if (!form.name?.trim()) return "Type name is required.";
+              if (form.apply_scope === "selected" && !(form.employee_ids ?? []).length) {
               return "Select at least one employee, or choose All employees.";
             }
             if (form.calc_type === "fixed" && (!form.default_amount || Number(form.default_amount) <= 0)) {
@@ -430,17 +430,17 @@ export function HrDeductionsScreen() {
               (!form.default_percentage || Number(form.default_percentage) <= 0)
             ) {
               return "Enter the percentage.";
-            }
-            return null;
-          }}
-          renderFormFields={(form, setForm, extra) => (
-            <DeductionTypeFormFields
-              form={form}
-              setForm={setForm}
-              employees={extra.employees ?? []}
-            />
-          )}
-        />
+              }
+              return null;
+            }}
+            renderFormFields={(form, setForm, extra) => (
+              <DeductionTypeFormFields
+                form={form}
+                setForm={setForm}
+                employees={extra.employees ?? []}
+              />
+            )}
+          />
       )}
     </CatalogPageShell>
   );

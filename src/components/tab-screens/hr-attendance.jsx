@@ -267,13 +267,13 @@ export function HrAttendanceScreen({ mode = "today" }) {
             }
             if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
           } catch (reason) {
-            const message =
+          const message =
               reason instanceof ApiError
                 ? reason.message
                 : reason instanceof Error
                   ? reason.message
-                  : "Request failed";
-            failures.push(message);
+                : "Request failed";
+          failures.push(message);
           } finally {
             // Paint as soon as clock sessions (primary list) settle.
             if (key === "sessions" && !primarySettled) {
@@ -1010,14 +1010,14 @@ export function HrAttendanceScreen({ mode = "today" }) {
       let firstSkipReason = null;
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const res = await apiRequest("/employee-attendance/bulk-waive-lateness", {
-          method: "POST",
-          body: {
+      const res = await apiRequest("/employee-attendance/bulk-waive-lateness", {
+        method: "POST",
+        body: {
             ids: chunk,
-            lateness_waived: waived,
-            lateness_waiver_reason: waived ? reason || null : null,
-          },
-        });
+          lateness_waived: waived,
+          lateness_waiver_reason: waived ? reason || null : null,
+        },
+      });
         updated += Number(res.updated_count ?? res.submitted_count ?? 0);
         skipped += Number(res.skipped_count ?? res.skipped?.length ?? 0);
         autoApproved += Number(res.auto_approved?.length ?? 0);
@@ -1037,9 +1037,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
             `Applied ${autoApproved}; submitted ${updated - autoApproved} for manager approval.`,
           );
         } else {
-          notifySuccess(
-            `Submitted ${updated} waiver request${updated === 1 ? "" : "s"} for manager approval.`,
-          );
+        notifySuccess(
+          `Submitted ${updated} waiver request${updated === 1 ? "" : "s"} for manager approval.`,
+        );
         }
       } else if (updated > 0) {
         notifySuccess(`Processed ${updated}; skipped ${skipped}.`);
@@ -1269,7 +1269,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
       if (res?.auto_approved || res?.waiver_request?.status === "approved") {
         notifySuccess(waived ? "Lateness waiver applied." : "Lateness waiver undone.");
       } else {
-        notifySuccess("Waiver request sent for manager approval.");
+      notifySuccess("Waiver request sent for manager approval.");
       }
       await loadHistory();
     } catch (e) {
@@ -1303,14 +1303,14 @@ export function HrAttendanceScreen({ mode = "today" }) {
         dayHint?.has_existing_attendance &&
         Number(dayHint.existing_attendance?.id) !== Number(editingRecord?.id)
       ) {
-      setManualError(
-        "This employee already has attendance for this date. Only one record per employee per day is allowed.",
-      );
-      return;
-    }
-    setManualSaving(true);
-    setManualError(null);
-    try {
+        setManualError(
+          "This employee already has attendance for this date. Only one record per employee per day is allowed.",
+        );
+        return;
+      }
+      setManualSaving(true);
+      setManualError(null);
+      try {
         const lunchOutApi =
           timesRequired && lunchAppliesToSelection && manualForm.lunch_taken
             ? formatTimeForApi(manualForm.lunch_out)
@@ -1327,12 +1327,12 @@ export function HrAttendanceScreen({ mode = "today" }) {
         await apiRequest(`/employee-attendance/${editingRecord.id}`, {
           method: "PUT",
           body: {
-        employee_id: Number(manualForm.employee_id),
-        attendance_date: manualForm.attendance_date,
-        check_in: checkInApi,
-        check_out: checkOutApi,
-        status: manualForm.status,
-        notes: manualForm.notes.trim() || null,
+            employee_id: Number(manualForm.employee_id),
+            attendance_date: manualForm.attendance_date,
+            check_in: checkInApi,
+            check_out: checkOutApi,
+            status: manualForm.status,
+            notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
             lunch_taken:
               timesRequired && lunchAppliesToSelection ? Boolean(manualForm.lunch_taken) : false,
@@ -1355,15 +1355,15 @@ export function HrAttendanceScreen({ mode = "today" }) {
             },
         });
       }
-      setManualOpen(false);
-      setEditingRecord(null);
-      setManualForm(EMPTY_MANUAL);
-      setDayHint(null);
+        setManualOpen(false);
+        setEditingRecord(null);
+        setManualForm(EMPTY_MANUAL);
+        setDayHint(null);
         setBulkResult(null);
         if (isHistory) await loadHistory();
         else await loadActive();
-    } catch (err) {
-      setManualError(err instanceof ApiError ? err.message : "Save failed");
+      } catch (err) {
+        setManualError(err instanceof ApiError ? err.message : "Save failed");
       } finally {
         setManualSaving(false);
       }
@@ -1521,14 +1521,14 @@ export function HrAttendanceScreen({ mode = "today" }) {
               })}
               disabled={historyLoading}
             />
-        <button
-          type="button"
+            <button
+              type="button"
               disabled={markingAbsents || historyLoading}
               onClick={() => void markMissingAsAbsent()}
               className={SECONDARY_BTN_CLASS}
             >
               {markingAbsents ? "Marking…" : "Mark missing as absent"}
-        </button>
+            </button>
             </>
           ) : null}
         </HrPageActions>
@@ -1886,20 +1886,20 @@ export function HrAttendanceScreen({ mode = "today" }) {
                             </IconButton>
                           {r.pending_waiver && canReviewWaiver(r) ? (
                             <>
-                          <button
-                            type="button"
+                              <button
+                                type="button"
                                 onClick={() => void reviewWaiverRequest(r, true)}
                                   className="ml-1 text-emerald-700 hover:underline"
-                          >
+                              >
                                 Approve waive
-                          </button>
-                          <button
-                            type="button"
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => void reviewWaiverRequest(r, false)}
                                   className="ml-1 text-amber-800 hover:underline"
-                          >
+                              >
                                 Reject
-                          </button>
+                              </button>
                             </>
                           ) : null}
                           {r.pending_waiver && !canReviewWaiver(r) ? (
@@ -2019,21 +2019,21 @@ export function HrAttendanceScreen({ mode = "today" }) {
         wide
       >
         {editingRecord ? (
-        <HrSelectField
-          label="Employee"
-          value={manualForm.employee_id}
-          onChange={(v) => setManualForm((p) => ({ ...p, employee_id: v }))}
-          required
-          options={(
-            editingRecord?.employee &&
-            !employees.some((e) => Number(e.id) === Number(editingRecord.employee_id))
-              ? [editingRecord.employee, ...employees]
-              : employees
-          ).map((e) => ({
-            value: String(e.id),
-            label: composeEmployeeDisplayName(e),
-          }))}
-        />
+          <HrSelectField
+            label="Employee"
+            value={manualForm.employee_id}
+            onChange={(v) => setManualForm((p) => ({ ...p, employee_id: v }))}
+            required
+            options={(
+              editingRecord?.employee &&
+              !employees.some((e) => Number(e.id) === Number(editingRecord.employee_id))
+                ? [editingRecord.employee, ...employees]
+                : employees
+            ).map((e) => ({
+              value: String(e.id),
+              label: composeEmployeeDisplayName(e),
+            }))}
+          />
         ) : (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

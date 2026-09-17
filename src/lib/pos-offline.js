@@ -483,16 +483,16 @@ export async function ensurePosOfflineOrderNumbers({
   if (Number.isFinite(sessionId) && sessionId > 0) {
     body.float_session_id = sessionId;
   }
-  const res = await apiRequest("/sales/order-numbers/reserve", {
-    method: "POST",
+    const res = await apiRequest("/sales/order-numbers/reserve", {
+      method: "POST",
     body,
-    loading: false,
-    reportIssues: false,
-  });
+      loading: false,
+      reportIssues: false,
+    });
   // Raise-only seed from server. Local pending 7,8,9… stay ahead of last synced #6.
   // Fresh till (local seq still 0): do NOT import org/server watermark gaps
   // (e.g. server next=2 would seed lastIssued=1 and skip unused Cash Sales #1).
-  const nextPos = Number(res?.next_pos_order_num ?? 0);
+    const nextPos = Number(res?.next_pos_order_num ?? 0);
   return withPosOfflineExclusiveLock(async () => {
     const scoped = Number.isFinite(sessionId) && sessionId > 0;
     const seedSession = scoped ? sessionId : null;
@@ -727,7 +727,7 @@ export async function peekIssuedPosTicketMax(posOrderDate = null, floatSessionId
       } else if (rowSession) {
         continue;
       }
-      maxIssued = num;
+        maxIssued = num;
     }
   } catch {
     /* ignore */
@@ -1096,7 +1096,7 @@ export async function saveLocalPosCart(cart) {
       return existing ?? cart;
     }
 
-    const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
+  const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
     if (mutationSeq > 0 && mutationSeq < lastWrittenMutationSeq) {
       const existing = await idbGetLocalCart().catch(() => null);
       return existing ?? cart;
@@ -1105,7 +1105,7 @@ export async function saveLocalPosCart(cart) {
       const existing = await idbGetLocalCart().catch(() => null);
       return existing ?? cart;
     }
-    await idbPutLocalCart(next);
+  await idbPutLocalCart(next);
     if (mutationSeq >= lastWrittenMutationSeq) {
       lastWrittenMutationSeq = mutationSeq;
     }
@@ -1117,7 +1117,7 @@ export async function saveLocalPosCart(cart) {
         });
       }
     }
-    return next;
+  return next;
   });
 }
 
@@ -1845,7 +1845,7 @@ export async function resolvePreviousOrderEditServerCartId(cart) {
 export async function clearLocalPosCart() {
   invalidateStaleLocalCartWrites();
   return enqueueLocalCartWrite(async () => {
-    await idbClearLocalCart("active");
+  await idbClearLocalCart("active");
   });
 }
 
@@ -2018,34 +2018,34 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   // when "combine identical products" is enabled.
   const lines = collapseCombineableLocalLines(
     (openCart.lines ?? [])
-      .map((line) => {
-        const qty = Number(line.quantity ?? 0);
-        if (!line?.product_code || !(qty > 0)) return null;
-        const clientLineId = String(
-          line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
-        );
-        const { _optimistic: _dropOptimistic, ...rest } = line;
-        return {
-          ...rest,
-          client_line_id: clientLineId,
-          product_code: line.product_code,
-          product_name: line.product_name ?? line.description ?? line.product_code,
-          quantity: qty,
-          unit_price: Number(line.unit_price ?? line.price ?? 0),
-          display_unit_price:
-            line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
-          amount: line.amount != null ? Number(line.amount) : undefined,
-          uom: line.uom ?? null,
-          unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
-          unit:
-            snapshotUomForPrint(line.unit) ??
-            snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
-          on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
-          discount_given: Number(line.discount_given ?? 0),
-          product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+    .map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      if (!line?.product_code || !(qty > 0)) return null;
+      const clientLineId = String(
+        line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+      );
+      const { _optimistic: _dropOptimistic, ...rest } = line;
+      return {
+        ...rest,
+        client_line_id: clientLineId,
+        product_code: line.product_code,
+        product_name: line.product_name ?? line.description ?? line.product_code,
+        quantity: qty,
+        unit_price: Number(line.unit_price ?? line.price ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+        amount: line.amount != null ? Number(line.amount) : undefined,
+        uom: line.uom ?? null,
+        unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
+        unit:
+          snapshotUomForPrint(line.unit) ??
+          snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
+        on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
+        discount_given: Number(line.discount_given ?? 0),
+        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
           vat_rate: resolveLocalLineVatRate(line),
-        };
-      })
+      };
+    })
       .filter(Boolean),
     { combineIdenticalLines },
   );
@@ -2177,7 +2177,7 @@ export async function upsertLocalPosCartLine(
   }
   // 2) Combine-identical: same SKU + retail/wholesale → bump that row.
   if (idx < 0 && combineIdenticalLines !== false) {
-    const key = lineKey(line);
+  const key = lineKey(line);
     idx = lines.findIndex((row) => lineKey(row) === key);
   }
 
@@ -2238,7 +2238,7 @@ export function summarizeLocalPosCart(cart, { cashRound = false } = {}) {
       vat += Math.round(storedVat * 100) / 100;
     } else {
       const rate = resolveLocalLineVatRate(line, amount, null);
-      if (rate > 0) {
+    if (rate > 0) {
         vat += vatFromInclusiveGross(amount, rate);
       }
     }
@@ -2445,7 +2445,7 @@ async function allocateLocalPosTicketNumber(floatSessionId = null) {
       } else if (rowSession) {
         continue;
       }
-      current = num;
+        current = num;
     }
   } catch {
     /* ignore */
@@ -2652,7 +2652,7 @@ export async function completeOfflineCashSale({
     clientSaleUuid = editingUuid || `prev-edit-${orderNum}`;
   } else if (cart.previous_order_edit && reuseOrderNum && !supersededSaleId) {
     // Draft marked as previous-order edit but lost superseded_sale_id — never mint a new #.
-    throw new Error(
+      throw new Error(
       "Previous-order edit is missing its sale identity. Cancel and reopen the receipt to edit.",
     );
   } else {
@@ -2768,13 +2768,13 @@ export async function completeOfflineCashSale({
   // checkout body. Hardcoding CASH caused synced sales to show Cash after edit.
   const paymentMethodCode = (() => {
     if (isPreviousOrderEdit) {
-      const candidates = [
-        cart.payment_method_code,
-        existingOutbox?.sale_payload?.payment_method_code,
-        existingOutbox?.checkout_body?.payment_method_code,
-        cart.offline_edit_snapshot?.payment_method_code,
-      ];
-      for (const raw of candidates) {
+    const candidates = [
+      cart.payment_method_code,
+      existingOutbox?.sale_payload?.payment_method_code,
+      existingOutbox?.checkout_body?.payment_method_code,
+      cart.offline_edit_snapshot?.payment_method_code,
+    ];
+    for (const raw of candidates) {
         const code = resolvePosPaymentMethodCode(raw);
         if (!code) continue;
         // Non-credit revise must not keep a CREDIT tender code (server rejects / partial A/R).
@@ -2805,7 +2805,7 @@ export async function completeOfflineCashSale({
             ? "Equity"
             : paymentMethodCode === "KCB"
               ? "KCB"
-              : paymentMethodCode;
+        : paymentMethodCode;
 
   // paymentSplits normalized above
 
@@ -2847,8 +2847,8 @@ export async function completeOfflineCashSale({
   const customerNumRaw = revisingQueuedOffline
     ? cart.customer_num
     : (cart.customer_num ??
-      existingOutbox?.sale_payload?.customer_num ??
-      existingOutbox?.checkout_body?.customer_num ??
+    existingOutbox?.sale_payload?.customer_num ??
+    existingOutbox?.checkout_body?.customer_num ??
       null);
   const customerNum =
     customerNumRaw != null && Number(customerNumRaw) > 0 ? Number(customerNumRaw) : null;
@@ -2860,16 +2860,16 @@ export async function completeOfflineCashSale({
   const customerNameOverride = revisingQueuedOffline
     ? (String(cart.customer_name_override ?? "").trim() || null)
     : (
-        String(cart.customer_name_override ?? "").trim() ||
-        String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
-        String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
+    String(cart.customer_name_override ?? "").trim() ||
+    String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
+    String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
         null
       );
   const customerKraPin = revisingQueuedOffline
     ? (String(cart.customer_kra_pin ?? "").trim() || null)
     : (
-        String(cart.customer_kra_pin ?? "").trim() ||
-        String(existingOutbox?.checkout_body?.customer_kra_pin ?? "").trim() ||
+    String(cart.customer_kra_pin ?? "").trim() ||
+    String(existingOutbox?.checkout_body?.customer_kra_pin ?? "").trim() ||
         null
       );
 
@@ -3093,12 +3093,12 @@ export async function completeOfflineCashSale({
           }))
         : amountPaidFinal > 0.01
           ? [
-              {
-                id: 1,
-                payment_method_code: paymentMethodCode,
+      {
+        id: 1,
+        payment_method_code: paymentMethodCode,
                 amount: amountPaidFinal,
-                payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
-              },
+        payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
+      },
             ]
           : [],
   };
@@ -3334,12 +3334,12 @@ export function buildPreviousOrderEditPrintSale(
     });
   const adjustments = normalizePaymentAdjustmentMethodCodes(
     Array.isArray(cart.payment_adjustments)
-      ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
+    ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
       : [],
     sourceSale,
   );
   const returnGivenPreview = adjustments
-    .filter((row) => row.adjustment_type === "return")
+      .filter((row) => row.adjustment_type === "return")
     .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   // Empty cart is a cancel print only when the full return was recorded.
   if (!items.length && !(returnGivenPreview > 0.0001)) return null;
@@ -3397,7 +3397,7 @@ export function buildPreviousOrderEditPrintSale(
     if (cash > 0) return "CASH";
     return (
       resolvePosPaymentMethodCode(
-        cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
+    cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
       ) || "CASH"
     );
   })();
@@ -3730,8 +3730,8 @@ async function collectPosSalesSearchCandidates({
       await collectFromRes(
         await apiRequest("/sales", {
           searchParams: { ...baseParams, q: String(orderNum) },
-          loading: false,
-          reportIssues: false,
+        loading: false,
+        reportIssues: false,
         }),
       );
     } catch {
@@ -3740,10 +3740,10 @@ async function collectPosSalesSearchCandidates({
   }
 
   if (posNum != null && posNum > 0) {
-    try {
+  try {
       await collectFromRes(
         await apiRequest("/sales", {
-          searchParams: {
+      searchParams: {
             ...baseParams,
             filter_pos_order: String(posNum),
             ...(posDate ? { from_date: posDate, to_date: posDate, date_field: "placed" } : {}),
@@ -3807,9 +3807,9 @@ async function findLiveSaleIdForPreviousOrderEdit(row) {
   if (startId) {
     try {
       const direct = await apiRequest(`/sales/${startId}`, {
-        loading: false,
-        reportIssues: false,
-      });
+      loading: false,
+      reportIssues: false,
+    });
       if (isRestorablePosSaleForEdit(direct)) {
         if (orderNum <= 0 || Number(direct.order_num) === orderNum) {
           return Number(direct.id);
@@ -3865,7 +3865,7 @@ async function healPreviousOrderEditOutboxRow(row) {
   if (row.client_sale_uuid) {
     try {
       await idbPutOutboxSale(healed);
-    } catch {
+  } catch {
       /* upload still uses in-memory healed row */
     }
   }
@@ -3909,7 +3909,7 @@ async function resolvePreviousOrderEditCartId(row) {
     let dedicated = null;
     try {
       sticky = await apiRequest("/sales/carts", {
-        method: "POST",
+      method: "POST",
         body: seed,
         loading: false,
         reportIssues: false,
@@ -3960,10 +3960,10 @@ async function resolvePreviousOrderEditCartId(row) {
       const restored = await apiRequest(`/sales/orders/${targetSaleId}/restore-to-cart`, {
         method: "POST",
         body: restoreBody,
-        loading: false,
-        reportIssues: false,
-      });
-      return restored?.id ? Number(restored.id) : null;
+      loading: false,
+      reportIssues: false,
+    });
+    return restored?.id ? Number(restored.id) : null;
     }
 
     try {
@@ -4010,7 +4010,7 @@ async function resolvePreviousOrderEditCartId(row) {
             editOrderNum,
             allowWipeOrphans: true,
           });
-          return cartId;
+      return cartId;
         }
       }
     } catch (err) {
@@ -4326,31 +4326,31 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
   }
 
   try {
-    try {
-      await putLines(cartId);
-    } catch (putErr) {
-      // Stale cart id after a prior checkout — restore the sale and retry once.
-      if (!isMissingTemporaryCartError(putErr) && !(putErr instanceof ApiError && putErr.status === 404)) {
-        throw putErr;
-      }
-      const retryCartId = await resolvePreviousOrderEditCartId({
-        ...row,
-        server_cart_id: null,
-      });
-      if (!retryCartId) throw putErr;
-      cartId = retryCartId;
-      backgroundPreviousOrderEditSyncCartId = Number(cartId);
-      await putLines(cartId);
+  try {
+    await putLines(cartId);
+  } catch (putErr) {
+    // Stale cart id after a prior checkout — restore the sale and retry once.
+    if (!isMissingTemporaryCartError(putErr) && !(putErr instanceof ApiError && putErr.status === 404)) {
+      throw putErr;
     }
+    const retryCartId = await resolvePreviousOrderEditCartId({
+      ...row,
+      server_cart_id: null,
+    });
+    if (!retryCartId) throw putErr;
+    cartId = retryCartId;
+      backgroundPreviousOrderEditSyncCartId = Number(cartId);
+    await putLines(cartId);
+  }
 
-    try {
-      return await apiRequest(`/sales/carts/${cartId}/checkout`, {
-        method: "POST",
-        body: await checkoutBodyForOutboxRow(row, orderNum),
-        loading: false,
-        reportIssues: false,
-      });
-    } catch (checkoutErr) {
+  try {
+    return await apiRequest(`/sales/carts/${cartId}/checkout`, {
+      method: "POST",
+      body: await checkoutBodyForOutboxRow(row, orderNum),
+      loading: false,
+      reportIssues: false,
+    });
+  } catch (checkoutErr) {
       if (isPaymentSplitsMismatchError(checkoutErr)) {
         healOfflineCheckoutPayNow(row.checkout_body ?? {}, row);
         return await apiRequest(`/sales/carts/${cartId}/checkout`, {
@@ -4360,22 +4360,22 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
           reportIssues: false,
         });
       }
-      // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
-      if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
-      const retryCartId = await resolvePreviousOrderEditCartId({
-        ...row,
-        server_cart_id: null,
-      });
-      if (!retryCartId) throw checkoutErr;
+    // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
+    if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
+    const retryCartId = await resolvePreviousOrderEditCartId({
+      ...row,
+      server_cart_id: null,
+    });
+    if (!retryCartId) throw checkoutErr;
       cartId = retryCartId;
       backgroundPreviousOrderEditSyncCartId = Number(cartId);
-      await putLines(retryCartId);
+    await putLines(retryCartId);
       return await apiRequest(`/sales/carts/${retryCartId}/checkout`, {
-        method: "POST",
-        body: await checkoutBodyForOutboxRow(row, orderNum),
-        loading: false,
-        reportIssues: false,
-      });
+      method: "POST",
+      body: await checkoutBodyForOutboxRow(row, orderNum),
+      loading: false,
+      reportIssues: false,
+    });
     }
   } catch (err) {
     await releaseEditCartIfNeeded(cartId);
@@ -4443,9 +4443,9 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
       ? Number(extras.float_session_id)
       : null;
   const cartSeed = {
-    channel: "pos",
-    branch_id: row.cart_seed?.branch_id ?? undefined,
-    till_id: row.cart_seed?.till_id ?? undefined,
+      channel: "pos",
+      branch_id: row.cart_seed?.branch_id ?? undefined,
+      till_id: row.cart_seed?.till_id ?? undefined,
     ...(openFloatSessionId
       ? { float_session_id: openFloatSessionId }
       : row.cart_seed?.float_session_id
@@ -4495,14 +4495,14 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
     });
 
     return await apiRequest(`/sales/carts/${cartId}/checkout`, {
-      method: "POST",
+    method: "POST",
       body: await checkoutBodyForOutboxRow(row, orderNum, {
         ...extras,
         ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
       }),
-      loading: false,
-      reportIssues: false,
-    });
+    loading: false,
+    reportIssues: false,
+  });
   }
 
   try {
@@ -5417,10 +5417,10 @@ export async function listPendingOutboxSalesForManage() {
  * Does not undo a sale that already reached the server — use only for stuck local rows.
  */
 export async function discardOutboxSale(clientSaleUuid) {
-  const uuid = String(clientSaleUuid ?? "").trim();
-  if (!uuid) {
-    throw new Error("Missing offline sale id.");
-  }
+    const uuid = String(clientSaleUuid ?? "").trim();
+    if (!uuid) {
+      throw new Error("Missing offline sale id.");
+    }
   const floatSessionId = await withPosOfflineExclusiveLock(async () => {
     const existing = await idbGetOutboxSale(uuid);
     if (!existing) {
@@ -5453,18 +5453,18 @@ export async function discardOutboxSale(clientSaleUuid) {
   });
   if (floatSessionId?.missing) {
     return false;
-  }
-  // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
+    }
+    // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
   // Outside the lock so discard cannot stall new offline checkouts.
-  try {
+    try {
     await ensurePosOfflineOrderNumbers({
       force: true,
       floatSessionId: floatSessionId?.floatSessionId ?? null,
     });
-  } catch {
-    /* ignore when offline */
-  }
-  return true;
+    } catch {
+      /* ignore when offline */
+    }
+    return true;
 }
 
 /**
@@ -6069,10 +6069,10 @@ export async function syncPosOfflineOutbox({
   }
   const openFloatSessionId =
     Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
-  const total = pending.length;
-  const results = [];
-  let done = 0;
-  let failed = 0;
+    const total = pending.length;
+    const results = [];
+    let done = 0;
+    let failed = 0;
 
   const emptySyncMessage =
     total === 0
@@ -6082,17 +6082,17 @@ export async function syncPosOfflineOutbox({
         })
       : null;
 
-  onProgress?.({
-    phase: "start",
-    current: 0,
-    total,
-    done: 0,
-    failed: 0,
-    order_num: null,
+    onProgress?.({
+      phase: "start",
+      current: 0,
+      total,
+      done: 0,
+      failed: 0,
+      order_num: null,
     message: total === 0 ? emptySyncMessage : `Syncing ${total} order(s)…`,
-  });
+    });
 
-  for (let index = 0; index < pending.length; index += 1) {
+    for (let index = 0; index < pending.length; index += 1) {
     const listedRow = pending[index];
     const printedOrderNum = Number(listedRow.order_num);
     const listedPosTicket =
@@ -6125,30 +6125,30 @@ export async function syncPosOfflineOutbox({
     if (!claimed || claimed.skip) continue;
     const row = claimed.row;
 
-    const current = index + 1;
-    onProgress?.({
-      phase: "syncing",
-      current,
-      total,
-      done,
-      failed,
-      order_num: printedOrderNum,
+      const current = index + 1;
+      onProgress?.({
+        phase: "syncing",
+        current,
+        total,
+        done,
+        failed,
+        order_num: printedOrderNum,
       pos_order_num: listedPosTicket,
-      sync_kind: row.sync_kind ?? "sale",
-      message:
-        row.sync_kind === "previous_order_edit"
+        sync_kind: row.sync_kind ?? "sale",
+        message:
+          row.sync_kind === "previous_order_edit"
           ? cashSalesProgressLabel
             ? `Updating ${current} of ${total} — ${cashSalesProgressLabel}…`
             : `Updating ${current} of ${total}…`
           : cashSalesProgressLabel
             ? `Syncing ${current} of ${total} — ${cashSalesProgressLabel}…`
             : `Syncing ${current} of ${total}…`,
-    });
+      });
 
-    try {
-      let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-      let usedOrderNum = printedOrderNum;
-      let needsReprint = false;
+      try {
+        let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+        let usedOrderNum = printedOrderNum;
+        let needsReprint = false;
 
       if (sale && outboxNeedsSupersedeOfServerSale(row, sale)) {
         // Older revision already on server; upload this edit as a superseding checkout
@@ -6178,24 +6178,24 @@ export async function syncPosOfflineOutbox({
             printedOrderNum,
             openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
           );
-        } catch (firstErr) {
-          // Previous-order edit updates an existing online sale — the order # is
-          // supposed to exist. Recover / re-restore instead of treating it as a
-          // duplicate new upload.
-          const prevEditRecoverable =
-            row.sync_kind === "previous_order_edit"
-            && (
-              isDuplicateOrderNumError(firstErr)
-              || isCashSalesTicketCollisionError(firstErr)
-              || isOpaqueSalesServerError(firstErr)
-              || isMissingTemporaryCartError(firstErr)
+          } catch (firstErr) {
+            // Previous-order edit updates an existing online sale — the order # is
+            // supposed to exist. Recover / re-restore instead of treating it as a
+            // duplicate new upload.
+            const prevEditRecoverable =
+              row.sync_kind === "previous_order_edit"
+              && (
+                isDuplicateOrderNumError(firstErr)
+                || isCashSalesTicketCollisionError(firstErr)
+                || isOpaqueSalesServerError(firstErr)
+                || isMissingTemporaryCartError(firstErr)
               || isOrderNotEditableSyncError(firstErr)
-            );
+              );
 
-          if (prevEditRecoverable) {
-            sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-            if (!sale) {
-              try {
+            if (prevEditRecoverable) {
+              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+              if (!sale) {
+                try {
                 const retryRow = isOrderNotEditableSyncError(firstErr)
                   ? await healPreviousOrderEditOutboxRow({
                       ...row,
@@ -6204,43 +6204,43 @@ export async function syncPosOfflineOutbox({
                       server_cart_id: null,
                     })
                   : { ...row, server_cart_id: null };
-                sale = await checkoutOutboxRow(
-                  retryRow,
-                  printedOrderNum,
-                  openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
-                );
-              } catch (retryErr) {
-                if (isCashSalesTicketCollisionError(retryErr)) {
                   sale = await checkoutOutboxRow(
-                    { ...row, server_cart_id: null },
+                  retryRow,
                     printedOrderNum,
+                  openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
+                  );
+                } catch (retryErr) {
+                  if (isCashSalesTicketCollisionError(retryErr)) {
+                    sale = await checkoutOutboxRow(
+                      { ...row, server_cart_id: null },
+                      printedOrderNum,
                     {
                       clear_pos_order_num: true,
                       ...(openFloatSessionId
                         ? { float_session_id: openFloatSessionId }
                         : {}),
                     },
-                  );
-                  needsReprint = true;
-                } else {
-                  throw retryErr;
+                    );
+                    needsReprint = true;
+                  } else {
+                    throw retryErr;
+                  }
                 }
               }
-            }
-          } else if (
-            isCashSalesTicketCollisionError(firstErr)
-            || isOpaqueSalesServerError(firstErr)
-          ) {
-            // Cash Sales # already taken — or opaque 500 that often hides that collision.
-            // Retry without locking the printed ticket so the API allocates the next free #.
-            sale = await checkoutOutboxRow(row, printedOrderNum, {
-              clear_pos_order_num: true,
+            } else if (
+              isCashSalesTicketCollisionError(firstErr)
+              || isOpaqueSalesServerError(firstErr)
+            ) {
+              // Cash Sales # already taken — or opaque 500 that often hides that collision.
+              // Retry without locking the printed ticket so the API allocates the next free #.
+              sale = await checkoutOutboxRow(row, printedOrderNum, {
+                clear_pos_order_num: true,
               ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
-            });
-            needsReprint = true;
-          } else if (isDuplicateOrderNumError(firstErr)) {
-            sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-            if (!sale) {
+              });
+              needsReprint = true;
+            } else if (isDuplicateOrderNumError(firstErr)) {
+              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+              if (!sale) {
               // Do not delete the outbox — leave an error so the cashier can retry /
               // investigate. Deleting caused silent loss when recovery missed the uuid.
               throw firstErr;
@@ -6259,36 +6259,36 @@ export async function syncPosOfflineOutbox({
                     pay_now: 0,
                     offline_order: true,
                     content_revision: Number(row.content_revision ?? 0),
-                    client_sale_uuid: row.client_sale_uuid,
+                  client_sale_uuid: row.client_sale_uuid,
                   },
                 },
                 printedOrderNum,
                 openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
               );
+              }
+            } else {
+              throw firstErr;
             }
-          } else {
-            throw firstErr;
           }
         }
-      }
 
-      const originalPosTicket = outboxRowPosTicket(row).posNum;
-      const salePosTicket =
-        sale?.pos_order_num != null ? Number(sale.pos_order_num) : null;
-      if (
-        originalPosTicket != null
-        && salePosTicket != null
-        && originalPosTicket !== salePosTicket
-      ) {
-        needsReprint = true;
-      }
-      if (
-        sale?.order_num != null
-        && Number(sale.order_num) !== Number(printedOrderNum)
-      ) {
-        needsReprint = true;
-        usedOrderNum = Number(sale.order_num);
-      }
+        const originalPosTicket = outboxRowPosTicket(row).posNum;
+        const salePosTicket =
+          sale?.pos_order_num != null ? Number(sale.pos_order_num) : null;
+        if (
+          originalPosTicket != null
+          && salePosTicket != null
+          && originalPosTicket !== salePosTicket
+        ) {
+          needsReprint = true;
+        }
+        if (
+          sale?.order_num != null
+          && Number(sale.order_num) !== Number(printedOrderNum)
+        ) {
+          needsReprint = true;
+          usedOrderNum = Number(sale.order_num);
+        }
 
       await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
@@ -6326,31 +6326,31 @@ export async function syncPosOfflineOutbox({
           }
         }
       });
-      done += 1;
-      results.push({
-        ok: true,
-        order_num: Number(sale?.order_num ?? usedOrderNum),
-        printed_order_num: printedOrderNum,
-        pos_order_num: salePosTicket,
-        printed_pos_order_num: originalPosTicket,
-        needs_reprint: needsReprint,
-        client_sale_uuid: row.client_sale_uuid,
-        sync_kind: row.sync_kind ?? "sale",
-        sale,
-      });
-      onProgress?.({
-        phase: "item_done",
-        current,
-        total,
-        done,
-        failed,
-        ok: true,
-        order_num: printedOrderNum,
-        message: needsReprint
-          ? `Synced ${done} of ${total} — Cash Sales #${originalPosTicket ?? "?"}→#${salePosTicket ?? "?"} (reprint)…`
-          : `Synced ${done} of ${total}…`,
-      });
-    } catch (err) {
+        done += 1;
+        results.push({
+          ok: true,
+          order_num: Number(sale?.order_num ?? usedOrderNum),
+          printed_order_num: printedOrderNum,
+          pos_order_num: salePosTicket,
+          printed_pos_order_num: originalPosTicket,
+          needs_reprint: needsReprint,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          sale,
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: true,
+          order_num: printedOrderNum,
+          message: needsReprint
+            ? `Synced ${done} of ${total} — Cash Sales #${originalPosTicket ?? "?"}→#${salePosTicket ?? "?"} (reprint)…`
+            : `Synced ${done} of ${total}…`,
+        });
+      } catch (err) {
       // Till is selling — leave the edit pending and try again later. Do not mark
       // sync_status=error or open Sync failed; that would look like sales are blocked.
       if (isPreviousOrderEditTillBusyError(err)) {
@@ -6433,7 +6433,7 @@ export async function syncPosOfflineOutbox({
         continue;
       }
 
-      const message = outboxSyncErrorMessage(err);
+        const message = outboxSyncErrorMessage(err);
       if (isHealableOutboxSyncError(err)) {
         await withPosOfflineExclusiveLock(async () => {
           await idbPutOutboxSale({
@@ -6474,49 +6474,49 @@ export async function syncPosOfflineOutbox({
       await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxError(row.client_sale_uuid, message);
       });
-      reportPosOutboxSyncFailure(row, err, printedOrderNum);
-      failed += 1;
-      results.push({
-        ok: false,
-        order_num: printedOrderNum,
+        reportPosOutboxSyncFailure(row, err, printedOrderNum);
+        failed += 1;
+        results.push({
+          ok: false,
+          order_num: printedOrderNum,
         pos_order_num: listedPosTicket,
         printed_pos_order_num: listedPosTicket,
-        client_sale_uuid: row.client_sale_uuid,
-        sync_kind: row.sync_kind ?? "sale",
-        error: message,
-      });
-      onProgress?.({
-        phase: "item_done",
-        current,
-        total,
-        done,
-        failed,
-        ok: false,
-        order_num: printedOrderNum,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          error: message,
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: false,
+          order_num: printedOrderNum,
         pos_order_num: listedPosTicket,
-        error: message,
+          error: message,
         message: cashSalesProgressLabel
           ? `Failed ${cashSalesProgressLabel} (${failed} failed)…`
           : `Failed sync (${failed} failed)…`,
-      });
+        });
+      }
     }
-  }
 
-  onProgress?.({
-    phase: "complete",
-    current: total,
-    total,
-    done,
-    failed,
-    order_num: null,
-    message:
-      total === 0
+    onProgress?.({
+      phase: "complete",
+      current: total,
+      total,
+      done,
+      failed,
+      order_num: null,
+      message:
+        total === 0
         ? emptySyncMessage ?? "No offline orders waiting to sync."
-        : failed
-          ? `Synced ${done} of ${total}; ${failed} failed.`
-          : `Synced ${done} of ${total} order(s).`,
-  });
-  return results;
+          : failed
+            ? `Synced ${done} of ${total}; ${failed} failed.`
+            : `Synced ${done} of ${total} order(s).`,
+    });
+    return results;
 }
 
 /** True when External POS should sell→save local→print→background sync.

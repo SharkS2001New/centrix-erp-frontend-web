@@ -511,7 +511,7 @@ export function HikvisionDeviceScreen() {
               {busy ? "Refreshing…" : "Refresh live counts"}
             </button>
           </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <InfoCard
             label="Agent"
             value={
@@ -521,7 +521,7 @@ export function HikvisionDeviceScreen() {
                   ? minutesSinceIso(device.agent_last_seen_at) > 15
                     ? "CentrixAttendanceAgent not checking in"
                     : "CentrixAttendanceAgent reconnecting"
-                  : "CentrixAttendanceAgent offline"
+                : "CentrixAttendanceAgent offline"
             }
           />
           <InfoCard label="Model" value={deviceInfo.model ?? deviceInfo.deviceType ?? "—"} />

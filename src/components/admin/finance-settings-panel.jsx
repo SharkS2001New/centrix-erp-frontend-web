@@ -577,9 +577,9 @@ export function FinanceSettingsPanel({
                     </div>
                   </div>
                   <Field label="Agent Comstore URL">
-                      <input
-                        className={inputClassName()}
-                        value={form.kra_device_ip}
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_device_ip}
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
@@ -595,7 +595,7 @@ export function FinanceSettingsPanel({
                         <code className="text-[11px]">localhost</code> and{" "}
                         <code className="text-[11px]">127.0.0.1</code> work.
                       </p>
-                    </Field>
+                  </Field>
                   <Field label="Fiscal hardware IP (for agent)">
                     <input
                       className={inputClassName()}
@@ -700,9 +700,9 @@ export function FinanceSettingsPanel({
                           </div>
                         ) : (
                           <>
-                            <p>
-                              {kraHealthResult.message}
-                              {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                        <p>
+                          {kraHealthResult.message}
+                          {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
                               {kraHealthResult.viaAgent ? " · via Centrix KRA Agent" : ""}
                             </p>
                             {kraHealthResult.detail &&
@@ -711,12 +711,12 @@ export function FinanceSettingsPanel({
                                 Technical detail: {kraHealthResult.detail}
                               </p>
                             ) : null}
-                            {kraHealthResult.deviceConnection ? (
-                              <p className="theme-subtext mt-1 text-xs">
-                                Device connection: {kraHealthResult.deviceConnection}
-                                {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
-                              </p>
-                            ) : null}
+                        {kraHealthResult.deviceConnection ? (
+                          <p className="theme-subtext mt-1 text-xs">
+                            Device connection: {kraHealthResult.deviceConnection}
+                            {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
+                          </p>
+                        ) : null}
                             {kraHealthResult.deviceHardwareIp ||
                             kraHealthResult.deviceStatusMessage ||
                             kraHealthResult.devicePingOk != null ? (
@@ -827,21 +827,21 @@ export function FinanceSettingsPanel({
               />
             </div>
 
-              <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                <Toggle
-                  label="Enable paybill / till reconciliation"
+            <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+              <Toggle
+                label="Enable paybill / till reconciliation"
                   description="Match incoming C2B M-Pesa payments to sales. STK is linked to the order automatically; direct paybill payments (account name only) match by amount. Unmatched items appear on Accounting → M-Pesa reconciliation."
-                  checked={Boolean(mpesa.enable_c2b_reconciliation)}
-                  onChange={(v) => setMpesa("enable_c2b_reconciliation", v)}
-                />
-                {mpesa.enable_c2b_reconciliation ? (
-                  <>
-                    <Toggle
+                checked={Boolean(mpesa.enable_c2b_reconciliation)}
+                onChange={(v) => setMpesa("enable_c2b_reconciliation", v)}
+              />
+              {mpesa.enable_c2b_reconciliation ? (
+                <>
+                  <Toggle
                       label="Auto-apply matching payments"
                       description="STK push already links to the open order. For direct paybill payments (customers only enter the account name, e.g. moon), auto-apply to the latest unpaid order with the same amount."
-                      checked={mpesa.auto_apply_order_reference !== false}
-                      onChange={(v) => setMpesa("auto_apply_order_reference", v)}
-                    />
+                    checked={mpesa.auto_apply_order_reference !== false}
+                    onChange={(v) => setMpesa("auto_apply_order_reference", v)}
+                  />
                     <Field label="Paybill account name (Safaricom)">
                       <input
                         className={inputClassName()}
@@ -855,25 +855,25 @@ export function FinanceSettingsPanel({
                         value as Account no. on Printouts.
                       </p>
                     </Field>
-                    <Field label="Customer account reference hint">
-                      <input
-                        className={inputClassName()}
-                        value={mpesa.payment_account_hint ?? ""}
-                        onChange={(e) => setMpesa("payment_account_hint", e.target.value)}
+                  <Field label="Customer account reference hint">
+                    <input
+                      className={inputClassName()}
+                      value={mpesa.payment_account_hint ?? ""}
+                      onChange={(e) => setMpesa("payment_account_hint", e.target.value)}
                         placeholder={
                           mpesa.payment_account_name?.trim()
                             ? `Enter ${mpesa.payment_account_name.trim()}`
                             : "Enter moon"
                         }
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
                         Shown on reconciliation screens. Tell customers to enter only the account name (e.g.{" "}
                         {mpesa.payment_account_name?.trim() || "moon"}) — not an order number.
-                      </p>
-                    </Field>
-                  </>
-                ) : null}
-              </div>
+                    </p>
+                  </Field>
+                </>
+              ) : null}
+            </div>
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
@@ -882,16 +882,16 @@ export function FinanceSettingsPanel({
                   Safaricom app to a specific shortcode.
                 </div>
               <Field label="Environment">
-                  <SearchableSelect
-                  className={inputClassName()}
-                  value={mpesa.env ?? "sandbox"}
-                    nativeEvent
+                <SearchableSelect
+  className={inputClassName()}
+  value={mpesa.env ?? "sandbox"}
+  nativeEvent
                   onChange={(e) => setMpesa("env", e.target.value)}
                     options={[
                       { value: "sandbox", label: "Sandbox" },
                       { value: "live", label: "Live" },
                     ]}
-                  />
+/>
               </Field>
               <Field label="Consumer key">
                 <input
