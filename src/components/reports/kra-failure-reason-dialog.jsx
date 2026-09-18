@@ -32,7 +32,13 @@ function payloadNeedsFetch(row) {
 }
 
 function resolveDisplayReason(row, match = null) {
-  const raw = String(row?.error_message ?? row?.last_kra_error ?? "").trim();
+  let raw = String(row?.error_message ?? row?.last_kra_error ?? "").trim();
+  if (/^Comstore HTTP \d+$/i.test(raw)) {
+    const fromPayload = extractKraPayloadMessage(row?.response_payload ?? row?.responsePayload);
+    if (fromPayload) {
+      raw = `${raw}: ${fromPayload}`;
+    }
+  }
   if (!raw && !(match?.lines?.length > 0)) {
     return "No failure reason was recorded for this KRA submission.";
   }
@@ -41,6 +47,24 @@ function resolveDisplayReason(row, match = null) {
     culpritIndexes: match?.culpritIndexes,
     suspectsAll: match?.suspectsAll,
   });
+}
+
+function extractKraPayloadMessage(payload) {
+  if (payload == null) return "";
+  let data = payload;
+  if (typeof payload === "string") {
+    try {
+      data = JSON.parse(payload);
+    } catch {
+      return payload.trim();
+    }
+  }
+  if (!data || typeof data !== "object") return "";
+  for (const key of ["message", "Message", "error", "Error", "detail", "Detail"]) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function resolveResponseId(row) {

@@ -52,6 +52,26 @@ export function humanizeKraDeviceErrorMessage(raw) {
     return KRA_DEVICE_TIMEOUT_MESSAGE;
   }
 
+  // Bare agent status with no Comstore body — common on older failed rows.
+  if (/^Comstore HTTP 5\d{2}$/i.test(text)) {
+    return "Comstore had an internal error while fiscalizing this sale. On the shop PC, confirm Comstore is running, check Comstore logs for the detailed fault (often product, PIN, or device related), restart Comstore if needed, then retry from KRA invoices or Unfiscalized sales.";
+  }
+  if (/^Comstore HTTP 4\d{2}$/i.test(text)) {
+    return "Comstore rejected this fiscal request. Check the shop PIN, device serial, and that products are registered on the KRA device, then retry.";
+  }
+  if (/^Comstore HTTP \d+$/i.test(text)) {
+    return "Comstore returned an unexpected error while talking to the KRA device. Confirm Centrix KRA Agent and Comstore are running, then retry this sale.";
+  }
+
+  // "Comstore HTTP 500: Signature generation failed (Code 314)" — strip prefix and re-map.
+  const httpDetail = text.match(/^Comstore HTTP \d+\s*:\s*(.+)$/is);
+  if (httpDetail?.[1]) {
+    const nested = humanizeKraDeviceErrorMessage(httpDetail[1].trim());
+    if (nested) return nested;
+    const detail = httpDetail[1].trim();
+    if (detail && detail.length <= 220) return detail;
+  }
+
   if (
     /could not reach kra|could not reach the kra device|url in settings|connection refused|failed to connect|cURL error|centrix kra agent/i.test(
       text,
@@ -145,6 +165,14 @@ export function suggestKraFailureFix(rawError, options = {}) {
     )
   ) {
     return "Confirm Centrix KRA Agent is online, Comstore is running, and the fiscal device is powered on, then use Retry on this row.";
+  }
+
+  if (/^Comstore HTTP 5\d{2}/i.test(text) || /comstore had an internal error/i.test(text)) {
+    return "On the shop PC: open Comstore, check its logs for the exact fault, restart Comstore if it looks stuck, confirm the fiscal device is online, then Retry this sale from KRA invoices or Unfiscalized sales.";
+  }
+
+  if (/^Comstore HTTP 4\d{2}/i.test(text) || /comstore rejected this fiscal request/i.test(text)) {
+    return "Verify shop PIN and device serial in Finance settings, confirm products are on the KRA device, then Retry.";
   }
 
   if (code === "358" || code === "880" || /pinofbuyer|customer kra pin|buyer pin/i.test(text)) {

@@ -27,6 +27,19 @@ describe("humanizeKraDeviceErrorMessage", () => {
   it("maps unregistered PLU errors", () => {
     expect(humanizeKraDeviceErrorMessage("337 error code")).toMatch(/not on the KRA device/i);
   });
+
+  it("maps bare Comstore HTTP 500 to actionable copy", () => {
+    expect(humanizeKraDeviceErrorMessage("Comstore HTTP 500")).toMatch(/internal error/i);
+    expect(humanizeKraDeviceErrorMessage("Comstore HTTP 500")).not.toBe("Comstore HTTP 500");
+  });
+
+  it("unwraps Comstore HTTP prefix and maps device codes", () => {
+    expect(
+      humanizeKraDeviceErrorMessage(
+        "Comstore HTTP 500: Signature generation failed: receiptNo is error (Code 314)",
+      ),
+    ).toMatch(/receipt|invoice|314|reference|KRA/i);
+  });
 });
 
 describe("suggestKraFailureFix", () => {

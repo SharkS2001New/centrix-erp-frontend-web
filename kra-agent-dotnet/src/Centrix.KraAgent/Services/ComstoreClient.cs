@@ -97,7 +97,7 @@ public sealed class ComstoreClient
                 Status = (int)res.StatusCode,
                 Body = body,
                 Headers = headers,
-                Error = res.IsSuccessStatusCode ? null : $"Comstore HTTP {(int)res.StatusCode}",
+                Error = res.IsSuccessStatusCode ? null : FormatHttpError((int)res.StatusCode, body),
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException || ct.IsCancellationRequested)
@@ -126,5 +126,48 @@ public sealed class ComstoreClient
             || err.Contains("No connection", StringComparison.OrdinalIgnoreCase)
             || err.Contains("actively refused", StringComparison.OrdinalIgnoreCase)
             || err.Contains("Failed to connect", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Prefer Comstore's JSON message over a bare "Comstore HTTP 500" so cashiers see the real fault.
+    /// </summary>
+    internal static string FormatHttpError(int status, string? body)
+    {
+        var detail = ExtractErrorDetail(body);
+        return string.IsNullOrWhiteSpace(detail)
+            ? $"Comstore HTTP {status}"
+            : $"Comstore HTTP {status}: {detail}";
+    }
+
+    internal static string? ExtractErrorDetail(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        var trimmed = body.Trim();
+        if (trimmed.Length > 800) trimmed = trimmed[..800];
+
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+            foreach (var key in new[] { "message", "Message", "error", "Error", "detail", "Detail", "title", "Title" })
+            {
+                if (root.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String)
+                {
+                    var text = prop.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON — fall through to plain text.
+        }
+
+        if (trimmed.StartsWith('<') || trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return trimmed.Length <= 400 ? trimmed : trimmed[..400];
     }
 }

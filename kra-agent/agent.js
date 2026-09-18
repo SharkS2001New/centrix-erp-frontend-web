@@ -156,8 +156,32 @@ async function proxyToComstore(config, command) {
     status: res.status,
     body,
     headers: headersToObject(res.headers),
-    error: res.ok ? undefined : `Comstore HTTP ${res.status}`,
+    error: res.ok ? undefined : formatComstoreHttpError(res.status, body),
   };
+}
+
+function formatComstoreHttpError(status, body) {
+  const detail = extractComstoreErrorDetail(body);
+  return detail ? `Comstore HTTP ${status}: ${detail}` : `Comstore HTTP ${status}`;
+}
+
+function extractComstoreErrorDetail(body) {
+  const trimmed = String(body ?? "").trim();
+  if (!trimmed) return "";
+  const clipped = trimmed.length > 800 ? trimmed.slice(0, 800) : trimmed;
+  try {
+    const json = JSON.parse(clipped);
+    if (json && typeof json === "object") {
+      for (const key of ["message", "Message", "error", "Error", "detail", "Detail", "title", "Title"]) {
+        const value = json[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    }
+  } catch {
+    // not JSON
+  }
+  if (clipped.startsWith("<") || /^<!DOCTYPE/i.test(clipped)) return "";
+  return clipped.length <= 400 ? clipped : clipped.slice(0, 400);
 }
 
 const runtime = {
