@@ -127,6 +127,19 @@ describe("chunkPickingLinesForPrint", () => {
     expect(chunks.flat()).toHaveLength(lines.length);
   });
 
+  it("packs more than 32 short sales lines onto the first A4 page", () => {
+    const lines = Array.from({ length: 54 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: `ITEM ${i + 1}`,
+      quantity_label: "10 kg",
+      price_label: "100 per kg",
+    }));
+    const chunks = chunkPickingLinesForPrint(lines);
+    // Warehouse sheets were stopping ~28 with a large blank third of the page.
+    expect(chunks[0].length).toBeGreaterThan(32);
+    expect(chunks.flat()).toHaveLength(54);
+  });
+
   it("packs more than 26 short sales lines onto the first A4 page", () => {
     const lines = Array.from({ length: 36 }, (_, i) => ({
       line_no: i + 1,
@@ -211,7 +224,7 @@ describe("buildPickingListHtml sales layout", () => {
   });
 
   it("splits long lists across multiple print pages by height, not a fixed 24", () => {
-    const lines = Array.from({ length: 45 }, (_, i) => ({
+    const lines = Array.from({ length: 70 }, (_, i) => ({
       product_name: `ITEM ${i + 1}`,
       quantity_label: "1 Bag",
       wholesale_unit_prices: [100],
@@ -233,7 +246,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain("continued · Page");
     expect(html).not.toMatch(/class="print-footer-page-counter"/);
     expect(html).toContain("ITEM 1");
-    expect(html).toContain("ITEM 45");
+    expect(html).toContain("ITEM 70");
   });
 
   it("formats wholesale and retail prices from structured line fields", () => {

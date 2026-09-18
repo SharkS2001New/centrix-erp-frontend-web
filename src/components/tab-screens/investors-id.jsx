@@ -302,11 +302,11 @@ export function InvestorsIdScreen() {
     setSaving(true);
     try {
       const body = {
-        spend_type: spendForm.spend_type,
-        amount: Number(spendForm.amount) || null,
-        spend_date: spendForm.spend_date,
-        reference_label: spendForm.reference_label.trim() || null,
-        notes: spendForm.notes.trim() || null,
+          spend_type: spendForm.spend_type,
+          amount: Number(spendForm.amount) || null,
+          spend_date: spendForm.spend_date,
+          reference_label: spendForm.reference_label.trim() || null,
+          notes: spendForm.notes.trim() || null,
       };
       if (spendForm.spend_type === "supplier_payment") {
         if (spendForm.reference_id) {
@@ -619,8 +619,8 @@ export function InvestorsIdScreen() {
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs text-slate-500">Cash deposited</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
-                    {formatKesCompact(summary.cash_contributed ?? 0)}
-                  </p>
+            {formatKesCompact(summary.cash_contributed ?? 0)}
+          </p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     {overviewStats.cashCount} cash contribution
                     {overviewStats.cashCount === 1 ? "" : "s"}
@@ -629,8 +629,8 @@ export function InvestorsIdScreen() {
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs text-slate-500">Stock contributed</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
-                    {formatKesCompact(summary.stock_contributed ?? 0)}
-                  </p>
+            {formatKesCompact(summary.stock_contributed ?? 0)}
+          </p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     {overviewStats.stockCount} stock contribution
                     {overviewStats.stockCount === 1 ? "" : "s"}
@@ -639,13 +639,13 @@ export function InvestorsIdScreen() {
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs text-slate-500">Cash spent</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
-                    {formatKesCompact(summary.cash_spent ?? 0)}
-                  </p>
+            {formatKesCompact(summary.cash_spent ?? 0)}
+          </p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     {overviewStats.spendCount} linked spend
                     {overviewStats.spendCount === 1 ? "" : "s"}
                   </p>
-                </div>
+        </div>
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs text-slate-500">Total contributed</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
@@ -917,7 +917,7 @@ export function InvestorsIdScreen() {
                           <div>
                             <div className="text-slate-900">
                               {s.supplier?.supplier_name || "—"}
-                            </div>
+          </div>
                             <div className="text-xs text-slate-500">
                               {[
                                 s.lpo_no ? `LPO ${lpoRowDisplayNumber(s)}` : null,
@@ -925,23 +925,23 @@ export function InvestorsIdScreen() {
                               ]
                                 .filter(Boolean)
                                 .join(" · ") || "—"}
-                            </div>
-                          </div>
+        </div>
+                </div>
                         ) : (
                           "—"
                         )}
-                      </td>
+                              </td>
                       <td className="px-4 py-2.5">{s.reference_label || "—"}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">
                         {formatKesCompact(s.amount ?? 0)}
-                      </td>
+                                </td>
                       <td className="px-4 py-2.5 text-slate-600">{s.notes || "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
         </div>
       )}
 

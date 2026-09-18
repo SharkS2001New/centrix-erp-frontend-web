@@ -403,7 +403,7 @@ function buildSalesPickingLineRows(lines, showTonnage = true) {
 }
 
 /** Soft upper bound only — real paging uses estimated row height vs A4 usable space. */
-export const PICKING_LIST_LINES_PER_PAGE = 40;
+export const PICKING_LIST_LINES_PER_PAGE = 50;
 
 /**
  * A4 line-area budgets (mm) after page chrome (header / continued label / column head).
@@ -412,16 +412,18 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
  *
  * Budgets stay slightly conservative vs measured row height so Chromium never clips the
  * last few lines of a .print-page. Prefer a short last page over missing item numbers.
+ * Keep first/continued high enough that typical short sales rows fill most of A4
+ * (warehouse sheets were stopping ~28 lines with a third of the page blank).
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 228,
+  first: 248,
   /** Line area after continued label + column head on later pages. */
-  continued: 258,
+  continued: 272,
   /** Summary box + signature blocks reserved on the last page only. */
-  summaryReserve: 42,
+  summaryReserve: 38,
   /** Empty margin after the last item on a page so the last line cannot spill. */
-  bottomSafety: 8,
+  bottomSafety: 3,
 };
 
 /** Soft-wrap line count for a narrow print column (conservative chars/line). */
@@ -442,16 +444,17 @@ function estimateWrappedTextLines(text, charsPerLine) {
  * every wrap line or Chromium clips the last item(s) between pages (e.g. missing #34).
  */
 export function estimatePickingLineHeightMm(line) {
-  const nameLines = Math.max(1, estimateWrappedTextLines(line?.product_name, 22));
+  // Column widths at print size (~11px on ~186mm content): product ~26%, qty/price ~17–18%.
+  // Prior 13/15 chars-per-line over-counted wraps and left ~1/3 of A4 blank on page 1.
+  const nameLines = Math.max(1, estimateWrappedTextLines(line?.product_name, 28));
   const qtyMain = String(line?.quantity_label ?? "").trim();
   const qtyGhost = String(line?.retail_breakdown ?? "").trim();
   const qtyText = qtyGhost ? `${qtyMain}\n(${qtyGhost})` : qtyMain;
-  // ~17% of ~186mm content ≈ 14–16 chars at 11px — use 13 for safety.
-  const qtyLines = Math.max(1, estimateWrappedTextLines(qtyText, 13));
-  const priceLines = Math.max(1, estimateWrappedTextLines(line?.price_label, 15));
+  const qtyLines = Math.max(1, estimateWrappedTextLines(qtyText, 18));
+  const priceLines = Math.max(1, estimateWrappedTextLines(line?.price_label, 22));
   const textLines = Math.max(nameLines, qtyLines, priceLines);
-  // Compact print rows: pad + 11px type + hairline ≈ 6.0mm; wrapped lines ~3.1mm.
-  return 6.0 + Math.max(0, textLines - 1) * 3.1;
+  // Compact print rows: pad + 11px type + hairline ≈ 5.4mm; wrapped lines ~2.8mm.
+  return 5.4 + Math.max(0, textLines - 1) * 2.8;
 }
 
 function sumEstimatedPickingHeightMm(lines) {
@@ -606,23 +609,24 @@ function pickingListPrintStyles(
     ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .org-header { text-align: center; margin-bottom: ${px(4)}; }
-    .org-logo { max-height: ${px(40)}; margin-bottom: ${px(4)}; }
+    .org-header { text-align: center; margin-bottom: ${px(2)}; }
+    .org-logo { max-height: ${px(36)}; margin-bottom: ${px(2)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
-    .title-block { text-align: center; margin-bottom: ${px(6)}; }
+    .title-block { text-align: center; margin-bottom: ${px(4)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(2)}; }
     .meta-line { font-size: ${px(12)}; margin: ${px(1)} 0; color: #334155; }
     .pick-head,
     .pick-line { font-size: ${px(12)}; }
     .pick-head {
       border-bottom: 2px solid #0f172a;
-      padding: ${px(3)} 0;
+      padding: ${px(2)} 0;
       font-weight: 700;
     }
     .pick-head > div { padding: 0 ${px(2)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
-      padding: ${px(3)} 0;
+      padding: ${px(2)} 0;
+      line-height: 1.25;
     }
     .pick-line > div { padding: 0 ${px(2)}; }
     .col-no { text-align: center; }
@@ -643,11 +647,11 @@ function pickingListPrintStyles(
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
-    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: 100%; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(16)}; margin-top: ${px(8)}; }
-    .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
-    .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
-    .summary-box { margin-top: ${px(6)}; padding: ${px(6)} ${px(8)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
+    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(1)}; line-height: 1.3; max-width: 100%; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(16)}; margin-top: ${px(6)}; }
+    .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(6)}; }
+    .signatures .line { font-size: ${px(11)}; margin: ${px(4)} 0; }
+    .summary-box { margin-top: ${px(4)}; padding: ${px(5)} ${px(8)}; border: 1px solid #cbd5e1; border-radius: ${px(6)}; }
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; gap: ${px(12)}; }
     .summary-row strong { text-align: right; white-space: nowrap; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
