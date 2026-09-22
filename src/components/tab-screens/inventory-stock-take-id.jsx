@@ -50,9 +50,13 @@ import {
   stockTakeCountsToBase,
 } from "@/lib/stock-uom";
 import {
+  exportStockTakeExcel,
   printStockTakeSheet,
+  stockTakeDisplayCurrentQty,
   stockTakePrintRowsFromLines,
+  stockTakeVarianceBase,
 } from "@/components/inventory/stock-take-print";
+import { StockTakeExportModal } from "@/components/inventory/stock-take-export-modal";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 function varianceClass(value) {
@@ -101,6 +105,7 @@ export function InventoryStockTakeIdScreen() {
   const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [resettingStocks, setResettingStocks] = useState(false);
@@ -340,15 +345,18 @@ export function InventoryStockTakeIdScreen() {
 
   const dirty = touchedIds.size > 0;
 
+  const sessionCompleted = String(session?.status ?? "").toLowerCase() === "completed";
+
   const pageVariances = useMemo(() => {
     const items = [];
     for (const line of lines) {
       const willApply = Boolean(line.is_counted) || touchedIds.has(line.id);
       if (!willApply) continue;
       const meta = productMeta(line.product_code);
-      const liveBase = Number(line.live_quantity ?? line.system_quantity ?? 0);
       const countedBase = countedBaseForLine(line);
-      const varianceBase = countedBase - liveBase;
+      const varianceBase = sessionCompleted
+        ? stockTakeVarianceBase(line, { completed: true })
+        : countedBase - stockTakeDisplayCurrentQty(line, { completed: false });
       if (Math.abs(varianceBase) >= 0.0001) {
         items.push({
           line,
@@ -359,7 +367,7 @@ export function InventoryStockTakeIdScreen() {
       }
     }
     return items;
-  }, [lines, counts, touchedIds, productByCode, uomById]);
+  }, [lines, counts, touchedIds, productByCode, uomById, sessionCompleted]);
 
   function setCount(key, value) {
     const lineId = Number(String(key).split(":")[0]);
@@ -549,51 +557,76 @@ export function InventoryStockTakeIdScreen() {
     }
   }
 
-  async function handlePrint() {
+  async function loadExportRows() {
+    const extra = {
+      "filter[session_id]": sessionId,
+      sort: "product_name",
+      sort_dir: "asc",
+    };
+    if (session?.stock_location === "shop" || session?.stock_location === "store") {
+      extra["filter[stock_location]"] = session.stock_location;
+    }
+    if (categoryFilter !== "all") extra.category_id = categoryFilter;
+    if (subcategoryFilter !== "all") extra.subcategory_id = subcategoryFilter;
+    const q = String(debouncedSearch ?? "").trim();
+    if (q) extra.q = q;
+
+    const allLines = await fetchAllPaginated(apiRequest, "/stock-take-lines", {
+      perPage: 200,
+      extra,
+    });
+
+    const printProductByCode = new Map();
+    for (const line of allLines) {
+      if (line.product_code && !printProductByCode.has(line.product_code)) {
+        printProductByCode.set(line.product_code, {
+          product_code: line.product_code,
+          product_name: line.product_name,
+          unit_id: line.unit_id,
+          subcategory_id: line.subcategory_id,
+        });
+      }
+    }
+
+    return stockTakePrintRowsFromLines(allLines, printProductByCode, uomById);
+  }
+
+  function openExportModal() {
     if (dirty) {
-      notifyError("Save your counts before printing.");
+      notifyError("Save your counts before printing or exporting.");
       return;
     }
+    setExportOpen(true);
+  }
+
+  async function runExport(mode, columns) {
     setPrinting(true);
     try {
-      const extra = {
-        "filter[session_id]": sessionId,
-        sort: "product_name",
-        sort_dir: "asc",
-      };
-      if (session?.stock_location === "shop" || session?.stock_location === "store") {
-        extra["filter[stock_location]"] = session.stock_location;
-      }
-      if (categoryFilter !== "all") extra.category_id = categoryFilter;
-      if (subcategoryFilter !== "all") extra.subcategory_id = subcategoryFilter;
-      const q = String(debouncedSearch ?? "").trim();
-      if (q) extra.q = q;
-
-      const allLines = await fetchAllPaginated(apiRequest, "/stock-take-lines", {
-        perPage: 200,
-        extra,
-      });
-
-      const printProductByCode = new Map();
-      for (const line of allLines) {
-        if (line.product_code && !printProductByCode.has(line.product_code)) {
-          printProductByCode.set(line.product_code, {
-            product_code: line.product_code,
-            product_name: line.product_name,
-            unit_id: line.unit_id,
-            subcategory_id: line.subcategory_id,
-          });
-        }
-      }
-
-      printStockTakeSheet({
+      const rows = await loadExportRows();
+      const isCompleted = String(session?.status ?? "").toLowerCase() === "completed";
+      const options = {
         session,
-        rows: stockTakePrintRowsFromLines(allLines, printProductByCode, uomById),
+        rows,
         organization,
-        blankCounted: true,
-      });
+        columns,
+        // Open sessions: blank Counted for handwriting on print. Excel always fills counts.
+        blankCounted: mode === "print" ? !isCompleted : false,
+      };
+      if (mode === "excel") {
+        await exportStockTakeExcel(options);
+        notifySuccess("Excel file downloaded.");
+      } else {
+        await printStockTakeSheet(options);
+      }
+      setExportOpen(false);
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load lines for print");
+      notifyError(
+        e instanceof Error
+          ? e.message
+          : mode === "excel"
+            ? "Failed to export Excel"
+            : "Failed to load lines for print",
+      );
     } finally {
       setPrinting(false);
     }
@@ -609,11 +642,15 @@ export function InventoryStockTakeIdScreen() {
         </>
       );
     }
-    const liveBase = Number(line.live_quantity ?? line.system_quantity ?? 0);
-    const systemText = formatMixedStockDisplay(liveBase, uom).text;
+    const currentBase = stockTakeDisplayCurrentQty(line, { completed: sessionCompleted });
+    const systemText = formatMixedStockDisplay(currentBase, uom).text;
     const countedBase = countedBaseForLine(line);
     const willApply = Boolean(line.is_counted) || touchedIds.has(line.id);
-    const varianceBase = willApply ? countedBase - liveBase : 0;
+    const varianceBase = willApply
+      ? sessionCompleted
+        ? stockTakeVarianceBase(line, { completed: true })
+        : countedBase - currentBase
+      : 0;
     const varianceText = formatMixedStockDisplay(Math.abs(varianceBase), uom).text;
     const levels = uomStockTakeLevels(uom);
 
@@ -707,11 +744,11 @@ export function InventoryStockTakeIdScreen() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void handlePrint()}
+            onClick={openExportModal}
             disabled={loading || printing || !totalLines}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
           >
-            {printing ? "Preparing…" : "Print count sheet"}
+            {printing ? "Preparing…" : "Print / export"}
           </button>
           {!readOnly ? (
             <>
@@ -909,6 +946,15 @@ export function InventoryStockTakeIdScreen() {
           />
         ) : null}
       </InventoryTableShell>
+
+      <StockTakeExportModal
+        open={exportOpen}
+        session={session}
+        busy={printing}
+        onClose={() => !printing && setExportOpen(false)}
+        onPrint={(columns) => void runExport("print", columns)}
+        onExcel={(columns) => void runExport("excel", columns)}
+      />
 
       <FormModal
         title="Close stock take?"

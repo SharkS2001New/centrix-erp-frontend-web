@@ -469,9 +469,12 @@ export function FormDrawer({
   submitLabel = "Save",
   submitDisabled = false,
   wide = false,
+  /** Optional Tailwind max-width override (e.g. max-w-4xl for permission matrices). */
+  panelClassName = null,
   children,
 }) {
   if (!open) return null;
+  const widthClass = panelClassName ?? (wide ? "max-w-lg" : "max-w-md");
   return (
     <>
       <button
@@ -481,9 +484,7 @@ export function FormDrawer({
         onClick={onClose}
       />
       <aside
-        className={`theme-panel theme-modal fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-xl ${
-          wide ? "max-w-lg" : "max-w-md"
-        }`}
+        className={`theme-panel theme-modal fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-xl ${widthClass}`}
       >
         <div className="flex items-center justify-between border-b border-[var(--theme-border)] px-5 py-4">
           <h2 className="theme-heading text-[15px] font-medium">{title}</h2>

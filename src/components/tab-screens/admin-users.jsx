@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -134,6 +134,7 @@ export function AdminUsersScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
   const [editing, setEditing] = useState(null);
+  const preserveViewPermsRef = useRef(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -382,8 +383,13 @@ export function AdminUsersScreen() {
   }
 
   useEffect(() => {
-    if (viewUser?.id) loadUserPermissions(viewUser.id);
-    else {
+    if (viewUser?.id) {
+      if (preserveViewPermsRef.current) {
+        preserveViewPermsRef.current = false;
+        return;
+      }
+      void loadUserPermissions(viewUser.id);
+    } else {
       setRolePermissionIds(new Set());
       setGrantedIds(new Set());
       setDeniedIds(new Set());
@@ -473,8 +479,17 @@ export function AdminUsersScreen() {
     void ensurePermissionMatrix();
   }
 
-  function openView(row) {
+  function openView(row, { preserveOverrides = false } = {}) {
+    if (preserveOverrides) preserveViewPermsRef.current = true;
     setViewUser(row);
+    void ensurePermissionMatrix();
+  }
+
+  /** Close the edit drawer and open the centered permissions modal for a proper matrix view. */
+  function openPermissionsFromEdit() {
+    if (!editing) return;
+    setDrawerOpen(false);
+    openView(editing, { preserveOverrides: true });
   }
 
   async function deactivateUser(row) {
@@ -1018,7 +1033,7 @@ export function AdminUsersScreen() {
           rolePermissionIds={rolePermissionIds}
           grantedIds={grantedIds}
           deniedIds={deniedIds}
-          permLoading={permLoading}
+          permLoading={permLoading || (matrixLoading && !matrixLoaded)}
           permSaving={permSaving}
           permError={permError}
           onClose={() => setViewUser(null)}
@@ -1035,6 +1050,9 @@ export function AdminUsersScreen() {
           error={formError}
           submitLabel={editing ? "Save changes" : "Create user"}
           wide={Boolean(editing)}
+          panelClassName={
+            editing && form.role_id && !editing.is_admin ? "max-w-4xl" : null
+          }
         >
           <Field label="Full name">
             <input
@@ -1277,12 +1295,23 @@ export function AdminUsersScreen() {
           </p>
           {editing && form.role_id && !editing.is_admin ? (
             <div className="mt-2 border-t border-[var(--theme-border)] pt-4">
-              <p className="mb-2 text-sm font-medium text-slate-800">Permission overrides (optional)</p>
-              <p className="mb-3 text-xs text-slate-500">
-                {hospitalityPosEnabled
-                  ? "Role permissions decide which hotel modules this user can open. Grant extra rights or deny role permissions for this user only."
-                  : "Grant extra rights or deny role permissions for this user."}
-              </p>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="mb-1 text-sm font-medium text-slate-800">Permissions</p>
+                  <p className="text-xs text-slate-500">
+                    {hospitalityPosEnabled
+                      ? "Role permissions decide which hotel modules this user can open. Grant extra rights or deny role permissions for this user only."
+                      : "Starts from the role. Uncheck to revoke for this user, or check extra boxes to grant more."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openPermissionsFromEdit}
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-[#185FA5] hover:bg-slate-50"
+                >
+                  View permissions
+                </button>
+              </div>
               {matrixLoading && !matrixLoaded ? (
                 <p className="text-sm text-slate-500">Loading permission matrix…</p>
               ) : (

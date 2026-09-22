@@ -557,6 +557,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.purchasing.lpo.view,
       },
       {
+        href: "/suppliers/invoices",
+        label: "Supplier invoices",
+        module: "customers_suppliers",
+        permission: P.purchasing.lpo.view,
+      },
+      {
         href: "/suppliers/payments",
         label: "Supplier payments",
         module: "customers_suppliers",
@@ -1191,6 +1197,12 @@ const NAV_SECTION_DEFINITIONS = [
         label: "New LPO",
         module: "customers_suppliers",
         permission: P.purchasing.lpo.create,
+      },
+      {
+        href: "/suppliers/invoices",
+        label: "Supplier invoices",
+        module: "customers_suppliers",
+        permission: P.purchasing.lpo.view,
       },
       {
         href: "/suppliers/payments",

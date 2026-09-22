@@ -559,6 +559,9 @@ export const SCREEN_COMPONENTS = {
   "sales-z-report": lazy(() =>
     import("@/components/tab-screens/sales-z-report").then((m) => ({ default: m.SalesZReportScreen })),
   ),
+  "suppliers-invoices": lazy(() =>
+    import("@/components/tab-screens/suppliers-invoices").then((m) => ({ default: m.SuppliersInvoicesScreen })),
+  ),
   "suppliers-new": lazy(() =>
     import("@/components/tab-screens/suppliers-new").then((m) => ({ default: m.SuppliersNewScreen })),
   ),

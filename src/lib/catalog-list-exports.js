@@ -285,6 +285,16 @@ export const SUPPLIER_PAYMENT_EXPORT_COLUMNS = [
   { key: "payment_reference", label: "Reference" },
 ];
 
+export const SUPPLIER_INVOICE_EXPORT_COLUMNS = [
+  { key: "supplier_invoice_number", label: "Invoice #" },
+  { key: "supplier_name", label: "Supplier" },
+  { key: "po_number", label: "LPO" },
+  { key: "invoice_date", label: "Invoice date" },
+  { key: "invoice_amount", label: "Amount", align: "right" },
+  { key: "file_name", label: "Document" },
+  { key: "created_at", label: "Uploaded" },
+];
+
 export const SUPPLIER_RETURN_EXPORT_COLUMNS = [
   { key: "document_no", label: "Document #" },
   { key: "supplier_id", label: "Supplier ID" },

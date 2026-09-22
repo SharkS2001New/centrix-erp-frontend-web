@@ -119,6 +119,7 @@ export const NAV_HREF_ICONS = {
   // Suppliers
   "/suppliers": "purchases",
   "/lpo": "file",
+  "/suppliers/invoices": "receipt",
   "/suppliers/payments": "wallet",
   "/suppliers/returns": "return",
   "/reports/supplier-statement": "receipt",

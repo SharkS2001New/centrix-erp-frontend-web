@@ -236,8 +236,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle:
-      "Orders by cashier for the placed date (booked → completed). Paid against orders is money recorded on those orders (may include later debtor collections). Outstanding = Gross − Paid. Unpaid = orders with no payment yet. Fully settled is order value paid in full — not till cash.",
+    subtitle: "Sales by cashier for the selected period (booked through completed).",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -248,7 +247,7 @@ export const REPORT_DEFINITIONS = {
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       {
         key: "net_ex_vat",
-        label: "Net (ex VAT)",
+        label: "Net Sales",
         accessor: (r) => netExVatAmount(r, "gross_sales", "total_vat"),
         sumFromRow: (r) => netExVatAmount(r, "gross_sales", "total_vat"),
         align: "right",
@@ -257,42 +256,28 @@ export const REPORT_DEFINITIONS = {
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
       {
         key: "gross_sales",
-        label: "Gross orders",
+        label: "Gross Sales",
         accessor: (r) => r.gross_sales,
         align: "right",
         total: true,
       },
       {
-        key: "fully_paid_sales",
-        label: "Fully settled",
-        accessor: (r) => r.fully_paid_sales,
-        align: "right",
-        total: true,
-      },
-      {
         key: "amount_collected",
-        label: "Paid against orders",
+        label: "Collected",
         accessor: (r) => r.amount_collected,
         align: "right",
         total: true,
       },
       {
-        key: "outstanding_balance",
-        label: "Outstanding",
-        accessor: (r) => r.outstanding_balance,
-        align: "right",
-        total: true,
-      },
-      {
         key: "unpaid_sales",
-        label: "Unpaid (no payment)",
+        label: "Unpaid",
         accessor: (r) => r.unpaid_sales,
         align: "right",
         total: true,
       },
       {
         key: "gross_profit",
-        label: "Gross profit",
+        label: "Gross Profit",
         accessor: (r) => r.gross_profit,
         align: "right",
         total: true,
@@ -301,43 +286,27 @@ export const REPORT_DEFINITIONS = {
     kpis: [
       ...vatReportKpis("gross_sales", "total_vat"),
       {
-        id: "fully-paid",
-        label: "Fully settled",
-        compute: (rows, summary) => ({
-          value: kes(summary?.fully_paid_sales ?? sum(rows, "fully_paid_sales")),
-          hint: "Order value where amount paid covers the total",
-        }),
-      },
-      {
         id: "collected",
-        label: "Paid against orders",
+        label: "Collected",
         compute: (rows, summary) => ({
           value: kes(summary?.amount_collected ?? sum(rows, "amount_collected")),
-          hint: "Sum of amount paid on orders in this period (not till receipts)",
-        }),
-      },
-      {
-        id: "outstanding",
-        label: "Outstanding",
-        compute: (rows, summary) => ({
-          value: kes(summary?.outstanding_balance ?? sum(rows, "outstanding_balance")),
-          hint: "Gross − paid (includes partial balances)",
+          hint: "Payments received on orders in this period",
         }),
       },
       {
         id: "unpaid",
-        label: "Unpaid (no payment)",
+        label: "Unpaid",
         compute: (rows, summary) => ({
           value: kes(summary?.unpaid_sales ?? sum(rows, "unpaid_sales")),
-          hint: "Orders with nothing paid yet",
+          hint: "Orders with no payment yet (matches Sales → Unpaid)",
         }),
       },
       {
         id: "gross_profit",
-        label: "Gross profit",
+        label: "Gross Profit",
         compute: (rows, summary) => ({
           value: kes(summary?.gross_profit ?? sum(rows, "gross_profit")),
-          hint: "Gross sales − COGS",
+          hint: "Gross sales − cost of goods",
         }),
       },
     ],
@@ -346,8 +315,8 @@ export const REPORT_DEFINITIONS = {
       "net_ex_vat",
       "total_vat",
       "gross_sales",
-      "fully_paid_sales",
       "amount_collected",
+      "unpaid_sales",
       "gross_profit",
     ],
     charts: [
@@ -378,8 +347,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-customer": {
     title: "Sales by Customer",
-    subtitle:
-      "Customer purchase totals and outstanding balances (includes Walk-in / cash sales without a registered customer)",
+    subtitle: "Customer sales for the selected period (includes Walk-in).",
     section: "Sales",
     apiPath: "/reports/sales-by-customer",
     dateColumn: null,
@@ -401,8 +369,15 @@ export const REPORT_DEFINITIONS = {
       { key: "total_orders", label: "Orders", accessor: (r) => r.total_orders, align: "right", total: true },
       {
         key: "total_purchased",
-        label: "Purchased",
+        label: "Sales",
         accessor: (r) => r.total_purchased,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "unpaid_sales",
+        label: "Unpaid",
+        accessor: (r) => r.unpaid_sales ?? 0,
         align: "right",
         total: true,
       },
@@ -410,13 +385,6 @@ export const REPORT_DEFINITIONS = {
         key: "total_outstanding",
         label: "Outstanding",
         accessor: (r) => r.total_outstanding,
-        align: "right",
-        total: true,
-      },
-      {
-        key: "ar_balance",
-        label: "AR balance",
-        accessor: (r) => r.ar_balance,
         align: "right",
         total: true,
       },
@@ -438,9 +406,17 @@ export const REPORT_DEFINITIONS = {
       },
       {
         id: "purchased",
-        label: "Purchased",
+        label: "Sales",
         compute: (rows, summary) => ({
           value: kes(summary?.total_purchased ?? sum(rows, "total_purchased")),
+        }),
+      },
+      {
+        id: "unpaid",
+        label: "Unpaid",
+        compute: (rows, summary) => ({
+          value: kes(summary?.unpaid_sales ?? sum(rows, "unpaid_sales")),
+          hint: "Orders with no payment yet",
         }),
       },
       {
@@ -448,21 +424,22 @@ export const REPORT_DEFINITIONS = {
         label: "Outstanding",
         compute: (rows, summary) => ({
           value: kes(summary?.total_outstanding ?? sum(rows, "total_outstanding")),
+          hint: "Amount still owed on orders in this period",
         }),
       },
     ],
-    footerTotals: ["total_orders", "total_purchased", "total_outstanding", "ar_balance"],
+    footerTotals: ["total_orders", "total_purchased", "unpaid_sales", "total_outstanding"],
     charts: [
       {
         type: "hbar",
-        title: "Top customers by purchases",
+        title: "Top customers by sales",
         labelKey: "customer_name",
         valueKey: "total_purchased",
         limit: 12,
       },
       {
         type: "hbar",
-        title: "Top outstanding balances",
+        title: "Top outstanding",
         labelKey: "customer_name",
         valueKey: "total_outstanding",
         limit: 12,

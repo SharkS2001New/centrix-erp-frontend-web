@@ -333,7 +333,7 @@ function match_sales_shop_debtors_status(pathname) {
 function match_suppliers_id_edit(pathname) {
   const m = pathname.match("^/suppliers/([^/]+)/edit$");
   if (!m) return false;
-  if (["new","payments","returns"].includes(m[1])) return false;
+  if (["invoices","new","payments","returns"].includes(m[1])) return false;
   return true;
 }
 
@@ -841,6 +841,10 @@ function match_sales_z_report(pathname) {
   return pathname === "/sales/z-report";
 }
 
+function match_suppliers_invoices(pathname) {
+  return pathname === "/suppliers/invoices";
+}
+
 function match_suppliers_new(pathname) {
   return pathname === "/suppliers/new";
 }
@@ -898,7 +902,7 @@ function match_routes_id(pathname) {
 function match_suppliers_id(pathname) {
   const m = pathname.match("^/suppliers/([^/]+)$");
   if (!m) return false;
-  if (["new","payments","returns"].includes(m[1])) return false;
+  if (["invoices","new","payments","returns"].includes(m[1])) return false;
   return true;
 }
 
@@ -2127,6 +2131,12 @@ export const SCREEN_REGISTRY = [
     title: "Z Report",
     route: "/sales/z-report",
     match: match_sales_z_report,
+  },
+  {
+    id: "suppliers-invoices",
+    title: "Invoices",
+    route: "/suppliers/invoices",
+    match: match_suppliers_invoices,
   },
   {
     id: "suppliers-new",
