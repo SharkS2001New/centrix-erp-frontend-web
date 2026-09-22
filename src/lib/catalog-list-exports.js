@@ -159,6 +159,8 @@ export const STOCK_RECEIPT_EXPORT_COLUMNS = [
   { key: "units_received", label: "Qty", align: "right" },
   { key: "stock_location", label: "Location" },
   { key: "invoice_number", label: "Invoice #" },
+  { key: "batch_no", label: "Batch / lot" },
+  { key: "expiry_date", label: "Expiry" },
   { key: "cost_price", label: "Cost", align: "right" },
 ];
 

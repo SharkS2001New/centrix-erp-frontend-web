@@ -26,6 +26,7 @@ import {
   ITEMS_CURRENTLY_IN_STOCK_LABEL,
 } from "@/lib/inventory-routes";
 import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
+import { P } from "@/lib/permission-codes";
 
 const INVENTORY_LINKS = [
   {
@@ -179,7 +180,9 @@ export function InventoryDashboardContent() {
         <div className="flex flex-wrap items-center gap-2">
           <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
           <AiAnalyzeButton label="Stock Pulse" onClick={() => setStockPulseOpen(true)} />
-          <PrimaryLink href="/inventory/receipts/receive">Receive stock</PrimaryLink>
+          <PrimaryLink href="/inventory/receipts/receive" permission={P.inventory.receipts.create}>
+            Receive stock
+          </PrimaryLink>
         </div>
       }
     >

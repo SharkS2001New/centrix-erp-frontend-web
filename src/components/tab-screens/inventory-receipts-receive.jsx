@@ -69,8 +69,11 @@ const EMPTY_RECEIVE_FORM = {
 export function InventoryReceiptsReceiveScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("stock receipt"));
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
   const branchId = user?.branch_id ?? 1;
+  const batchTrackingEnabled = Boolean(
+    capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
+  );
 
   const [mode, setMode] = useState("lpo");
   const [suppliers, setSuppliers] = useState([]);
@@ -80,6 +83,7 @@ export function InventoryReceiptsReceiveScreen() {
   const [lpoData, setLpoData] = useState(null);
   const [receiveCounts, setReceiveCounts] = useState({});
   const [lineUnitCosts, setLineUnitCosts] = useState({});
+  const [lineLotMeta, setLineLotMeta] = useState({});
   const [manualLines, setManualLines] = useState([]);
   const [form, setForm] = useState({ ...EMPTY_RECEIVE_FORM });
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
@@ -90,8 +94,8 @@ export function InventoryReceiptsReceiveScreen() {
   const [prefillDone, setPrefillDone] = useState(false);
 
   const draftValue = useMemo(
-    () => ({ mode, form, receiveCounts, lineUnitCosts, manualLines, selectedInvoiceId }),
-    [mode, form, receiveCounts, lineUnitCosts, manualLines, selectedInvoiceId],
+    () => ({ mode, form, receiveCounts, lineUnitCosts, lineLotMeta, manualLines, selectedInvoiceId }),
+    [mode, form, receiveCounts, lineUnitCosts, lineLotMeta, manualLines, selectedInvoiceId],
   );
   const draftValueRef = useRef(draftValue);
   useEffect(() => {
@@ -108,6 +112,9 @@ export function InventoryReceiptsReceiveScreen() {
     }
     if (value.lineUnitCosts && typeof value.lineUnitCosts === "object") {
       setLineUnitCosts(value.lineUnitCosts);
+    }
+    if (value.lineLotMeta && typeof value.lineLotMeta === "object") {
+      setLineLotMeta(value.lineLotMeta);
     }
     if (Array.isArray(value.manualLines)) setManualLines(value.manualLines);
     if (value.selectedInvoiceId != null) setSelectedInvoiceId(String(value.selectedInvoiceId));
@@ -239,6 +246,7 @@ export function InventoryReceiptsReceiveScreen() {
         setLpoData(null);
         setReceiveCounts({});
         setLineUnitCosts({});
+        setLineLotMeta({});
         setSelectedInvoiceId("");
         return;
       }
@@ -362,6 +370,7 @@ export function InventoryReceiptsReceiveScreen() {
             invoice_number: receiptRef,
             lpo_no: Number(form.lpo_no),
             lpo_txn_id: line.id,
+            ...lotPayloadForLine(line.id),
           },
         });
       }
@@ -404,6 +413,7 @@ export function InventoryReceiptsReceiveScreen() {
               ? Number(line.cost_price)
               : product?.last_cost_price ?? null,
             invoice_number: receiptRef,
+            ...lotPayloadForLine(line.product_code),
           },
         });
       }
@@ -424,6 +434,28 @@ export function InventoryReceiptsReceiveScreen() {
     () => lpoReceiveSessionTotal(lpoLines, uomById, receiveCounts, lineUnitCosts),
     [lpoLines, uomById, receiveCounts, lineUnitCosts],
   );
+
+  function setLineLotField(lineKey, field, value) {
+    setLineLotMeta((prev) => ({
+      ...prev,
+      [String(lineKey)]: {
+        batch_no: prev[String(lineKey)]?.batch_no ?? "",
+        expiry_date: prev[String(lineKey)]?.expiry_date ?? "",
+        [field]: value,
+      },
+    }));
+  }
+
+  function lotPayloadForLine(lineKey) {
+    if (!batchTrackingEnabled) return {};
+    const meta = lineLotMeta[String(lineKey)] ?? {};
+    const batch = String(meta.batch_no ?? "").trim();
+    const expiry = String(meta.expiry_date ?? "").trim();
+    return {
+      ...(batch ? { batch_no: batch } : {}),
+      ...(expiry ? { expiry_date: expiry } : {}),
+    };
+  }
 
   function setLineUnitCost(lineId, value) {
     setLineUnitCosts((prev) => ({ ...prev, [String(lineId)]: value }));
@@ -569,7 +601,7 @@ export function InventoryReceiptsReceiveScreen() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[900px] border-collapse text-sm">
+                  <table className={`w-full border-collapse text-sm ${batchTrackingEnabled ? "min-w-[1100px]" : "min-w-[900px]"}`}>
                     <thead>
                       <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                         <th className="px-3 py-2 font-medium">Product</th>
@@ -578,6 +610,12 @@ export function InventoryReceiptsReceiveScreen() {
                         <th className="px-3 py-2 font-medium text-right">Remaining</th>
                         <th className="px-3 py-2 font-medium text-right">Receiving now</th>
                         <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
+                        {batchTrackingEnabled ? (
+                          <>
+                            <th className="px-3 py-2 font-medium">Batch / lot</th>
+                            <th className="px-3 py-2 font-medium">Expiry</th>
+                          </>
+                        ) : null}
                         <th className="px-3 py-2 font-medium text-right">Total amount</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                       </tr>
@@ -690,6 +728,32 @@ export function InventoryReceiptsReceiveScreen() {
                                 ) : null}
                               </div>
                             </td>
+                            {batchTrackingEnabled ? (
+                              <>
+                                <td className="px-3 py-2.5 align-top">
+                                  <input
+                                    className={`${inputClassName()} w-32`}
+                                    value={lineLotMeta[lineKey]?.batch_no ?? ""}
+                                    onChange={(e) =>
+                                      setLineLotField(lineKey, "batch_no", e.target.value)
+                                    }
+                                    disabled={!canReceive}
+                                    placeholder="Batch / lot"
+                                  />
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <input
+                                    type="date"
+                                    className={`${inputClassName()} w-36`}
+                                    value={lineLotMeta[lineKey]?.expiry_date ?? ""}
+                                    onChange={(e) =>
+                                      setLineLotField(lineKey, "expiry_date", e.target.value)
+                                    }
+                                    disabled={!canReceive}
+                                  />
+                                </td>
+                              </>
+                            ) : null}
                             <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
                               {formatLpoKes(lineAmount)}
                             </td>
@@ -762,10 +826,17 @@ export function InventoryReceiptsReceiveScreen() {
                 { key: "product", label: "Product" },
                 { key: "qty", label: "Qty received", align: "right" },
                 { key: "cost", label: "Cost", align: "right" },
+                ...(batchTrackingEnabled
+                  ? [
+                      { key: "batch", label: "Batch / lot" },
+                      { key: "expiry", label: "Expiry" },
+                    ]
+                  : []),
               ]}
               emptyMessage="Search and add products received."
               renderCells={(line, index) => {
                 const uom = uomForManualReceiveLine(line, uomById);
+                const lineKey = line.product_code;
                 return (
                   <>
                     <td className="px-3 py-2">
@@ -788,6 +859,32 @@ export function InventoryReceiptsReceiveScreen() {
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
+                    {batchTrackingEnabled ? (
+                      <>
+                        <td className="px-3 py-2">
+                          <input
+                            className={`${inputClassName()} w-32`}
+                            value={lineLotMeta[lineKey]?.batch_no ?? ""}
+                            onChange={(e) =>
+                              setLineLotField(lineKey, "batch_no", e.target.value)
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder="Batch / lot"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="date"
+                            className={`${inputClassName()} w-36`}
+                            value={lineLotMeta[lineKey]?.expiry_date ?? ""}
+                            onChange={(e) =>
+                              setLineLotField(lineKey, "expiry_date", e.target.value)
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                      </>
+                    ) : null}
                   </>
                 );
               }}

@@ -418,6 +418,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
+    enable_receive_batch_tracking: false,
     orders_list_default_days: "14",
     shop_debtors_default_days: "30",
     reports_default_date_range_days: "30",
@@ -526,6 +527,7 @@ export function salesPlatformFromApi(apiPayload) {
       apiPayload.cart_reservation_ttl_minutes != null && apiPayload.cart_reservation_ttl_minutes !== ""
         ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
         : "15",
+    enable_receive_batch_tracking: Boolean(apiPayload.enable_receive_batch_tracking),
     orders_list_default_days: String(normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days)),
     shop_debtors_default_days: String(
       normalizeShopDebtorsDefaultDays(apiPayload.shop_debtors_default_days),
@@ -997,6 +999,23 @@ export function OrganizationOrderWorkflowSettings({
                   </p>
                 </OrgRegisterField>
               ) : null}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Goods receipt lot tracking
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Capture supplier batch / lot number and expiry date when receiving stock, and search
+              receipts by batch for recalls or quality issues. Stock qty stays aggregate; this stores
+              the receipt trail.
+            </p>
+            <div className="mt-3">
+              <Toggle
+                label="Enable batch number and expiry on stock receive"
+                checked={Boolean(salesPlatform?.enable_receive_batch_tracking)}
+                onChange={(v) => patch({ enable_receive_batch_tracking: v })}
+              />
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">

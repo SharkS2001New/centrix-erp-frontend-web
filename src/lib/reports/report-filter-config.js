@@ -315,6 +315,7 @@ export const REPORT_EXTRA_FILTERS = {
   "stock-receipts": [
     { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "stock_location", label: "Location", type: "select", optionsKey: "stockLocations" },
+    { id: "q", label: "Search batch / invoice", type: "text", placeholder: "Batch, invoice, or SKU…" },
   ],
   "stock-valuation": [
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },

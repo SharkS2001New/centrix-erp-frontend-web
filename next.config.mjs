@@ -12,7 +12,9 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "worker-src 'self' blob:",
-      "frame-src 'self' https://www.openstreetmap.org",
+      // blob: required for authenticated PDF/image preview iframes (supplier invoices, LPO docs).
+      "frame-src 'self' blob: https://www.openstreetmap.org",
+      "object-src 'self' blob:",
       "connect-src 'self' https: wss: ws: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://cloudflareinsights.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",

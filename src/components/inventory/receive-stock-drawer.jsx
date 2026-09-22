@@ -18,8 +18,11 @@ import { displayToBaseQty } from "@/lib/stock-uom";
 import { formatQty } from "@/components/inventory/inventory-shared";
 
 export function ReceiveStockDrawer({ open, onClose, onSaved }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
   const branchId = user?.branch_id ?? 1;
+  const batchTrackingEnabled = Boolean(
+    capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
+  );
 
   const [mode, setMode] = useState("lpo");
   const [suppliers, setSuppliers] = useState([]);
@@ -35,6 +38,8 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
     invoice_number: "",
     product_code: "",
     cost_price: "",
+    batch_no: "",
+    expiry_date: "",
   });
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -115,11 +120,23 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       invoice_number: "",
       product_code: "",
       cost_price: "",
+      batch_no: "",
+      expiry_date: "",
     });
     setSelectedProduct(null);
     setLpoData(null);
     setReceiveQty({});
     setError(null);
+  }
+
+  function lotPayloadFromForm() {
+    if (!batchTrackingEnabled) return {};
+    const batch = String(form.batch_no ?? "").trim();
+    const expiry = String(form.expiry_date ?? "").trim();
+    return {
+      ...(batch ? { batch_no: batch } : {}),
+      ...(expiry ? { expiry_date: expiry } : {}),
+    };
   }
 
   function handleClose() {
@@ -155,6 +172,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
             invoice_number: form.invoice_number.trim() || null,
             lpo_no: Number(form.lpo_no),
             lpo_txn_id: line.id,
+            ...lotPayloadFromForm(),
           },
         });
       }
@@ -193,6 +211,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
           stock_location: form.stock_location,
           cost_price: form.cost_price ? Number(form.cost_price) : manualProduct?.last_cost_price ?? null,
           invoice_number: form.invoice_number.trim() || null,
+          ...lotPayloadFromForm(),
         },
       });
       reset();
@@ -293,6 +312,27 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
               />
             </Field>
           </div>
+
+          {batchTrackingEnabled ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Batch / lot number">
+                <input
+                  className={inputClassName()}
+                  value={form.batch_no}
+                  onChange={(e) => setForm((p) => ({ ...p, batch_no: e.target.value }))}
+                  placeholder="Supplier batch or lot"
+                />
+              </Field>
+              <Field label="Expiry date">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={form.expiry_date}
+                  onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
+                />
+              </Field>
+            </div>
+          ) : null}
 
           {loadingLpo ? (
             <p className="text-sm text-slate-500">Loading order lines…</p>
@@ -422,6 +462,27 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
               />
             </Field>
           </div>
+
+          {batchTrackingEnabled ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Batch / lot number">
+                <input
+                  className={inputClassName()}
+                  value={form.batch_no}
+                  onChange={(e) => setForm((p) => ({ ...p, batch_no: e.target.value }))}
+                  placeholder="Supplier batch or lot"
+                />
+              </Field>
+              <Field label="Expiry date">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={form.expiry_date}
+                  onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
+                />
+              </Field>
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

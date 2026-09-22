@@ -4,14 +4,33 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetchBlob, ApiError } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 
-function isImageBlob(blob) {
-  if (!blob || blob.size <= 0) return false;
-  if (blob.type.startsWith("image/")) return true;
-  return blob.type === "" || blob.type === "application/octet-stream";
+function isImageMime(type) {
+  const t = String(type ?? "");
+  if (t.startsWith("image/")) return true;
+  return t === "" || t === "application/octet-stream";
 }
 
-function isPdfBlob(blob) {
-  return blob?.type === "application/pdf";
+function isPdfMime(type) {
+  return String(type ?? "") === "application/pdf";
+}
+
+/** Prefer API Content-Type; sniff PDF magic when the server sends octet-stream. */
+async function resolvePreviewBlob(blob) {
+  if (!blob || blob.size <= 0) return blob;
+  if (isPdfMime(blob.type) || blob.type?.startsWith("image/")) return blob;
+
+  const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+  const isPdf =
+    head.length >= 5 &&
+    head[0] === 0x25 &&
+    head[1] === 0x50 &&
+    head[2] === 0x44 &&
+    head[3] === 0x46 &&
+    head[4] === 0x2d; // %PDF-
+  if (isPdf) {
+    return new Blob([blob], { type: "application/pdf" });
+  }
+  return blob;
 }
 
 /**
@@ -52,6 +71,7 @@ export function ProtectedFilePreviewModal({
     setBlobType(null);
 
     apiFetchBlob(filePath)
+      .then((raw) => resolvePreviewBlob(raw))
       .then((blob) => {
         if (activeFetch.current !== fetchId) return;
         objectUrl = URL.createObjectURL(blob);
@@ -74,8 +94,9 @@ export function ProtectedFilePreviewModal({
 
   if (!open) return null;
 
-  const showImage = previewUrl && (isImageBlob({ type: blobType, size: 1 }) || blobType === "");
-  const showPdf = previewUrl && isPdfBlob({ type: blobType });
+  const showPdf = previewUrl && isPdfMime(blobType);
+  // Only treat as image when not a PDF (octet-stream may be either until sniffed).
+  const showImage = previewUrl && !showPdf && isImageMime(blobType);
 
   return (
     <div
@@ -97,6 +118,16 @@ export function ProtectedFilePreviewModal({
             {title}
           </h2>
           <div className="flex items-center gap-2">
+            {previewUrl ? (
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Open in new tab
+              </a>
+            ) : null}
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
@@ -233,7 +264,7 @@ export function ProtectedFileLink({
     if (busy || disabled || !filePath) return;
     setBusyState(true);
     try {
-      const blob = await apiFetchBlob(filePath);
+      const blob = await resolvePreviewBlob(await apiFetchBlob(filePath));
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener,noreferrer");
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);

@@ -81,6 +81,7 @@ export function InventoryReceiptsRefScreen() {
 
   const header = rows[0];
   const receiptDate = header?.created_at ?? header?.receipt_date;
+  const showLotColumns = rows.some((row) => row.batch_no || row.expiry_date);
   const receiptGroup = useMemo(
     () =>
       rows.length
@@ -170,11 +171,17 @@ export function InventoryReceiptsRefScreen() {
 
           <InventoryTableShell>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] border-collapse text-sm">
+              <table className={`w-full border-collapse text-sm ${showLotColumns ? "min-w-[720px]" : "min-w-[560px]"}`}>
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                     <th className="px-4 py-3 font-medium">Product</th>
                     <th className="px-4 py-3 font-medium text-right">Qty received</th>
+                    {showLotColumns ? (
+                      <>
+                        <th className="px-4 py-3 font-medium">Batch / lot</th>
+                        <th className="px-4 py-3 font-medium">Expiry</th>
+                      </>
+                    ) : null}
                     <th className="px-4 py-3 font-medium text-right">Cost</th>
                   </tr>
                 </thead>
@@ -193,6 +200,18 @@ export function InventoryReceiptsRefScreen() {
                             uomForInventoryRow(row, uomById, uomByProduct),
                           )}
                         </td>
+                        {showLotColumns ? (
+                          <>
+                            <td className="px-4 py-3 font-mono text-sm text-slate-700">
+                              {row.batch_no || "—"}
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">
+                              {row.expiry_date
+                                ? formatReceiptDate(row.expiry_date)
+                                : "—"}
+                            </td>
+                          </>
+                        ) : null}
                         <td className="px-4 py-3 text-right text-slate-600">
                           {row.cost_price != null ? (
                             <div>

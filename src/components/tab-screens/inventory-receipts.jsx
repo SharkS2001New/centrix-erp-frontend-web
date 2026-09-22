@@ -34,17 +34,23 @@ export function InventoryReceiptsScreen() {
   const [listLoading, setListLoading] = useState(false);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [batchQuery, setBatchQuery] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
 
   const loadRows = useCallback(async () => {
     setListLoading(true);
     try {
+      const q = batchQuery.trim();
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
         filters: { branch_id: branchId },
-        extra: { from_date: fromDate, to_date: toDate },
+        extra: {
+          ...(q
+            ? { q }
+            : { from_date: fromDate, to_date: toDate }),
+        },
       });
       const res = await apiRequest("/stock-receipts", { searchParams });
       const parsed = parsePaginator(res);
@@ -57,13 +63,13 @@ export function InventoryReceiptsScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [branchId, fromDate, toDate, page, pageSize]);
+  }, [batchQuery, branchId, fromDate, toDate, page, pageSize]);
 
   useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, pageSize]);
+  }, [fromDate, toDate, pageSize, batchQuery]);
 
   const grouped = useMemo(() => groupStockReceipts(rows), [rows]);
 
@@ -94,8 +100,9 @@ export function InventoryReceiptsScreen() {
             getSearchParams={() => ({
               per_page: 200,
               "filter[branch_id]": branchId,
-              from_date: fromDate,
-              to_date: toDate,
+              ...(batchQuery.trim()
+                ? { q: batchQuery.trim() }
+                : { from_date: fromDate, to_date: toDate }),
             })}
             disabled={loading}
           />
@@ -112,6 +119,7 @@ export function InventoryReceiptsScreen() {
             className={inputClassName()}
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
+            disabled={Boolean(batchQuery.trim())}
           />
         </Field>
         <Field label="To">
@@ -120,10 +128,21 @@ export function InventoryReceiptsScreen() {
             className={inputClassName()}
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
+            disabled={Boolean(batchQuery.trim())}
+          />
+        </Field>
+        <Field label="Search batch / invoice / SKU">
+          <input
+            className={inputClassName()}
+            value={batchQuery}
+            onChange={(e) => setBatchQuery(e.target.value)}
+            placeholder="e.g. LOT-2026-A1"
           />
         </Field>
         <p className="pb-2 text-xs text-slate-500">
-          {grouped.length} receipt{grouped.length === 1 ? "" : "s"} on this page · {total} line{total === 1 ? "" : "s"} in range
+          {grouped.length} receipt{grouped.length === 1 ? "" : "s"} on this page · {total} line
+          {total === 1 ? "" : "s"}
+          {batchQuery.trim() ? " matching search" : " in range"}
         </p>
       </div>
 
