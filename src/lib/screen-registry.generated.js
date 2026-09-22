@@ -677,6 +677,10 @@ function match_inventory_damages(pathname) {
   return pathname === "/inventory/damages";
 }
 
+function match_inventory_expiring(pathname) {
+  return pathname === "/inventory/expiring";
+}
+
 function match_inventory_receipts(pathname) {
   return pathname === "/inventory/receipts";
 }
@@ -1885,6 +1889,12 @@ export const SCREEN_REGISTRY = [
     title: "Damages",
     route: "/inventory/damages",
     match: match_inventory_damages,
+  },
+  {
+    id: "inventory-expiring",
+    title: "Expiring",
+    route: "/inventory/expiring",
+    match: match_inventory_expiring,
   },
   {
     id: "inventory-receipts",

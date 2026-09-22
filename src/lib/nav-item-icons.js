@@ -113,6 +113,7 @@ export const NAV_HREF_ICONS = {
   "/inventory/transfers": "swap",
   "/inventory/transfers/new": "plus",
   "/inventory/receipts": "package",
+  "/inventory/expiring": "alert",
   "/inventory/adjustments": "edit",
   "/inventory/damages": "alert",
 

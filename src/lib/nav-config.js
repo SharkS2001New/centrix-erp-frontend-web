@@ -28,6 +28,10 @@ import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
+function isReceiveBatchTrackingEnabled(capabilities) {
+  return Boolean(capabilities?.module_settings?.inventory?.enable_receive_batch_tracking);
+}
+
 function buildReportNavItems() {
   return [
     {
@@ -522,6 +526,13 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Goods received",
         module: "inventory",
         permission: P.inventory.receipts.view,
+      },
+      {
+        href: "/inventory/expiring",
+        label: "Expiring products",
+        module: "inventory",
+        permission: P.inventory.receipts.view,
+        requireReceiveBatchTracking: true,
       },
       {
         href: "/inventory/adjustments",
@@ -1160,6 +1171,13 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.inventory.receipts.create,
       },
       {
+        href: "/inventory/expiring",
+        label: "Expiring products",
+        module: "inventory",
+        permission: P.inventory.receipts.view,
+        requireReceiveBatchTracking: true,
+      },
+      {
         href: "/inventory/transactions",
         label: "Stock movements",
         module: "inventory",
@@ -1436,6 +1454,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
     return false;
   }
   if (item.requireTillFloat && !requireTillFloat) return false;
+  if (item.requireReceiveBatchTracking && !isReceiveBatchTrackingEnabled(capabilities)) return false;
   if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
   if (item.requireLoadingListNav && !shouldShowLoadingListNav(capabilities)) return false;
   if (item.requireMobilePickingListNav && !shouldShowMobilePickingLists(capabilities)) return false;

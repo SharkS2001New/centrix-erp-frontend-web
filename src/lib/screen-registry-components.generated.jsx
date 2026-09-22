@@ -438,6 +438,9 @@ export const SCREEN_COMPONENTS = {
   "inventory-damages": lazy(() =>
     import("@/components/tab-screens/inventory-damages").then((m) => ({ default: m.InventoryDamagesScreen })),
   ),
+  "inventory-expiring": lazy(() =>
+    import("@/components/tab-screens/inventory-expiring").then((m) => ({ default: m.InventoryExpiringScreen })),
+  ),
   "inventory-receipts": lazy(() =>
     import("@/components/tab-screens/inventory-receipts").then((m) => ({ default: m.InventoryReceiptsScreen })),
   ),
