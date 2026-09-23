@@ -298,7 +298,7 @@ export const REPORT_DEFINITIONS = {
         label: "Unpaid",
         compute: (rows, summary) => ({
           value: kes(summary?.unpaid_sales ?? sum(rows, "unpaid_sales")),
-          hint: "Orders with no payment yet (matches Sales → Unpaid)",
+          hint: "Orders with nothing paid yet (amount maths — same basis as Sales → Unpaid)",
         }),
       },
       {

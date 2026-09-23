@@ -449,16 +449,16 @@ describe("resolveSalesOrderQueue", () => {
     module_settings: { sales: { show_checkout_on_create_order: false } },
   };
 
-  it("distribution unpaid queue includes unpaid + fulfillment stages, not booked/pending", () => {
+  it("distribution unpaid queue filters by amounts across pipeline (matches Sales by User unpaid)", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, { capabilities: distributionCaps });
 
     expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
     expect(config?.fixedStatusFilter).toBeNull();
-    expect(config?.includeStatuses).toEqual(["unpaid", "processed"]);
-    expect(config?.excludeStatuses).toEqual(
-      expect.arrayContaining(["booked", "pending", "cancelled", "expired", "completed"]),
-    );
+    expect(config?.statusFilterDisplay).toBe("unpaid");
+    expect(config?.includeStatuses).toBeUndefined();
+    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
     expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.showRouteColumn).toBe(true);
   });
 
   it("mobile queue excludes cancelled orders", () => {
@@ -467,13 +467,15 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.excludeStatuses).toEqual(["cancelled"]);
   });
 
-  it("distribution pending_payment queue includes partial + fulfillment stages", () => {
+  it("distribution pending_payment queue filters by partial amounts across pipeline", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: distributionCaps,
     });
 
     expect(config?.fixedPaymentStatusFilter).toBe("partial");
-    expect(config?.includeStatuses).toEqual(["pending_payment", "processed"]);
+    expect(config?.statusFilterDisplay).toBe("pending_payment");
+    expect(config?.includeStatuses).toBeUndefined();
+    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
     expect(config?.fixedStatusFilter).toBeNull();
   });
 
@@ -483,6 +485,7 @@ describe("resolveSalesOrderQueue", () => {
     });
 
     expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.statusFilterDisplay).toBe("unpaid");
     expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
     expect(config?.requireOutstandingBalance).toBe(true);
     expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
@@ -494,6 +497,7 @@ describe("resolveSalesOrderQueue", () => {
     });
 
     expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.statusFilterDisplay).toBe("pending_payment");
     expect(config?.fixedPaymentStatusFilter).toBe("partial");
     expect(config?.requireOutstandingBalance).toBe(true);
   });

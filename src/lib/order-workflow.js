@@ -1049,17 +1049,10 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   if (!step) return null;
 
   // Unpaid / Partially paid / Paid queues always filter by amount paid vs total (same as
-  // summary cards and X/Z ORDTTL). Workflow status alone is stale on POS.
+  // summary cards and Sales by User unpaid). Workflow status alone is stale on POS.
   const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
   if (paymentStatusFilter) {
     const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-    const pipelineKeys = new Set(workflowPipelineSteps(workflow).map((s) => s.key));
-    const includeStatuses = deferPayment
-      ? [
-          step.key,
-          ...[...FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE].filter((key) => pipelineKeys.has(key)),
-        ]
-      : null;
     const isPaidQueue = paymentStatusFilter === "paid";
 
     return {
@@ -1070,18 +1063,18 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
         : step.key === "unpaid"
           ? "Orders with nothing collected yet — matched by amount paid, not workflow label"
           : "Orders with a remaining balance after a partial payment — matched by amounts",
+      // Payment queues are amount-based across pipeline stages — do not lock a workflow status.
+      // Status control still shows Unpaid / Partially paid / Paid for clarity.
       fixedStatusFilter: null,
+      statusFilterDisplay: step.key,
       fixedPaymentStatusFilter: paymentStatusFilter,
-      ...(includeStatuses && !isPaidQueue ? { includeStatuses } : {}),
       fixedSourceFilter: null,
       showRouteColumn: Boolean(deferPayment) && !isPaidQueue,
       showDeliveryDateColumn: Boolean(deferPayment) && !isPaidQueue,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      excludeStatuses: deferPayment && !isPaidQueue
-        ? ["cancelled", "expired", "completed", "booked", "pending"]
-        : ["cancelled", "expired"],
-      // Paid queue is fully settled; unpaid/partial need an outstanding balance.
+      // Same terminal exclusions as Sales by User — keep booked/pending/completed unpaid visible.
+      excludeStatuses: ["cancelled", "expired"],
       requireOutstandingBalance: !isPaidQueue,
     };
   }
@@ -1345,7 +1338,11 @@ export function isPrintProformaVisible(sale, totalPaid = null, capabilities = nu
   return true;
 }
 
-/** Block manual workflow moves that skip recording payment. */
+/**
+ * Block manual workflow moves that skip recording payment.
+ * Delivered may stay unpaid/partial (fulfillment ≠ settlement).
+ * Completed requires full payment — same rule as the API transition gate.
+ */
 export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid = null) {
   if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;
   const target = String(targetStatus ?? "").toLowerCase();
@@ -1353,6 +1350,7 @@ export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid =
   const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
   if (balance <= 0.01) return false;
   if (target === "paid") return true;
+  if (target === "completed") return true;
   if (target === "pending_payment" && paid <= 0.01) return true;
   return false;
 }

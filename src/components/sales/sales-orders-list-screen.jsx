@@ -397,12 +397,24 @@ export default function SalesOrdersListScreen({
   }, [shopDebtorsBucket, shopDebtorsOnly, routeOrdersOnly, queueConfig?.title]);
   useTabTitle(ordersTabTitle);
   const statusOptions = useMemo(() => {
+    if (queueConfig?.fixedPaymentStatusFilter && queueConfig?.statusFilterDisplay) {
+      const key = String(queueConfig.statusFilterDisplay);
+      const label =
+        key === "pending_payment"
+          ? "Partially paid"
+          : key === "unpaid"
+            ? "Unpaid"
+            : key === "paid"
+              ? "Paid"
+              : workflowStatusLabel(orgWorkflow, key);
+      return [{ value: key, label }];
+    }
     const options = workflowStatusFilterOptions(orgWorkflow);
     if (queueConfig?.slug === "mobile") {
       return options.filter((o) => o.value !== "cancelled");
     }
     return options;
-  }, [orgWorkflow, queueConfig?.slug]);
+  }, [orgWorkflow, queueConfig?.slug, queueConfig?.fixedPaymentStatusFilter, queueConfig?.statusFilterDisplay]);
   const includeExternalPos = isExternalPosEnabled(capabilities);
   const sourceOptions = useMemo(() => {
     const options = orderSourceFilterOptions(
@@ -509,7 +521,7 @@ export default function SalesOrdersListScreen({
   });
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
-    ? queueConfig.fixedStatusFilter
+    ? queueConfig.statusFilterDisplay ?? queueConfig.fixedStatusFilter
     : statusFilter;
   const effectiveSourceFilter = queueConfig?.lockSourceFilter
     ? queueConfig.fixedSourceFilter
@@ -782,13 +794,17 @@ export default function SalesOrdersListScreen({
     (pageNum, perPageNum) => {
       const filters = {};
       const statusFromColumn = String(debouncedColumnFilters.status ?? "").trim();
-      const statusParam = queueConfig?.lockStatusFilter
-        ? queueConfig.fixedStatusFilter
-        : statusFromColumn
-          ? statusFromColumn
-        : effectiveStatusFilter !== "all"
-          ? effectiveStatusFilter
-          : null;
+      // Payment queues lock a display status (Unpaid / Partially paid) but must not
+      // send filter[status] — amount payment_status is the real predicate.
+      const statusParam = queueConfig?.fixedPaymentStatusFilter
+        ? null
+        : queueConfig?.lockStatusFilter
+          ? queueConfig.fixedStatusFilter
+          : statusFromColumn
+            ? statusFromColumn
+            : effectiveStatusFilter !== "all"
+              ? effectiveStatusFilter
+              : null;
       if (statusParam) filters.status = statusParam;
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
@@ -2022,14 +2038,14 @@ export default function SalesOrdersListScreen({
               />
             </Field>
           ) : null}
-          <Field label="Status">
+          <Field label={queueConfig?.fixedPaymentStatusFilter ? "Payment" : "Status"}>
               <FilterSelect
               value={effectiveStatusFilter ?? "all"}
               disabled={queueConfig?.lockStatusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
                 options={statusOptions}
               />
-          </Field>
+            </Field>
           {showSourceFilter ? (
             <Field label="Source">
                 <FilterSelect

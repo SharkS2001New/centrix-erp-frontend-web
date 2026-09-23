@@ -123,4 +123,23 @@ describe("route-access", () => {
     expect(canAccessRoute("/fulfillment/drivers", ctx)).toBe(true);
     expect(canAccessRoute("/fulfillment/vehicles", ctx)).toBe(true);
   });
+
+  it("denies paths that belong to another workspace (module-switch race)", () => {
+    getStoredWorkspace.mockReturnValue("hr");
+    expect(canAccessRoute("/inventory/products", baseCtx)).toBe(false);
+    expect(canAccessRoute("/hr/payroll", {
+      ...baseCtx,
+      hasPermission: (code) => code === "hr.payroll.view",
+    })).toBe(true);
+  });
+
+  it("allows checking a target workspace before stored workspace updates", () => {
+    getStoredWorkspace.mockReturnValue("backoffice");
+    expect(
+      canAccessRoute("/hr/payroll", {
+        ...baseCtx,
+        hasPermission: (code) => code === "hr.payroll.view",
+      }, { workspaceId: "hr" }),
+    ).toBe(true);
+  });
 });

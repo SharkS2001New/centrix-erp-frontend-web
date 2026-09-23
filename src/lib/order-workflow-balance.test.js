@@ -2,11 +2,50 @@ import { describe, expect, it } from "vitest";
 import "@/lib/sales";
 import {
   canRecordOrderPayment,
+  isPaymentGatedWorkflowTransition,
   resolveOrderWorkflowActions,
   saleBalanceDue,
   shouldShowPaymentStatusBadge,
   resolvePaymentStatusFromAmounts,
 } from "@/lib/order-workflow";
+
+describe("isPaymentGatedWorkflowTransition", () => {
+  const unpaidDelivered = {
+    status: "delivered",
+    order_total: 900,
+    amount_paid: 0,
+    payment_status: "unpaid",
+  };
+
+  it("allows Delivered while a balance remains (fulfillment ≠ settlement)", () => {
+    expect(isPaymentGatedWorkflowTransition(unpaidDelivered, "delivered")).toBe(false);
+    expect(isPaymentGatedWorkflowTransition(
+      { ...unpaidDelivered, status: "processed" },
+      "delivered",
+    )).toBe(false);
+  });
+
+  it("gates Completed until the order is fully paid", () => {
+    expect(isPaymentGatedWorkflowTransition(unpaidDelivered, "completed")).toBe(true);
+    expect(
+      isPaymentGatedWorkflowTransition(
+        { ...unpaidDelivered, amount_paid: 450, payment_status: "partial" },
+        "completed",
+      ),
+    ).toBe(true);
+    expect(
+      isPaymentGatedWorkflowTransition(
+        { ...unpaidDelivered, amount_paid: 900, payment_status: "paid" },
+        "completed",
+      ),
+    ).toBe(false);
+  });
+
+  it("still gates Paid and unpaid→Partially paid", () => {
+    expect(isPaymentGatedWorkflowTransition(unpaidDelivered, "paid")).toBe(true);
+    expect(isPaymentGatedWorkflowTransition(unpaidDelivered, "pending_payment")).toBe(true);
+  });
+});
 
 describe("saleBalanceDue", () => {
   it("uses Accounting balance_due when the API sent it", () => {
