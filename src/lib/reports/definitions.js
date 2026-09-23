@@ -236,7 +236,8 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle: "Sales by cashier for the selected period (booked through completed).",
+    subtitle:
+      "Sales by cashier for the selected period. Collected includes partial tenders; Unpaid is everything still owed (incl. partial balances).",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -245,6 +246,20 @@ export const REPORT_DEFINITIONS = {
       { key: "salesperson", label: "User", accessor: (r) => r.salesperson },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
+      {
+        key: "collected_order_count",
+        label: "Orders collected",
+        accessor: (r) => r.collected_order_count,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "unpaid_order_count",
+        label: "Orders unpaid",
+        accessor: (r) => r.unpaid_order_count,
+        align: "right",
+        total: true,
+      },
       {
         key: "net_ex_vat",
         label: "Net Sales",
@@ -290,7 +305,7 @@ export const REPORT_DEFINITIONS = {
         label: "Collected",
         compute: (rows, summary) => ({
           value: kes(summary?.amount_collected ?? sum(rows, "amount_collected")),
-          hint: "Payments received on orders in this period",
+          hint: `${summary?.collected_order_count ?? sum(rows, "collected_order_count")} orders with payment (incl. partials)`,
         }),
       },
       {
@@ -298,7 +313,7 @@ export const REPORT_DEFINITIONS = {
         label: "Unpaid",
         compute: (rows, summary) => ({
           value: kes(summary?.unpaid_sales ?? sum(rows, "unpaid_sales")),
-          hint: "Orders with nothing paid yet (amount maths — same basis as Sales → Unpaid)",
+          hint: `${summary?.unpaid_order_count ?? sum(rows, "unpaid_order_count")} orders still owed (zero-paid + partial balances)`,
         }),
       },
       {
@@ -312,6 +327,8 @@ export const REPORT_DEFINITIONS = {
     ],
     footerTotals: [
       "order_count",
+      "collected_order_count",
+      "unpaid_order_count",
       "net_ex_vat",
       "total_vat",
       "gross_sales",
