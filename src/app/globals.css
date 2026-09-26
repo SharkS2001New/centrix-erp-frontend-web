@@ -920,6 +920,105 @@ html[data-theme="dark"] {
   color: var(--theme-text);
 }
 
+/* What’s New login modal — opaque surface + theme-tinted catch background */
+.whats-new-modal {
+  isolation: isolate;
+  color: var(--theme-text);
+  background-color: var(--theme-surface);
+  background-image:
+    radial-gradient(
+      120% 90% at 0% 0%,
+      color-mix(in srgb, var(--theme-primary) 22%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      90% 70% at 100% 100%,
+      color-mix(in srgb, var(--theme-accent-orange, var(--theme-primary)) 14%, transparent),
+      transparent 50%
+    ),
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--theme-surface) 92%, var(--theme-primary) 8%) 0%,
+      var(--theme-surface) 42%,
+      color-mix(in srgb, var(--theme-surface) 94%, var(--theme-page-bg) 6%) 100%
+    );
+}
+
+.whats-new-modal__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at 18% 12%,
+      color-mix(in srgb, var(--theme-primary) 28%, transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 88% 78%,
+      color-mix(in srgb, var(--theme-primary) 12%, transparent),
+      transparent 38%
+    );
+  opacity: 0.95;
+}
+
+.whats-new-modal__sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 40%,
+      color-mix(in srgb, var(--theme-primary-fg, #fff) 8%, transparent) 50%,
+      transparent 60%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      -18deg,
+      transparent,
+      transparent 11px,
+      color-mix(in srgb, var(--theme-primary) 7%, transparent) 11px,
+      color-mix(in srgb, var(--theme-primary) 7%, transparent) 12px
+    );
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 72%);
+}
+
+.whats-new-modal__chip {
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 35%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-primary-subtle) 85%, var(--theme-surface));
+  color: var(--theme-primary);
+}
+
+.whats-new-modal__chip-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: var(--theme-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 22%, transparent);
+  animation: whats-new-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes whats-new-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whats-new-modal__chip-dot {
+    animation: none;
+  }
+}
+
 .theme-input {
   border-color: var(--theme-border);
   background-color: var(--theme-input-bg);

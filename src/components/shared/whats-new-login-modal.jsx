@@ -57,49 +57,59 @@ export function WhatsNewLoginModal() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/45" aria-hidden />
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="whats-new-title"
-        className="relative w-full max-w-lg rounded-xl border border-[var(--theme-border)] bg-[var(--theme-panel-bg)] p-6 shadow-xl"
+        className="whats-new-modal relative w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--theme-border-strong,var(--theme-border))] shadow-2xl"
       >
-        <div className="mb-3 flex items-center gap-2">
-          <span className="inline-flex rounded-full bg-[#E6F1FB] px-2.5 py-0.5 text-xs font-semibold text-[#185FA5]">
-            New in Centrix
-          </span>
-        </div>
-        <h2 id="whats-new-title" className="text-lg font-semibold text-slate-900">
-          {note.title}
-        </h2>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{note.body}</p>
-        {note.link_url ? (
-          <a
-            href={note.link_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 inline-block text-sm font-medium text-[#185FA5] hover:underline"
+        <div className="whats-new-modal__glow" aria-hidden />
+        <div className="whats-new-modal__sheen" aria-hidden />
+        <div className="relative z-[1] p-6 sm:p-7">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="whats-new-modal__chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide">
+              <span className="whats-new-modal__chip-dot" aria-hidden />
+              New in Centrix
+            </span>
+          </div>
+          <h2
+            id="whats-new-title"
+            className="text-xl font-semibold tracking-tight text-[var(--theme-text)]"
           >
-            Learn more
-          </a>
-        ) : null}
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void dismiss()}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void dismiss()}
-            className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? "Saving…" : "Got it"}
-          </button>
+            {note.title}
+          </h2>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--theme-text-muted)]">
+            {note.body}
+          </p>
+          {note.link_url ? (
+            <a
+              href={note.link_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex text-sm font-semibold text-[var(--theme-primary)] hover:underline"
+            >
+              Learn more
+            </a>
+          ) : null}
+          <div className="mt-7 flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void dismiss()}
+              className="rounded-lg border border-[var(--theme-border-strong,var(--theme-border))] bg-[var(--theme-surface)] px-4 py-2 text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-hover)] disabled:opacity-50"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void dismiss()}
+              className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-[var(--theme-primary-fg,#fff)] hover:bg-[var(--theme-primary-hover,var(--theme-primary))] hover:opacity-95 disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Got it"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
