@@ -97,16 +97,36 @@ export function speechErrorMessage(code) {
     "not-allowed": "Microphone permission denied. Allow mic access for this site in the browser address bar.",
     "service-not-allowed": "Speech recognition is blocked in this browser. Try Chrome or Edge.",
     network:
-      "Could not reach the browser speech service. Use Chrome/Edge on a normal window (not an in-app preview), check internet, then try the mic again — or type your question.",
+      "Voice needs Chrome or Edge with internet (Google speech). In-app / embedded browsers often fail — open Centrix in a normal Chrome tab, or type your question.",
     "audio-capture": "No microphone found.",
     "language-not-supported": "This speech language is not supported. Falling back to English (US).",
+    "insecure-context": "Voice needs HTTPS (or localhost). Open Centrix on a secure URL, or type your question.",
   };
   return messages[code] || `Voice input failed (${code || "unknown"}).`;
 }
 
 /** Transient STT failures worth a short retry. */
 export function isRetryableSpeechError(code) {
-  return code === "network" || code === "no-speech" || code === "aborted";
+  return (
+    code === "network" ||
+    code === "no-speech" ||
+    code === "aborted" ||
+    code === "language-not-supported"
+  );
+}
+
+/** True when Web Speech STT is likely to work in this page context. */
+export function canUseBrowserSpeechRecognition() {
+  if (typeof window === "undefined") return false;
+  if (!isSpeechRecognitionSupported()) return false;
+  if (!window.isSecureContext) return false;
+  // Embedded / Electron-style frames often advertise SpeechRecognition but fail with "network".
+  try {
+    if (window.self !== window.top) return false;
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -142,13 +162,15 @@ export function createSpeechRecognizer(options = {}) {
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = new SpeechRecognition();
-  recognition.lang = options.lang || preferredSpeechLang();
+  // Always prefer a Chrome-safe English locale; callers may pass an override for retries.
+  recognition.lang = options.lang || preferredSpeechLang() || "en-US";
   recognition.interimResults = true;
   recognition.continuous = Boolean(options.continuous);
   recognition.maxAlternatives = 1;
 
   let stoppedByUser = false;
   let errorHandled = false;
+  let gotResult = false;
 
   recognition.onresult = (event) => {
     let interim = "";
@@ -162,6 +184,7 @@ export function createSpeechRecognizer(options = {}) {
         interim += transcript;
       }
     }
+    if (interim || finalChunk) gotResult = true;
     if (interim) options.onInterim?.(interim.trim());
     if (finalChunk.trim()) options.onFinal?.(finalChunk.trim());
   };
@@ -173,7 +196,11 @@ export function createSpeechRecognizer(options = {}) {
       return;
     }
     if (code === "no-speech") {
-      // Silence — treat as normal end so Talk can listen again.
+      // Silence — treat as normal end.
+      return;
+    }
+    // If we already captured speech, ignore late network blips and finish normally.
+    if (code === "network" && gotResult) {
       return;
     }
     errorHandled = true;
@@ -202,6 +229,7 @@ export function createSpeechRecognizer(options = {}) {
     start() {
       stoppedByUser = false;
       errorHandled = false;
+      gotResult = false;
       try {
         recognition.start();
       } catch (err) {

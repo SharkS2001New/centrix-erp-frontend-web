@@ -5,6 +5,7 @@
  *   message?: string,
  *   autoSend?: boolean,
  *   pageContext?: Record<string, unknown> | null,
+ *   startVoice?: boolean,
  * }} AiAssistRequest
  */
 
@@ -21,8 +22,9 @@ export function subscribeAiAssistRequests(listener) {
 export function requestAiAssist(request = {}) {
   const payload = {
     message: request.message?.trim() ?? "",
-    autoSend: request.autoSend !== false,
+    autoSend: request.startVoice ? false : request.autoSend !== false,
     pageContext: request.pageContext ?? null,
+    startVoice: Boolean(request.startVoice),
   };
   listeners.forEach((listener) => listener(payload));
 }

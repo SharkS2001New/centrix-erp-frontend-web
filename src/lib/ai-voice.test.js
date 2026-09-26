@@ -58,3 +58,10 @@ describe("speech errors", () => {
     expect(speechErrorMessage("network")).toMatch(/Chrome/);
   });
 });
+
+describe("canUseBrowserSpeechRecognition", () => {
+  it("is exported", async () => {
+    const { canUseBrowserSpeechRecognition } = await import("@/lib/ai-voice");
+    expect(typeof canUseBrowserSpeechRecognition).toBe("function");
+  });
+});

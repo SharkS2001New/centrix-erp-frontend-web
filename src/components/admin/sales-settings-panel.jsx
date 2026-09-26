@@ -363,6 +363,7 @@ function PaymentFieldsTab({
   hasPosSales,
   hasCustomers,
   mpesaPlatformEnabled,
+  equityPlatformEnabled,
 }) {
   return (
     <div className="space-y-3">
@@ -684,6 +685,7 @@ export function SalesSettingsPanel({
                 hasPosSales={hasPosSales}
                 hasCustomers={hasCustomers}
                 mpesaPlatformEnabled={mpesaPlatformEnabled}
+                equityPlatformEnabled={equityPlatformEnabled}
               />
             ) : null}
 

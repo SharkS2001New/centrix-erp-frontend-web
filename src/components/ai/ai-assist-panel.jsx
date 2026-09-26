@@ -29,6 +29,7 @@ import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
 import {
+  canUseBrowserSpeechRecognition,
   createSpeechRecognizer,
   ensureMicrophoneAccess,
   getAiTtsPref,
@@ -38,6 +39,7 @@ import {
   preferredSpeechLang,
   setAiTtsPref,
   speakAssistantText,
+  speechErrorMessage,
   spokenBriefForSpeech,
   stopAssistantSpeech,
 } from "@/lib/ai-voice";
@@ -299,7 +301,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [canUse]);
 
   useEffect(() => {
-    setVoiceSupported(isSpeechRecognitionSupported());
+    setVoiceSupported(canUseBrowserSpeechRecognition() || isSpeechRecognitionSupported());
     setTtsSupported(isSpeechSynthesisSupported());
     setTtsEnabled(getAiTtsPref());
   }, []);
@@ -446,8 +448,14 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
   const startListening = useCallback(async () => {
     if (loading || speaking) return;
-    if (!voiceSupported) {
-      notifyError("Voice needs Chrome or Edge with microphone access.");
+    if (!canUseBrowserSpeechRecognition()) {
+      if (!window.isSecureContext) {
+        notifyError(speechErrorMessage("insecure-context"));
+      } else {
+        notifyError(
+          "Voice needs Chrome or Edge in a normal browser tab (not an in-app preview). You can still type your question.",
+        );
+      }
       return;
     }
 
@@ -462,10 +470,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     voiceFinalRef.current = "";
     recognizerRef.current?.stop();
     recognizerRef.current = null;
-    await new Promise((r) => window.setTimeout(r, 200));
+    await new Promise((r) => window.setTimeout(r, 250));
+
+    const retryLangs = ["en-US", "en-GB", preferredSpeechLang()];
+    const lang = retryLangs[Math.min(speechRetryRef.current, retryLangs.length - 1)] || "en-US";
 
     const recognizer = createSpeechRecognizer({
-      lang: preferredSpeechLang(),
+      lang,
       onInterim: (text) => setInput(text),
       onFinal: (text) => {
         voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
@@ -475,9 +486,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       onError: ({ code, message }) => {
         setListening(false);
         recognizerRef.current = null;
-        if (isRetryableSpeechError(code) && speechRetryRef.current < 2) {
+        if (isRetryableSpeechError(code) && speechRetryRef.current < 3) {
           speechRetryRef.current += 1;
-          window.setTimeout(() => startListeningRef.current?.(), 700);
+          window.setTimeout(() => startListeningRef.current?.(), 800);
           return;
         }
         notifyError(message);
@@ -506,27 +517,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setListening(true);
     setOpen(true);
     recognizer.start();
-  }, [loading, speaking, voiceSupported]);
+  }, [loading, speaking]);
 
   useEffect(() => {
     startListeningRef.current = startListening;
   }, [startListening]);
-
-  const toggleMic = useCallback(() => {
-    if (loading || speaking) return;
-    if (listening) {
-      stopVoiceInput();
-      const spoken = voiceFinalRef.current.trim();
-      voiceFinalRef.current = "";
-      if (spoken) {
-        voiceAskedRef.current = true;
-        void sendRef.current?.(spoken);
-      }
-      return;
-    }
-    speechRetryRef.current = 0;
-    void startListening();
-  }, [listening, loading, speaking, startListening, stopVoiceInput]);
 
   const toggleTts = useCallback(() => {
     setTtsEnabled((prev) => {
@@ -731,6 +726,12 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         setPageContext(request.pageContext);
       }
 
+      if (request.startVoice) {
+        speechRetryRef.current = 0;
+        window.setTimeout(() => startListeningRef.current?.(), 50);
+        return;
+      }
+
       const message = request.message?.trim() ?? "";
       if (!message) return;
 
@@ -891,7 +892,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     Ask anything about <span className="font-medium text-slate-800">{workspaceLabel}</span>.
                     Not sure what to say? Send <span className="font-medium text-slate-800">Help</span> for a
                     full list
-                    {voiceSupported ? ", or tap the mic to talk." : "."}
+                    {voiceSupported ? ", or use the mic beside header search." : "."}
                   </p>
                   <div className={expanded ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
                     {starters.map((q) => (
@@ -1162,37 +1163,23 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-end gap-2">
-                  <div className="min-w-0 flex-1">
-                    <EntityMentionTextarea
-                      rows={expanded ? 5 : 4}
-                      value={input}
-                      entityRefs={entityRefs}
-                      disabled={loading}
-                      placeholder="Ask anything… Type Help for ideas · @ for products, suppliers, customers"
-                      textareaClassName="min-h-[96px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
-                      onChange={({ text, entityRefs: nextRefs }) => {
-                        setInput(text);
-                        setEntityRefs(nextRefs);
-                      }}
-                      onSubmit={({ text, entityRefs: nextRefs }) => {
-                        voiceAskedRef.current = false;
-                        send(text, { entityRefsOverride: nextRefs });
-                      }}
-                    />
-                  </div>
-                  {voiceSupported ? (
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={toggleMic}
-                      className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50"
-                      aria-label="Ask by voice"
-                      title="Ask by voice — get a short spoken answer"
-                    >
-                      <MicIcon className="h-5 w-5" />
-                    </button>
-                  ) : null}
+                <div className="min-w-0">
+                  <EntityMentionTextarea
+                    rows={expanded ? 5 : 4}
+                    value={input}
+                    entityRefs={entityRefs}
+                    disabled={loading}
+                    placeholder="Ask anything… Type Help for ideas · @ for products, suppliers, customers"
+                    textareaClassName="min-h-[96px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
+                    onChange={({ text, entityRefs: nextRefs }) => {
+                      setInput(text);
+                      setEntityRefs(nextRefs);
+                    }}
+                    onSubmit={({ text, entityRefs: nextRefs }) => {
+                      voiceAskedRef.current = false;
+                      send(text, { entityRefsOverride: nextRefs });
+                    }}
+                  />
                 </div>
               )}
 
@@ -1207,7 +1194,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   </button>
                   <p className="text-xs text-slate-500">
                     Enter to send
-                    {voiceSupported ? " · mic to ask by voice" : ""}
+                    {voiceSupported ? " · mic beside header search to ask by voice" : ""}
                   </p>
                 </div>
               ) : null}
