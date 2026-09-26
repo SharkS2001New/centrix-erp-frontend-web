@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
 import { apiRequest, ApiError, operationalPruneStream } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
@@ -19,6 +21,77 @@ function labelForKey(key) {
 
 function stamp() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatWhen(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return String(iso);
+  }
+}
+
+function LivePruneLogModal({ open, busy, title, logs, logEndRef, onClose }) {
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[1px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="live-prune-log-title"
+    >
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-5 py-4">
+          <div className="min-w-0">
+            <h2 id="live-prune-log-title" className="text-base font-semibold text-white">
+              {title}
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              {busy
+                ? "Streaming each delete / optimize step…"
+                : logs.length
+                  ? `${logs.length} line(s) · run finished`
+                  : "Waiting for output…"}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={onClose}
+            disabled={busy}
+            title={busy ? "Wait until the run finishes" : "Close"}
+          >
+            {busy ? "Running…" : "Close"}
+          </button>
+        </div>
+        <div className="min-h-[240px] flex-1 overflow-y-auto px-5 py-4 font-mono text-xs leading-relaxed">
+          {logs.length === 0 ? (
+            <p className="text-slate-500">Waiting for a run…</p>
+          ) : (
+            logs.map((line) => (
+              <div
+                key={line.id}
+                className={
+                  line.tone === "error"
+                    ? "text-rose-300"
+                    : line.tone === "ok"
+                      ? "text-emerald-300"
+                      : "text-slate-200"
+                }
+              >
+                <span className="mr-2 text-slate-500">[{line.at}]</span>
+                {line.message}
+              </div>
+            ))
+          )}
+          <div ref={logEndRef} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 const RETENTION_FIELDS = [
@@ -110,6 +183,8 @@ export default function PlatformDataRetentionPage() {
   const [optimizeTables, setOptimizeTables] = useState(true);
   const [form, setForm] = useState(() => defaultForm());
   const [runLogs, setRunLogs] = useState([]);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logTitle, setLogTitle] = useState("Live prune log");
   const [oneOffDays, setOneOffDays] = useState("7");
   const [maxRows, setMaxRows] = useState("25000");
   const [tableDays, setTableDays] = useState({});
@@ -118,6 +193,11 @@ export default function PlatformDataRetentionPage() {
   const appendLog = useCallback((message, tone = "info") => {
     if (!message) return;
     setRunLogs((prev) => [...prev, { id: `${Date.now()}-${prev.length}`, at: stamp(), message, tone }]);
+  }, []);
+
+  const openLog = useCallback((title) => {
+    setLogTitle(title || "Live prune log");
+    setLogOpen(true);
   }, []);
 
   const load = useCallback(async () => {
@@ -139,7 +219,7 @@ export default function PlatformDataRetentionPage() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
-  }, [runLogs]);
+  }, [runLogs, logOpen]);
 
   async function saveSettings(e) {
     e?.preventDefault?.();
@@ -187,12 +267,12 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: dryRun ? "Preview prune?" : "Delete old data now?",
       message: dryRun
-        ? `Counts rows ${daysLabel}.${limitLabel}${targetLabel}\nNothing is removed. Live logs show each step.`
+        ? `Counts rows ${daysLabel}.${limitLabel}${targetLabel}\nNothing is removed. A live log popup shows each step.`
         : `Deletes data ${daysLabel}.${limitLabel}${targetLabel}${
             optimizeTables
               ? "\n\nOPTIMIZE TABLE will run afterward (may lock briefly)."
               : ""
-          }\n\nProof of run = Live prune log (“Deleted N …”), not the MB column alone.`,
+          }\n\nProof of run = Live prune log popup (“Deleted N …”), not the MB column alone.`,
       confirmLabel: dryRun ? "Preview" : "Delete",
     });
     if (!ok) return;
@@ -200,33 +280,31 @@ export default function PlatformDataRetentionPage() {
     setRunning(true);
     if (targets?.length === 1) setPruningTable(targets[0]);
     setRunLogs([]);
+    openLog(dryRun ? "Live prune log — dry run" : "Live prune log");
     appendLog(dryRun ? "Starting dry run…" : "Starting operational prune…", "info");
 
     try {
       const body = {
-          dry_run: dryRun,
-          optimize_tables: !dryRun && optimizeTables,
+        dry_run: dryRun,
+        optimize_tables: !dryRun && optimizeTables,
       };
       if (days != null) body.days = days;
       if (rowLimit != null) body.max_rows = rowLimit;
       if (targets?.length) body.targets = targets;
 
-      const done = await operationalPruneStream(
-        body,
-        {
-          onEvent: (event) => {
-            if (event?.message) {
-              const tone =
-                event.event === "error"
-                  ? "error"
-                  : event.phase === "done" && event.event === "step"
-                    ? "ok"
-                    : "info";
-              appendLog(event.message, tone);
-            }
-          },
+      const done = await operationalPruneStream(body, {
+        onEvent: (event) => {
+          if (event?.message) {
+            const tone =
+              event.event === "error"
+                ? "error"
+                : event.phase === "done" && event.event === "step"
+                  ? "ok"
+                  : "info";
+            appendLog(event.message, tone);
+          }
         },
-      );
+      });
 
       if (done) {
         setLastResult(done);
@@ -277,13 +355,14 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: `Optimize ${tableName}?`,
       message:
-        "Runs OPTIMIZE TABLE to reclaim disk after deletes. May lock this table briefly — prefer off-peak hours for large tables. Progress shows in the live log.",
+        "Runs OPTIMIZE TABLE to reclaim disk after deletes. May lock this table briefly — prefer off-peak hours for large tables. Progress shows in the live log popup.",
       confirmLabel: "Optimize",
     });
     if (!ok) return;
 
     setOptimizing(tableName);
     setRunLogs([]);
+    openLog(`Live prune log — OPTIMIZE ${tableName}`);
     appendLog(`Starting OPTIMIZE TABLE \`${tableName}\`…`, "info");
     try {
       const done = await operationalPruneStream(
@@ -319,13 +398,14 @@ export default function PlatformDataRetentionPage() {
     const ok = await confirm({
       title: "Optimize all retention tables?",
       message:
-        "Runs OPTIMIZE TABLE on every listed table. Can take several minutes and briefly lock large tables. Live logs show each table as it finishes.",
+        "Runs OPTIMIZE TABLE on every listed table. Can take several minutes and briefly lock large tables. Live log popup shows each table as it finishes.",
       confirmLabel: "Optimize all",
     });
     if (!ok) return;
 
     setOptimizing("all");
     setRunLogs([]);
+    openLog("Live prune log — OPTIMIZE all");
     appendLog("Starting OPTIMIZE on all retention tables…", "info");
     try {
       const done = await operationalPruneStream(
@@ -360,21 +440,25 @@ export default function PlatformDataRetentionPage() {
   const tables = status?.tables ?? [];
   const deleted = lastResult?.deleted ?? null;
   const busy = loading || running || saving || Boolean(optimizing) || Boolean(pruningTable);
+  const logBusy = running || Boolean(optimizing);
   const scheduleTime = status?.schedule_time || form.prune_time || "03:40";
+  const scheduleTz = status?.schedule_timezone || "Africa/Nairobi";
+  const scheduler = status?.scheduler ?? null;
+  const lastRun = status?.last_run ?? null;
+  const lastRunSource =
+    lastRun?.source === "schedule"
+      ? "Nightly schedule"
+      : lastRun?.source === "cli"
+        ? "CLI"
+        : lastRun?.source
+          ? "Manual"
+          : null;
 
   return (
     <CatalogPageShell
       title="Data retention"
-      description={`Set prune timers, reclaim disk on large tables, and run the same cleanup as nightly erp:prune-operational-data (${scheduleTime}). Live logs show each delete step.`}
-      breadcrumb={
-        <AdminBreadcrumb
-          items={[
-            { label: "Platform", href: "/platform" },
-            { label: "Data retention" },
-          ]}
-        />
-      }
-      actions={
+      subtitle={`Set prune timers, reclaim disk on large tables, and run the same cleanup as nightly erp:prune-operational-data (${scheduleTime} ${scheduleTz}). Live logs open in a popup.`}
+      action={
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-slate-600">
             Older than
@@ -410,6 +494,11 @@ export default function PlatformDataRetentionPage() {
           >
             {loading ? "Loading…" : "Refresh"}
           </button>
+          {runLogs.length > 0 ? (
+            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => openLog(logTitle)}>
+              Show log
+            </button>
+          ) : null}
           <button
             type="button"
             className={SECONDARY_BTN_CLASS}
@@ -444,6 +533,81 @@ export default function PlatformDataRetentionPage() {
         </div>
       }
     >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "Data retention" },
+        ]}
+      />
+
+      <LivePruneLogModal
+        open={logOpen}
+        busy={logBusy}
+        title={logTitle}
+        logs={runLogs}
+        logEndRef={logEndRef}
+        onClose={() => setLogOpen(false)}
+      />
+
+      <section className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Nightly automation</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Runs <code className="rounded bg-slate-100 px-1">erp:prune-operational-data</code> at{" "}
+              <strong>{scheduleTime}</strong> ({scheduleTz}) using the timers below.
+            </p>
+          </div>
+          <Link href="/platform/health" className="text-sm font-medium text-[#185FA5] hover:underline">
+            Infra health →
+          </Link>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Scheduler</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">
+              {scheduler?.ok ? (
+                <span className="text-emerald-700">Running</span>
+              ) : (
+                <span className="text-amber-800">Not detected</span>
+              )}
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {scheduler?.detail || "Refresh after cron is configured."}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Last prune</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{formatWhen(lastRun?.finished_at)}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {lastRun
+                ? `${lastRunSource}${lastRun.dry_run ? " · dry run" : ""} · ${Number(lastRun.total ?? 0).toLocaleString()} rows`
+                : "No recorded run yet — wait for tonight or run Delete once."}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Proof</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">
+              {lastRun?.source === "schedule" ? "Schedule fired" : lastRun ? "Manual/CLI only" : "Pending"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Server log:{" "}
+              <code className="rounded bg-white px-1">storage/logs/prune-operational-data.log</code>
+            </p>
+          </div>
+        </div>
+        {!scheduler?.ok ? (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            Cron must call <code className="rounded bg-white px-1">php artisan schedule:run</code> every
+            minute, or the nightly prune will never start. Check{" "}
+            <Link href="/platform/health" className="font-medium underline">
+              Infrastructure health
+            </Link>
+            .
+          </p>
+        ) : null}
+      </section>
+
       <label className="mb-4 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
         <input
           type="checkbox"
@@ -462,7 +626,7 @@ export default function PlatformDataRetentionPage() {
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-900">Retention windows</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Nightly schedule uses these timers (server timezone Africa/Nairobi).
+            Nightly schedule uses these timers ({scheduleTz}).
           </p>
           <form className="mt-3 space-y-3" onSubmit={(e) => void saveSettings(e)}>
             <label className="block text-sm">
@@ -504,7 +668,8 @@ export default function PlatformDataRetentionPage() {
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Delete / optimize by table</h2>
               <p className="mt-1 text-xs text-slate-500">
-                MB is estimated and often unchanged until many rows are deleted then OPTIMIZE. Use Live log for proof.
+                MB is estimated and often unchanged until many rows are deleted then OPTIMIZE. Use the
+                log popup for proof.
               </p>
             </div>
             <button
@@ -535,62 +700,62 @@ export default function PlatformDataRetentionPage() {
                     const target = pruneTargetForTable(row.name);
                     const daysValue = tableDays[row.name] ?? oneOffDays;
                     return (
-                    <tr key={row.name} className="border-b border-slate-50 align-top">
-                      <td className="py-2 pr-3">
-                        <div className="font-mono text-xs text-slate-800">{row.name}</div>
-                        {row.note ? (
-                          <p className="mt-1 max-w-xs text-[11px] leading-snug text-slate-500">{row.note}</p>
-                        ) : null}
-                        {row.prunable_rows != null ? (
-                          <p className="mt-0.5 text-[11px] text-amber-800">
-                            Prunable now: {Number(row.prunable_rows).toLocaleString()}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
-                        {Number(row.rows || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2 pr-3 text-right">
-                        {target ? (
-                          <input
-                            type="number"
-                            min={1}
-                            max={365}
-                            className="w-16 rounded border border-slate-200 px-2 py-1 text-right text-xs"
-                            value={daysValue}
-                            onChange={(e) =>
-                              setTableDays((prev) => ({ ...prev, [row.name]: e.target.value }))
-                            }
-                            disabled={busy}
-                          />
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-right">
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <tr key={row.name} className="border-b border-slate-50 align-top">
+                        <td className="py-2 pr-3">
+                          <div className="font-mono text-xs text-slate-800">{row.name}</div>
+                          {row.note ? (
+                            <p className="mt-1 max-w-xs text-[11px] leading-snug text-slate-500">{row.note}</p>
+                          ) : null}
+                          {row.prunable_rows != null ? (
+                            <p className="mt-0.5 text-[11px] text-amber-800">
+                              Prunable now: {Number(row.prunable_rows).toLocaleString()}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
+                          {Number(row.rows || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2 pr-3 text-right">
                           {target ? (
+                            <input
+                              type="number"
+                              min={1}
+                              max={365}
+                              className="w-16 rounded border border-slate-200 px-2 py-1 text-right text-xs"
+                              value={daysValue}
+                              onChange={(e) =>
+                                setTableDays((prev) => ({ ...prev, [row.name]: e.target.value }))
+                              }
+                              disabled={busy}
+                            />
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {target ? (
+                              <button
+                                type="button"
+                                className={SECONDARY_BTN_CLASS}
+                                onClick={() => void deleteTableOlderThan(row.name)}
+                                disabled={busy}
+                              >
+                                {pruningTable === target ? "…" : "Delete"}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className={SECONDARY_BTN_CLASS}
-                              onClick={() => void deleteTableOlderThan(row.name)}
+                              onClick={() => void optimizeTable(row.name)}
                               disabled={busy}
                             >
-                              {pruningTable === target ? "…" : "Delete"}
+                              {optimizing === row.name ? "…" : "Optimize"}
                             </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            className={SECONDARY_BTN_CLASS}
-                            onClick={() => void optimizeTable(row.name)}
-                            disabled={busy}
-                          >
-                            {optimizing === row.name ? "…" : "Optimize"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -612,46 +777,12 @@ export default function PlatformDataRetentionPage() {
           <p className="mt-2 text-[11px] text-slate-500">
             CLI:{" "}
             <code className="rounded bg-slate-100 px-1">
-              php artisan erp:prune-operational-data --only=stock_reservations --days=1 --limit=25000 --optimize
+              php artisan erp:prune-operational-data --only=stock_reservations --days=1 --limit=25000
+              --optimize
             </code>
           </p>
         </section>
       </div>
-
-      <section className="mt-4 rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-white">Live prune log</h2>
-          <span className="text-[11px] text-slate-400">
-            {running || optimizing
-              ? "Streaming steps…"
-              : runLogs.length
-                ? `${runLogs.length} line(s)`
-                : "Run prune or optimize to see step-by-step output"}
-          </span>
-        </div>
-        <div className="mt-3 max-h-72 overflow-y-auto rounded border border-slate-800 bg-black/40 px-3 py-2 font-mono text-xs leading-relaxed">
-          {runLogs.length === 0 ? (
-            <p className="text-slate-500">Waiting for a run…</p>
-          ) : (
-            runLogs.map((line) => (
-              <div
-                key={line.id}
-                className={
-                  line.tone === "error"
-                    ? "text-rose-300"
-                    : line.tone === "ok"
-                      ? "text-emerald-300"
-                      : "text-slate-200"
-                }
-              >
-                <span className="mr-2 text-slate-500">[{line.at}]</span>
-                {line.message}
-              </div>
-            ))
-          )}
-          <div ref={logEndRef} />
-        </div>
-      </section>
 
       {deleted ? (
         <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
