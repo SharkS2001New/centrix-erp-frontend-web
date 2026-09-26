@@ -29,17 +29,10 @@ import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
 import {
-  canUseBrowserSpeechRecognition,
-  createSpeechRecognizer,
-  ensureMicrophoneAccess,
   getAiTtsPref,
-  isRetryableSpeechError,
-  isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
-  preferredSpeechLang,
   setAiTtsPref,
   speakAssistantText,
-  speechErrorMessage,
   spokenBriefForSpeech,
   stopAssistantSpeech,
 } from "@/lib/ai-voice";
@@ -115,18 +108,6 @@ function MinimizeIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
-    </svg>
-  );
-}
-
-function MicIcon({ className }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
-      />
     </svg>
   );
 }
@@ -215,20 +196,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [actionResult, setActionResult] = useState(null);
   const [pageContext, setPageContext] = useState(null);
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState(null);
-  const [listening, setListening] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState(false);
   const [ttsSupported, setTtsSupported] = useState(false);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
-  const recognizerRef = useRef(null);
-  const voiceFinalRef = useRef("");
   const lastSpokenRef = useRef("");
-  const startListeningRef = useRef(null);
-  const speechRetryRef = useRef(0);
-  /** Speak a short brief only for questions asked via the mic (not typed). */
-  const voiceAskedRef = useRef(false);
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
@@ -301,32 +273,25 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [canUse]);
 
   useEffect(() => {
-    setVoiceSupported(canUseBrowserSpeechRecognition() || isSpeechRecognitionSupported());
     setTtsSupported(isSpeechSynthesisSupported());
     setTtsEnabled(getAiTtsPref());
   }, []);
 
   useEffect(() => {
     if (!open) {
-      recognizerRef.current?.stop();
-      recognizerRef.current = null;
-      setListening(false);
-      setSpeaking(false);
-      voiceAskedRef.current = false;
       stopAssistantSpeech();
     }
   }, [open]);
 
   useEffect(() => {
     return () => {
-      recognizerRef.current?.stop();
       stopAssistantSpeech();
     };
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, open, pendingAction, formSpec, actionResult, listening, speaking]);
+  }, [messages, open, pendingAction, formSpec, actionResult]);
 
   const clearActionState = useCallback(() => {
     setPendingAction(null);
@@ -336,30 +301,14 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
   const speakReplyIfNeeded = useCallback(
     (content) => {
-      if (!content) return;
-      // Mic questions always get a short spoken answer. Speaker toggle does the same for typed asks.
-      // Never narrate the full markdown already shown in chat.
-      const fromMic = voiceAskedRef.current;
-      if (!fromMic && !ttsEnabled) {
-        voiceAskedRef.current = false;
-        return;
-      }
+      if (!content || !ttsEnabled) return;
+      // Never narrate the full markdown already shown in chat — brief only.
       const brief = spokenBriefForSpeech(content);
-      if (!brief) {
-        voiceAskedRef.current = false;
-        return;
-      }
+      if (!brief) return;
       const key = brief.slice(0, 80);
-      if (lastSpokenRef.current === key) {
-        voiceAskedRef.current = false;
-        return;
-      }
+      if (lastSpokenRef.current === key) return;
       lastSpokenRef.current = key;
-      setSpeaking(true);
-      void speakAssistantText(brief).finally(() => {
-        setSpeaking(false);
-        voiceAskedRef.current = false;
-      });
+      void speakAssistantText(brief);
     },
     [ttsEnabled],
   );
@@ -373,7 +322,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const content = res.message || res.reply || "";
       if (res.success === false && content) {
         setError(content);
-        voiceAskedRef.current = false;
         return;
       }
 
@@ -383,8 +331,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       if (content) {
         speakReplyIfNeeded(content);
-      } else {
-        voiceAskedRef.current = false;
       }
 
       if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
@@ -435,93 +381,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setLastFailedMessage(null);
     setActionResult(null);
     lastSpokenRef.current = "";
-    voiceAskedRef.current = false;
     stopAssistantSpeech();
     clearActionState();
   }, [clearActionState]);
-
-  const stopVoiceInput = useCallback(() => {
-    recognizerRef.current?.stop();
-    recognizerRef.current = null;
-    setListening(false);
-  }, []);
-
-  const startListening = useCallback(async () => {
-    if (loading || speaking) return;
-    if (!canUseBrowserSpeechRecognition()) {
-      if (!window.isSecureContext) {
-        notifyError(speechErrorMessage("insecure-context"));
-      } else {
-        notifyError(
-          "Voice needs Chrome or Edge in a normal browser tab (not an in-app preview). You can still type your question.",
-        );
-      }
-      return;
-    }
-
-    const micOk = await ensureMicrophoneAccess();
-    if (!micOk) {
-      notifyError("Microphone permission denied. Allow mic access for this site.");
-      return;
-    }
-
-    stopAssistantSpeech();
-    setSpeaking(false);
-    voiceFinalRef.current = "";
-    recognizerRef.current?.stop();
-    recognizerRef.current = null;
-    await new Promise((r) => window.setTimeout(r, 250));
-
-    const retryLangs = ["en-US", "en-GB", preferredSpeechLang()];
-    const lang = retryLangs[Math.min(speechRetryRef.current, retryLangs.length - 1)] || "en-US";
-
-    const recognizer = createSpeechRecognizer({
-      lang,
-      onInterim: (text) => setInput(text),
-      onFinal: (text) => {
-        voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
-        setInput(voiceFinalRef.current);
-        speechRetryRef.current = 0;
-      },
-      onError: ({ code, message }) => {
-        setListening(false);
-        recognizerRef.current = null;
-        if (isRetryableSpeechError(code) && speechRetryRef.current < 3) {
-          speechRetryRef.current += 1;
-          window.setTimeout(() => startListeningRef.current?.(), 800);
-          return;
-        }
-        notifyError(message);
-        speechRetryRef.current = 0;
-        voiceAskedRef.current = false;
-      },
-      onEnd: () => {
-        setListening(false);
-        recognizerRef.current = null;
-        const spoken = voiceFinalRef.current.trim();
-        voiceFinalRef.current = "";
-        if (spoken) {
-          speechRetryRef.current = 0;
-          voiceAskedRef.current = true;
-          void sendRef.current?.(spoken);
-        } else {
-          voiceAskedRef.current = false;
-        }
-      },
-    });
-    if (!recognizer) {
-      notifyError("Voice is not supported in this browser.");
-      return;
-    }
-    recognizerRef.current = recognizer;
-    setListening(true);
-    setOpen(true);
-    recognizer.start();
-  }, [loading, speaking]);
-
-  useEffect(() => {
-    startListeningRef.current = startListening;
-  }, [startListening]);
 
   const toggleTts = useCallback(() => {
     setTtsEnabled((prev) => {
@@ -529,7 +391,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       setAiTtsPref(next);
       if (!next) {
         stopAssistantSpeech();
-        setSpeaking(false);
       }
       return next;
     });
@@ -584,7 +445,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const message = text.trim();
       if (!message || loading) return;
       stopAssistantSpeech();
-      stopVoiceInput();
       const refsForSend = serializeEntityRefs(entityRefsOverride ?? entityRefs);
       setError(null);
       setLastFailedMessage(null);
@@ -708,7 +568,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       pageContext,
       entityRefs,
       status?.supports_streaming,
-      stopVoiceInput,
     ],
   );
 
@@ -724,12 +583,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       if (request.pageContext) {
         setPageContext(request.pageContext);
-      }
-
-      if (request.startVoice) {
-        speechRetryRef.current = 0;
-        window.setTimeout(() => startListeningRef.current?.(), 50);
-        return;
       }
 
       const message = request.message?.trim() ?? "";
@@ -824,12 +677,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               <div className="min-w-0 pr-3">
                 <h2 className="font-semibold text-slate-900">{title}</h2>
                 <p className="text-xs text-slate-500">
-                  {listening
-                    ? "Listening — ask your question"
-                    : speaking
-                      ? "Speaking a short answer…"
-                      : statusHint}
-                  {canUse && !listening && !speaking ? " · ⌘K / Ctrl+K opens assistant" : ""}
+                  {statusHint}
+                  {canUse ? " · ⌘K / Ctrl+K opens assistant" : ""}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -847,7 +696,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     title={
                       ttsEnabled
                         ? "Short spoken answers for typed questions: on"
-                        : "Short spoken answers for typed questions: off (mic always speaks)"
+                        : "Short spoken answers for typed questions: off"
                     }
                   >
                     <SpeakerIcon className="h-5 w-5" />
@@ -891,8 +740,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   <p className="text-sm text-slate-600">
                     Ask anything about <span className="font-medium text-slate-800">{workspaceLabel}</span>.
                     Not sure what to say? Send <span className="font-medium text-slate-800">Help</span> for a
-                    full list
-                    {voiceSupported ? ", or use the mic beside header search." : "."}
+                    full list.
                   </p>
                   <div className={expanded ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
                     {starters.map((q) => (
@@ -1114,90 +962,37 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               className="border-t border-slate-200 p-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (listening || speaking) return;
-                voiceAskedRef.current = false;
                 send(input, { entityRefsOverride: entityRefs });
               }}
             >
-              {listening || speaking ? (
-                <div
-                  className="flex min-h-[96px] flex-col justify-between rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-3"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="flex items-start gap-3">
-                    <span
-                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                        speaking ? "bg-indigo-600 text-white" : "bg-red-500 text-white animate-pulse"
-                      }`}
-                    >
-                      <MicIcon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-indigo-950">
-                        {speaking ? "Answering…" : "Listening…"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-indigo-800/80">
-                        {speaking
-                          ? "Short spoken answer — full reply stays in chat"
-                          : "Ask your question, then pause"}
-                      </p>
-                      {listening && input.trim() ? (
-                        <p className="mt-2 line-clamp-3 text-sm text-indigo-950/90">“{input.trim()}”</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        stopVoiceInput();
-                        stopAssistantSpeech();
-                        setSpeaking(false);
-                        voiceAskedRef.current = false;
-                      }}
-                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-100"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="min-w-0">
-                  <EntityMentionTextarea
-                    rows={expanded ? 5 : 4}
-                    value={input}
-                    entityRefs={entityRefs}
-                    disabled={loading}
-                    placeholder="Ask anything… Type Help for ideas · @ for products, suppliers, customers"
-                    textareaClassName="min-h-[96px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
-                    onChange={({ text, entityRefs: nextRefs }) => {
-                      setInput(text);
-                      setEntityRefs(nextRefs);
-                    }}
-                    onSubmit={({ text, entityRefs: nextRefs }) => {
-                      voiceAskedRef.current = false;
-                      send(text, { entityRefsOverride: nextRefs });
-                    }}
-                  />
-                </div>
-              )}
+              <div className="min-w-0">
+                <EntityMentionTextarea
+                  rows={expanded ? 5 : 4}
+                  value={input}
+                  entityRefs={entityRefs}
+                  disabled={loading}
+                  placeholder="Ask anything… Type Help for ideas · @ for products, suppliers, customers"
+                  textareaClassName="min-h-[96px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
+                  onChange={({ text, entityRefs: nextRefs }) => {
+                    setInput(text);
+                    setEntityRefs(nextRefs);
+                  }}
+                  onSubmit={({ text, entityRefs: nextRefs }) => {
+                    send(text, { entityRefsOverride: nextRefs });
+                  }}
+                />
+              </div>
 
-              {!(listening || speaking) ? (
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <button
-                    type="submit"
-                    disabled={loading || !input.trim()}
-                    className="min-w-[100px] rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    Send
-                  </button>
-                  <p className="text-xs text-slate-500">
-                    Enter to send
-                    {voiceSupported ? " · mic beside header search to ask by voice" : ""}
-                  </p>
-                </div>
-              ) : null}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <button
+                  type="submit"
+                  disabled={loading || !input.trim()}
+                  className="min-w-[100px] rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Send
+                </button>
+                <p className="text-xs text-slate-500">Enter to send</p>
+              </div>
             </form>
           </div>
         </div>

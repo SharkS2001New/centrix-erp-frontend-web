@@ -29,25 +29,13 @@ import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { canAskAiFromSearch } from "@/lib/ai-settings";
 import { requestAiAssist } from "@/lib/ai-assist-bridge";
 import { looksLikeSearchQuestion, searchAskAiPrompt } from "@/lib/search-ai-prompt";
-import { canUseBrowserSpeechRecognition } from "@/lib/ai-voice";
+import { AiVoiceTalkButton } from "@/components/ai/ai-voice-talk-button";
 
 function SearchIcon({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
       <circle cx="11" cy="11" r="7" />
       <path strokeLinecap="round" d="M20 20l-3-3" />
-    </svg>
-  );
-}
-
-function MicIcon({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
-      />
     </svg>
   );
 }
@@ -61,7 +49,6 @@ export function GlobalModuleSearch() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [entityGroups, setEntityGroups] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState(false);
   const containerRef = useRef(null);
   const entityRequestRef = useRef(0);
 
@@ -184,10 +171,6 @@ export function GlobalModuleSearch() {
     () => (canAskAi ? searchAskAiPrompt(trimmedQuery, workspaceLabel) : ""),
     [canAskAi, trimmedQuery, workspaceLabel],
   );
-
-  useEffect(() => {
-    setVoiceSupported(canUseBrowserSpeechRecognition());
-  }, []);
   const showAskAiEmpty = canAskAi && !entityLoading && rows.length === 0 && trimmedQuery.length >= 2;
   const showAskAiFooter =
     canAskAi &&
@@ -221,12 +204,6 @@ export function GlobalModuleSearch() {
     closeSearch();
     requestAiAssist({ message: askAiMessage, autoSend: true });
   }, [askAiMessage, closeSearch]);
-
-  const handleAskAiByVoice = useCallback(() => {
-    if (!canAskAi) return;
-    closeSearch();
-    requestAiAssist({ startVoice: true, autoSend: false });
-  }, [canAskAi, closeSearch]);
 
   const goTo = useCallback(
     (href) => {
@@ -373,17 +350,7 @@ export function GlobalModuleSearch() {
         ) : null}
       </div>
 
-      {canAskAi && voiceSupported ? (
-        <button
-          type="button"
-          onClick={handleAskAiByVoice}
-          className="app-topbar-icon-btn shrink-0"
-          aria-label="Ask AI by voice"
-          title="Ask AI by voice"
-        >
-          <MicIcon className="h-5 w-5" />
-        </button>
-      ) : null}
+      {canAskAi ? <AiVoiceTalkButton /> : null}
     </div>
   );
 }
