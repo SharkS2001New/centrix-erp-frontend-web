@@ -105,9 +105,9 @@ export function spokenBriefForSpeech(raw) {
   text = text.replace(/\bKES\s+/gi, "KES ");
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length > 0) {
-    text = sentences.slice(0, 3).join(" ");
+    text = sentences.slice(0, 2).join(" ");
   }
-  return text.slice(0, 420).trim();
+  return text.slice(0, 320).trim();
 }
 
 export function speechErrorMessage(code) {

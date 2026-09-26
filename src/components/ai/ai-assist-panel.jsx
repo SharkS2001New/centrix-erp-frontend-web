@@ -22,7 +22,7 @@ import {
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
-import { buildPageContext, notifyAiVoiceComplete, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
+import { buildPageContext, notifyAiVoiceComplete, subscribeAiAssistRequests, isDetailedAssistantReply, assistantReplyNeedsPanel } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
@@ -275,26 +275,32 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setFormValues({});
   }, []);
 
-  const speakVoiceReplyIfNeeded = useCallback((content) => {
+  const speakVoiceReplyIfNeeded = useCallback((content, meta = null) => {
+    const detailed = isDetailedAssistantReply(meta, content);
+    const needsPanel = assistantReplyNeedsPanel(meta);
+    if (needsPanel) {
+      setOpen(true);
+    }
+
     if (!voiceAskedRef.current || !content) {
       voiceAskedRef.current = false;
-      notifyAiVoiceComplete();
+      notifyAiVoiceComplete({ detailed, needsPanel });
       return;
     }
     const brief = spokenBriefForSpeech(content);
     voiceAskedRef.current = false;
     if (!brief) {
-      notifyAiVoiceComplete();
+      notifyAiVoiceComplete({ detailed, needsPanel });
       return;
     }
     const key = brief.slice(0, 80);
     if (lastSpokenRef.current === key) {
-      notifyAiVoiceComplete();
+      notifyAiVoiceComplete({ detailed, needsPanel, brief });
       return;
     }
     lastSpokenRef.current = key;
-    void speakAssistantText(brief, { rate: 1.1 }).finally(() => {
-      notifyAiVoiceComplete();
+    void speakAssistantText(brief, { rate: 1.12 }).finally(() => {
+      notifyAiVoiceComplete({ detailed, needsPanel, brief });
     });
   }, []);
 
@@ -308,7 +314,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       if (res.success === false && content) {
         setError(content);
         voiceAskedRef.current = false;
-        notifyAiVoiceComplete();
+        notifyAiVoiceComplete({ detailed: false, needsPanel: false });
         return;
       }
 
@@ -317,10 +323,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       if (content) {
-        speakVoiceReplyIfNeeded(content);
+        speakVoiceReplyIfNeeded(content, res);
       } else {
         voiceAskedRef.current = false;
-        notifyAiVoiceComplete();
+        notifyAiVoiceComplete({
+          detailed: isDetailedAssistantReply(res, ""),
+          needsPanel: assistantReplyNeedsPanel(res),
+        });
       }
 
       if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
@@ -450,7 +459,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           ));
       const effectiveConfirm = confirm || typedConfirm;
       try {
-        const history = messages.slice(-6);
+        // Voice: shorter history + skip stream for a faster complete spoken reply.
+        const history = messages.slice(fromVoice ? -4 : -6);
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
@@ -474,6 +484,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         };
 
         const useStream =
+          !fromVoice &&
           !effectiveConfirm &&
           !pendingAction &&
           status?.supports_streaming !== false;
@@ -523,7 +534,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           if (done) {
             applyChatResponse(done, { skipAssistantAppend: true });
           } else {
-            speakVoiceReplyIfNeeded(accumulated);
+            speakVoiceReplyIfNeeded(accumulated, null);
           }
           return;
         }
@@ -538,7 +549,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         setError(msg);
         setLastFailedMessage(confirm || effectiveConfirm ? null : message);
         voiceAskedRef.current = false;
-        notifyAiVoiceComplete();
+        notifyAiVoiceComplete({ detailed: false, needsPanel: false });
       } finally {
         setLoading(false);
       }
@@ -567,7 +578,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     if (!canUse) return undefined;
     return subscribeAiAssistRequests((request) => {
       setExpanded(false);
-      setOpen(true);
+      if (request.openPanel !== false) {
+        setOpen(true);
+      }
 
       if (request.pageContext) {
         setPageContext(request.pageContext);
@@ -575,7 +588,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       const message = request.message?.trim() ?? "";
       if (!message) {
-        if (request.fromVoice) notifyAiVoiceComplete();
+        if (request.fromVoice) notifyAiVoiceComplete({ detailed: false, needsPanel: false });
         return;
       }
 
@@ -588,7 +601,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       setInput(message);
-      if (request.fromVoice) notifyAiVoiceComplete();
+      if (request.fromVoice) notifyAiVoiceComplete({ detailed: false, needsPanel: false });
     });
   }, [canUse]);
 

@@ -6,13 +6,22 @@
  *   autoSend?: boolean,
  *   pageContext?: Record<string, unknown> | null,
  *   fromVoice?: boolean,
+ *   openPanel?: boolean,
  * }} AiAssistRequest
+ */
+
+/**
+ * @typedef {{
+ *   detailed?: boolean,
+ *   needsPanel?: boolean,
+ *   brief?: string,
+ * }} AiVoiceCompletePayload
  */
 
 /** @type {Set<(request: AiAssistRequest) => void>} */
 const listeners = new Set();
 
-/** @type {Set<() => void>} */
+/** @type {Set<(payload?: AiVoiceCompletePayload) => void>} */
 const voiceCompleteListeners = new Set();
 
 /** @param {(request: AiAssistRequest) => void} listener */
@@ -27,10 +36,11 @@ export function subscribeAiVoiceComplete(listener) {
   return () => voiceCompleteListeners.delete(listener);
 }
 
-export function notifyAiVoiceComplete() {
+/** @param {AiVoiceCompletePayload} [payload] */
+export function notifyAiVoiceComplete(payload = {}) {
   voiceCompleteListeners.forEach((listener) => {
     try {
-      listener();
+      listener(payload);
     } catch {
       /* ignore */
     }
@@ -39,13 +49,45 @@ export function notifyAiVoiceComplete() {
 
 /** @param {AiAssistRequest} request */
 export function requestAiAssist(request = {}) {
+  const fromVoice = Boolean(request.fromVoice);
   const payload = {
     message: request.message?.trim() ?? "",
     autoSend: request.autoSend !== false,
     pageContext: request.pageContext ?? null,
-    fromVoice: Boolean(request.fromVoice),
+    fromVoice,
+    // Voice stays hands-free unless the caller forces the panel open.
+    openPanel: request.openPanel !== undefined ? Boolean(request.openPanel) : !fromVoice,
   };
   listeners.forEach((listener) => listener(payload));
+}
+
+/** Open the assistant sidebar without sending a message. */
+export function openAiAssistPanel(pageContext = null) {
+  requestAiAssist({
+    message: "",
+    autoSend: false,
+    openPanel: true,
+    pageContext,
+  });
+}
+
+/** True when the reply needs the sidebar (forms, confirms, long detail). */
+export function isDetailedAssistantReply(res, content) {
+  if (res?.form_spec?.fields?.length) return true;
+  if (res?.pending_action) return true;
+  if (res?.action_result) return true;
+  if (Array.isArray(res?.document_links) && res.document_links.length > 0) return true;
+  const text = String(content ?? res?.message ?? res?.reply ?? "");
+  if (!text.trim()) return false;
+  if (text.includes("|") && text.includes("\n")) return true;
+  if ((text.match(/^\s*[-*]\s+/gm) || []).length >= 4) return true;
+  if (text.length > 480) return true;
+  return false;
+}
+
+/** True when the user must interact in the panel (confirm / fill form). */
+export function assistantReplyNeedsPanel(res) {
+  return Boolean(res?.form_spec?.fields?.length || res?.pending_action);
 }
 
 /** Build a lightweight page_context payload for chat. */

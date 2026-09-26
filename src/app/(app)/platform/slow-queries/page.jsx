@@ -389,7 +389,7 @@ export default function PlatformSlowQueriesPage() {
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Table</th>
-                  <th className="px-3 py-2">Size (MB)</th>
+                  <th className="px-3 py-2">Allocated MB</th>
                   <th className="px-3 py-2">Approx. rows</th>
                   <th className="px-3 py-2">In slow queries</th>
                 </tr>
@@ -417,7 +417,12 @@ export default function PlatformSlowQueriesPage() {
                       <td className="px-3 py-2 font-medium text-slate-900">
                         <code className="text-xs">{table.name}</code>
                       </td>
-                      <td className="px-3 py-2 tabular-nums">{table.mb}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {Number(table.mb ?? 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
                       <td className="px-3 py-2 tabular-nums">
                         {Number(table.rows ?? 0).toLocaleString()}
                       </td>

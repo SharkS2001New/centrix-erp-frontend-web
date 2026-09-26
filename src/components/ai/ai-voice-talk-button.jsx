@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { apiRequestMultipart } from "@/lib/api";
-import { buildPageContext, requestAiAssist, subscribeAiVoiceComplete } from "@/lib/ai-assist-bridge";
+import {
+  buildPageContext,
+  openAiAssistPanel,
+  requestAiAssist,
+  subscribeAiVoiceComplete,
+} from "@/lib/ai-assist-bridge";
 import { notifyError } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { canUseAiTalk } from "@/lib/ai-settings";
@@ -20,9 +25,9 @@ import {
 } from "@/lib/ai-voice";
 
 /** Pause after you finish speaking before sending — short for snappy English turn-taking. */
-const HANDOFF_PAUSE_MS = 650;
+const HANDOFF_PAUSE_MS = 500;
 /** After the assistant finishes speaking, wait briefly so we don’t hear its own voice. */
-const RESUME_LISTEN_MS = 450;
+const RESUME_LISTEN_MS = 350;
 
 function MicIcon({ className }) {
   return (
@@ -38,7 +43,7 @@ function MicIcon({ className }) {
 
 /**
  * Header voice: continuous conversation — listen → ask → hear answer → listen again
- * until the user taps Stop. Speaks near the mic; distant room noise is filtered harder.
+ * until the user taps Stop. Sidebar stays closed unless the answer needs it or they open it.
  */
 export function AiVoiceTalkButton() {
   const pathname = usePathname();
@@ -46,6 +51,9 @@ export function AiVoiceTalkButton() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | listening | waiting
   const [heard, setHeard] = useState("");
+  const [interimHeard, setInterimHeard] = useState("");
+  const [spokenReply, setSpokenReply] = useState("");
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const [level, setLevel] = useState(0);
 
   const orgAiEnabled = canUseAiTalk({ capabilities, hasPermission });
@@ -92,6 +100,9 @@ export function AiVoiceTalkButton() {
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
+    setInterimHeard("");
+    setSpokenReply("");
+    setSuggestOpen(false);
     setLevel(0);
     setPhase("idle");
   }, [clearPauseTimer, clearResumeTimer]);
@@ -122,12 +133,16 @@ export function AiVoiceTalkButton() {
       const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
       setPhase("waiting");
       setHeard(q);
+      setInterimHeard("");
+      setSpokenReply("");
+      setSuggestOpen(false);
       setLevel(0);
 
       requestAiAssist({
         message: q,
         autoSend: true,
         fromVoice: true,
+        openPanel: false,
         pageContext: buildPageContext({
           pathname,
           screenKey: workspaceId,
@@ -159,6 +174,7 @@ export function AiVoiceTalkButton() {
 
     setPhase("waiting");
     setHeard((prev) => prev || "Understanding…");
+    setInterimHeard("");
     setLevel(0);
 
     try {
@@ -227,10 +243,11 @@ export function AiVoiceTalkButton() {
     recognizerRef.current = null;
     stopAssistantSpeech();
     setHeard("");
+    setInterimHeard("");
     setLevel(0);
 
     const recorder = await createVoiceRecorder({
-      silenceMs: 900,
+      silenceMs: 850,
       speakThreshold: 0.075,
       maxMs: 18000,
       onLevel: (rms) => {
@@ -274,32 +291,36 @@ export function AiVoiceTalkButton() {
       stopAssistantSpeech();
       voiceFinalRef.current = "";
       setHeard("");
+      setInterimHeard("");
+      setSuggestOpen(false);
       setLevel(0);
 
       if (canUseBrowserSpeechRecognition()) {
         recognizerRef.current?.stop();
         recognizerRef.current = null;
-        await new Promise((r) => window.setTimeout(r, resume ? 40 : 80));
+        await new Promise((r) => window.setTimeout(r, resume ? 30 : 60));
         if (cancelledRef.current || !conversationActiveRef.current) return;
 
         const recognizer = createSpeechRecognizer({
           lang: "en-US",
           continuous: true,
-          minConfidence: 0.45,
+          minConfidence: 0.4,
           onInterim: (text) => {
             if (cancelledRef.current) return;
+            setInterimHeard(text);
             setHeard(() => {
               const base = voiceFinalRef.current.trim();
               return [base, text].filter(Boolean).join(" ").trim();
             });
-            setLevel(0.35);
+            setLevel(0.4);
             clearPauseTimer();
           },
           onFinal: (text) => {
             if (cancelledRef.current) return;
             voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
+            setInterimHeard("");
             setHeard(voiceFinalRef.current);
-            setLevel(0.2);
+            setLevel(0.25);
             scheduleHandOff(HANDOFF_PAUSE_MS);
           },
           onError: ({ code }) => {
@@ -310,6 +331,7 @@ export function AiVoiceTalkButton() {
               conversationActiveRef.current = false;
               setPhase("idle");
               setHeard("");
+              setInterimHeard("");
               return;
             }
             if (canUseMediaRecorderVoice()) {
@@ -320,6 +342,7 @@ export function AiVoiceTalkButton() {
             conversationActiveRef.current = false;
             setPhase("idle");
             setHeard("");
+            setInterimHeard("");
           },
           onEnd: () => {
             recognizerRef.current = null;
@@ -345,16 +368,25 @@ export function AiVoiceTalkButton() {
 
   // After the spoken answer finishes, keep the conversation going without another click.
   useEffect(() => {
-    return subscribeAiVoiceComplete(() => {
+    return subscribeAiVoiceComplete((payload = {}) => {
       if (cancelledRef.current || !conversationActiveRef.current) {
         setPhase("idle");
         setHeard("");
+        setInterimHeard("");
         setLevel(0);
         handedOffRef.current = false;
         return;
       }
+
+      if (payload.brief) {
+        setSpokenReply(payload.brief);
+      }
+      // Suggest opening the sidebar for long answers; forms already force-open the panel.
+      setSuggestOpen(Boolean(payload.detailed) && !payload.needsPanel);
+
       handedOffRef.current = false;
       setHeard("");
+      setInterimHeard("");
       setLevel(0);
       setPhase("listening");
       clearResumeTimer();
@@ -373,9 +405,20 @@ export function AiVoiceTalkButton() {
     void startListening({ resume: false });
   }, [phase, reset, startListening]);
 
+  const onOpenAssistant = useCallback(() => {
+    openAiAssistPanel(
+      buildPageContext({
+        pathname,
+        screenKey: getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {}),
+      }),
+    );
+    setSuggestOpen(false);
+  }, [capabilities, pathname]);
+
   if (!orgAiEnabled || !voiceSupported) return null;
 
   const busy = phase !== "idle";
+  const liveHeard = heard.trim() || interimHeard.trim();
   const buttonLabel =
     phase === "listening"
       ? "Listening…"
@@ -396,7 +439,7 @@ export function AiVoiceTalkButton() {
         title={
           busy
             ? "Stop conversation"
-            : "Talk To AI Assistant — continuous chat: ask, pause, hear the answer, ask again. Speak near the mic."
+            : "Talk To AI Assistant — continuous chat near the mic. Sidebar stays closed unless you open it."
         }
         aria-pressed={busy}
       >
@@ -426,18 +469,64 @@ export function AiVoiceTalkButton() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {phase === "listening" ? "Listening… (conversation on)" : "Waiting for answer…"}
+                {phase === "listening" ? "Listening… (conversation on)" : "Getting answer…"}
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? "Speak near the mic — I’ll send when you pause, then listen again after the answer"
-                  : "I’ll listen again when the reply finishes"}
+                  ? "Speak near the mic — what you say appears below"
+                  : "I’ll speak the short answer; open the assistant only if you want the full detail"}
               </p>
-              {heard.trim() ? (
-                <p className="mt-2 line-clamp-3 text-sm text-slate-800 dark:text-slate-200">“{heard.trim()}”</p>
-              ) : phase === "listening" ? (
-                <p className="mt-2 text-sm italic text-slate-400">Waiting for your voice…</p>
+
+              <div className="mt-2 min-h-[2.5rem] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-800/80">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Heard</p>
+                {liveHeard ? (
+                  <p className="mt-0.5 text-sm text-slate-900 dark:text-slate-100">
+                    “{liveHeard}”
+                    {interimHeard && !voiceFinalRef.current ? (
+                      <span className="ml-1 text-xs italic text-slate-400">…</span>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-sm italic text-slate-400">
+                    {phase === "listening" ? "Waiting for your voice…" : "Understanding…"}
+                  </p>
+                )}
+              </div>
+
+              {spokenReply && phase === "listening" ? (
+                <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50/80 px-2.5 py-2 dark:border-indigo-900 dark:bg-indigo-950/40">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400">Last answer</p>
+                  <p className="mt-0.5 text-sm text-indigo-950 dark:text-indigo-100">{spokenReply}</p>
+                </div>
               ) : null}
+
+              {suggestOpen ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-slate-500">Answer has more detail.</p>
+                  <button
+                    type="button"
+                    onClick={onOpenAssistant}
+                    className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-500"
+                  >
+                    Open assistant
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestOpen(false)}
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Not now
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenAssistant}
+                  className="mt-2 text-xs font-medium text-indigo-700 hover:underline dark:text-indigo-300"
+                >
+                  Open assistant
+                </button>
+              )}
             </div>
             <button
               type="button"
