@@ -33,8 +33,8 @@ function MicIcon({ className }) {
 }
 
 /**
- * Header control: ask by voice and hear a short answer — does not open the assistant sidebar.
- * Prefers browser speech; on Chrome’s common “network” failure, records audio and transcribes via Centrix.
+ * Conversational voice: listen → show live words → answer when you pause.
+ * Sidebar stays closed.
  */
 export function AiVoiceTalkButton() {
   const pathname = usePathname();
@@ -42,31 +42,33 @@ export function AiVoiceTalkButton() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | listening | thinking | speaking
   const [heard, setHeard] = useState("");
-  const [mode, setMode] = useState("speech"); // speech | record
+  const [level, setLevel] = useState(0);
 
   const recognizerRef = useRef(null);
   const recorderRef = useRef(null);
   const voiceFinalRef = useRef("");
   const abortRef = useRef(null);
   const cancelledRef = useRef(false);
-  const startRecordRef = useRef(null);
+  const pauseTimerRef = useRef(0);
+  const askingRef = useRef(false);
+  const finishRecordRef = useRef(null);
+  const startListenRef = useRef(null);
 
   useEffect(() => {
     setVoiceSupported(canUseVoiceInput());
   }, []);
 
-  useEffect(() => {
-    return () => {
-      cancelledRef.current = true;
-      recognizerRef.current?.stop();
-      recorderRef.current?.cancel();
-      abortRef.current?.abort();
-      stopAssistantSpeech();
-    };
+  const clearPauseTimer = useCallback(() => {
+    if (pauseTimerRef.current) {
+      window.clearTimeout(pauseTimerRef.current);
+      pauseTimerRef.current = 0;
+    }
   }, []);
 
   const reset = useCallback(() => {
     cancelledRef.current = true;
+    askingRef.current = false;
+    clearPauseTimer();
     recognizerRef.current?.stop();
     recognizerRef.current = null;
     recorderRef.current?.cancel();
@@ -76,15 +78,33 @@ export function AiVoiceTalkButton() {
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
-    setMode("speech");
+    setLevel(0);
     setPhase("idle");
-  }, []);
+  }, [clearPauseTimer]);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+      clearPauseTimer();
+      recognizerRef.current?.stop();
+      recorderRef.current?.cancel();
+      abortRef.current?.abort();
+      stopAssistantSpeech();
+    };
+  }, [clearPauseTimer]);
 
   const askAndSpeak = useCallback(
     async (question) => {
-      if (!question || cancelledRef.current) return;
+      const q = String(question ?? "").trim();
+      if (!q || cancelledRef.current || askingRef.current) return;
+      askingRef.current = true;
+      clearPauseTimer();
+      recognizerRef.current?.stop();
+      recognizerRef.current = null;
+
       setPhase("thinking");
-      setHeard(question);
+      setHeard(q);
+      setLevel(0);
 
       const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
       const controller = new AbortController();
@@ -99,7 +119,7 @@ export function AiVoiceTalkButton() {
             workspace_id: workspaceId,
             pathname,
             page_context: buildPageContext({ pathname, screenKey: workspaceId }),
-            message: question,
+            message: q,
             history: [],
           },
         });
@@ -127,37 +147,48 @@ export function AiVoiceTalkButton() {
         if (!cancelledRef.current) {
           setPhase("idle");
           setHeard("");
-          setMode("speech");
         }
       } catch (err) {
         if (cancelledRef.current || err?.name === "AbortError") return;
         notifyError(err instanceof Error ? err.message : "Could not get an answer.");
         setPhase("idle");
         setHeard("");
-        setMode("speech");
       } finally {
         abortRef.current = null;
+        askingRef.current = false;
       }
     },
-    [capabilities, pathname],
+    [capabilities, clearPauseTimer, pathname],
+  );
+
+  const scheduleAskFromSpeech = useCallback(
+    (delayMs = 900) => {
+      clearPauseTimer();
+      pauseTimerRef.current = window.setTimeout(() => {
+        const spoken = voiceFinalRef.current.trim();
+        if (spoken) {
+          voiceFinalRef.current = "";
+          void askAndSpeak(spoken);
+        }
+      }, delayMs);
+    },
+    [askAndSpeak, clearPauseTimer],
   );
 
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
     recorderRef.current = null;
-    if (!recorder) {
-      setPhase("idle");
-      return;
-    }
+    if (!recorder || askingRef.current) return;
 
     setPhase("thinking");
-    setHeard("Transcribing…");
+    setHeard((prev) => prev || "Understanding…");
+    setLevel(0);
 
     try {
       const blob = await recorder.stop();
       if (cancelledRef.current) return;
       if (!blob || blob.size < 200) {
-        notifyError("No speech was captured. Tap Talk again and speak clearly.");
+        notifyError("Didn’t catch that — tap Talk and ask again.");
         setPhase("idle");
         setHeard("");
         return;
@@ -169,7 +200,7 @@ export function AiVoiceTalkButton() {
 
       const text = String(res?.text ?? "").trim();
       if (!text) {
-        notifyError("No speech was detected. Try again.");
+        notifyError("Didn’t catch that — tap Talk and ask again.");
         setPhase("idle");
         setHeard("");
         return;
@@ -178,36 +209,46 @@ export function AiVoiceTalkButton() {
       await askAndSpeak(text);
     } catch (err) {
       if (cancelledRef.current) return;
-      notifyError(err instanceof Error ? err.message : "Could not transcribe your voice.");
+      notifyError(err instanceof Error ? err.message : "Could not understand your voice.");
       setPhase("idle");
       setHeard("");
-      setMode("speech");
     }
   }, [askAndSpeak]);
 
-  const startRecording = useCallback(async () => {
-    cancelledRef.current = false;
+  useEffect(() => {
+    finishRecordRef.current = finishRecording;
+  }, [finishRecording]);
+
+  const startRecordingFallback = useCallback(async () => {
     if (!canUseMediaRecorderVoice()) {
-      notifyError(
-        "Voice recording is not available here. Use Chrome/Edge on HTTPS, or type in the assistant.",
-      );
+      notifyError("Voice needs Chrome or Edge with microphone access.");
       return;
     }
 
     recognizerRef.current?.stop();
     recognizerRef.current = null;
     stopAssistantSpeech();
+    setHeard("");
+    setLevel(0);
 
-    const recorder = await createVoiceRecorder();
+    const recorder = await createVoiceRecorder({
+      silenceMs: 1300,
+      maxMs: 18000,
+      onLevel: (rms) => {
+        if (!cancelledRef.current) setLevel(Math.min(1, rms * 4));
+      },
+      onAutoStop: () => {
+        void finishRecordRef.current?.();
+      },
+    });
     if (!recorder) {
       notifyError("Microphone permission denied. Allow mic access for this site.");
       return;
     }
 
     recorderRef.current = recorder;
-    setMode("record");
-    setHeard("");
     setPhase("listening");
+    setHeard("");
     try {
       await recorder.start();
     } catch {
@@ -218,142 +259,98 @@ export function AiVoiceTalkButton() {
     }
   }, []);
 
-  useEffect(() => {
-    startRecordRef.current = startRecording;
-  }, [startRecording]);
-
-  const startBrowserSpeech = useCallback(async () => {
+  const startListening = useCallback(async () => {
     cancelledRef.current = false;
-
-    if (!canUseBrowserSpeechRecognition()) {
-      void startRecording();
-      return;
-    }
-
-    // Do NOT call getUserMedia before Web Speech — that triggers Chrome’s fake "network" error.
+    askingRef.current = false;
+    clearPauseTimer();
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
-    setMode("speech");
-    recognizerRef.current?.stop();
-    recognizerRef.current = null;
-    await new Promise((r) => window.setTimeout(r, 120));
-    if (cancelledRef.current) return;
+    setLevel(0);
 
-    const recognizer = createSpeechRecognizer({
-      lang: "en-US",
-      continuous: true,
-      onInterim: (text) => setHeard(text),
-      onFinal: (text) => {
-        voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
-        setHeard(voiceFinalRef.current);
-      },
-      onError: ({ code }) => {
-        recognizerRef.current = null;
-        // Fall through to MediaRecorder instead of showing a dead-end Google speech error.
-        if (
-          (code === "network" || code === "service-not-allowed" || code === "language-not-supported") &&
-          canUseMediaRecorderVoice()
-        ) {
-          void startRecordRef.current?.();
-          return;
-        }
-        if (code === "not-allowed" || code === "audio-capture") {
+    // Conversational path: live browser speech (words appear as you talk; answers on pause).
+    if (canUseBrowserSpeechRecognition()) {
+      recognizerRef.current?.stop();
+      recognizerRef.current = null;
+      await new Promise((r) => window.setTimeout(r, 80));
+      if (cancelledRef.current) return;
+
+      const recognizer = createSpeechRecognizer({
+        lang: "en-US",
+        continuous: true,
+        onInterim: (text) => {
+          if (cancelledRef.current) return;
+          setHeard((prev) => {
+            const base = voiceFinalRef.current.trim();
+            const next = [base, text].filter(Boolean).join(" ").trim();
+            return next || prev;
+          });
+          setLevel(0.35);
+          clearPauseTimer();
+        },
+        onFinal: (text) => {
+          if (cancelledRef.current) return;
+          voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
+          setHeard(voiceFinalRef.current);
+          setLevel(0.2);
+          // Pause after a finished phrase → ask automatically (no Done button).
+          scheduleAskFromSpeech(1000);
+        },
+        onError: ({ code }) => {
+          recognizerRef.current = null;
+          clearPauseTimer();
+          if (code === "not-allowed" || code === "audio-capture") {
+            notifyError(speechErrorMessage(code));
+            setPhase("idle");
+            setHeard("");
+            return;
+          }
+          // Google speech often fails with "network" — seamless mic fallback (still auto-answers).
+          if (canUseMediaRecorderVoice()) {
+            void startRecordingFallback();
+            return;
+          }
           notifyError(speechErrorMessage(code));
           setPhase("idle");
           setHeard("");
-          return;
-        }
-        if (canUseMediaRecorderVoice()) {
-          void startRecordRef.current?.();
-          return;
-        }
-        notifyError(speechErrorMessage(code));
-        setPhase("idle");
-        setHeard("");
-      },
-      onEnd: () => {
-        recognizerRef.current = null;
-        // Continuous mode restarts until user stops; stop() sets stoppedByUser so onEnd runs once.
-        const spoken = voiceFinalRef.current.trim();
-        voiceFinalRef.current = "";
-        if (spoken) {
-          void askAndSpeak(spoken);
-        } else if (!cancelledRef.current && phase === "listening" && mode === "speech") {
-          // Empty stop — stay idle
-          setPhase("idle");
-          setHeard("");
-        }
-      },
-    });
+        },
+        onEnd: () => {
+          recognizerRef.current = null;
+          // continuous:true restarts until we stop after scheduling ask, or user cancels.
+        },
+      });
 
-    if (!recognizer) {
-      void startRecording();
-      return;
+      if (recognizer) {
+        recognizerRef.current = recognizer;
+        setPhase("listening");
+        recognizer.start();
+        return;
+      }
     }
 
-    recognizerRef.current = recognizer;
-    setPhase("listening");
-    recognizer.start();
-  }, [askAndSpeak, mode, phase, startRecording]);
+    await startRecordingFallback();
+  }, [clearPauseTimer, scheduleAskFromSpeech, startRecordingFallback]);
 
-  const finishListening = useCallback(async () => {
-    if (phase !== "listening") return;
-
-    if (mode === "record") {
-      await finishRecording();
-      return;
-    }
-
-    const spoken = voiceFinalRef.current.trim() || heard.trim();
-    recognizerRef.current?.stop();
-    recognizerRef.current = null;
-
-    if (spoken) {
-      voiceFinalRef.current = "";
-      void askAndSpeak(spoken);
-      return;
-    }
-
-    // No browser transcript — switch to record path if possible.
-    if (canUseMediaRecorderVoice()) {
-      void startRecording();
-      return;
-    }
-
-    setPhase("idle");
-    setHeard("");
-    notifyError("Didn’t catch that. Try again or type your question.");
-  }, [askAndSpeak, finishRecording, heard, mode, phase, startRecording]);
+  useEffect(() => {
+    startListenRef.current = startListening;
+  }, [startListening]);
 
   const onClick = useCallback(() => {
-    if (phase === "listening") {
-      void finishListening();
-      return;
-    }
     if (phase !== "idle") {
       reset();
       return;
     }
-    // Record-and-transcribe is more reliable than Chrome’s Google speech cloud
-    // (which often fails with a fake "network" error, especially outside the US).
-    if (canUseMediaRecorderVoice()) {
-      void startRecording();
-    } else {
-      void startBrowserSpeech();
-    }
-  }, [finishListening, phase, reset, startBrowserSpeech, startRecording]);
+    void startListening();
+  }, [phase, reset, startListening]);
 
   if (!voiceSupported) return null;
 
   const busy = phase !== "idle";
   const statusLabel =
     phase === "listening"
-      ? mode === "record"
-        ? "Recording… tap Done when finished"
-        : "Listening… tap Done when finished"
+      ? "Listening…"
       : phase === "thinking"
-        ? "Checking…"
+        ? "Thinking…"
         : phase === "speaking"
           ? "Answering…"
           : null;
@@ -370,19 +367,13 @@ export function AiVoiceTalkButton() {
               ? "bg-indigo-700 text-white hover:bg-indigo-800"
               : "bg-indigo-600 text-white hover:bg-indigo-700"
         }`}
-        aria-label={phase === "listening" ? "Done — send question" : "Talk To AI Assistant"}
-        title={
-          phase === "listening"
-            ? "Done — send your question"
-            : "Talk To AI Assistant — ask and hear a short answer"
-        }
+        aria-label={busy ? "Stop" : "Talk To AI Assistant"}
+        title={busy ? "Stop" : "Talk To AI Assistant — ask and hear a short answer"}
         aria-pressed={busy}
       >
         <MicIcon className={`h-4 w-4 shrink-0 ${phase === "listening" ? "animate-pulse" : ""}`} />
-        <span className="max-sm:hidden">
-          {phase === "listening" ? "Done" : "Talk To AI Assistant"}
-        </span>
-        <span className="sm:hidden">{phase === "listening" ? "Done" : "Talk To AI"}</span>
+        <span className="max-sm:hidden">{busy ? "Stop" : "Talk To AI Assistant"}</span>
+        <span className="sm:hidden">{busy ? "Stop" : "Talk To AI"}</span>
       </button>
 
       {busy ? (
@@ -396,6 +387,11 @@ export function AiVoiceTalkButton() {
               className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                 phase === "listening" ? "bg-red-500 text-white animate-pulse" : "bg-indigo-600 text-white"
               }`}
+              style={
+                phase === "listening" && level > 0
+                  ? { boxShadow: `0 0 0 ${4 + Math.round(level * 10)}px rgba(239, 68, 68, 0.25)` }
+                  : undefined
+              }
             >
               <MicIcon className="h-4 w-4" />
             </span>
@@ -403,35 +399,24 @@ export function AiVoiceTalkButton() {
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{statusLabel}</p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? mode === "record"
-                    ? "Speak your question, then tap Done"
-                    : "Speak your question — tap Done when you pause"
+                  ? "Ask your question — I’ll answer when you pause"
                   : phase === "thinking"
-                    ? "Looking up your answer"
-                    : "Short spoken answer"}
+                    ? "Looking that up"
+                    : "Speaking a short answer"}
               </p>
-              {heard.trim() && heard !== "Transcribing…" ? (
-                <p className="mt-2 line-clamp-2 text-sm text-slate-800 dark:text-slate-200">“{heard.trim()}”</p>
+              {heard.trim() ? (
+                <p className="mt-2 line-clamp-3 text-sm text-slate-800 dark:text-slate-200">“{heard.trim()}”</p>
+              ) : phase === "listening" ? (
+                <p className="mt-2 text-sm italic text-slate-400">Waiting for your voice…</p>
               ) : null}
             </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              {phase === "listening" ? (
-                <button
-                  type="button"
-                  onClick={() => void finishListening()}
-                  className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
-                >
-                  Done
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-indigo-950/50"
-              >
-                Cancel
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={reset}
+              className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-indigo-950/50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       ) : null}

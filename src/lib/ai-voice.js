@@ -155,14 +155,20 @@ export async function ensureMicrophoneAccess() {
 }
 
 /**
- * Record a short voice clip until stop() is called.
+ * Record a short voice clip until stop() / silence / max duration.
+ * @param {{
+ *   onLevel?: (level: number) => void,
+ *   silenceMs?: number,
+ *   maxMs?: number,
+ *   onAutoStop?: () => void,
+ * }} [options]
  * @returns {Promise<{
  *   start: () => Promise<void>,
  *   stop: () => Promise<Blob>,
  *   cancel: () => void,
  * } | null>}
  */
-export async function createVoiceRecorder() {
+export async function createVoiceRecorder(options = {}) {
   if (!canUseMediaRecorderVoice()) return null;
 
   let stream;
@@ -186,14 +192,82 @@ export async function createVoiceRecorder() {
   let resolveStop = null;
   let rejectStop = null;
   let stopped = false;
+  let audioCtx = null;
+  let rafId = 0;
+  let maxTimer = 0;
+  let heardSpeech = false;
+  let silentSince = 0;
+
+  const silenceMs = Number(options.silenceMs) > 0 ? Number(options.silenceMs) : 1400;
+  const maxMs = Number(options.maxMs) > 0 ? Number(options.maxMs) : 20000;
+
+  const cleanupMeter = () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    if (maxTimer) window.clearTimeout(maxTimer);
+    maxTimer = 0;
+    try {
+      audioCtx?.close();
+    } catch {
+      /* ignore */
+    }
+    audioCtx = null;
+  };
+
+  const finishFromSilence = () => {
+    if (stopped) return;
+    // Caller stops via recorder.stop() so the blob is collected once.
+    options.onAutoStop?.();
+  };
+
+  const startMeter = () => {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+
+      const tick = () => {
+        if (stopped) return;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        options.onLevel?.(rms);
+        const speaking = rms > 0.04;
+        const now = Date.now();
+        if (speaking) {
+          heardSpeech = true;
+          silentSince = 0;
+        } else if (heardSpeech) {
+          if (!silentSince) silentSince = now;
+          else if (now - silentSince >= silenceMs) {
+            finishFromSilence();
+            return;
+          }
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    } catch {
+      /* meter optional */
+    }
+  };
 
   recorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) chunks.push(event.data);
   };
   recorder.onerror = () => {
+    cleanupMeter();
     rejectStop?.(new Error("Recording failed."));
   };
   recorder.onstop = () => {
+    cleanupMeter();
     stream.getTracks().forEach((t) => t.stop());
     const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
     resolveStop?.(blob);
@@ -202,13 +276,18 @@ export async function createVoiceRecorder() {
   return {
     async start() {
       chunks.length = 0;
+      heardSpeech = false;
+      silentSince = 0;
       recorder.start(250);
+      startMeter();
+      maxTimer = window.setTimeout(() => finishFromSilence(), maxMs);
     },
     stop() {
       if (stopped) {
         return Promise.resolve(new Blob([], { type: "audio/webm" }));
       }
       stopped = true;
+      cleanupMeter();
       return new Promise((resolve, reject) => {
         resolveStop = resolve;
         rejectStop = reject;
@@ -226,6 +305,7 @@ export async function createVoiceRecorder() {
     },
     cancel() {
       stopped = true;
+      cleanupMeter();
       try {
         if (recorder.state !== "inactive") recorder.stop();
       } catch {
