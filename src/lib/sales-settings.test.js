@@ -478,6 +478,20 @@ describe("collect small / partial payments on order payment", () => {
     expect(withoutCredit.allowPartialPayment).toBe(false);
   });
 
+  it("shows payment date only for collect payment, never on direct checkout", () => {
+    const settings = { sales: { enable_payment_date: true } };
+    const collect = getCheckoutPaymentConfig(settings, {
+      checkoutContext: "order_payment",
+      capabilities: caps,
+    });
+    const checkout = getCheckoutPaymentConfig(settings, {
+      checkoutContext: "pos",
+      capabilities: caps,
+    });
+    expect(collect.enablePaymentDate).toBe(true);
+    expect(checkout.enablePaymentDate).toBe(false);
+  });
+
   it("does not force credit checkout off when both settings are on", () => {
     const merged = mergeSalesSettings({
       sales: {

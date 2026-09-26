@@ -20,6 +20,25 @@ const SAFE_SPEECH_LANGS = new Set([
   "en-CA",
 ]);
 
+/**
+ * Prefer near-field speech: echo cancel, noise suppress, and Chrome voice isolation
+ * when available so distant room chatter is less likely to trigger listening.
+ */
+export function nearVoiceAudioConstraints() {
+  return {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
+    // Chrome / Chromium — focus on the speaker closest to the mic
+    voiceIsolation: { ideal: true },
+    googEchoCancellation: { ideal: true },
+    googNoiseSuppression: { ideal: true },
+    googAutoGainControl: { ideal: true },
+    googHighpassFilter: { ideal: true },
+    channelCount: { ideal: 1 },
+  };
+}
+
 export function isSpeechRecognitionSupported() {
   if (typeof window === "undefined") return false;
   return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -91,7 +110,6 @@ export function spokenBriefForSpeech(raw) {
   return text.slice(0, 420).trim();
 }
 
-
 export function speechErrorMessage(code) {
   const messages = {
     "not-allowed": "Microphone permission denied. Allow mic access for this site in the browser address bar.",
@@ -146,11 +164,19 @@ export async function ensureMicrophoneAccess() {
     return true;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: nearVoiceAudioConstraints(),
+    });
     stream.getTracks().forEach((t) => t.stop());
     return true;
   } catch {
-    return false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -160,6 +186,7 @@ export async function ensureMicrophoneAccess() {
  *   onLevel?: (level: number) => void,
  *   silenceMs?: number,
  *   maxMs?: number,
+ *   speakThreshold?: number,
  *   onAutoStop?: () => void,
  * }} [options]
  * @returns {Promise<{
@@ -173,9 +200,15 @@ export async function createVoiceRecorder(options = {}) {
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: nearVoiceAudioConstraints(),
+    });
   } catch {
-    return null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return null;
+    }
   }
 
   const mimeCandidates = [
@@ -198,8 +231,11 @@ export async function createVoiceRecorder(options = {}) {
   let heardSpeech = false;
   let silentSince = 0;
 
-  const silenceMs = Number(options.silenceMs) > 0 ? Number(options.silenceMs) : 1400;
+  const silenceMs = Number(options.silenceMs) > 0 ? Number(options.silenceMs) : 900;
   const maxMs = Number(options.maxMs) > 0 ? Number(options.maxMs) : 20000;
+  // Higher than ambient room noise so far voices are less likely to trigger.
+  const speakThreshold =
+    Number(options.speakThreshold) > 0 ? Number(options.speakThreshold) : 0.075;
 
   const cleanupMeter = () => {
     if (rafId) cancelAnimationFrame(rafId);
@@ -216,7 +252,6 @@ export async function createVoiceRecorder(options = {}) {
 
   const finishFromSilence = () => {
     if (stopped) return;
-    // Caller stops via recorder.stop() so the blob is collected once.
     options.onAutoStop?.();
   };
 
@@ -239,7 +274,7 @@ export async function createVoiceRecorder(options = {}) {
         }
         const rms = Math.sqrt(sum / data.length);
         options.onLevel?.(rms);
-        const speaking = rms > 0.04;
+        const speaking = rms > speakThreshold;
         const now = Date.now();
         if (speaking) {
           heardSpeech = true;
@@ -320,6 +355,7 @@ export async function createVoiceRecorder(options = {}) {
  * @param {{
  *   lang?: string,
  *   continuous?: boolean,
+ *   minConfidence?: number,
  *   onInterim?: (text: string) => void,
  *   onFinal?: (text: string) => void,
  *   onError?: (info: { code: string, message: string }) => void,
@@ -332,7 +368,6 @@ export function createSpeechRecognizer(options = {}) {
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = new SpeechRecognition();
-  // Always prefer a Chrome-safe English locale; callers may pass an override for retries.
   recognition.lang = options.lang || preferredSpeechLang() || "en-US";
   recognition.interimResults = true;
   recognition.continuous = Boolean(options.continuous);
@@ -341,14 +376,22 @@ export function createSpeechRecognizer(options = {}) {
   let stoppedByUser = false;
   let errorHandled = false;
   let gotResult = false;
+  const minConfidence =
+    Number(options.minConfidence) > 0 ? Number(options.minConfidence) : 0.45;
 
   recognition.onresult = (event) => {
     let interim = "";
     let finalChunk = "";
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const result = event.results[i];
-      const transcript = result?.[0]?.transcript ?? "";
+      const alt = result?.[0];
+      const transcript = alt?.transcript ?? "";
+      const confidence = typeof alt?.confidence === "number" ? alt.confidence : 1;
       if (result.isFinal) {
+        // Ignore low-confidence distant / mumbled finals when the engine reports scores.
+        if (confidence > 0 && confidence < minConfidence) {
+          continue;
+        }
         finalChunk += transcript;
       } else {
         interim += transcript;
@@ -362,14 +405,11 @@ export function createSpeechRecognizer(options = {}) {
   recognition.onerror = (event) => {
     const code = String(event?.error ?? "unknown");
     if (code === "aborted") {
-      // User/stop() — onend will run.
       return;
     }
     if (code === "no-speech") {
-      // Silence — treat as normal end.
       return;
     }
-    // If we already captured speech, ignore late network blips and finish normally.
     if (code === "network" && gotResult) {
       return;
     }
@@ -386,7 +426,6 @@ export function createSpeechRecognizer(options = {}) {
         /* fall through */
       }
     }
-    // After a handled error, panel decides whether to retry — skip auto onEnd restart noise.
     if (errorHandled) {
       errorHandled = false;
       return;
@@ -422,9 +461,10 @@ export function createSpeechRecognizer(options = {}) {
 
 /**
  * Speak text aloud. Resolves when utterance ends (or immediately if unsupported/empty).
+ * Slightly faster default rate so back-and-forth voice chat feels snappier.
  * @returns {Promise<boolean>}
  */
-export function speakAssistantText(text, { lang = "en-US", rate = 1 } = {}) {
+export function speakAssistantText(text, { lang = "en-US", rate = 1.08 } = {}) {
   if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
   const plain = plainTextForSpeech(text);
   if (!plain) return Promise.resolve(false);
@@ -442,7 +482,7 @@ export function speakAssistantText(text, { lang = "en-US", rate = 1 } = {}) {
     utter.onend = () => finish(true);
     utter.onerror = () => finish(false);
     window.speechSynthesis.speak(utter);
-    window.setTimeout(() => finish(true), Math.min(60_000, 2_000 + plain.length * 60));
+    window.setTimeout(() => finish(true), Math.min(60_000, 2_000 + plain.length * 55));
   });
 }
 

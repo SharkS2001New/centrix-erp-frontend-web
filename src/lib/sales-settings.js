@@ -1739,7 +1739,9 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
     showOtherBank: !useBankSelect && Boolean(sales.enable_other_bank),
     showCheque: Boolean(sales.enable_cheque),
     showChequeNumber: Boolean(sales.enable_cheque_number),
-    enablePaymentDate: Boolean(sales.enable_payment_date),
+    // Backoffice Collect payment / shop debtors only — direct checkout always uses today.
+    enablePaymentDate:
+      checkoutContext === "order_payment" && Boolean(sales.enable_payment_date),
     enableCreditPayment:
       checkoutContext === "pos" &&
       hasPosSales &&

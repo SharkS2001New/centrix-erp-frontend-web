@@ -293,7 +293,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       return;
     }
     lastSpokenRef.current = key;
-    void speakAssistantText(brief).finally(() => {
+    void speakAssistantText(brief, { rate: 1.1 }).finally(() => {
       notifyAiVoiceComplete();
     });
   }, []);

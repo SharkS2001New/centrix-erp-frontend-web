@@ -72,6 +72,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Who is signed in across tenants, workspaces, and channels.",
       },
       {
+        href: "/platform/speed",
+        label: "ERP Speed",
+        icon: "chart",
+        description: "Live latency, infra health, slow queries, and client slow reports.",
+      },
+      {
         href: "/platform/system-issues",
         label: "System errors & reports",
         icon: "alert",

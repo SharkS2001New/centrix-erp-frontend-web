@@ -380,7 +380,7 @@ function PaymentFieldsTab({
       />
       <Toggle
         label="Payment date field"
-        description="When off, payment uses today's date automatically."
+        description="Backoffice only (Sales → Orders → Collect payment / Make payment, and shop debtors). Staff can set the payment date when recording against an unpaid balance. Direct checkout (External POS and Create order) always uses today's date."
         checked={salesForm.enable_payment_date}
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_payment_date: v }))}
       />

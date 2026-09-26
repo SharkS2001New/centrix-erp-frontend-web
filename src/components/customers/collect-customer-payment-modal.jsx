@@ -7,6 +7,7 @@ import { formatCustomerKes } from "@/components/customers/customer-form";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import { mergeSalesSettings } from "@/lib/sales-settings";
 
 /**
  * Collect AR payment against a customer's open invoices (FIFO by default).
@@ -18,6 +19,9 @@ import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
  */
 export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
   const { capabilities } = useAuth();
+  const enablePaymentDate = Boolean(
+    mergeSalesSettings(capabilities?.module_settings).enable_payment_date,
+  );
   const outstanding = Number(customer?.current_balance ?? 0);
   const [methods, setMethods] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -242,14 +246,16 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Date paid">
-                <input
-                  type="date"
-                  className={inputClassName()}
-                  value={form.date_paid}
-                  onChange={(e) => setForm((f) => ({ ...f, date_paid: e.target.value }))}
-                />
-              </Field>
+              {enablePaymentDate ? (
+                <Field label="Date paid">
+                  <input
+                    type="date"
+                    className={inputClassName()}
+                    value={form.date_paid}
+                    onChange={(e) => setForm((f) => ({ ...f, date_paid: e.target.value }))}
+                  />
+                </Field>
+              ) : null}
               <Field label="Reference">
                 <input
                   className={inputClassName()}

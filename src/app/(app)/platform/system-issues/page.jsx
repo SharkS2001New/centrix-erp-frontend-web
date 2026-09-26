@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -172,6 +173,13 @@ function adjustSummaryCounts(summary, fromStatus, toStatus) {
 }
 
 export default function PlatformSystemIssuesPage() {
+  const searchParams = useSearchParams();
+  const kindFromUrl = searchParams?.get("kind");
+  const initialKind =
+    kindFromUrl === "slow" || kindFromUrl === "error" || kindFromUrl === "user_report"
+      ? kindFromUrl
+      : "all";
+
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [total, setTotal] = useState(0);
@@ -181,7 +189,7 @@ export default function PlatformSystemIssuesPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 350);
   const [statusFilter, setStatusFilter] = useState("open");
-  const [kindFilter, setKindFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState(initialKind);
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -192,6 +200,12 @@ export default function PlatformSystemIssuesPage() {
   const [resolvingId, setResolvingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => {
+    if (kindFromUrl === "slow" || kindFromUrl === "error" || kindFromUrl === "user_report") {
+      setKindFilter(kindFromUrl);
+    }
+  }, [kindFromUrl]);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoading(true);
