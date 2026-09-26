@@ -363,8 +363,12 @@ export function AiVoiceTalkButton() {
       <button
         type="button"
         onClick={onClick}
-        className={`app-topbar-icon-btn inline-flex shrink-0 items-center gap-1.5 px-2.5 text-sm font-medium whitespace-nowrap ${
-          busy ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200" : ""
+        className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap shadow-sm transition ${
+          phase === "listening"
+            ? "bg-red-600 text-white hover:bg-red-700"
+            : busy
+              ? "bg-indigo-700 text-white hover:bg-indigo-800"
+              : "bg-indigo-600 text-white hover:bg-indigo-700"
         }`}
         aria-label={phase === "listening" ? "Done — send question" : "Talk To AI Assistant"}
         title={
