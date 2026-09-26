@@ -55,13 +55,14 @@ describe("speech errors", () => {
   });
 
   it("explains network failures clearly", () => {
-    expect(speechErrorMessage("network")).toMatch(/Chrome/);
+    expect(speechErrorMessage("network")).toMatch(/transcrib/i);
   });
 });
 
 describe("canUseBrowserSpeechRecognition", () => {
   it("is exported", async () => {
-    const { canUseBrowserSpeechRecognition } = await import("@/lib/ai-voice");
+    const { canUseBrowserSpeechRecognition, canUseVoiceInput } = await import("@/lib/ai-voice");
     expect(typeof canUseBrowserSpeechRecognition).toBe("function");
+    expect(typeof canUseVoiceInput).toBe("function");
   });
 });

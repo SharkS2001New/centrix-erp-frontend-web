@@ -97,7 +97,7 @@ export function speechErrorMessage(code) {
     "not-allowed": "Microphone permission denied. Allow mic access for this site in the browser address bar.",
     "service-not-allowed": "Speech recognition is blocked in this browser. Try Chrome or Edge.",
     network:
-      "Voice needs Chrome or Edge with internet (Google speech). In-app / embedded browsers often fail — open Centrix in a normal Chrome tab, or type your question.",
+      "Browser speech failed — Centrix will record your voice and transcribe it instead. Tap Done when you finish speaking.",
     "audio-capture": "No microphone found.",
     "language-not-supported": "This speech language is not supported. Falling back to English (US).",
     "insecure-context": "Voice needs HTTPS (or localhost). Open Centrix on a secure URL, or type your question.",
@@ -120,17 +120,25 @@ export function canUseBrowserSpeechRecognition() {
   if (typeof window === "undefined") return false;
   if (!isSpeechRecognitionSupported()) return false;
   if (!window.isSecureContext) return false;
-  // Embedded / Electron-style frames often advertise SpeechRecognition but fail with "network".
-  try {
-    if (window.self !== window.top) return false;
-  } catch {
-    return false;
-  }
   return true;
+}
+
+/** MediaRecorder path — works without Google’s browser speech cloud. */
+export function canUseMediaRecorderVoice() {
+  if (typeof window === "undefined") return false;
+  if (!window.isSecureContext) return false;
+  if (typeof MediaRecorder === "undefined") return false;
+  return Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+/** Either browser STT or record-and-transcribe is available. */
+export function canUseVoiceInput() {
+  return canUseBrowserSpeechRecognition() || canUseMediaRecorderVoice();
 }
 
 /**
  * Ask for mic permission up front so STT does not fail immediately.
+ * Avoid calling this immediately before Web Speech — it often causes Chrome’s fake "network" error.
  * @returns {Promise<boolean>}
  */
 export async function ensureMicrophoneAccess() {
@@ -144,6 +152,88 @@ export async function ensureMicrophoneAccess() {
   } catch {
     return false;
   }
+}
+
+/**
+ * Record a short voice clip until stop() is called.
+ * @returns {Promise<{
+ *   start: () => Promise<void>,
+ *   stop: () => Promise<Blob>,
+ *   cancel: () => void,
+ * } | null>}
+ */
+export async function createVoiceRecorder() {
+  if (!canUseMediaRecorderVoice()) return null;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return null;
+  }
+
+  const mimeCandidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg",
+  ];
+  const mimeType = mimeCandidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  const recorder = mimeType
+    ? new MediaRecorder(stream, { mimeType })
+    : new MediaRecorder(stream);
+  const chunks = [];
+  let resolveStop = null;
+  let rejectStop = null;
+  let stopped = false;
+
+  recorder.ondataavailable = (event) => {
+    if (event.data && event.data.size > 0) chunks.push(event.data);
+  };
+  recorder.onerror = () => {
+    rejectStop?.(new Error("Recording failed."));
+  };
+  recorder.onstop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+    resolveStop?.(blob);
+  };
+
+  return {
+    async start() {
+      chunks.length = 0;
+      recorder.start(250);
+    },
+    stop() {
+      if (stopped) {
+        return Promise.resolve(new Blob([], { type: "audio/webm" }));
+      }
+      stopped = true;
+      return new Promise((resolve, reject) => {
+        resolveStop = resolve;
+        rejectStop = reject;
+        try {
+          if (recorder.state !== "inactive") recorder.stop();
+          else {
+            stream.getTracks().forEach((t) => t.stop());
+            resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+          }
+        } catch (err) {
+          stream.getTracks().forEach((t) => t.stop());
+          reject(err);
+        }
+      });
+    },
+    cancel() {
+      stopped = true;
+      try {
+        if (recorder.state !== "inactive") recorder.stop();
+      } catch {
+        /* ignore */
+      }
+      stream.getTracks().forEach((t) => t.stop());
+    },
+  };
 }
 
 /**

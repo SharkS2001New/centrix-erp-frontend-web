@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiRequestMultipart } from "@/lib/api";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { buildPageContext } from "@/lib/ai-assist-bridge";
@@ -10,10 +10,10 @@ import { notifyError } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import {
   canUseBrowserSpeechRecognition,
+  canUseMediaRecorderVoice,
+  canUseVoiceInput,
   createSpeechRecognizer,
-  ensureMicrophoneAccess,
-  isRetryableSpeechError,
-  preferredSpeechLang,
+  createVoiceRecorder,
   speakAssistantText,
   speechErrorMessage,
   spokenBriefForSpeech,
@@ -34,6 +34,7 @@ function MicIcon({ className }) {
 
 /**
  * Header control: ask by voice and hear a short answer — does not open the assistant sidebar.
+ * Prefers browser speech; on Chrome’s common “network” failure, records audio and transcribes via Centrix.
  */
 export function AiVoiceTalkButton() {
   const pathname = usePathname();
@@ -41,22 +42,24 @@ export function AiVoiceTalkButton() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | listening | thinking | speaking
   const [heard, setHeard] = useState("");
+  const [mode, setMode] = useState("speech"); // speech | record
 
   const recognizerRef = useRef(null);
+  const recorderRef = useRef(null);
   const voiceFinalRef = useRef("");
-  const speechRetryRef = useRef(0);
-  const startListeningRef = useRef(null);
   const abortRef = useRef(null);
   const cancelledRef = useRef(false);
+  const startRecordRef = useRef(null);
 
   useEffect(() => {
-    setVoiceSupported(canUseBrowserSpeechRecognition());
+    setVoiceSupported(canUseVoiceInput());
   }, []);
 
   useEffect(() => {
     return () => {
       cancelledRef.current = true;
       recognizerRef.current?.stop();
+      recorderRef.current?.cancel();
       abortRef.current?.abort();
       stopAssistantSpeech();
     };
@@ -66,12 +69,14 @@ export function AiVoiceTalkButton() {
     cancelledRef.current = true;
     recognizerRef.current?.stop();
     recognizerRef.current = null;
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
     abortRef.current?.abort();
     abortRef.current = null;
     stopAssistantSpeech();
     voiceFinalRef.current = "";
-    speechRetryRef.current = 0;
     setHeard("");
+    setMode("speech");
     setPhase("idle");
   }, []);
 
@@ -122,12 +127,14 @@ export function AiVoiceTalkButton() {
         if (!cancelledRef.current) {
           setPhase("idle");
           setHeard("");
+          setMode("speech");
         }
       } catch (err) {
         if (cancelledRef.current || err?.name === "AbortError") return;
         notifyError(err instanceof Error ? err.message : "Could not get an answer.");
         setPhase("idle");
         setHeard("");
+        setMode("speech");
       } finally {
         abortRef.current = null;
       }
@@ -135,65 +142,145 @@ export function AiVoiceTalkButton() {
     [capabilities, pathname],
   );
 
-  const startListening = useCallback(async () => {
-    cancelledRef.current = false;
-
-    if (!canUseBrowserSpeechRecognition()) {
-      if (typeof window !== "undefined" && !window.isSecureContext) {
-        notifyError(speechErrorMessage("insecure-context"));
-      } else {
-        notifyError(
-          "Voice needs Chrome or Edge in a normal browser tab (not an in-app preview). You can still type in the assistant.",
-        );
-      }
+  const finishRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (!recorder) {
+      setPhase("idle");
       return;
     }
 
-    const micOk = await ensureMicrophoneAccess();
-    if (!micOk) {
+    setPhase("thinking");
+    setHeard("Transcribing…");
+
+    try {
+      const blob = await recorder.stop();
+      if (cancelledRef.current) return;
+      if (!blob || blob.size < 200) {
+        notifyError("No speech was captured. Tap Talk again and speak clearly.");
+        setPhase("idle");
+        setHeard("");
+        return;
+      }
+
+      const file = new File([blob], "voice.webm", { type: blob.type || "audio/webm" });
+      const res = await apiRequestMultipart("/ai/transcribe", { audio: file });
+      if (cancelledRef.current) return;
+
+      const text = String(res?.text ?? "").trim();
+      if (!text) {
+        notifyError("No speech was detected. Try again.");
+        setPhase("idle");
+        setHeard("");
+        return;
+      }
+
+      await askAndSpeak(text);
+    } catch (err) {
+      if (cancelledRef.current) return;
+      notifyError(err instanceof Error ? err.message : "Could not transcribe your voice.");
+      setPhase("idle");
+      setHeard("");
+      setMode("speech");
+    }
+  }, [askAndSpeak]);
+
+  const startRecording = useCallback(async () => {
+    cancelledRef.current = false;
+    if (!canUseMediaRecorderVoice()) {
+      notifyError(
+        "Voice recording is not available here. Use Chrome/Edge on HTTPS, or type in the assistant.",
+      );
+      return;
+    }
+
+    recognizerRef.current?.stop();
+    recognizerRef.current = null;
+    stopAssistantSpeech();
+
+    const recorder = await createVoiceRecorder();
+    if (!recorder) {
       notifyError("Microphone permission denied. Allow mic access for this site.");
       return;
     }
 
+    recorderRef.current = recorder;
+    setMode("record");
+    setHeard("");
+    setPhase("listening");
+    try {
+      await recorder.start();
+    } catch {
+      recorder.cancel();
+      recorderRef.current = null;
+      notifyError("Could not start the microphone.");
+      setPhase("idle");
+    }
+  }, []);
+
+  useEffect(() => {
+    startRecordRef.current = startRecording;
+  }, [startRecording]);
+
+  const startBrowserSpeech = useCallback(async () => {
+    cancelledRef.current = false;
+
+    if (!canUseBrowserSpeechRecognition()) {
+      void startRecording();
+      return;
+    }
+
+    // Do NOT call getUserMedia before Web Speech — that triggers Chrome’s fake "network" error.
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
+    setMode("speech");
     recognizerRef.current?.stop();
     recognizerRef.current = null;
-    await new Promise((r) => window.setTimeout(r, 250));
+    await new Promise((r) => window.setTimeout(r, 120));
     if (cancelledRef.current) return;
 
-    const retryLangs = ["en-US", "en-GB", preferredSpeechLang()];
-    const lang = retryLangs[Math.min(speechRetryRef.current, retryLangs.length - 1)] || "en-US";
-
     const recognizer = createSpeechRecognizer({
-      lang,
+      lang: "en-US",
+      continuous: true,
       onInterim: (text) => setHeard(text),
       onFinal: (text) => {
         voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
         setHeard(voiceFinalRef.current);
-        speechRetryRef.current = 0;
       },
-      onError: ({ code, message }) => {
-        setPhase("idle");
+      onError: ({ code }) => {
         recognizerRef.current = null;
-        if (isRetryableSpeechError(code) && speechRetryRef.current < 3) {
-          speechRetryRef.current += 1;
-          window.setTimeout(() => startListeningRef.current?.(), 800);
+        // Fall through to MediaRecorder instead of showing a dead-end Google speech error.
+        if (
+          (code === "network" || code === "service-not-allowed" || code === "language-not-supported") &&
+          canUseMediaRecorderVoice()
+        ) {
+          void startRecordRef.current?.();
           return;
         }
-        notifyError(message);
-        speechRetryRef.current = 0;
+        if (code === "not-allowed" || code === "audio-capture") {
+          notifyError(speechErrorMessage(code));
+          setPhase("idle");
+          setHeard("");
+          return;
+        }
+        if (canUseMediaRecorderVoice()) {
+          void startRecordRef.current?.();
+          return;
+        }
+        notifyError(speechErrorMessage(code));
+        setPhase("idle");
         setHeard("");
       },
       onEnd: () => {
         recognizerRef.current = null;
+        // Continuous mode restarts until user stops; stop() sets stoppedByUser so onEnd runs once.
         const spoken = voiceFinalRef.current.trim();
         voiceFinalRef.current = "";
         if (spoken) {
-          speechRetryRef.current = 0;
           void askAndSpeak(spoken);
-        } else if (!cancelledRef.current) {
+        } else if (!cancelledRef.current && phase === "listening" && mode === "speech") {
+          // Empty stop — stay idle
           setPhase("idle");
           setHeard("");
         }
@@ -201,34 +288,70 @@ export function AiVoiceTalkButton() {
     });
 
     if (!recognizer) {
-      notifyError("Voice is not supported in this browser.");
+      void startRecording();
       return;
     }
 
     recognizerRef.current = recognizer;
     setPhase("listening");
     recognizer.start();
-  }, [askAndSpeak]);
+  }, [askAndSpeak, mode, phase, startRecording]);
 
-  useEffect(() => {
-    startListeningRef.current = startListening;
-  }, [startListening]);
+  const finishListening = useCallback(async () => {
+    if (phase !== "listening") return;
+
+    if (mode === "record") {
+      await finishRecording();
+      return;
+    }
+
+    const spoken = voiceFinalRef.current.trim() || heard.trim();
+    recognizerRef.current?.stop();
+    recognizerRef.current = null;
+
+    if (spoken) {
+      voiceFinalRef.current = "";
+      void askAndSpeak(spoken);
+      return;
+    }
+
+    // No browser transcript — switch to record path if possible.
+    if (canUseMediaRecorderVoice()) {
+      void startRecording();
+      return;
+    }
+
+    setPhase("idle");
+    setHeard("");
+    notifyError("Didn’t catch that. Try again or type your question.");
+  }, [askAndSpeak, finishRecording, heard, mode, phase, startRecording]);
 
   const onClick = useCallback(() => {
+    if (phase === "listening") {
+      void finishListening();
+      return;
+    }
     if (phase !== "idle") {
       reset();
       return;
     }
-    speechRetryRef.current = 0;
-    void startListening();
-  }, [phase, reset, startListening]);
+    // Record-and-transcribe is more reliable than Chrome’s Google speech cloud
+    // (which often fails with a fake "network" error, especially outside the US).
+    if (canUseMediaRecorderVoice()) {
+      void startRecording();
+    } else {
+      void startBrowserSpeech();
+    }
+  }, [finishListening, phase, reset, startBrowserSpeech, startRecording]);
 
   if (!voiceSupported) return null;
 
   const busy = phase !== "idle";
   const statusLabel =
     phase === "listening"
-      ? "Listening…"
+      ? mode === "record"
+        ? "Recording… tap Done when finished"
+        : "Listening… tap Done when finished"
       : phase === "thinking"
         ? "Checking…"
         : phase === "speaking"
@@ -243,13 +366,19 @@ export function AiVoiceTalkButton() {
         className={`app-topbar-icon-btn inline-flex shrink-0 items-center gap-1.5 px-2.5 text-sm font-medium whitespace-nowrap ${
           busy ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200" : ""
         }`}
-        aria-label="Talk To AI Assistant"
-        title="Talk To AI Assistant — ask and hear a short answer"
+        aria-label={phase === "listening" ? "Done — send question" : "Talk To AI Assistant"}
+        title={
+          phase === "listening"
+            ? "Done — send your question"
+            : "Talk To AI Assistant — ask and hear a short answer"
+        }
         aria-pressed={busy}
       >
         <MicIcon className={`h-4 w-4 shrink-0 ${phase === "listening" ? "animate-pulse" : ""}`} />
-        <span className="max-sm:hidden">Talk To AI Assistant</span>
-        <span className="sm:hidden">Talk To AI</span>
+        <span className="max-sm:hidden">
+          {phase === "listening" ? "Done" : "Talk To AI Assistant"}
+        </span>
+        <span className="sm:hidden">{phase === "listening" ? "Done" : "Talk To AI"}</span>
       </button>
 
       {busy ? (
@@ -270,22 +399,35 @@ export function AiVoiceTalkButton() {
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{statusLabel}</p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? "Ask your question, then pause"
+                  ? mode === "record"
+                    ? "Speak your question, then tap Done"
+                    : "Speak your question — tap Done when you pause"
                   : phase === "thinking"
                     ? "Looking up your answer"
-                    : "Short spoken answer — sidebar stays closed"}
+                    : "Short spoken answer"}
               </p>
-              {heard.trim() ? (
+              {heard.trim() && heard !== "Transcribing…" ? (
                 <p className="mt-2 line-clamp-2 text-sm text-slate-800 dark:text-slate-200">“{heard.trim()}”</p>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={reset}
-              className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-indigo-950/50"
-            >
-              Cancel
-            </button>
+            <div className="flex shrink-0 flex-col gap-1">
+              {phase === "listening" ? (
+                <button
+                  type="button"
+                  onClick={() => void finishListening()}
+                  className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+                >
+                  Done
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-indigo-950/50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

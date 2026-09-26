@@ -28,14 +28,6 @@ import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
-import {
-  getAiTtsPref,
-  isSpeechSynthesisSupported,
-  setAiTtsPref,
-  speakAssistantText,
-  spokenBriefForSpeech,
-  stopAssistantSpeech,
-} from "@/lib/ai-voice";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -112,18 +104,6 @@ function MinimizeIcon({ className }) {
   );
 }
 
-function SpeakerIcon({ className }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
-      />
-    </svg>
-  );
-}
-
 function ThumbUpIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -196,11 +176,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [actionResult, setActionResult] = useState(null);
   const [pageContext, setPageContext] = useState(null);
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState(null);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [ttsSupported, setTtsSupported] = useState(false);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
-  const lastSpokenRef = useRef("");
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
@@ -273,23 +250,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [canUse]);
 
   useEffect(() => {
-    setTtsSupported(isSpeechSynthesisSupported());
-    setTtsEnabled(getAiTtsPref());
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      stopAssistantSpeech();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    return () => {
-      stopAssistantSpeech();
-    };
-  }, []);
-
-  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open, pendingAction, formSpec, actionResult]);
 
@@ -298,20 +258,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setFormSpec(null);
     setFormValues({});
   }, []);
-
-  const speakReplyIfNeeded = useCallback(
-    (content) => {
-      if (!content || !ttsEnabled) return;
-      // Never narrate the full markdown already shown in chat — brief only.
-      const brief = spokenBriefForSpeech(content);
-      if (!brief) return;
-      const key = brief.slice(0, 80);
-      if (lastSpokenRef.current === key) return;
-      lastSpokenRef.current = key;
-      void speakAssistantText(brief);
-    },
-    [ttsEnabled],
-  );
 
   const applyChatResponse = useCallback(
     (res, { skipAssistantAppend = false } = {}) => {
@@ -327,10 +273,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       if (content && !skipAssistantAppend) {
         setMessages((prev) => [...prev, { role: "assistant", content }]);
-      }
-
-      if (content) {
-        speakReplyIfNeeded(content);
       }
 
       if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
@@ -371,7 +313,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         clearActionState();
       }
     },
-    [clearActionState, speakReplyIfNeeded],
+    [clearActionState],
   );
 
   const startNewConversation = useCallback(() => {
@@ -380,21 +322,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setError(null);
     setLastFailedMessage(null);
     setActionResult(null);
-    lastSpokenRef.current = "";
-    stopAssistantSpeech();
     clearActionState();
   }, [clearActionState]);
-
-  const toggleTts = useCallback(() => {
-    setTtsEnabled((prev) => {
-      const next = !prev;
-      setAiTtsPref(next);
-      if (!next) {
-        stopAssistantSpeech();
-      }
-      return next;
-    });
-  }, []);
 
   const sendFeedback = useCallback(
     async (messageIndex, rating) => {
@@ -444,7 +373,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     ) => {
       const message = text.trim();
       if (!message || loading) return;
-      stopAssistantSpeech();
       const refsForSend = serializeEntityRefs(entityRefsOverride ?? entityRefs);
       setError(null);
       setLastFailedMessage(null);
@@ -682,26 +610,6 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {ttsSupported ? (
-                  <button
-                    type="button"
-                    onClick={toggleTts}
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg transition ${
-                      ttsEnabled
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
-                    aria-pressed={ttsEnabled}
-                    aria-label={ttsEnabled ? "Turn off short spoken answers for typed questions" : "Speak short answers for typed questions"}
-                    title={
-                      ttsEnabled
-                        ? "Short spoken answers for typed questions: on"
-                        : "Short spoken answers for typed questions: off"
-                    }
-                  >
-                    <SpeakerIcon className="h-5 w-5" />
-                  </button>
-                ) : null}
                 {messages.length > 0 ? (
                   <button
                     type="button"
