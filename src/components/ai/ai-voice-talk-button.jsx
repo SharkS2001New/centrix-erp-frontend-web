@@ -60,6 +60,7 @@ export function AiVoiceTalkButton() {
   const recognizerRef = useRef(null);
   const recorderRef = useRef(null);
   const voiceFinalRef = useRef("");
+  const interimHeardRef = useRef("");
   const cancelledRef = useRef(false);
   /** Stays true for the whole Talk session until Stop — enables continuous turns. */
   const conversationActiveRef = useRef(false);
@@ -99,6 +100,7 @@ export function AiVoiceTalkButton() {
     recorderRef.current = null;
     stopAssistantSpeech();
     voiceFinalRef.current = "";
+    interimHeardRef.current = "";
     setHeard("");
     setInterimHeard("");
     setSpokenReply("");
@@ -290,6 +292,7 @@ export function AiVoiceTalkButton() {
       clearResumeTimer();
       stopAssistantSpeech();
       voiceFinalRef.current = "";
+      interimHeardRef.current = "";
       setHeard("");
       setInterimHeard("");
       setSuggestOpen(false);
@@ -307,6 +310,7 @@ export function AiVoiceTalkButton() {
           minConfidence: 0.4,
           onInterim: (text) => {
             if (cancelledRef.current) return;
+            interimHeardRef.current = text;
             setInterimHeard(text);
             setHeard(() => {
               const base = voiceFinalRef.current.trim();
@@ -318,6 +322,7 @@ export function AiVoiceTalkButton() {
           onFinal: (text) => {
             if (cancelledRef.current) return;
             voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
+            interimHeardRef.current = "";
             setInterimHeard("");
             setHeard(voiceFinalRef.current);
             setLevel(0.25);
@@ -332,6 +337,18 @@ export function AiVoiceTalkButton() {
               setPhase("idle");
               setHeard("");
               setInterimHeard("");
+              return;
+            }
+            // Prefer browser STT text already captured — avoid Gemini STT fallback
+            // (DeepSeek chat orgs use Gemini only for voice, which rate-limits easily).
+            const spokenNow = [voiceFinalRef.current, interimHeardRef.current]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            if (spokenNow) {
+              voiceFinalRef.current = spokenNow;
+              interimHeardRef.current = "";
+              handOffToAssistant(spokenNow);
               return;
             }
             if (canUseMediaRecorderVoice()) {
@@ -359,7 +376,7 @@ export function AiVoiceTalkButton() {
 
       await startRecordingFallback();
     },
-    [clearPauseTimer, clearResumeTimer, scheduleHandOff, startRecordingFallback],
+    [clearPauseTimer, clearResumeTimer, handOffToAssistant, scheduleHandOff, startRecordingFallback],
   );
 
   useEffect(() => {

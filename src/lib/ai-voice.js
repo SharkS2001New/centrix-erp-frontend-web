@@ -93,8 +93,8 @@ export function plainTextForSpeech(raw) {
 }
 
 /**
- * Short spoken answer only — never narrate the full chat markdown.
- * Prefers the first 1–3 sentences (e.g. till float direct_answer).
+ * Spoken answer for Talk mode — full enough to hear the reply, without narrating
+ * huge markdown tables / “Open …” footers.
  */
 export function spokenBriefForSpeech(raw) {
   let text = String(raw ?? "");
@@ -105,9 +105,9 @@ export function spokenBriefForSpeech(raw) {
   text = text.replace(/\bKES\s+/gi, "KES ");
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length > 0) {
-    text = sentences.slice(0, 2).join(" ");
+    text = sentences.slice(0, 5).join(" ");
   }
-  return text.slice(0, 320).trim();
+  return text.slice(0, 900).trim();
 }
 
 export function speechErrorMessage(code) {
@@ -464,7 +464,7 @@ export function createSpeechRecognizer(options = {}) {
  * Slightly faster default rate so back-and-forth voice chat feels snappier.
  * @returns {Promise<boolean>}
  */
-export function speakAssistantText(text, { lang = "en-US", rate = 1.08 } = {}) {
+export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
   if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
   const plain = plainTextForSpeech(text);
   if (!plain) return Promise.resolve(false);
@@ -474,15 +474,35 @@ export function speakAssistantText(text, { lang = "en-US", rate = 1.08 } = {}) {
     utter.lang = lang || preferredSpeechLang();
     utter.rate = rate;
     let settled = false;
+    // ~12–14 chars/sec at rate 1; keep generous so we never cut off mid-sentence.
+    const msPerChar = 110 / Math.max(0.75, rate);
+    const safetyMs = Math.min(120_000, 4_000 + plain.length * msPerChar);
+
     const finish = (ok) => {
       if (settled) return;
       settled = true;
+      window.clearInterval(keepAlive);
+      window.clearTimeout(safetyTimer);
       resolve(ok);
     };
+
+    // Chrome often pauses TTS after ~15s — nudge it so longer answers finish.
+    const keepAlive = window.setInterval(() => {
+      if (settled) return;
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 4_000);
+
+    const safetyTimer = window.setTimeout(() => finish(true), safetyMs);
+
     utter.onend = () => finish(true);
     utter.onerror = () => finish(false);
     window.speechSynthesis.speak(utter);
-    window.setTimeout(() => finish(true), Math.min(60_000, 2_000 + plain.length * 55));
   });
 }
 
