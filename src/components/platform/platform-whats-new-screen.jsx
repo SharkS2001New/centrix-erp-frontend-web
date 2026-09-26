@@ -11,6 +11,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { PlatformWhatsNewAiAssist } from "@/components/platform/platform-whats-new-ai-assist";
 
 const EMPTY_FORM = {
   title: "",
@@ -200,6 +201,28 @@ export function PlatformWhatsNewScreen() {
           </div>
 
           <div className="space-y-4">
+            <PlatformWhatsNewAiAssist
+              title={form.title}
+              body={form.body}
+              linkUrl={form.link_url}
+              workspaces={workspaces}
+              onApply={(draft) => {
+                const allowed = new Set(workspaces.map((ws) => String(ws.id)));
+                const suggestedWorkspaces = (draft.workspace_ids ?? []).filter((id) =>
+                  allowed.has(String(id)),
+                );
+                setForm((f) => ({
+                  ...f,
+                  title: draft.title || f.title,
+                  body: draft.body || f.body,
+                  link_url: draft.link_url || f.link_url,
+                  workspace_ids:
+                    suggestedWorkspaces.length > 0
+                      ? Array.from(new Set([...f.workspace_ids, ...suggestedWorkspaces]))
+                      : f.workspace_ids,
+                }));
+              }}
+            />
             <Field label="Title">
               <input
                 className={inputClassName()}

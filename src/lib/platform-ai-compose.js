@@ -281,3 +281,110 @@ export async function composePlatformDocumentFieldsWithAi(input = {}) {
     )
   );
 }
+
+/**
+ * Draft or polish a Platform → What’s new note from a rough idea.
+ * @param {{
+ *   instruction?: string,
+ *   title?: string,
+ *   body?: string,
+ *   link_url?: string,
+ *   mode?: "draft" | "improve",
+ *   workspaces?: Array<{ id?: string, label?: string }>,
+ * }} input
+ */
+export async function composePlatformWhatsNewWithAi(input = {}) {
+  const apiBase = aiTrainingApiBase();
+  const hasDraft = Boolean(String(input.title ?? "").trim() || String(input.body ?? "").trim());
+  const mode = input.mode || (hasDraft ? "improve" : "draft");
+  const workspaces = Array.isArray(input.workspaces) ? input.workspaces : [];
+  const workspaceCatalog = workspaces
+    .map((ws) => `${ws.id ?? ""}: ${ws.label ?? ""}`)
+    .filter((line) => line !== ": ")
+    .join("\n");
+
+  const instruction =
+    input.instruction?.trim() ||
+    (mode === "draft"
+      ? "Turn this rough idea into a clear Centrix What’s new note for end users."
+      : "Improve this What’s new note: clearer headline, punchier body, keep the same facts.");
+
+  const payload = {
+    task: "whats_new",
+    mode,
+    use_knowledge: false,
+    skip_training: true,
+    instruction,
+    subject: String(input.title ?? ""),
+    body: [
+      String(input.body ?? ""),
+      input.link_url ? `\nOptional link so far: ${input.link_url}` : "",
+      workspaceCatalog ? `\nAllowed workspace ids (pick only from this list if suggesting):\n${workspaceCatalog}` : "",
+    ]
+      .join("")
+      .trim(),
+    output_format: "json",
+    system_hint:
+      "You help the Centrix platform super-admin write in-app What’s new release notes. " +
+      "Users see the title + body in a login chip and bell notification. " +
+      "Return JSON only: {\"title\":\"...\",\"body\":\"...\",\"link_url\":\"optional\",\"workspace_ids\":[\"optional ids\"]}. " +
+      "Title: short headline (under 80 characters when possible). " +
+      "Body: 2–5 short sentences, benefit-first, Kenya business English, no markdown headings, no hype. " +
+      "link_url: only if a real Centrix path (e.g. /sales/pos) or https URL clearly helps; else empty string. " +
+      "workspace_ids: only ids from the allowed list in the prompt when the update clearly targets those modules; else []. " +
+      "Do not invent features that were not described.",
+  };
+
+  const paths = [`${apiBase}/compose`, `${apiBase}/compose-email`];
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const res = await apiRequest(path, { method: "POST", body: payload });
+      const data = res?.data ?? res ?? {};
+      const parsed =
+        extractJsonObject(data.reply) ||
+        extractJsonObject(data.content) ||
+        extractJsonObject(data.message) ||
+        (typeof data.body === "string" ? extractJsonObject(data.body) : null);
+
+      const title = String(
+        parsed?.title ?? data.title ?? data.subject ?? input.title ?? "",
+      ).trim();
+      const body = String(
+        parsed?.body ??
+          (typeof data.body === "string" && !parsed ? data.body : null) ??
+          input.body ??
+          "",
+      ).trim();
+      const linkUrl = String(
+        parsed?.link_url ?? parsed?.link ?? data.link_url ?? input.link_url ?? "",
+      ).trim();
+      const workspaceIds = Array.isArray(parsed?.workspace_ids)
+        ? parsed.workspace_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+
+      return {
+        title,
+        body,
+        link_url: linkUrl,
+        workspace_ids: workspaceIds,
+        raw: data,
+      };
+    } catch (err) {
+      lastError = err;
+      if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw (
+    lastError ??
+    new ApiError(
+      "Platform AI compose is not available yet. Save AI credentials under Platform settings → AI credentials.",
+      404,
+    )
+  );
+}

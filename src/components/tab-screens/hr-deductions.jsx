@@ -2,8 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { CatalogPageShell, Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, FILTER_CONTROL_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
+import { HrFilterButton } from "@/components/hr/hr-list-toolbar";
 import { GovernmentDeductionsAside } from "@/components/hr/government-deductions-aside";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 import { apiRequest } from "@/lib/api";
@@ -303,8 +304,44 @@ function formatAssigneesColumn(row) {
   return `${names.slice(0, 3).join(", ")} +${names.length - 3} more`;
 }
 
+function payrollStatusLabel(row) {
+  const status = String(row?.payroll_status ?? "").toLowerCase();
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "applied":
+      return "Applied";
+    case "active":
+      return "Every cycle";
+    case "inactive":
+      return "Inactive";
+    default:
+      return row?.is_active === false ? "Inactive" : "—";
+  }
+}
+
+function formatAppliedColumn(row) {
+  const period = String(row?.applied_period ?? "").trim();
+  const on = String(row?.applied_on ?? "").trim();
+  if (period && on) return `${period} · ${on}`;
+  if (period) return period;
+  if (on) return on;
+  if (String(row?.payroll_status ?? "").toLowerCase() === "pending") return "Next payroll";
+  if (String(row?.frequency ?? "") === "one_time") return "—";
+  return "Each cycle";
+}
+
 export function HrDeductionsScreen() {
   const [tab, setTab] = useState("govt");
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [appliedStatus, setAppliedStatus] = useState("pending");
+
+  const listSearchParams = useMemo(
+    () => ({
+      payroll_status: appliedStatus || "pending",
+    }),
+    [appliedStatus],
+  );
 
   const loadEmployeesExtra = useCallback(async () => {
     const emps = await apiRequest("/employees", {
@@ -340,12 +377,12 @@ export function HrDeductionsScreen() {
             title="Other deductions"
             subtitle={
               <>
-              Create a deduction and assign employees in one step.{" "}
+              Pending shows deductions due on the next payroll. Applied one-time items move out after the run.{" "}
               <Link
                 href="/reports/other-deductions"
                 className="font-medium text-slate-800 underline-offset-2 hover:underline"
               >
-                  View deductions by pay period
+                  View by pay period
                 </Link>
               </>
             }
@@ -353,14 +390,39 @@ export function HrDeductionsScreen() {
             drawerCreateTitle="Add deduction"
             drawerWide
             apiPath="/payroll-deduction-types"
+            listSearchParams={listSearchParams}
             loadExtra={loadEmployeesExtra}
             exportTitle="Other deductions"
             exportFilename="other-deductions"
+            filterSlot={({ reload, loading }) => (
+              <>
+                <Field label="Status">
+                  <select
+                    className={FILTER_CONTROL_CLASS}
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="pending">Pending (next payroll)</option>
+                    <option value="applied">Applied</option>
+                    <option value="all">All</option>
+                  </select>
+                </Field>
+                <HrFilterButton
+                  loading={loading}
+                  onClick={() => {
+                    setAppliedStatus(statusFilter);
+                    reload?.();
+                  }}
+                />
+              </>
+            )}
             exportColumns={[
               { key: "deduction_code", label: "Code" },
               { key: "name", label: "Type" },
             { key: "employees", label: "Employees" },
               { key: "when", label: "When" },
+              { key: "status", label: "Status" },
+              { key: "applied", label: "Applied" },
               { key: "calculation", label: "Calculation" },
             { key: "default_display", label: "Amount", align: "right" },
             ]}
@@ -370,6 +432,8 @@ export function HrDeductionsScreen() {
                 name: r.name ?? "",
               employees: formatAssigneesColumn(r),
                 when: r.frequency === "one_time" ? "One-time" : "Every cycle",
+                status: payrollStatusLabel(r),
+                applied: formatAppliedColumn(r),
                 calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
                 default_display:
                   r.calc_type === "percentage"
@@ -395,6 +459,34 @@ export function HrDeductionsScreen() {
                 render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
               },
               {
+                key: "payroll_status",
+                label: "Status",
+                render: (r) => {
+                  const label = payrollStatusLabel(r);
+                  const status = String(r?.payroll_status ?? "").toLowerCase();
+                  const tone =
+                    status === "applied"
+                      ? "bg-slate-100 text-slate-700"
+                      : status === "pending"
+                        ? "bg-amber-50 text-amber-900"
+                        : status === "inactive"
+                          ? "bg-slate-50 text-slate-500"
+                          : "bg-emerald-50 text-emerald-900";
+                  return (
+                    <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${tone}`}>
+                      {label}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: "applied_on",
+                label: "Applied",
+                render: (r) => (
+                  <span className="whitespace-nowrap text-slate-700">{formatAppliedColumn(r)}</span>
+                ),
+              },
+              {
                 key: "calc_type",
                 label: "Calculation",
                 render: (r) =>
@@ -413,7 +505,9 @@ export function HrDeductionsScreen() {
             const assignees = Array.isArray(r.assigned_employees)
               ? r.assigned_employees.map((e) => e.name ?? "").join(" ")
               : "";
-            return `${r.deduction_code} ${r.name} ${assignees}`.toLowerCase().includes(q);
+            return `${r.deduction_code} ${r.name} ${assignees} ${payrollStatusLabel(r)} ${formatAppliedColumn(r)}`
+              .toLowerCase()
+              .includes(q);
           }}
             buildEmptyForm={(_, row) => typeFormFromRow(row)}
             buildBody={(form, orgId) => buildTypeBody(form, orgId)}
