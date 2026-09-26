@@ -20,7 +20,7 @@ import {
   openAppPathAcrossWorkspaces,
 } from "@/lib/workspace-navigation";
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildPageContext, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
@@ -28,6 +28,17 @@ import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
+import {
+  createSpeechRecognizer,
+  getAiTalkModePref,
+  getAiTtsPref,
+  isSpeechRecognitionSupported,
+  isSpeechSynthesisSupported,
+  setAiTalkModePref,
+  setAiTtsPref,
+  speakAssistantText,
+  stopAssistantSpeech,
+} from "@/lib/ai-voice";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -104,6 +115,54 @@ function MinimizeIcon({ className }) {
   );
 }
 
+function MicIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+      />
+    </svg>
+  );
+}
+
+function SpeakerIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
+      />
+    </svg>
+  );
+}
+
+function ThumbUpIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"
+      />
+    </svg>
+  );
+}
+
+function ThumbDownIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h3a2 2 0 012 2v7a2 2 0 01-2 2h-3"
+      />
+    </svg>
+  );
+}
+
 export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -152,8 +211,19 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [actionResult, setActionResult] = useState(null);
   const [pageContext, setPageContext] = useState(null);
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState(null);
+  const [listening, setListening] = useState(false);
+  const [talkMode, setTalkMode] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [ttsSupported, setTtsSupported] = useState(false);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
+  const recognizerRef = useRef(null);
+  const voiceFinalRef = useRef("");
+  const lastSpokenRef = useRef("");
+  const talkModeRef = useRef(false);
+  const startListeningRef = useRef(null);
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
@@ -226,14 +296,58 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [canUse]);
 
   useEffect(() => {
+    setVoiceSupported(isSpeechRecognitionSupported());
+    setTtsSupported(isSpeechSynthesisSupported());
+    setTtsEnabled(getAiTtsPref());
+    const talk = getAiTalkModePref();
+    talkModeRef.current = talk;
+    setTalkMode(talk);
+  }, []);
+
+  useEffect(() => {
+    talkModeRef.current = talkMode;
+  }, [talkMode]);
+
+  useEffect(() => {
+    if (!open) {
+      recognizerRef.current?.stop();
+      recognizerRef.current = null;
+      setListening(false);
+      setSpeaking(false);
+      stopAssistantSpeech();
+      if (talkModeRef.current) {
+        talkModeRef.current = false;
+        setTalkMode(false);
+        setAiTalkModePref(false);
+      }
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      recognizerRef.current?.stop();
+      stopAssistantSpeech();
+    };
+  }, []);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, open, pendingAction, formSpec, actionResult]);
+  }, [messages, open, pendingAction, formSpec, actionResult, listening, speaking]);
 
   const clearActionState = useCallback(() => {
     setPendingAction(null);
     setFormSpec(null);
     setFormValues({});
   }, []);
+
+  const resumeListeningAfterSpeech = useCallback(() => {
+    if (!talkModeRef.current) return;
+    window.setTimeout(() => {
+      if (talkModeRef.current && !loading) {
+        startListeningRef.current?.();
+      }
+    }, 350);
+  }, [loading]);
 
   const applyChatResponse = useCallback(
     (res, { skipAssistantAppend = false } = {}) => {
@@ -244,11 +358,29 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const content = res.message || res.reply || "";
       if (res.success === false && content) {
         setError(content);
+        resumeListeningAfterSpeech();
         return;
       }
 
       if (content && !skipAssistantAppend) {
         setMessages((prev) => [...prev, { role: "assistant", content }]);
+      }
+
+      const shouldSpeak = Boolean(content) && (ttsEnabled || talkModeRef.current);
+      if (shouldSpeak) {
+        const key = content.slice(0, 80);
+        if (lastSpokenRef.current !== key) {
+          lastSpokenRef.current = key;
+          setSpeaking(true);
+          void speakAssistantText(content).finally(() => {
+            setSpeaking(false);
+            resumeListeningAfterSpeech();
+          });
+        } else {
+          resumeListeningAfterSpeech();
+        }
+      } else {
+        resumeListeningAfterSpeech();
       }
 
       if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
@@ -289,7 +421,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         clearActionState();
       }
     },
-    [clearActionState],
+    [clearActionState, resumeListeningAfterSpeech, ttsEnabled],
   );
 
   const startNewConversation = useCallback(() => {
@@ -298,8 +430,166 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setError(null);
     setLastFailedMessage(null);
     setActionResult(null);
+    lastSpokenRef.current = "";
+    stopAssistantSpeech();
     clearActionState();
   }, [clearActionState]);
+
+  const stopVoiceInput = useCallback(() => {
+    recognizerRef.current?.stop();
+    recognizerRef.current = null;
+    setListening(false);
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (loading || speaking) return;
+    if (!voiceSupported) {
+      notifyError("Voice chat needs Chrome or Edge with microphone access.");
+      return;
+    }
+    stopAssistantSpeech();
+    setSpeaking(false);
+    voiceFinalRef.current = "";
+    recognizerRef.current?.stop();
+    const recognizer = createSpeechRecognizer({
+      onInterim: (text) => {
+        setInput(text);
+      },
+      onFinal: (text) => {
+        voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
+        setInput(voiceFinalRef.current);
+      },
+      onError: (message) => {
+        notifyError(message);
+        setListening(false);
+        recognizerRef.current = null;
+        if (talkModeRef.current) {
+          talkModeRef.current = false;
+          setTalkMode(false);
+          setAiTalkModePref(false);
+        }
+      },
+      onEnd: () => {
+        setListening(false);
+        recognizerRef.current = null;
+        const spoken = voiceFinalRef.current.trim();
+        voiceFinalRef.current = "";
+        if (spoken) {
+          void sendRef.current?.(spoken);
+          return;
+        }
+        // No speech captured — keep conversation going if Talk mode is on.
+        if (talkModeRef.current) {
+          window.setTimeout(() => startListeningRef.current?.(), 500);
+        }
+      },
+    });
+    if (!recognizer) {
+      notifyError("Voice chat is not supported in this browser.");
+      return;
+    }
+    recognizerRef.current = recognizer;
+    setListening(true);
+    setOpen(true);
+    recognizer.start();
+  }, [loading, speaking, voiceSupported]);
+
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+
+  const endTalkMode = useCallback(() => {
+    talkModeRef.current = false;
+    setTalkMode(false);
+    setAiTalkModePref(false);
+    stopVoiceInput();
+    stopAssistantSpeech();
+    setSpeaking(false);
+  }, [stopVoiceInput]);
+
+  const startTalkMode = useCallback(() => {
+    if (!voiceSupported) {
+      notifyError("Voice chat needs Chrome or Edge with microphone access.");
+      return;
+    }
+    talkModeRef.current = true;
+    setTalkMode(true);
+    setAiTalkModePref(true);
+    setTtsEnabled(true);
+    setAiTtsPref(true);
+    setOpen(true);
+    setExpanded(false);
+    startListening();
+  }, [startListening, voiceSupported]);
+
+  const toggleTalkMode = useCallback(() => {
+    if (talkMode || listening) {
+      endTalkMode();
+      return;
+    }
+    startTalkMode();
+  }, [endTalkMode, listening, startTalkMode, talkMode]);
+
+  const toggleVoiceInput = useCallback(() => {
+    if (loading || speaking) return;
+    if (listening) {
+      stopVoiceInput();
+      const spoken = voiceFinalRef.current.trim();
+      voiceFinalRef.current = "";
+      if (spoken) void sendRef.current?.(spoken);
+      return;
+    }
+    // One-shot dictation (not full Talk mode).
+    startListening();
+  }, [listening, loading, speaking, startListening, stopVoiceInput]);
+
+  const toggleTts = useCallback(() => {
+    setTtsEnabled((prev) => {
+      const next = !prev;
+      setAiTtsPref(next);
+      if (!next) {
+        stopAssistantSpeech();
+        setSpeaking(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const sendFeedback = useCallback(
+    async (messageIndex, rating) => {
+      const assistant = messages[messageIndex];
+      if (!assistant || assistant.role !== "assistant" || assistant.feedback) return;
+      let userPreview = "";
+      for (let j = messageIndex - 1; j >= 0; j -= 1) {
+        if (messages[j]?.role === "user") {
+          userPreview = messages[j].content;
+          break;
+        }
+      }
+      try {
+        await apiRequest("/ai/feedback", {
+          method: "POST",
+          body: {
+            rating,
+            conversation_id: conversationId || undefined,
+            workspace_id: workspaceId || undefined,
+            pathname: pathname || undefined,
+            user_message_preview: userPreview.slice(0, 2000) || undefined,
+            assistant_message_preview: String(assistant.content ?? "").slice(0, 4000) || undefined,
+          },
+        });
+        setMessages((prev) => {
+          const next = [...prev];
+          next[messageIndex] = { ...next[messageIndex], feedback: rating };
+          return next;
+        });
+        notifySuccess(rating === "up" ? "Thanks — marked helpful." : "Thanks — we’ll use that to improve.");
+      } catch (err) {
+        notifyError(err instanceof Error ? err.message : "Could not save feedback.");
+      }
+    },
+    [conversationId, messages, pathname, workspaceId],
+  );
 
   const send = useCallback(
     async (
@@ -313,6 +603,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     ) => {
       const message = text.trim();
       if (!message || loading) return;
+      stopAssistantSpeech();
+      stopVoiceInput();
       const refsForSend = serializeEntityRefs(entityRefsOverride ?? entityRefs);
       setError(null);
       setLastFailedMessage(null);
@@ -436,6 +728,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       pageContext,
       entityRefs,
       status?.supports_streaming,
+      stopVoiceInput,
     ],
   );
 
@@ -545,11 +838,33 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               <div className="min-w-0 pr-3">
                 <h2 className="font-semibold text-slate-900">{title}</h2>
                 <p className="text-xs text-slate-500">
-                  {statusHint}
-                  {canUse ? " · ⌘K / Ctrl+K opens assistant" : ""}
+                  {talkMode
+                    ? speaking
+                      ? "Talking… I’ll listen again when finished"
+                      : listening
+                        ? "Listening — ask anything about Centrix"
+                        : "Talk mode on — ask your next question"
+                    : statusHint}
+                  {!talkMode && canUse ? " · ⌘K / Ctrl+K opens assistant" : ""}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {ttsSupported ? (
+                  <button
+                    type="button"
+                    onClick={toggleTts}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg transition ${
+                      ttsEnabled
+                        ? "bg-indigo-50 text-indigo-700"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                    aria-pressed={ttsEnabled}
+                    aria-label={ttsEnabled ? "Turn off speak replies" : "Speak replies aloud"}
+                    title={ttsEnabled ? "Speak replies: on" : "Speak replies: off"}
+                  >
+                    <SpeakerIcon className="h-5 w-5" />
+                  </button>
+                ) : null}
                 {messages.length > 0 ? (
                   <button
                     type="button"
@@ -586,9 +901,25 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               {messages.length === 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-600">
-                    Ask anything about <span className="font-medium text-slate-800">{workspaceLabel}</span>.
-                    Not sure what to type? Send <span className="font-medium text-slate-800">Help</span> for a full list.
+                    Ask anything about <span className="font-medium text-slate-800">{workspaceLabel}</span>
+                    {voiceSupported ? " — type, or use Talk for a hands-free conversation." : "."}
+                    {" "}
+                    Not sure what to say? Send <span className="font-medium text-slate-800">Help</span> for a full list.
                   </p>
+                  {voiceSupported ? (
+                    <button
+                      type="button"
+                      onClick={toggleTalkMode}
+                      className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition ${
+                        talkMode
+                          ? "bg-red-600 text-white hover:bg-red-700"
+                          : "bg-indigo-600 text-white hover:bg-indigo-700"
+                      }`}
+                    >
+                      <MicIcon className="h-5 w-5" />
+                      {talkMode ? "End conversation" : "Talk to Centrix"}
+                    </button>
+                  ) : null}
                   <div className={expanded ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
                     {starters.map((q) => (
                       <button
@@ -625,6 +956,39 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     preferredChartType={preferredChartTypeForMessage(messages, i)}
                     onNavigate={(_event, href) => void navigateFromAi(href)}
                   />
+                  {m.role === "assistant" && m.content && !m.streaming ? (
+                    <div className="mt-2 flex items-center gap-1 border-t border-slate-200/80 pt-1.5">
+                      <span className="mr-1 text-[11px] text-slate-500">Helpful?</span>
+                      <button
+                        type="button"
+                        disabled={Boolean(m.feedback)}
+                        onClick={() => void sendFeedback(i, "up")}
+                        className={`rounded p-1 ${
+                          m.feedback === "up"
+                            ? "text-emerald-600"
+                            : "text-slate-400 hover:bg-white hover:text-emerald-600"
+                        } disabled:opacity-60`}
+                        aria-label="Mark helpful"
+                        title="Helpful"
+                      >
+                        <ThumbUpIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(m.feedback)}
+                        onClick={() => void sendFeedback(i, "down")}
+                        className={`rounded p-1 ${
+                          m.feedback === "down"
+                            ? "text-amber-600"
+                            : "text-slate-400 hover:bg-white hover:text-amber-600"
+                        } disabled:opacity-60`}
+                        aria-label="Mark not helpful"
+                        title="Not helpful"
+                      >
+                        <ThumbDownIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
 
@@ -783,8 +1147,12 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 rows={expanded ? 5 : 4}
                 value={input}
                 entityRefs={entityRefs}
-                disabled={loading}
-                placeholder={`Ask anything… Type Help for ideas · @ for products, suppliers, customers`}
+                disabled={loading || listening}
+                placeholder={
+                  listening
+                    ? "Listening… speak your question"
+                    : `Ask anything… Type Help for ideas · @ for products, suppliers, customers`
+                }
                 textareaClassName="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
                 onChange={({ text, entityRefs: nextRefs }) => {
                   setInput(text);
@@ -794,17 +1162,71 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   send(text, { entityRefsOverride: nextRefs });
                 }}
               />
-              <div className="mt-3 flex justify-start">
-                <button
-                  type="submit"
-                  disabled={loading || !input.trim()}
-                  className="min-w-[120px] rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  Send
-                </button>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {voiceSupported ? (
+                    <button
+                      type="button"
+                      disabled={loading && !talkMode}
+                      onClick={toggleTalkMode}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+                        talkMode
+                          ? "bg-red-600 text-white hover:bg-red-700"
+                          : "bg-indigo-600 text-white hover:bg-indigo-700"
+                      }`}
+                      aria-pressed={talkMode}
+                      title={
+                        talkMode
+                          ? "End voice conversation"
+                          : "Start a voice conversation — speak, hear answers, ask follow-ups"
+                      }
+                    >
+                      <MicIcon className="h-4 w-4" />
+                      {talkMode
+                        ? speaking
+                          ? "Speaking…"
+                          : listening
+                            ? "Listening…"
+                            : "End talk"
+                        : "Talk"}
+                    </button>
+                  ) : null}
+                  {voiceSupported && !talkMode ? (
+                    <button
+                      type="button"
+                      disabled={loading || speaking}
+                      onClick={toggleVoiceInput}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition disabled:opacity-50 ${
+                        listening
+                          ? "bg-red-600 text-white hover:bg-red-700"
+                          : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                      aria-pressed={listening}
+                      title={listening ? "Stop and send" : "Dictate one question"}
+                    >
+                      <MicIcon className="h-4 w-4" />
+                      {listening ? "Listening…" : "Dictate"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={loading || !input.trim() || talkMode}
+                    className="min-w-[100px] rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </div>
               </div>
               <p className="mt-1.5 text-center text-xs text-slate-500">
-                Enter to send · Shift+Enter for a new line · @ to mention
+                {talkMode
+                  ? speaking
+                    ? "Playing the answer — I’ll listen for your next question next"
+                    : listening
+                      ? "Ask anything — pause when you’re done"
+                      : "Talk mode on · tap End talk to stop"
+                  : voiceSupported
+                    ? "Talk = ongoing conversation · Dictate = one question · Enter to type"
+                    : "Enter to send · Shift+Enter for a new line · @ to mention"}
               </p>
             </form>
           </div>
