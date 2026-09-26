@@ -1,10 +1,24 @@
 /**
  * Browser voice helpers for Centrix Assistant (Web Speech API).
  * STT: Chrome/Edge best; Safari partial; Firefox often unsupported.
+ *
+ * Note: Chrome’s cloud STT uses Google’s servers. Unsupported locales (e.g. en-KE)
+ * often surface as a misleading `network` error.
  */
 
 const TTS_PREF_KEY = "centrix_ai_tts";
-const TALK_PREF_KEY = "centrix_ai_talk_mode";
+
+/** Locales Chrome Web Speech handles reliably enough for Centrix. */
+const SAFE_SPEECH_LANGS = new Set([
+  "en-US",
+  "en-GB",
+  "en-AU",
+  "en-IN",
+  "en-IE",
+  "en-NZ",
+  "en-ZA",
+  "en-CA",
+]);
 
 export function isSpeechRecognitionSupported() {
   if (typeof window === "undefined") return false;
@@ -14,6 +28,15 @@ export function isSpeechRecognitionSupported() {
 export function isSpeechSynthesisSupported() {
   if (typeof window === "undefined") return false;
   return typeof window.speechSynthesis !== "undefined";
+}
+
+/** Prefer browser language only when Chrome STT supports it; else en-US. */
+export function preferredSpeechLang() {
+  if (typeof navigator === "undefined") return "en-US";
+  const raw = String(navigator.language || "en-US").trim();
+  if (SAFE_SPEECH_LANGS.has(raw)) return raw;
+  if (/^en(-|$)/i.test(raw)) return "en-US";
+  return "en-US";
 }
 
 export function getAiTtsPref() {
@@ -34,24 +57,6 @@ export function setAiTtsPref(enabled) {
   }
 }
 
-export function getAiTalkModePref() {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(TALK_PREF_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function setAiTalkModePref(enabled) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(TALK_PREF_KEY, enabled ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
-
 /** Strip markdown / chart fences so TTS reads cleanly. */
 export function plainTextForSpeech(raw) {
   let text = String(raw ?? "");
@@ -61,10 +66,64 @@ export function plainTextForSpeech(raw) {
   text = text.replace(/\[([^\]]+)]\([^)]*\)/g, "$1");
   text = text.replace(/^#{1,6}\s+/gm, "");
   text = text.replace(/^>\s?/gm, "");
+  text = text.replace(/^\|.*\|$/gm, " ");
   text = text.replace(/[*_~]+/g, "");
   text = text.replace(/\|/g, " ");
   text = text.replace(/\s+/g, " ").trim();
   return text.slice(0, 1200);
+}
+
+/**
+ * Short spoken answer only — never narrate the full chat markdown.
+ * Prefers the first 1–3 sentences (e.g. till float direct_answer).
+ */
+export function spokenBriefForSpeech(raw) {
+  let text = String(raw ?? "");
+  // Drop trailing “Open …” / “Detail …” sections so TTS stays on the answer.
+  text = text.split(/\n(?=Detail\b|Open\b)/i)[0] ?? text;
+  text = text.replace(/^[-*]\s+/gm, "");
+  text = plainTextForSpeech(text);
+  text = text.replace(/\bKES\s+/gi, "KES ");
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (sentences.length > 0) {
+    text = sentences.slice(0, 3).join(" ");
+  }
+  return text.slice(0, 420).trim();
+}
+
+
+export function speechErrorMessage(code) {
+  const messages = {
+    "not-allowed": "Microphone permission denied. Allow mic access for this site in the browser address bar.",
+    "service-not-allowed": "Speech recognition is blocked in this browser. Try Chrome or Edge.",
+    network:
+      "Could not reach the browser speech service. Use Chrome/Edge on a normal window (not an in-app preview), check internet, then try the mic again — or type your question.",
+    "audio-capture": "No microphone found.",
+    "language-not-supported": "This speech language is not supported. Falling back to English (US).",
+  };
+  return messages[code] || `Voice input failed (${code || "unknown"}).`;
+}
+
+/** Transient STT failures worth a short retry. */
+export function isRetryableSpeechError(code) {
+  return code === "network" || code === "no-speech" || code === "aborted";
+}
+
+/**
+ * Ask for mic permission up front so STT does not fail immediately.
+ * @returns {Promise<boolean>}
+ */
+export async function ensureMicrophoneAccess() {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return true;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -73,7 +132,7 @@ export function plainTextForSpeech(raw) {
  *   continuous?: boolean,
  *   onInterim?: (text: string) => void,
  *   onFinal?: (text: string) => void,
- *   onError?: (message: string) => void,
+ *   onError?: (info: { code: string, message: string }) => void,
  *   onEnd?: () => void,
  * }} [options]
  * @returns {{ start: () => void, stop: () => void, supported: boolean } | null}
@@ -83,12 +142,13 @@ export function createSpeechRecognizer(options = {}) {
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = new SpeechRecognition();
-  recognition.lang = options.lang || "en-KE";
+  recognition.lang = options.lang || preferredSpeechLang();
   recognition.interimResults = true;
   recognition.continuous = Boolean(options.continuous);
   recognition.maxAlternatives = 1;
 
   let stoppedByUser = false;
+  let errorHandled = false;
 
   recognition.onresult = (event) => {
     let interim = "";
@@ -108,28 +168,31 @@ export function createSpeechRecognizer(options = {}) {
 
   recognition.onerror = (event) => {
     const code = String(event?.error ?? "unknown");
-    if (code === "aborted" || code === "no-speech") {
-      options.onEnd?.();
+    if (code === "aborted") {
+      // User/stop() — onend will run.
       return;
     }
-    const messages = {
-      "not-allowed": "Microphone permission denied. Allow mic access for this site.",
-      "service-not-allowed": "Speech recognition is blocked in this browser.",
-      network: "Speech recognition needs a network connection.",
-      "audio-capture": "No microphone found.",
-    };
-    options.onError?.(messages[code] || `Voice input failed (${code}).`);
-    options.onEnd?.();
+    if (code === "no-speech") {
+      // Silence — treat as normal end so Talk can listen again.
+      return;
+    }
+    errorHandled = true;
+    options.onError?.({ code, message: speechErrorMessage(code) });
   };
 
   recognition.onend = () => {
-    if (!stoppedByUser && options.continuous) {
+    if (!stoppedByUser && options.continuous && !errorHandled) {
       try {
         recognition.start();
         return;
       } catch {
         /* fall through */
       }
+    }
+    // After a handled error, panel decides whether to retry — skip auto onEnd restart noise.
+    if (errorHandled) {
+      errorHandled = false;
+      return;
     }
     options.onEnd?.();
   };
@@ -138,11 +201,14 @@ export function createSpeechRecognizer(options = {}) {
     supported: true,
     start() {
       stoppedByUser = false;
+      errorHandled = false;
       try {
         recognition.start();
       } catch (err) {
-        options.onError?.(err instanceof Error ? err.message : "Could not start microphone.");
-        options.onEnd?.();
+        options.onError?.({
+          code: "start-failed",
+          message: err instanceof Error ? err.message : "Could not start microphone.",
+        });
       }
     },
     stop() {
@@ -160,14 +226,14 @@ export function createSpeechRecognizer(options = {}) {
  * Speak text aloud. Resolves when utterance ends (or immediately if unsupported/empty).
  * @returns {Promise<boolean>}
  */
-export function speakAssistantText(text, { lang = "en-KE", rate = 1 } = {}) {
+export function speakAssistantText(text, { lang = "en-US", rate = 1 } = {}) {
   if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
   const plain = plainTextForSpeech(text);
   if (!plain) return Promise.resolve(false);
   window.speechSynthesis.cancel();
   return new Promise((resolve) => {
     const utter = new SpeechSynthesisUtterance(plain);
-    utter.lang = lang;
+    utter.lang = lang || preferredSpeechLang();
     utter.rate = rate;
     let settled = false;
     const finish = (ok) => {
@@ -178,7 +244,6 @@ export function speakAssistantText(text, { lang = "en-KE", rate = 1 } = {}) {
     utter.onend = () => finish(true);
     utter.onerror = () => finish(false);
     window.speechSynthesis.speak(utter);
-    // Some browsers fire neither end nor error if cancelled mid-flight.
     window.setTimeout(() => finish(true), Math.min(60_000, 2_000 + plain.length * 60));
   });
 }
