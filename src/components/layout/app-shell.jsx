@@ -23,6 +23,7 @@ import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { LoginWarningsBanner } from "@/components/shared/login-warnings-banner";
+import { WhatsNewLoginModal } from "@/components/shared/whats-new-login-modal";
 import {
   beginNavigationIntent,
   finishNavigation,
@@ -148,6 +149,7 @@ export function AppShell({ children }) {
             <AiAssistPanel />
             <OrderPrintTypePickerHost />
             <AccountingHelpDialog />
+            <WhatsNewLoginModal />
           </div>
           </TabWorkspaceProvider>
           </BackgroundTaskProvider>

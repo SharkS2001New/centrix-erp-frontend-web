@@ -8,6 +8,7 @@ import { LicenseExpiryGuard } from "@/components/auth/license-expiry-guard";
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
+import { WhatsNewLoginModal } from "@/components/shared/whats-new-login-modal";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 
 export function PosShell({ children }) {
@@ -23,6 +24,7 @@ export function PosShell({ children }) {
                 <LicenseExpiryBanner />
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
                 <OrderPrintTypePickerHost />
+                <WhatsNewLoginModal />
               </div>
             </PosWorkspaceGuard>
           </PasswordExpiryGuard>

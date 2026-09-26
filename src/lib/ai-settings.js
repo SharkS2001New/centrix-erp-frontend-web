@@ -171,6 +171,16 @@ export function canAskAiFromSearch({ capabilities, hasPermission }) {
   );
 }
 
+/**
+ * Header “Talk to AI” — requires org AI chat access plus platform Talk switch.
+ * Defaults on when the flag is absent (older API payloads).
+ */
+export function canUseAiTalk({ capabilities, hasPermission }) {
+  if (!canAskAiFromSearch({ capabilities, hasPermission })) return false;
+  const flag = capabilities?.ai_assistant?.talk_enabled;
+  return flag !== false;
+}
+
 export function aiFormFromApi(res) {
   const settings = res?.settings ?? res?.ai ?? {};
   const platformOffersFree = Boolean(
@@ -185,6 +195,7 @@ export function aiFormFromApi(res) {
 
   return {
     enabled: Boolean(settings.enabled),
+    talk_enabled: settings.talk_enabled !== false,
     use_platform_ai: usePlatformAi,
     provider: settings.provider ?? res?.free_ai_provider ?? "openai",
     model: settings.model ?? "",
@@ -250,6 +261,7 @@ export function aiPayloadFromForm(form, options = {}) {
     if (["openai", "gemini"].includes(form.free_ai_provider)) {
       payload.free_ai_provider = form.free_ai_provider;
     }
+    payload.talk_enabled = form.talk_enabled !== false;
   }
   if (includeInsights && form.insights) {
     payload.insights = insightsPayloadFromForm(form.insights);

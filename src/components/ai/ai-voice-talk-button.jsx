@@ -2,21 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { apiRequest, apiRequestMultipart } from "@/lib/api";
-import { getStoredWorkspace } from "@/lib/auth-storage";
-import { defaultWorkspaceId } from "@/lib/workspace-navigation";
-import { buildPageContext } from "@/lib/ai-assist-bridge";
+import { apiRequestMultipart } from "@/lib/api";
+import { buildPageContext, requestAiAssist, subscribeAiVoiceComplete } from "@/lib/ai-assist-bridge";
 import { notifyError } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
+import { canUseAiTalk } from "@/lib/ai-settings";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import {
   canUseBrowserSpeechRecognition,
   canUseMediaRecorderVoice,
   canUseVoiceInput,
   createSpeechRecognizer,
   createVoiceRecorder,
-  speakAssistantText,
   speechErrorMessage,
-  spokenBriefForSpeech,
   stopAssistantSpeech,
 } from "@/lib/ai-voice";
 
@@ -33,26 +32,24 @@ function MicIcon({ className }) {
 }
 
 /**
- * Conversational voice: listen → show live words → answer when you pause.
- * Sidebar stays closed.
+ * Header voice: listen → put the question into Centrix Assistant → wait for the short spoken reply.
  */
 export function AiVoiceTalkButton() {
   const pathname = usePathname();
-  const { capabilities } = useAuth();
+  const { capabilities, hasPermission } = useAuth();
   const [voiceSupported, setVoiceSupported] = useState(false);
-  const [phase, setPhase] = useState("idle"); // idle | listening | thinking | speaking
+  const [phase, setPhase] = useState("idle"); // idle | listening | waiting
   const [heard, setHeard] = useState("");
   const [level, setLevel] = useState(0);
 
+  const orgAiEnabled = canUseAiTalk({ capabilities, hasPermission });
   const recognizerRef = useRef(null);
   const recorderRef = useRef(null);
   const voiceFinalRef = useRef("");
-  const abortRef = useRef(null);
   const cancelledRef = useRef(false);
   const pauseTimerRef = useRef(0);
-  const askingRef = useRef(false);
+  const handedOffRef = useRef(false);
   const finishRecordRef = useRef(null);
-  const startListenRef = useRef(null);
 
   useEffect(() => {
     setVoiceSupported(canUseVoiceInput());
@@ -67,14 +64,12 @@ export function AiVoiceTalkButton() {
 
   const reset = useCallback(() => {
     cancelledRef.current = true;
-    askingRef.current = false;
+    handedOffRef.current = false;
     clearPauseTimer();
     recognizerRef.current?.stop();
     recognizerRef.current = null;
     recorderRef.current?.cancel();
     recorderRef.current = null;
-    abortRef.current?.abort();
-    abortRef.current = null;
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
@@ -88,99 +83,70 @@ export function AiVoiceTalkButton() {
       clearPauseTimer();
       recognizerRef.current?.stop();
       recorderRef.current?.cancel();
-      abortRef.current?.abort();
       stopAssistantSpeech();
     };
   }, [clearPauseTimer]);
 
-  const askAndSpeak = useCallback(
-    async (question) => {
+  useEffect(() => {
+    return subscribeAiVoiceComplete(() => {
+      if (cancelledRef.current) return;
+      setPhase("idle");
+      setHeard("");
+      setLevel(0);
+      handedOffRef.current = false;
+    });
+  }, []);
+
+  const handOffToAssistant = useCallback(
+    (question) => {
       const q = String(question ?? "").trim();
-      if (!q || cancelledRef.current || askingRef.current) return;
-      askingRef.current = true;
+      if (!q || cancelledRef.current || handedOffRef.current) return;
+      handedOffRef.current = true;
       clearPauseTimer();
       recognizerRef.current?.stop();
       recognizerRef.current = null;
+      recorderRef.current?.cancel();
+      recorderRef.current = null;
 
-      setPhase("thinking");
+      const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
+      setPhase("waiting");
       setHeard(q);
       setLevel(0);
 
-      const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      try {
-        const res = await apiRequest("/ai/chat", {
-          method: "POST",
-          signal: controller.signal,
-          body: {
-            context: "erp",
-            workspace_id: workspaceId,
-            pathname,
-            page_context: buildPageContext({ pathname, screenKey: workspaceId }),
-            message: q,
-            history: [],
-          },
-        });
-
-        if (cancelledRef.current) return;
-
-        const content = res?.message || res?.reply || "";
-        if (res?.success === false && content) {
-          notifyError(content);
-          setPhase("idle");
-          setHeard("");
-          return;
-        }
-
-        const brief = spokenBriefForSpeech(content);
-        if (!brief) {
-          notifyError("No spoken answer came back — try typing in the assistant.");
-          setPhase("idle");
-          setHeard("");
-          return;
-        }
-
-        setPhase("speaking");
-        await speakAssistantText(brief);
-        if (!cancelledRef.current) {
-          setPhase("idle");
-          setHeard("");
-        }
-      } catch (err) {
-        if (cancelledRef.current || err?.name === "AbortError") return;
-        notifyError(err instanceof Error ? err.message : "Could not get an answer.");
-        setPhase("idle");
-        setHeard("");
-      } finally {
-        abortRef.current = null;
-        askingRef.current = false;
-      }
+      requestAiAssist({
+        message: q,
+        autoSend: true,
+        fromVoice: true,
+        pageContext: buildPageContext({
+          pathname,
+          screenKey: workspaceId,
+          voiceMode: true,
+        }),
+      });
     },
     [capabilities, clearPauseTimer, pathname],
   );
 
-  const scheduleAskFromSpeech = useCallback(
+  const scheduleHandOff = useCallback(
     (delayMs = 900) => {
       clearPauseTimer();
       pauseTimerRef.current = window.setTimeout(() => {
         const spoken = voiceFinalRef.current.trim();
         if (spoken) {
           voiceFinalRef.current = "";
-          void askAndSpeak(spoken);
+          handOffToAssistant(spoken);
         }
       }, delayMs);
     },
-    [askAndSpeak, clearPauseTimer],
+    [clearPauseTimer, handOffToAssistant],
   );
 
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
     recorderRef.current = null;
-    if (!recorder || askingRef.current) return;
+    if (!recorder || handedOffRef.current) return;
 
-    setPhase("thinking");
+    setPhase("waiting");
     setHeard((prev) => prev || "Understanding…");
     setLevel(0);
 
@@ -206,14 +172,15 @@ export function AiVoiceTalkButton() {
         return;
       }
 
-      await askAndSpeak(text);
+      handOffToAssistant(text);
     } catch (err) {
       if (cancelledRef.current) return;
       notifyError(err instanceof Error ? err.message : "Could not understand your voice.");
       setPhase("idle");
       setHeard("");
+      handedOffRef.current = false;
     }
-  }, [askAndSpeak]);
+  }, [handOffToAssistant]);
 
   useEffect(() => {
     finishRecordRef.current = finishRecording;
@@ -248,7 +215,6 @@ export function AiVoiceTalkButton() {
 
     recorderRef.current = recorder;
     setPhase("listening");
-    setHeard("");
     try {
       await recorder.start();
     } catch {
@@ -261,14 +227,13 @@ export function AiVoiceTalkButton() {
 
   const startListening = useCallback(async () => {
     cancelledRef.current = false;
-    askingRef.current = false;
+    handedOffRef.current = false;
     clearPauseTimer();
     stopAssistantSpeech();
     voiceFinalRef.current = "";
     setHeard("");
     setLevel(0);
 
-    // Conversational path: live browser speech (words appear as you talk; answers on pause).
     if (canUseBrowserSpeechRecognition()) {
       recognizerRef.current?.stop();
       recognizerRef.current = null;
@@ -280,10 +245,9 @@ export function AiVoiceTalkButton() {
         continuous: true,
         onInterim: (text) => {
           if (cancelledRef.current) return;
-          setHeard((prev) => {
+          setHeard(() => {
             const base = voiceFinalRef.current.trim();
-            const next = [base, text].filter(Boolean).join(" ").trim();
-            return next || prev;
+            return [base, text].filter(Boolean).join(" ").trim();
           });
           setLevel(0.35);
           clearPauseTimer();
@@ -293,8 +257,7 @@ export function AiVoiceTalkButton() {
           voiceFinalRef.current = [voiceFinalRef.current, text].filter(Boolean).join(" ").trim();
           setHeard(voiceFinalRef.current);
           setLevel(0.2);
-          // Pause after a finished phrase → ask automatically (no Done button).
-          scheduleAskFromSpeech(1000);
+          scheduleHandOff(1000);
         },
         onError: ({ code }) => {
           recognizerRef.current = null;
@@ -305,7 +268,6 @@ export function AiVoiceTalkButton() {
             setHeard("");
             return;
           }
-          // Google speech often fails with "network" — seamless mic fallback (still auto-answers).
           if (canUseMediaRecorderVoice()) {
             void startRecordingFallback();
             return;
@@ -316,7 +278,6 @@ export function AiVoiceTalkButton() {
         },
         onEnd: () => {
           recognizerRef.current = null;
-          // continuous:true restarts until we stop after scheduling ask, or user cancels.
         },
       });
 
@@ -329,11 +290,7 @@ export function AiVoiceTalkButton() {
     }
 
     await startRecordingFallback();
-  }, [clearPauseTimer, scheduleAskFromSpeech, startRecordingFallback]);
-
-  useEffect(() => {
-    startListenRef.current = startListening;
-  }, [startListening]);
+  }, [clearPauseTimer, scheduleHandOff, startRecordingFallback]);
 
   const onClick = useCallback(() => {
     if (phase !== "idle") {
@@ -343,37 +300,28 @@ export function AiVoiceTalkButton() {
     void startListening();
   }, [phase, reset, startListening]);
 
-  if (!voiceSupported) return null;
+  if (!orgAiEnabled || !voiceSupported) return null;
 
   const busy = phase !== "idle";
-  const statusLabel =
-    phase === "listening"
-      ? "Listening…"
-      : phase === "thinking"
-        ? "Thinking…"
-        : phase === "speaking"
-          ? "Answering…"
-          : null;
+  const buttonLabel =
+    phase === "listening" ? "Listening…" : phase === "waiting" ? "Waiting…" : "Talk To AI Assistant";
+  const buttonLabelShort =
+    phase === "listening" ? "Listening…" : phase === "waiting" ? "Waiting…" : "Talk To AI";
 
   return (
     <>
       <button
         type="button"
         onClick={onClick}
-        className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap shadow-sm transition ${
-          phase === "listening"
-            ? "bg-red-600 text-white hover:bg-red-700"
-            : busy
-              ? "bg-indigo-700 text-white hover:bg-indigo-800"
-              : "bg-indigo-600 text-white hover:bg-indigo-700"
-        }`}
-        aria-label={busy ? "Stop" : "Talk To AI Assistant"}
-        title={busy ? "Stop" : "Talk To AI Assistant — ask and hear a short answer"}
+        data-phase={phase === "waiting" ? "thinking" : phase}
+        className="app-topbar-ai-talk-btn"
+        aria-label={busy ? "Stop voice assistant" : "Talk To AI Assistant"}
+        title={busy ? "Stop" : "Talk To AI Assistant — ask; answer appears in the assistant"}
         aria-pressed={busy}
       >
-        <MicIcon className={`h-4 w-4 shrink-0 ${phase === "listening" ? "animate-pulse" : ""}`} />
-        <span className="max-sm:hidden">{busy ? "Stop" : "Talk To AI Assistant"}</span>
-        <span className="sm:hidden">{busy ? "Stop" : "Talk To AI"}</span>
+        <MicIcon className={`h-4 w-4 ${phase === "listening" ? "animate-pulse" : ""}`} />
+        <span className="max-sm:hidden">{buttonLabel}</span>
+        <span className="sm:hidden">{buttonLabelShort}</span>
       </button>
 
       {busy ? (
@@ -396,13 +344,13 @@ export function AiVoiceTalkButton() {
               <MicIcon className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{statusLabel}</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {phase === "listening" ? "Listening…" : "Waiting for answer…"}
+              </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? "Ask your question — I’ll answer when you pause"
-                  : phase === "thinking"
-                    ? "Looking that up"
-                    : "Speaking a short answer"}
+                  ? "Ask your question — I’ll send it to the assistant when you pause"
+                  : "Your question is in Centrix Assistant"}
               </p>
               {heard.trim() ? (
                 <p className="mt-2 line-clamp-3 text-sm text-slate-800 dark:text-slate-200">“{heard.trim()}”</p>

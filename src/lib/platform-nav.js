@@ -78,6 +78,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Client-reported issues and platform error triage.",
       },
       {
+        href: "/platform/whats-new",
+        label: "What’s new",
+        icon: "star",
+        description: "Publish Centrix update notes to selected orgs and modules.",
+      },
+      {
         href: "/platform/database-backups",
         label: "Database backups",
         icon: "database",

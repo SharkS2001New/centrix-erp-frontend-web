@@ -5,16 +5,36 @@
  *   message?: string,
  *   autoSend?: boolean,
  *   pageContext?: Record<string, unknown> | null,
+ *   fromVoice?: boolean,
  * }} AiAssistRequest
  */
 
 /** @type {Set<(request: AiAssistRequest) => void>} */
 const listeners = new Set();
 
+/** @type {Set<() => void>} */
+const voiceCompleteListeners = new Set();
+
 /** @param {(request: AiAssistRequest) => void} listener */
 export function subscribeAiAssistRequests(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Fired when a voice-asked reply has been handled (spoken or skipped). */
+export function subscribeAiVoiceComplete(listener) {
+  voiceCompleteListeners.add(listener);
+  return () => voiceCompleteListeners.delete(listener);
+}
+
+export function notifyAiVoiceComplete() {
+  voiceCompleteListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 /** @param {AiAssistRequest} request */
@@ -23,6 +43,7 @@ export function requestAiAssist(request = {}) {
     message: request.message?.trim() ?? "",
     autoSend: request.autoSend !== false,
     pageContext: request.pageContext ?? null,
+    fromVoice: Boolean(request.fromVoice),
   };
   listeners.forEach((listener) => listener(payload));
 }
@@ -38,6 +59,7 @@ export function buildPageContext({
   filters,
   summary,
   rows,
+  voiceMode,
 } = {}) {
   const context = {
     screen_key: screenKey || undefined,
@@ -49,6 +71,7 @@ export function buildPageContext({
     filters: filters && typeof filters === "object" ? filters : undefined,
     summary: summary && typeof summary === "object" ? summary : undefined,
     rows: Array.isArray(rows) ? rows.slice(0, 40) : undefined,
+    voice_mode: voiceMode ? true : undefined,
   };
 
   return Object.fromEntries(

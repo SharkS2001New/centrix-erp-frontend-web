@@ -22,12 +22,13 @@ import {
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
-import { buildPageContext, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
+import { buildPageContext, notifyAiVoiceComplete, subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
+import { speakAssistantText, spokenBriefForSpeech, stopAssistantSpeech } from "@/lib/ai-voice";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -178,6 +179,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState(null);
   const bottomRef = useRef(null);
   const sendRef = useRef(null);
+  /** True when the current turn came from Talk To AI Assistant (short spoken reply). */
+  const voiceAskedRef = useRef(false);
+  const lastSpokenRef = useRef("");
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
@@ -250,6 +254,18 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   }, [canUse]);
 
   useEffect(() => {
+    if (!open) {
+      stopAssistantSpeech();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      stopAssistantSpeech();
+    };
+  }, []);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open, pendingAction, formSpec, actionResult]);
 
@@ -257,6 +273,29 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     setPendingAction(null);
     setFormSpec(null);
     setFormValues({});
+  }, []);
+
+  const speakVoiceReplyIfNeeded = useCallback((content) => {
+    if (!voiceAskedRef.current || !content) {
+      voiceAskedRef.current = false;
+      notifyAiVoiceComplete();
+      return;
+    }
+    const brief = spokenBriefForSpeech(content);
+    voiceAskedRef.current = false;
+    if (!brief) {
+      notifyAiVoiceComplete();
+      return;
+    }
+    const key = brief.slice(0, 80);
+    if (lastSpokenRef.current === key) {
+      notifyAiVoiceComplete();
+      return;
+    }
+    lastSpokenRef.current = key;
+    void speakAssistantText(brief).finally(() => {
+      notifyAiVoiceComplete();
+    });
   }, []);
 
   const applyChatResponse = useCallback(
@@ -268,11 +307,20 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const content = res.message || res.reply || "";
       if (res.success === false && content) {
         setError(content);
+        voiceAskedRef.current = false;
+        notifyAiVoiceComplete();
         return;
       }
 
       if (content && !skipAssistantAppend) {
         setMessages((prev) => [...prev, { role: "assistant", content }]);
+      }
+
+      if (content) {
+        speakVoiceReplyIfNeeded(content);
+      } else {
+        voiceAskedRef.current = false;
+        notifyAiVoiceComplete();
       }
 
       if (Object.prototype.hasOwnProperty.call(res, "pending_action")) {
@@ -313,7 +361,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         clearActionState();
       }
     },
-    [clearActionState],
+    [clearActionState, speakVoiceReplyIfNeeded],
   );
 
   const startNewConversation = useCallback(() => {
@@ -369,16 +417,23 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         formValuesOverride = null,
         pageContextOverride = null,
         entityRefsOverride = null,
+        fromVoice = false,
       } = {},
     ) => {
       const message = text.trim();
       if (!message || loading) return;
+      if (fromVoice) {
+        voiceAskedRef.current = true;
+      } else {
+        voiceAskedRef.current = false;
+      }
+      stopAssistantSpeech();
       const refsForSend = serializeEntityRefs(entityRefsOverride ?? entityRefs);
       setError(null);
       setLastFailedMessage(null);
       setActionResult(null);
       setLoading(true);
-      setStreamStatus(null);
+      setStreamStatus(fromVoice ? "Waiting for answer…" : null);
       if (!confirm) {
         setMessages((prev) => [...prev, { role: "user", content: message }]);
       }
@@ -399,7 +454,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
-          buildPageContext({ pathname, screenKey: workspaceId });
+          buildPageContext({ pathname, screenKey: workspaceId, voiceMode: fromVoice });
         const mergedFormValues = formValuesOverride ?? formValues;
         const requestBody = {
           context: "erp",
@@ -415,6 +470,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           form_values:
             Object.keys(mergedFormValues || {}).length > 0 ? mergedFormValues : undefined,
           confirm_action: effectiveConfirm || undefined,
+          voice_mode: fromVoice || undefined,
         };
 
         const useStream =
@@ -466,6 +522,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           });
           if (done) {
             applyChatResponse(done, { skipAssistantAppend: true });
+          } else {
+            speakVoiceReplyIfNeeded(accumulated);
           }
           return;
         }
@@ -479,6 +537,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         const msg = e instanceof Error ? e.message : "AI request failed";
         setError(msg);
         setLastFailedMessage(confirm || effectiveConfirm ? null : message);
+        voiceAskedRef.current = false;
+        notifyAiVoiceComplete();
       } finally {
         setLoading(false);
       }
@@ -514,14 +574,21 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       const message = request.message?.trim() ?? "";
-      if (!message) return;
+      if (!message) {
+        if (request.fromVoice) notifyAiVoiceComplete();
+        return;
+      }
 
       if (request.autoSend !== false) {
-        void sendRef.current?.(message, { pageContextOverride: request.pageContext ?? null });
+        void sendRef.current?.(message, {
+          pageContextOverride: request.pageContext ?? null,
+          fromVoice: Boolean(request.fromVoice),
+        });
         return;
       }
 
       setInput(message);
+      if (request.fromVoice) notifyAiVoiceComplete();
     });
   }, [canUse]);
 

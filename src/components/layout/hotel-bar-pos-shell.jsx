@@ -20,6 +20,7 @@ import { HotelBarPosAuthGuard } from "@/components/auth/hotel-bar-pos-auth-guard
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
+import { WhatsNewLoginModal } from "@/components/shared/whats-new-login-modal";
 
 function HotelBarPosWorkspaceGuard({ children }) {
   const pathname = usePathname();
@@ -117,6 +118,7 @@ export function HotelBarPosShell({ children }) {
                 <NetworkStatusBanner />
                 <LicenseExpiryBanner />
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+                <WhatsNewLoginModal />
               </div>
             </HotelBarPosWorkspaceGuard>
           </PasswordExpiryGuard>

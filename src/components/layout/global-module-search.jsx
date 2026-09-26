@@ -26,7 +26,7 @@ import {
   searchNavEntries,
 } from "@/lib/workspace-nav";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
-import { canAskAiFromSearch } from "@/lib/ai-settings";
+import { canAskAiFromSearch, canUseAiTalk } from "@/lib/ai-settings";
 import { requestAiAssist } from "@/lib/ai-assist-bridge";
 import { looksLikeSearchQuestion, searchAskAiPrompt } from "@/lib/search-ai-prompt";
 import { AiVoiceTalkButton } from "@/components/ai/ai-voice-talk-button";
@@ -167,6 +167,7 @@ export function GlobalModuleSearch() {
 
   const trimmedQuery = query.trim();
   const canAskAi = canAskAiFromSearch({ capabilities, hasPermission });
+  const canTalk = canUseAiTalk({ capabilities, hasPermission });
   const askAiMessage = useMemo(
     () => (canAskAi ? searchAskAiPrompt(trimmedQuery, workspaceLabel) : ""),
     [canAskAi, trimmedQuery, workspaceLabel],
@@ -350,7 +351,7 @@ export function GlobalModuleSearch() {
         ) : null}
       </div>
 
-      {canAskAi ? <AiVoiceTalkButton /> : null}
+      {canTalk ? <AiVoiceTalkButton /> : null}
     </div>
   );
 }

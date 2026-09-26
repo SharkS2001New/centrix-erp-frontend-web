@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aiFormFromApi,
   aiPayloadFromForm,
+  canUseAiTalk,
   insightsFormFromApi,
   insightsPayloadFromForm,
   textToList,
@@ -41,6 +42,32 @@ describe("ai insights settings helpers", () => {
     });
     expect(aiPayloadFromForm(form).insights.enabled).toBe(false);
     expect(aiPayloadFromForm(form, { includeInsights: false }).insights).toBeUndefined();
+  });
+
+  it("round-trips platform talk_enabled in credentials payload", () => {
+    const form = aiFormFromApi({
+      settings: { enabled: true, talk_enabled: false },
+    });
+    expect(form.talk_enabled).toBe(false);
+    expect(
+      aiPayloadFromForm(form, { includeInsights: false, includePlatformGemini: true }).talk_enabled,
+    ).toBe(false);
+    expect(aiPayloadFromForm(form, { includeInsights: false }).talk_enabled).toBeUndefined();
+  });
+
+  it("gates Talk on platform talk_enabled", () => {
+    const allow = () => true;
+    const base = {
+      platform_ai_enabled: true,
+      ai_assistant: { available: true, enabled: true },
+    };
+    expect(canUseAiTalk({ capabilities: base, hasPermission: allow })).toBe(true);
+    expect(
+      canUseAiTalk({
+        capabilities: { ...base, ai_assistant: { ...base.ai_assistant, talk_enabled: false } },
+        hasPermission: allow,
+      }),
+    ).toBe(false);
   });
 
   it("parses comma and semicolon recipient text", () => {

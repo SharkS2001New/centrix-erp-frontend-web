@@ -270,6 +270,22 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             </span>
           </label>
 
+          <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={aiForm.talk_enabled !== false}
+              onChange={(e) => setAiForm((f) => ({ ...f, talk_enabled: e.target.checked }))}
+            />
+            <span>
+              <span className="block text-sm font-medium theme-heading">Enable Talk to AI</span>
+              <span className="mt-0.5 block text-xs theme-subtext">
+                Shows the header mic so users can ask Centrix Assistant by voice and hear a short spoken reply.
+                Turn off to hide Talk across all tenants.
+              </span>
+            </span>
+          </label>
+
           {freeProvider === "openai" && !geminiSaved ? (
             <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">
               <input
