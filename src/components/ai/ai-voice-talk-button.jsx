@@ -21,11 +21,13 @@ import {
   canUseVoiceInput,
   createSpeechRecognizer,
   createVoiceRecorder,
+  hasMicrophonePermission,
   isCentrixWakePhrase,
   isTalkEndPhrase,
   speakAssistantText,
   speechErrorMessage,
   stopAssistantSpeech,
+  stripCentrixWakePrefix,
 } from "@/lib/ai-voice";
 
 /**
@@ -390,7 +392,7 @@ export function AiVoiceTalkButton() {
           }, 200);
           return;
         }
-        notifyError("Didn’t catch that — tap Talk and ask again.");
+        notifyError("Didn’t catch that — tap Talk to Centrix Assistant and ask again.");
         setSessionActive(false);
         setPhase("idle");
         setHeard("");
@@ -408,7 +410,7 @@ export function AiVoiceTalkButton() {
           void startListeningRef.current?.({ resume: true });
           return;
         }
-        notifyError("Didn’t catch that — tap Talk and ask again.");
+        notifyError("Didn’t catch that — tap Talk to Centrix Assistant and ask again.");
         setSessionActive(false);
         setPhase("idle");
         setHeard("");
@@ -615,7 +617,8 @@ export function AiVoiceTalkButton() {
     startListeningRef.current = startListening;
   }, [startListening]);
 
-  // Quiet wake-word listener while idle: say "Hi Centrix" to start Talk (no banner until woken).
+  // Quiet wake-word listener while idle: say "Hi Centrix" / "Talk to Centrix Assistant"
+  // to start Talk (no banner until woken). Requires mic permission (granted earlier or via Talk click).
   useEffect(() => {
     if (!orgAiEnabled || !voiceSupported || sessionActive) {
       stopWakeListener();
@@ -626,9 +629,20 @@ export function AiVoiceTalkButton() {
     let disposed = false;
     let restartTimer = 0;
 
-    const startWake = () => {
+    const startWake = async () => {
       if (disposed || conversationActiveRef.current || sessionActive) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+
+      // Browsers block SpeechRecognition without mic permission — don't spin forever.
+      const permitted =
+        wakeEnabledRef.current || (await hasMicrophonePermission());
+      if (disposed || conversationActiveRef.current) return;
+      if (!permitted) {
+        // Wait until the user clicks "Talk to Centrix Assistant" once (grants mic).
+        return;
+      }
+      wakeEnabledRef.current = true;
+
       stopWakeListener();
 
       const wake = createSpeechRecognizer({
@@ -641,22 +655,33 @@ export function AiVoiceTalkButton() {
           wakeEnabledRef.current = true;
           stopWakeListener();
           cancelledRef.current = false;
-          // Keep the full utterance (greeting and/or question) as the first Talk turn.
-          void startListeningRef.current?.({ resume: false, seedMessage: text.trim() });
+          const question = stripCentrixWakePrefix(text);
+          // Greeting only ("Hi Centrix") → open mic and listen for the real question.
+          // Greeting + question → send the question immediately.
+          if (question) {
+            void startListeningRef.current?.({ resume: false, seedMessage: question });
+          } else {
+            void startListeningRef.current?.({ resume: false });
+          }
         },
         onError: ({ code }) => {
           wakeRecognizerRef.current = null;
           // Need a click once for mic permission — then wake works.
           if (code === "not-allowed" || code === "audio-capture" || code === "service-not-allowed") {
+            wakeEnabledRef.current = false;
             return;
           }
           if (disposed || conversationActiveRef.current) return;
-          restartTimer = window.setTimeout(startWake, 1200);
+          restartTimer = window.setTimeout(() => {
+            void startWake();
+          }, 1200);
         },
         onEnd: () => {
           wakeRecognizerRef.current = null;
           if (disposed || conversationActiveRef.current) return;
-          restartTimer = window.setTimeout(startWake, 400);
+          restartTimer = window.setTimeout(() => {
+            void startWake();
+          }, 400);
         },
       });
 
@@ -670,13 +695,17 @@ export function AiVoiceTalkButton() {
     };
 
     // Small delay so Talk Stop can release the mic before wake re-attaches.
-    restartTimer = window.setTimeout(startWake, wakeEnabledRef.current ? 500 : 900);
+    restartTimer = window.setTimeout(() => {
+      void startWake();
+    }, wakeEnabledRef.current ? 500 : 900);
 
     const onVis = () => {
       if (document.visibilityState === "hidden") {
         stopWakeListener();
       } else if (!conversationActiveRef.current) {
-        restartTimer = window.setTimeout(startWake, 400);
+        restartTimer = window.setTimeout(() => {
+          void startWake();
+        }, 400);
       }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -784,7 +813,7 @@ export function AiVoiceTalkButton() {
         ? "Speaking… (interrupt OK)"
         : phase === "waiting"
           ? "Waiting…"
-          : "CentrixAssistant";
+          : "Talk to Centrix Assistant";
   const buttonLabelShort =
     phase === "listening"
       ? "Listening…"
@@ -792,7 +821,7 @@ export function AiVoiceTalkButton() {
         ? "Speaking…"
         : phase === "waiting"
           ? "Waiting…"
-          : "CentrixAssistant";
+          : "Talk";
 
   return (
     <>
@@ -809,19 +838,23 @@ export function AiVoiceTalkButton() {
             : "idle"
         }
         className="app-topbar-ai-talk-btn"
-        aria-label={micModeOn ? "Stop CentrixAssistant conversation" : "Talk to CentrixAssistant"}
+        aria-label={
+          micModeOn
+            ? "Stop Talk to Centrix Assistant"
+            : "Talk to Centrix Assistant"
+        }
         title={
           micModeOn
             ? phase === "speaking"
               ? "Speak to interrupt and ask a follow-up — or Stop"
               : "Stop conversation — or say no / nothing else to close"
-            : "CentrixAssistant — say “Hi Centrix” or click to talk"
+            : "Talk to Centrix Assistant — click once to enable the mic, then say “Hi Centrix” anytime"
         }
         aria-pressed={micModeOn}
       >
         <MicIcon className={`h-4 w-4 ${phase === "listening" && micModeOn ? "animate-pulse" : ""}`} />
-        <span className="max-sm:hidden">{micModeOn ? buttonLabel : "CentrixAssistant"}</span>
-        <span className="sm:hidden">{micModeOn ? buttonLabelShort : "CentrixAssistant"}</span>
+        <span className="max-sm:hidden">{micModeOn ? buttonLabel : "Talk to Centrix Assistant"}</span>
+        <span className="sm:hidden">{micModeOn ? buttonLabelShort : "Talk"}</span>
       </button>
 
       {micModeOn ? (
@@ -850,14 +883,14 @@ export function AiVoiceTalkButton() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {phase === "listening"
-                  ? `CentrixAssistant · listening to ${speakerFirst}`
+                  ? `Talk to Centrix Assistant · listening to ${speakerFirst}`
                   : phase === "speaking"
-                    ? "CentrixAssistant · speaking — interrupt anytime"
-                    : "CentrixAssistant · getting answer…"}
+                    ? "Talk to Centrix Assistant · speaking — interrupt anytime"
+                    : "Talk to Centrix Assistant · getting answer…"}
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? `Say “Hi Centrix” or ask in English — or “nothing else” / “no” to close`
+                  ? `Ask in English — or say “nothing else” / “no” to close`
                   : phase === "speaking"
                     ? "Start talking to pause this answer and ask a follow-up"
                     : "I’ll speak a short answer; open the assistant only if you want full detail"}

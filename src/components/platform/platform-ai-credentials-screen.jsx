@@ -279,7 +279,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               onChange={(e) => setAiForm((f) => ({ ...f, talk_enabled: e.target.checked }))}
             />
             <span>
-              <span className="block text-sm font-medium theme-heading">Enable Talk to AI</span>
+              <span className="block text-sm font-medium theme-heading">Enable Talk to Centrix Assistant</span>
               <span className="mt-0.5 block text-xs theme-subtext">
                 Shows the header mic so users can ask Centrix Assistant by voice and hear a short spoken reply.
                 Turn off to hide Talk across all tenants.

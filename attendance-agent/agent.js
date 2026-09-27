@@ -57,7 +57,7 @@ async function postIngestEvents(config, events) {
   }
   const url = `${centrixDeviceBase(config)}/agent/ingest-events`;
   const res = await centrixFetch(url, {
-    method: "POST",
+      method: "POST",
     headers: centrixAuthHeaders(config),
     body: JSON.stringify({
       agent_version: AGENT_VERSION,
@@ -75,7 +75,7 @@ async function postIngestEvents(config, events) {
       })),
     }),
   }, 90_000);
-  const text = await res.text();
+      const text = await res.text();
   let json = null;
   try {
     json = text ? JSON.parse(text) : null;
@@ -579,11 +579,11 @@ async function main() {
   const config = ensureConfigFile();
 
   if (!isConfigReady(config)) {
-    console.error(
+      console.error(
       `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Re-download CentrixAttendanceAgent from HR → Attendance clock-in.`,
-    );
-    process.exit(1);
-  }
+      );
+      process.exit(1);
+    }
 
   if (!once && !skipUi) {
     const { runSettingsUi } = await import("./settings-ui.js");

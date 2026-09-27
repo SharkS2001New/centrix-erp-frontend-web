@@ -22,7 +22,7 @@ describe("plainTextForSpeech", () => {
 });
 
 describe("spokenBriefForSpeech", () => {
-  it("speaks only the direct float answer, not the detail list", () => {
+  it("speaks Kenyan Shillings instead of KES", () => {
     const raw = [
       "Diana: opening float KES 20,000.00. Cash KES 5,000.00, M-Pesa KES 12,000.00, bank KES 0.00. Expected cash in drawer about KES 25,000.00.",
       "",
@@ -33,8 +33,9 @@ describe("spokenBriefForSpeech", () => {
       "Open [Till management](/sales/till-management) to verify.",
     ].join("\n");
     const brief = spokenBriefForSpeech(raw);
-    expect(brief).toMatch(/Diana: opening float KES 20,000/);
+    expect(brief).toMatch(/Diana: opening float Kenyan Shillings 20,000/);
     expect(brief).toMatch(/M-Pesa/);
+    expect(brief).not.toMatch(/\bKES\b/);
     expect(brief).not.toMatch(/Expected cash/);
     expect(brief).not.toMatch(/Detail/);
     expect(brief).not.toMatch(/Till management/);
@@ -69,11 +70,25 @@ describe("isCentrixWakePhrase", () => {
     expect(isCentrixWakePhrase("Hello CentrixAssistant")).toBe(true);
     expect(isCentrixWakePhrase("hey centrix")).toBe(true);
     expect(isCentrixWakePhrase("Centrix")).toBe(true);
+    expect(isCentrixWakePhrase("Talk to Centrix Assistant")).toBe(true);
   });
 
   it("ignores unrelated speech", () => {
     expect(isCentrixWakePhrase("what is my float")).toBe(false);
     expect(isCentrixWakePhrase("create an lpo")).toBe(false);
+  });
+});
+
+describe("stripCentrixWakePrefix", () => {
+  it("keeps the question after a wake greeting", async () => {
+    const { stripCentrixWakePrefix } = await import("@/lib/ai-voice");
+    expect(stripCentrixWakePrefix("Hi Centrix, what were sales today?")).toBe(
+      "what were sales today?",
+    );
+    expect(stripCentrixWakePrefix("Talk to Centrix Assistant show low stock")).toBe(
+      "show low stock",
+    );
+    expect(stripCentrixWakePrefix("Hi Centrix")).toBe("");
   });
 });
 

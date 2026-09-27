@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { apiRequest, apiFetchBlob, aiChatStream } from "@/lib/api";
+import { apiRequest, aiChatStream } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
@@ -29,6 +29,7 @@ import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
 import { speakAssistantText, spokenBriefForSpeech, stopAssistantSpeech } from "@/lib/ai-voice";
+import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -51,18 +52,22 @@ function isWritePendingAction(action) {
   );
 }
 
-async function downloadDocumentLink(link) {
-  const apiPath = link?.api_path;
-  if (!apiPath) return;
-  const blob = await apiFetchBlob(apiPath);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = link.filename || "document.pdf";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+/** Resolve LPO number from AI document_links (standard print, not Dompdf). */
+function resolveLpoNoFromDocumentLink(link) {
+  const direct = Number(link?.lpo_no ?? 0);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const fromApi = String(link?.api_path || "").match(/\/lpo-mst\/(\d+)\/pdf/i);
+  if (fromApi) return Number(fromApi[1]);
+  const fromPath = String(link?.path || "").match(/\/lpo\/(\d+)(?:\/|$)/i);
+  if (fromPath) return Number(fromPath[1]);
+  return null;
+}
+
+function shouldUseStandardLpoPrint(link) {
+  if (!link) return false;
+  if (link.use_lpo_print === true) return true;
+  const kind = String(link.kind || "").toLowerCase();
+  return kind === "print" || kind === "pdf";
 }
 
 /** Charts only when the preceding user turn asked for one. */
@@ -437,7 +442,14 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       } = {},
     ) => {
       const message = text.trim();
-      if (!message || loading) return;
+      if (!message) return;
+      // Voice must never hang on "Waiting…" — if chat is already in flight, release Talk.
+      if (loading) {
+        if (fromVoice) {
+          notifyAiVoiceComplete({ detailed: false, needsPanel: false });
+        }
+        return;
+      }
       if (fromVoice) {
         voiceAskedRef.current = true;
       } else {
@@ -892,22 +904,30 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   actionResult.document_links.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {actionResult.document_links.map((link) => {
-                        const key = `${link.kind || "link"}-${link.path || link.api_path || link.label}`;
-                        if (link.download && link.api_path) {
+                        const key = `${link.kind || "link"}-${link.path || link.api_path || link.label || link.lpo_no}`;
+                        const lpoNo = resolveLpoNoFromDocumentLink(link);
+                        if (shouldUseStandardLpoPrint(link) && lpoNo) {
                           return (
                             <button
                               key={key}
                               type="button"
                               className="rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
                               onClick={() => {
-                                void downloadDocumentLink(link).catch((err) => {
+                                void runLpoPrintClick(lpoNo, {
+                                  user,
+                                  organization,
+                                  capabilities,
+                                  moduleSettings: capabilities?.module_settings,
+                                }).catch((err) => {
                                   notifyError(
-                                    err instanceof Error ? err.message : "Could not download PDF",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Could not print LPO",
                                   );
                                 });
                               }}
                             >
-                              {link.label || "Download PDF"}
+                              {link.label || "Print / Save PDF"}
                             </button>
                           );
                         }

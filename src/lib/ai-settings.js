@@ -172,7 +172,7 @@ export function canAskAiFromSearch({ capabilities, hasPermission }) {
 }
 
 /**
- * Header “Talk to AI” — requires org AI chat access plus platform Talk switch.
+ * Header “Talk to Centrix Assistant” — requires org AI chat access plus platform Talk switch.
  * Defaults on when the flag is absent (older API payloads).
  */
 export function canUseAiTalk({ capabilities, hasPermission }) {

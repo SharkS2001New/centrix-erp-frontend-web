@@ -94,6 +94,7 @@ export function plainTextForSpeech(raw) {
 
 /**
  * Spoken answer for Talk mode — short spoken summary only (no tables / “Open …” footers).
+ * Speaks "Kenyan Shillings" instead of the KES abbreviation.
  */
 export function spokenBriefForSpeech(raw) {
   let text = String(raw ?? "");
@@ -101,7 +102,8 @@ export function spokenBriefForSpeech(raw) {
   text = text.split(/\n(?=Detail\b|Open\b)/i)[0] ?? text;
   text = text.replace(/^[-*]\s+/gm, "");
   text = plainTextForSpeech(text);
-  text = text.replace(/\bKES\s+/gi, "KES ");
+  // KES → Kenyan Shillings for natural speech (keep bare amounts readable).
+  text = text.replace(/\bKES\b/gi, "Kenyan Shillings");
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length > 0) {
     text = sentences.slice(0, 2).join(" ");
@@ -186,16 +188,34 @@ export function isTalkEndPhrase(raw) {
 
 /**
  * Wake phrases that can start Talk without clicking the button.
- * e.g. "Hi Centrix", "Hello CentrixAssistant", "Hey Centrix".
+ * e.g. "Hi Centrix", "Hello Centrix Assistant", "Talk to Centrix Assistant", "Hey Centrix".
  */
 export function isCentrixWakePhrase(raw) {
   const t = normalizeTalkPhrase(raw);
   if (!t) return false;
   if (/\bcentrix\s*assistant\b/.test(t) || /\bcentrixassistant\b/.test(t)) return true;
-  if (/\b(hi|hello|hey|good\s+(morning|afternoon|evening))\s+centrix\b/.test(t)) return true;
+  if (/\b(hi|hello|hey|ok|okay|yo|good\s+(morning|afternoon|evening))\s+centrix\b/.test(t)) {
+    return true;
+  }
+  if (/\btalk\s+to\s+(centrix(\s*assistant)?|centrixassistant)\b/.test(t)) return true;
   // Bare "Centrix" / "Centrix?" as a call-out
   if (/^centrix$/.test(t)) return true;
   return false;
+}
+
+/**
+ * Remove the wake greeting so only the real question is sent to the assistant.
+ * "Hi Centrix, what were sales today?" → "what were sales today?"
+ * "Hi Centrix" → "" (caller should start listening for the question).
+ */
+export function stripCentrixWakePrefix(raw) {
+  let text = String(raw ?? "").trim();
+  if (!text) return "";
+  text = text.replace(
+    /^(?:(?:hi|hello|hey|ok|okay|yo|good\s+(?:morning|afternoon|evening))\s+)?(?:talk\s+to\s+)?(?:centrix\s*assistant|centrixassistant|centrix)\b[,!.:\s-]*/i,
+    "",
+  );
+  return text.trim();
 }
 
 /**
@@ -222,6 +242,21 @@ export async function ensureMicrophoneAccess() {
       return false;
     }
   }
+}
+
+/** True when the browser already granted microphone access (wake word can start without a click). */
+export async function hasMicrophonePermission() {
+  if (typeof navigator === "undefined") return false;
+  try {
+    if (navigator.permissions?.query) {
+      const status = await navigator.permissions.query({ name: "microphone" });
+      if (status.state === "granted") return true;
+      if (status.state === "denied") return false;
+    }
+  } catch {
+    /* Permissions API may not support "microphone" in every browser */
+  }
+  return false;
 }
 
 /**

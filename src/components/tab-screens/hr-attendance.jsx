@@ -1934,7 +1934,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 </tbody>
               </table>
             </div>
-            <PaginationBar
+              <PaginationBar
                 page={historyPage}
                 totalPages={Math.max(1, Math.ceil(recordsTotal / historyPageSize) || 1)}
                 total={recordsTotal}

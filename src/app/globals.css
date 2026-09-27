@@ -546,7 +546,7 @@ html[data-theme="dark"] .app-topbar-search svg {
   color: #ced4da;
 }
 
-/* Talk To AI Assistant — must stay visibly colored in the topbar (theme color alone is too muted). */
+/* Talk to Centrix Assistant — must stay visibly colored in the topbar (theme color alone is too muted). */
 .app-topbar-ai-talk-btn {
   display: inline-flex;
   height: 2.25rem;

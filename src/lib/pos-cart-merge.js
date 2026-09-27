@@ -328,13 +328,13 @@ export function mergePreservedOptimisticLines(
         String(line.id).startsWith("opt-");
       const optCode = String(line.product_code ?? "");
       const optMode = Number(line.on_wholesale_retail ?? 0) ? 1 : 0;
-      const already =
-        (line?.id != null &&
-          !String(line.id).startsWith("pending-") &&
-          !String(line.id).startsWith("opt-") &&
-          lines.some((row) => String(row.id) === String(line.id))) ||
-        lines.some(
-          (row) =>
+    const already =
+      (line?.id != null &&
+        !String(line.id).startsWith("pending-") &&
+        !String(line.id).startsWith("opt-") &&
+        lines.some((row) => String(row.id) === String(line.id))) ||
+      lines.some(
+        (row) =>
             String(row.product_code) === optCode &&
             (Number(row.on_wholesale_retail ?? 0) ? 1 : 0) === optMode,
         ) ||
