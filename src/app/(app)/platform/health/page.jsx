@@ -153,6 +153,17 @@ export default function PlatformHealthPage() {
               Overall:{" "}
               <strong className="text-slate-900">{result.ok ? "Healthy" : "Issues found"}</strong>
             </span>
+            {result.centrix_version_label || result.centrix_version ? (
+              <>
+                <span className="text-slate-400">·</span>
+                <span>
+                  Centrix{" "}
+                  <strong className="text-slate-900">
+                    {result.centrix_version_label || `v${result.centrix_version}`}
+                  </strong>
+                </span>
+              </>
+            ) : null}
             <span className="text-slate-400">·</span>
             <span>Host: {result.hostname ?? "—"}</span>
             <span className="text-slate-400">·</span>

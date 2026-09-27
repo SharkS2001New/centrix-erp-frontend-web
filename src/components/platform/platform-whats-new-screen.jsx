@@ -11,6 +11,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { PlatformWhatsNewAiAssist } from "@/components/platform/platform-whats-new-ai-assist";
 
 const EMPTY_FORM = {
@@ -48,12 +49,15 @@ function toggleId(list, id) {
 }
 
 export function PlatformWhatsNewScreen() {
+  const confirm = useConfirm();
   const [notes, setNotes] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishingId, setPublishingId] = useState(null);
+  const [reshowingId, setReshowingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [orgSearch, setOrgSearch] = useState("");
@@ -169,21 +173,58 @@ export function PlatformWhatsNewScreen() {
     }
   }
 
-  async function deleteNote(id) {
+  async function deleteNote(note) {
+    const published = note.status === "published";
+    const ok = await confirm({
+      title: published ? "Delete published note?" : "Delete draft?",
+      message: published
+        ? "This permanently removes the What’s new note and any login dismissals. Users will no longer see it."
+        : "This permanently deletes the draft.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+
+    setDeletingId(note.id);
     try {
-      await apiRequest(`/admin/whats-new/${id}`, { method: "DELETE" });
-      notifySuccess("Draft deleted.");
-      if (editingId === id) startCreate();
+      await apiRequest(`/admin/whats-new/${note.id}`, { method: "DELETE" });
+      notifySuccess(published ? "Note deleted." : "Draft deleted.");
+      if (editingId === note.id) startCreate();
       await loadNotes();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function reshowNote(note) {
+    const ok = await confirm({
+      title: "Show this update again?",
+      message:
+        "Clears “already read” for matching users so the login popup appears again. Also re-sends the in-app bell notification.",
+      confirmLabel: "Show again",
+    });
+    if (!ok) return;
+
+    setReshowingId(note.id);
+    try {
+      const res = await apiRequest(`/admin/whats-new/${note.id}/reshow`, {
+        method: "POST",
+        body: { renotify: true },
+      });
+      notifySuccess(res.message || "Users will see this note again on next login.");
+      await loadNotes();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not refresh the note for users.");
+    } finally {
+      setReshowingId(null);
     }
   }
 
   return (
     <CatalogPageShell
       title="What’s new"
-      subtitle="Announce Centrix updates to the right organizations and modules. Publish sends an in-app bell notification; optional login chip shows once until dismissed."
+      subtitle="Announce Centrix updates to the right organizations and modules. Publish stamps the current product version (CI bumps VERSION on every push to main). Optional login chip shows once until dismissed."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "What’s new" }]} />
 
@@ -384,6 +425,11 @@ export function PlatformWhatsNewScreen() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-slate-900">{note.title}</p>
                         <StatusPill status={note.status} />
+                        {note.release_version ? (
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            v{note.release_version}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs text-slate-500">{note.body}</p>
                       <p className="mt-2 text-xs text-slate-400">
@@ -409,23 +455,30 @@ export function PlatformWhatsNewScreen() {
                       Edit
                     </button>
                     {note.status === "draft" ? (
-                      <>
-                        <PrimaryButton
-                          type="button"
-                          disabled={publishingId === note.id}
-                          onClick={() => void publishNote(note.id)}
-                        >
-                          {publishingId === note.id ? "Publishing…" : "Publish"}
-                        </PrimaryButton>
-                        <button
-                          type="button"
-                          className={`${SECONDARY_BTN_CLASS} text-red-700`}
-                          onClick={() => void deleteNote(note.id)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    ) : null}
+                      <PrimaryButton
+                        type="button"
+                        disabled={publishingId === note.id}
+                        onClick={() => void publishNote(note.id)}
+                      >
+                        {publishingId === note.id ? "Publishing…" : "Publish"}
+                      </PrimaryButton>
+                    ) : (
+                      <PrimaryButton
+                        type="button"
+                        disabled={reshowingId === note.id}
+                        onClick={() => void reshowNote(note)}
+                      >
+                        {reshowingId === note.id ? "Refreshing…" : "Show again"}
+                      </PrimaryButton>
+                    )}
+                    <button
+                      type="button"
+                      className={`${SECONDARY_BTN_CLASS} text-red-700`}
+                      disabled={deletingId === note.id}
+                      onClick={() => void deleteNote(note)}
+                    >
+                      {deletingId === note.id ? "Deleting…" : "Delete"}
+                    </button>
                   </div>
                 </li>
               ))}
