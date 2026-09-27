@@ -190,3 +190,13 @@ export function formatHotelMoney(amount) {
   if (!Number.isFinite(n)) return "0.00";
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+/** Whole shillings for Hotel Collect payment Bill / Paid / Due (no decimals). */
+export function formatHotelMoneyInt(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "0";
+  return Math.round(n).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}

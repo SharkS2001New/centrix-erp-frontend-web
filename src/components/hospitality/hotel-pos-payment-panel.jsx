@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SearchableSelect } from "@/components/catalog/catalog-shared";
-import { formatHotelMoney } from "@/lib/hotel-pos-settings";
+import { formatHotelMoney, formatHotelMoneyInt } from "@/lib/hotel-pos-settings";
 import { HotelPosAmountKeypad } from "@/components/hospitality/hotel-pos-amount-keypad";
 
 function n(v) {
@@ -308,13 +308,13 @@ export function HotelPosPaymentPanel({
               <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
                 <dt className="text-xs font-bold uppercase tracking-wide theme-subtext sm:text-sm">Bill</dt>
                 <dd className="mt-1.5 text-3xl font-extrabold tabular-nums leading-none sm:text-4xl">
-                  {formatHotelMoney(total)}
+                  {formatHotelMoneyInt(total)}
                 </dd>
               </div>
               <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
                 <dt className="text-xs font-bold uppercase tracking-wide theme-subtext sm:text-sm">Paid</dt>
                 <dd className="mt-1.5 text-3xl font-extrabold tabular-nums leading-none text-emerald-700 sm:text-4xl dark:text-emerald-400">
-                  {formatHotelMoney(amountPaid)}
+                  {formatHotelMoneyInt(amountPaid)}
                 </dd>
               </div>
               <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
@@ -328,7 +328,7 @@ export function HotelPosPaymentPanel({
                       : "text-amber-700 dark:text-amber-400"
                   }`}
                 >
-                  {formatHotelMoney(changeDue > 0 ? changeDue : balanceDue)}
+                  {formatHotelMoneyInt(changeDue > 0 ? changeDue : balanceDue)}
                 </dd>
               </div>
             </dl>
