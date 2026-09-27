@@ -195,9 +195,10 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
       <p className="mt-1 text-sm theme-subtext">
-        Centrix uses the provider that already has a saved key. Prefer Gemini when a Gemini key is saved, or OpenAI
-        (including Groq-compatible keys) when that key is saved. The radio below is only used when both keys are on
-        file. Tenants may still add their own API key to override.
+        Chat assistant (and email / training) uses the saved Gemini or OpenAI-compatible key below — the radio is
+        only a preference when both are saved. Talk uses its own keys in the Talk section: configure Gemini and/or
+        ChatGPT Whisper independently. If a Talk provider is out of balance or rate-limited, the next configured
+        Talk provider is tried automatically. Tenants may still add their own API key to override chat.
       </p>
 
       {loading ? (
@@ -219,8 +220,8 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           <div className="rounded-lg border px-4 py-3 theme-panel">
             <p className="text-sm font-medium theme-heading">Preferred free AI provider</p>
             <p className="mt-0.5 text-xs theme-subtext">
-              Used when both Gemini and OpenAI keys are saved. If only one is saved, Centrix uses that one
-              automatically.
+              Used when both Gemini and OpenAI keys are saved for <strong>chat</strong>. If only one is saved,
+              Centrix uses that one automatically.
             </p>
             <div className="mt-3 flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm theme-heading">
@@ -285,6 +286,95 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               </span>
             </span>
           </label>
+
+          {aiForm.talk_enabled !== false ? (
+            <div className="rounded-xl border border-dashed px-4 py-4 theme-panel space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold theme-heading">Talk credentials (voice only)</h3>
+                <p className="mt-1 text-xs theme-subtext">
+                  Separate from chat assistant keys above. Prefer Gemini or ChatGPT for speech; if the preferred
+                  provider is rate-limited or out of balance, Talk automatically tries the other configured Talk
+                  key. Chat models like DeepSeek are not used for voice.
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide theme-subtext">
+                  Preferred Talk provider
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="talk_provider"
+                      checked={aiForm.talk_provider !== "openai"}
+                      onChange={() => setAiForm((f) => ({ ...f, talk_provider: "gemini" }))}
+                    />
+                    Gemini
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="talk_provider"
+                      checked={aiForm.talk_provider === "openai"}
+                      onChange={() => setAiForm((f) => ({ ...f, talk_provider: "openai" }))}
+                    />
+                    ChatGPT / OpenAI Whisper
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <SavedKeyField
+                    label="Talk Gemini API key (optional)"
+                    value={aiForm.talk_gemini_api_key}
+                    saved={aiForm.talk_gemini_api_key_set}
+                    hint={aiForm.talk_gemini_api_key_hint}
+                    placeholder="AQ.… or AIza… — leave blank to reuse platform Gemini above"
+                    onChange={(e) => setAiForm((f) => ({ ...f, talk_gemini_api_key: e.target.value }))}
+                  />
+                </div>
+                <Field label="Talk Gemini model (optional)">
+                  <input
+                    className={inputClassName()}
+                    value={aiForm.talk_gemini_model}
+                    onChange={(e) => setAiForm((f) => ({ ...f, talk_gemini_model: e.target.value }))}
+                    placeholder="Leave blank for platform Gemini model"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <SavedKeyField
+                    label="Talk ChatGPT / Whisper API key (optional)"
+                    value={aiForm.talk_api_key}
+                    saved={aiForm.talk_api_key_set}
+                    hint={aiForm.talk_api_key_hint}
+                    placeholder="sk-… (OpenAI) or gsk_… (Groq Whisper)"
+                    onChange={(e) => setAiForm((f) => ({ ...f, talk_api_key: e.target.value }))}
+                  />
+                </div>
+                <Field label="Talk Whisper model (optional)">
+                  <input
+                    className={inputClassName()}
+                    value={aiForm.talk_model}
+                    onChange={(e) => setAiForm((f) => ({ ...f, talk_model: e.target.value }))}
+                    placeholder="whisper-1 — or whisper-large-v3-turbo on Groq"
+                  />
+                </Field>
+                <Field label="Talk Whisper base URL (optional)">
+                  <input
+                    className={inputClassName()}
+                    value={aiForm.talk_base_url}
+                    onChange={(e) => setAiForm((f) => ({ ...f, talk_base_url: e.target.value }))}
+                    placeholder="Leave blank for OpenAI — or https://api.groq.com/openai/v1"
+                  />
+                </Field>
+              </div>
+            </div>
+          ) : null}
 
           {freeProvider === "openai" && !geminiSaved ? (
             <label className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 theme-panel">

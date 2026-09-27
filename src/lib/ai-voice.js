@@ -93,8 +93,7 @@ export function plainTextForSpeech(raw) {
 }
 
 /**
- * Spoken answer for Talk mode — full enough to hear the reply, without narrating
- * huge markdown tables / “Open …” footers.
+ * Spoken answer for Talk mode — short spoken summary only (no tables / “Open …” footers).
  */
 export function spokenBriefForSpeech(raw) {
   let text = String(raw ?? "");
@@ -105,9 +104,9 @@ export function spokenBriefForSpeech(raw) {
   text = text.replace(/\bKES\s+/gi, "KES ");
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length > 0) {
-    text = sentences.slice(0, 5).join(" ");
+    text = sentences.slice(0, 2).join(" ");
   }
-  return text.slice(0, 900).trim();
+  return text.slice(0, 420).trim();
 }
 
 export function speechErrorMessage(code) {
@@ -152,6 +151,51 @@ export function canUseMediaRecorderVoice() {
 /** Either browser STT or record-and-transcribe is available. */
 export function canUseVoiceInput() {
   return canUseBrowserSpeechRecognition() || canUseMediaRecorderVoice();
+}
+
+/** Normalize spoken text for wake / end-phrase matching. */
+export function normalizeTalkPhrase(raw) {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[""']/g, "")
+    .replace(/[.!?,…]+$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * User declines continuing the Talk conversation ("nothing else", "no", "bye", …).
+ * Close the session instead of sending another AI turn.
+ */
+export function isTalkEndPhrase(raw) {
+  const t = normalizeTalkPhrase(raw);
+  if (!t) return false;
+  if (
+    /^(nothing else|that'?s (all|it|enough)|no thanks|no thank you|i'?m (good|fine|done|okay|ok)|all good|all set|not now|maybe later|bye|goodbye|good bye|see you|talk later|stop( talking)?|end (talk|conversation)|cancel|never ?mind|decline|we'?re done|done for now)$/.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // Short declines after "Anything else?"
+  if (/^(no|nope|nah|no more|nothing|not really)$/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Wake phrases that can start Talk without clicking the button.
+ * e.g. "Hi Centrix", "Hello CentrixAssistant", "Hey Centrix".
+ */
+export function isCentrixWakePhrase(raw) {
+  const t = normalizeTalkPhrase(raw);
+  if (!t) return false;
+  if (/\bcentrix\s*assistant\b/.test(t) || /\bcentrixassistant\b/.test(t)) return true;
+  if (/\b(hi|hello|hey|good\s+(morning|afternoon|evening))\s+centrix\b/.test(t)) return true;
+  // Bare "Centrix" / "Centrix?" as a call-out
+  if (/^centrix$/.test(t)) return true;
+  return false;
 }
 
 /**
@@ -231,11 +275,11 @@ export async function createVoiceRecorder(options = {}) {
   let heardSpeech = false;
   let silentSince = 0;
 
-  const silenceMs = Number(options.silenceMs) > 0 ? Number(options.silenceMs) : 900;
-  const maxMs = Number(options.maxMs) > 0 ? Number(options.maxMs) : 20000;
+  const silenceMs = Number(options.silenceMs) > 0 ? Number(options.silenceMs) : 1800;
+  const maxMs = Number(options.maxMs) > 0 ? Number(options.maxMs) : 30000;
   // Higher than ambient room noise so far voices are less likely to trigger.
   const speakThreshold =
-    Number(options.speakThreshold) > 0 ? Number(options.speakThreshold) : 0.075;
+    Number(options.speakThreshold) > 0 ? Number(options.speakThreshold) : 0.07;
 
   const cleanupMeter = () => {
     if (rafId) cancelAnimationFrame(rafId);
@@ -368,27 +412,38 @@ export function createSpeechRecognizer(options = {}) {
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = new SpeechRecognition();
+  // Always prefer English STT. Unsupported locales (e.g. en-KE) break Chrome’s cloud STT.
   recognition.lang = options.lang || preferredSpeechLang() || "en-US";
   recognition.interimResults = true;
   recognition.continuous = Boolean(options.continuous);
-  recognition.maxAlternatives = 1;
+  recognition.maxAlternatives = 3;
 
   let stoppedByUser = false;
   let errorHandled = false;
   let gotResult = false;
   const minConfidence =
-    Number(options.minConfidence) > 0 ? Number(options.minConfidence) : 0.45;
+    Number(options.minConfidence) > 0 ? Number(options.minConfidence) : 0.2;
 
   recognition.onresult = (event) => {
     let interim = "";
     let finalChunk = "";
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const result = event.results[i];
-      const alt = result?.[0];
-      const transcript = alt?.transcript ?? "";
-      const confidence = typeof alt?.confidence === "number" ? alt.confidence : 1;
+      // Pick the highest-confidence English alternative when the engine offers several.
+      let bestAlt = result?.[0];
+      let bestScore = typeof bestAlt?.confidence === "number" ? bestAlt.confidence : -1;
+      for (let a = 1; a < (result?.length ?? 0); a += 1) {
+        const alt = result[a];
+        const score = typeof alt?.confidence === "number" ? alt.confidence : -1;
+        if (score > bestScore) {
+          bestAlt = alt;
+          bestScore = score;
+        }
+      }
+      const transcript = bestAlt?.transcript ?? "";
+      const confidence = typeof bestAlt?.confidence === "number" ? bestAlt.confidence : 1;
       if (result.isFinal) {
-        // Ignore low-confidence distant / mumbled finals when the engine reports scores.
+        // Ignore only very low-confidence distant / mumbled finals when scores exist.
         if (confidence > 0 && confidence < minConfidence) {
           continue;
         }
@@ -456,13 +511,26 @@ export function createSpeechRecognizer(options = {}) {
         /* ignore */
       }
     },
+    /** Hard-stop mic immediately (no restart, drop final results). Use when Talk is stopped. */
+    abort() {
+      stoppedByUser = true;
+      errorHandled = true;
+      try {
+        recognition.abort();
+      } catch {
+        try {
+          recognition.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+    },
   };
 }
 
 /**
  * Speak text aloud. Resolves when utterance ends (or immediately if unsupported/empty).
- * Slightly faster default rate so back-and-forth voice chat feels snappier.
- * @returns {Promise<boolean>}
+ * @returns {Promise<true | false | "interrupted">} true = finished, "interrupted" = cancelled mid-speech
  */
 export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
   if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
@@ -478,12 +546,12 @@ export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
     const msPerChar = 110 / Math.max(0.75, rate);
     const safetyMs = Math.min(120_000, 4_000 + plain.length * msPerChar);
 
-    const finish = (ok) => {
+    const finish = (result) => {
       if (settled) return;
       settled = true;
       window.clearInterval(keepAlive);
       window.clearTimeout(safetyTimer);
-      resolve(ok);
+      resolve(result);
     };
 
     // Chrome often pauses TTS after ~15s — nudge it so longer answers finish.
@@ -501,7 +569,14 @@ export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
     const safetyTimer = window.setTimeout(() => finish(true), safetyMs);
 
     utter.onend = () => finish(true);
-    utter.onerror = () => finish(false);
+    utter.onerror = (event) => {
+      const err = String(event?.error ?? "");
+      if (err === "interrupted" || err === "canceled" || err === "cancelled") {
+        finish("interrupted");
+        return;
+      }
+      finish(false);
+    };
     window.speechSynthesis.speak(utter);
   });
 }
@@ -509,4 +584,14 @@ export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
 export function stopAssistantSpeech() {
   if (!isSpeechSynthesisSupported()) return;
   window.speechSynthesis.cancel();
+}
+
+/** True when synthesis is currently speaking (best-effort). */
+export function isAssistantSpeaking() {
+  if (!isSpeechSynthesisSupported()) return false;
+  try {
+    return Boolean(window.speechSynthesis.speaking);
+  } catch {
+    return false;
+  }
 }

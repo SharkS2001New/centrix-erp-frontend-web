@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isRetryableSpeechError,
+  isCentrixWakePhrase,
+  isTalkEndPhrase,
   plainTextForSpeech,
   preferredSpeechLang,
   speechErrorMessage,
@@ -33,9 +35,45 @@ describe("spokenBriefForSpeech", () => {
     const brief = spokenBriefForSpeech(raw);
     expect(brief).toMatch(/Diana: opening float KES 20,000/);
     expect(brief).toMatch(/M-Pesa/);
+    expect(brief).not.toMatch(/Expected cash/);
     expect(brief).not.toMatch(/Detail/);
     expect(brief).not.toMatch(/Till management/);
     expect(brief.length).toBeLessThanOrEqual(420);
+  });
+
+  it("keeps greetings to a short spoken line", () => {
+    const brief = spokenBriefForSpeech("Hi — how can I help with Centrix today?");
+    expect(brief).toMatch(/^Hi/);
+    expect(brief.length).toBeLessThanOrEqual(120);
+  });
+});
+
+describe("isTalkEndPhrase", () => {
+  it("closes on nothing else / no / bye", () => {
+    expect(isTalkEndPhrase("nothing else")).toBe(true);
+    expect(isTalkEndPhrase("No")).toBe(true);
+    expect(isTalkEndPhrase("no thanks")).toBe(true);
+    expect(isTalkEndPhrase("that's all")).toBe(true);
+    expect(isTalkEndPhrase("bye")).toBe(true);
+  });
+
+  it("does not treat real questions as end", () => {
+    expect(isTalkEndPhrase("no stock for sugar")).toBe(false);
+    expect(isTalkEndPhrase("what are sales today")).toBe(false);
+  });
+});
+
+describe("isCentrixWakePhrase", () => {
+  it("matches Hi Centrix and CentrixAssistant", () => {
+    expect(isCentrixWakePhrase("Hi Centrix")).toBe(true);
+    expect(isCentrixWakePhrase("Hello CentrixAssistant")).toBe(true);
+    expect(isCentrixWakePhrase("hey centrix")).toBe(true);
+    expect(isCentrixWakePhrase("Centrix")).toBe(true);
+  });
+
+  it("ignores unrelated speech", () => {
+    expect(isCentrixWakePhrase("what is my float")).toBe(false);
+    expect(isCentrixWakePhrase("create an lpo")).toBe(false);
   });
 });
 

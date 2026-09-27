@@ -15,7 +15,14 @@
  *   detailed?: boolean,
  *   needsPanel?: boolean,
  *   brief?: string,
+ *   interrupted?: boolean,
  * }} AiVoiceCompletePayload
+ */
+
+/**
+ * @typedef {{
+ *   brief?: string,
+ * }} AiVoiceSpeakingPayload
  */
 
 /** @type {Set<(request: AiAssistRequest) => void>} */
@@ -23,6 +30,9 @@ const listeners = new Set();
 
 /** @type {Set<(payload?: AiVoiceCompletePayload) => void>} */
 const voiceCompleteListeners = new Set();
+
+/** @type {Set<(payload?: AiVoiceSpeakingPayload) => void>} */
+const voiceSpeakingListeners = new Set();
 
 /** @param {(request: AiAssistRequest) => void} listener */
 export function subscribeAiAssistRequests(listener) {
@@ -36,9 +46,26 @@ export function subscribeAiVoiceComplete(listener) {
   return () => voiceCompleteListeners.delete(listener);
 }
 
+/** Fired when CentrixAssistant starts speaking a Talk reply (barge-in can interrupt). */
+export function subscribeAiVoiceSpeaking(listener) {
+  voiceSpeakingListeners.add(listener);
+  return () => voiceSpeakingListeners.delete(listener);
+}
+
 /** @param {AiVoiceCompletePayload} [payload] */
 export function notifyAiVoiceComplete(payload = {}) {
   voiceCompleteListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/** @param {AiVoiceSpeakingPayload} [payload] */
+export function notifyAiVoiceSpeaking(payload = {}) {
+  voiceSpeakingListeners.forEach((listener) => {
     try {
       listener(payload);
     } catch {

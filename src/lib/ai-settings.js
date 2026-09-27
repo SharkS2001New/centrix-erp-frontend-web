@@ -196,6 +196,16 @@ export function aiFormFromApi(res) {
   return {
     enabled: Boolean(settings.enabled),
     talk_enabled: settings.talk_enabled !== false,
+    talk_provider: settings.talk_provider === "openai" ? "openai" : "gemini",
+    talk_api_key: "",
+    talk_model: settings.talk_model ?? "",
+    talk_base_url: settings.talk_base_url ?? "",
+    talk_api_key_set: Boolean(settings.talk_api_key_set),
+    talk_api_key_hint: settings.talk_api_key_hint ?? "",
+    talk_gemini_api_key: "",
+    talk_gemini_model: settings.talk_gemini_model ?? "",
+    talk_gemini_api_key_set: Boolean(settings.talk_gemini_api_key_set),
+    talk_gemini_api_key_hint: settings.talk_gemini_api_key_hint ?? "",
     use_platform_ai: usePlatformAi,
     provider: settings.provider ?? res?.free_ai_provider ?? "openai",
     model: settings.model ?? "",
@@ -262,6 +272,18 @@ export function aiPayloadFromForm(form, options = {}) {
       payload.free_ai_provider = form.free_ai_provider;
     }
     payload.talk_enabled = form.talk_enabled !== false;
+    if (["openai", "gemini"].includes(form.talk_provider)) {
+      payload.talk_provider = form.talk_provider;
+    }
+    if (form.talk_api_key && !form.talk_api_key.startsWith("••••")) {
+      payload.talk_api_key = form.talk_api_key;
+    }
+    payload.talk_model = form.talk_model || null;
+    payload.talk_base_url = form.talk_base_url || null;
+    if (form.talk_gemini_api_key && !form.talk_gemini_api_key.startsWith("••••")) {
+      payload.talk_gemini_api_key = form.talk_gemini_api_key;
+    }
+    payload.talk_gemini_model = form.talk_gemini_model || null;
   }
   if (includeInsights && form.insights) {
     payload.insights = insightsPayloadFromForm(form.insights);

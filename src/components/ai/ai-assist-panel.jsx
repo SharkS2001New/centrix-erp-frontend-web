@@ -22,7 +22,7 @@ import {
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
-import { buildPageContext, notifyAiVoiceComplete, subscribeAiAssistRequests, isDetailedAssistantReply, assistantReplyNeedsPanel } from "@/lib/ai-assist-bridge";
+import { buildPageContext, notifyAiVoiceComplete, notifyAiVoiceSpeaking, subscribeAiAssistRequests, isDetailedAssistantReply, assistantReplyNeedsPanel } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
@@ -35,11 +35,12 @@ function closePanel(setOpen, setExpanded) {
   setOpen(false);
 }
 
-/** Confirm / form UI is only for write creates — never for open/navigate deep links. */
+/** Confirm / form UI is only for write creates/updates — never for open/navigate deep links. */
 function isWritePendingAction(action) {
   const type = String(action?.type ?? "");
   return (
     type.startsWith("create_") ||
+    type.startsWith("update_") ||
     type === "record_customer_payment" ||
     [
       "submit_lpo_for_approval",
@@ -299,8 +300,14 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       return;
     }
     lastSpokenRef.current = key;
-    void speakAssistantText(brief, { rate: 1.05 }).finally(() => {
-      notifyAiVoiceComplete({ detailed, needsPanel, brief });
+    notifyAiVoiceSpeaking({ brief });
+    void speakAssistantText(brief, { rate: 1.05 }).then((result) => {
+      notifyAiVoiceComplete({
+        detailed,
+        needsPanel,
+        brief,
+        interrupted: result === "interrupted",
+      });
     });
   }, []);
 
@@ -460,7 +467,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const effectiveConfirm = confirm || typedConfirm;
       try {
         // Voice: shorter history + skip stream for a faster complete spoken reply.
-        const history = messages.slice(fromVoice ? -4 : -6);
+        const history = messages.slice(fromVoice ? -8 : -6);
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
