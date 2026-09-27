@@ -22,6 +22,7 @@ const emptyR2Form = {
   prefix: "backups/database",
   public_url: "",
   use_path_style_endpoint: true,
+  r2_retention_days: 7,
   secret_access_key_set: false,
   secret_access_key_hint: "",
 };
@@ -47,6 +48,10 @@ export function PlatformR2BackupSettingsPanel() {
       prefix: settings.prefix || "backups/database",
       public_url: settings.public_url ?? "",
       use_path_style_endpoint: settings.use_path_style_endpoint !== false,
+      r2_retention_days: Math.max(
+        1,
+        Math.min(365, Number(settings.r2_retention_days ?? settings.retention_days ?? 7) || 7),
+      ),
       secret_access_key_set: Boolean(settings.secret_access_key_set),
       secret_access_key_hint: settings.secret_access_key_hint ?? "",
     });
@@ -92,6 +97,7 @@ export function PlatformR2BackupSettingsPanel() {
       prefix: r2Form.prefix.trim() || "backups/database",
       public_url: r2Form.public_url.trim(),
       use_path_style_endpoint: Boolean(r2Form.use_path_style_endpoint),
+      r2_retention_days: Math.max(1, Math.min(365, Number(r2Form.r2_retention_days) || 7)),
     };
     const secret = r2Form.secret_access_key.trim();
     if (secret && !secret.startsWith("••••")) {
@@ -187,8 +193,9 @@ export function PlatformR2BackupSettingsPanel() {
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Cloudflare R2 offsite upload</h2>
           <p className="mt-1 text-xs text-slate-500">
-            After each local database dump, the backup is copied to your R2 bucket.
-            Leave the secret blank to keep the current value. Manage backup files on{" "}
+            After each local database dump, the backup is copied to your R2 bucket. Older SQL dumps
+            under the object prefix are pruned automatically (default 7 days). Leave the secret blank
+            to keep the current value. Manage backup files on{" "}
             <a href="/platform/database-backups" className="font-medium text-[#185FA5] hover:underline">
               Database backups
             </a>
@@ -317,6 +324,30 @@ export function PlatformR2BackupSettingsPanel() {
             onChange={(e) => setR2Form((f) => ({ ...f, prefix: e.target.value }))}
             disabled={loading || savingR2}
           />
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">
+            Keep R2 SQL dumps (days)
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={365}
+            className={inputClass}
+            value={r2Form.r2_retention_days}
+            onChange={(e) =>
+              setR2Form((f) => ({
+                ...f,
+                r2_retention_days: Math.max(1, Math.min(365, Number(e.target.value) || 7)),
+              }))
+            }
+            disabled={loading || savingR2}
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            After each backup run, delete .sql / .sql.gz objects under the prefix older than this many
+            days (1–365). Does not affect local files or other R2 prefixes.
+          </span>
         </label>
 
         <label className="block text-sm lg:col-span-2">

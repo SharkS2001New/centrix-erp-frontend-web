@@ -184,7 +184,7 @@ export default function PlatformDatabaseBackupsPage() {
         Files stay on the server
         {r2Status?.upload_ready ? " and are copied to Cloudflare R2 after each run." : "."} Local
         files older than {retentionDays} day{retentionDays === 1 ? "" : "s"} are pruned after each
-        backup. Configure offsite upload in{" "}
+        backup. R2 SQL dump retention is configured separately under{" "}
         <Link href="/platform/settings?tab=r2" className="font-medium text-[#185FA5] hover:underline">
           Platform settings → Cloudflare R2
         </Link>
@@ -255,7 +255,8 @@ export default function PlatformDatabaseBackupsPage() {
           </label>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">
-          Default is 3 days — older local backups are deleted automatically after each run. Keep R2 offsite for longer recovery.
+          Default is 3 days — older local backups are deleted automatically after each run. R2 offsite
+          retention (default 7 days) is set under Platform settings → Cloudflare R2.
         </p>
         <div className="mt-3">
           <PrimaryButton type="submit" showIcon={false} disabled={savingSchedule || loading}>
@@ -277,6 +278,13 @@ export default function PlatformDatabaseBackupsPage() {
             <>
               {" "}
               · prefix <span className="font-mono">{r2Status.prefix}</span>
+            </>
+          ) : null}
+          {r2Status.retention_days ? (
+            <>
+              {" "}
+              · keep SQL dumps {r2Status.retention_days} day
+              {r2Status.retention_days === 1 ? "" : "s"}
             </>
           ) : null}
         </div>
