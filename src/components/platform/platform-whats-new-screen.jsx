@@ -13,6 +13,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { PlatformWhatsNewAiAssist } from "@/components/platform/platform-whats-new-ai-assist";
+import { PlatformWhatsNewSeenModal } from "@/components/platform/platform-whats-new-seen-modal";
 
 const EMPTY_FORM = {
   title: "",
@@ -59,6 +60,7 @@ export function PlatformWhatsNewScreen() {
   const [reshowingId, setReshowingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [seenNote, setSeenNote] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [orgSearch, setOrgSearch] = useState("");
 
@@ -441,7 +443,7 @@ export function PlatformWhatsNewScreen() {
                         {" · "}
                         {note.audience === "admins_only" ? "Admins only" : "All users"}
                         {note.status === "published"
-                          ? ` · Notified ${note.notified_count ?? 0}`
+                          ? ` · Notified ${note.notified_count ?? 0} · Seen ${note.reads_count ?? 0}`
                           : null}
                       </p>
                     </div>
@@ -454,6 +456,15 @@ export function PlatformWhatsNewScreen() {
                     >
                       Edit
                     </button>
+                    {note.status === "published" ? (
+                      <button
+                        type="button"
+                        className={SECONDARY_BTN_CLASS}
+                        onClick={() => setSeenNote(note)}
+                      >
+                        Seen by{(note.reads_count ?? 0) > 0 ? ` (${note.reads_count})` : ""}
+                      </button>
+                    ) : null}
                     {note.status === "draft" ? (
                       <PrimaryButton
                         type="button"
@@ -486,6 +497,12 @@ export function PlatformWhatsNewScreen() {
           )}
         </section>
       </div>
+
+      <PlatformWhatsNewSeenModal
+        open={!!seenNote}
+        note={seenNote}
+        onClose={() => setSeenNote(null)}
+      />
     </CatalogPageShell>
   );
 }

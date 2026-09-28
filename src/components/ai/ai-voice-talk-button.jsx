@@ -21,13 +21,10 @@ import {
   canUseVoiceInput,
   createSpeechRecognizer,
   createVoiceRecorder,
-  hasMicrophonePermission,
-  isCentrixWakePhrase,
   isTalkEndPhrase,
   speakAssistantText,
   speechErrorMessage,
   stopAssistantSpeech,
-  stripCentrixWakePrefix,
 } from "@/lib/ai-voice";
 
 /**
@@ -35,15 +32,19 @@ import {
  * Chrome finalizes mid-thought after short silences — keep this long enough
  * that a natural pause does not cut the user off.
  */
-const HANDOFF_PAUSE_MS = 1700;
+const HANDOFF_PAUSE_MS = 900;
 /** Extra wait when the last phrase does not look finished (no . ? !). */
-const HANDOFF_INCOMPLETE_PAUSE_MS = 2400;
-/** After the assistant finishes speaking, wait briefly so we don’t hear its own voice. */
-const RESUME_LISTEN_MS = 450;
+const HANDOFF_INCOMPLETE_PAUSE_MS = 1400;
+/** After the assistant finishes speaking, briefly cool the mic then listen again. */
+const RESUME_LISTEN_MS = 220;
+/** Chrome SpeechRecognition dies if we open the mic while TTS is playing — never barge-in. */
+const ENABLE_BARGE_IN = false;
 /** Ignore barge-in for a moment so TTS echo does not look like the user talking. */
 const BARGE_IN_GUARD_MS = 550;
 /** Silence before auto-stop on MediaRecorder fallback (matches handoff feel). */
-const RECORD_SILENCE_MS = 1800;
+const RECORD_SILENCE_MS = 1200;
+/** If the AI never returns, leave "Waiting…" so Talk can recover without a full page reload. */
+const WAITING_WATCHDOG_MS = 45000;
 
 function MicIcon({ className }) {
   return (
@@ -87,14 +88,13 @@ export function AiVoiceTalkButton() {
   const conversationActiveRef = useRef(false);
   const pauseTimerRef = useRef(0);
   const resumeTimerRef = useRef(0);
+  const waitWatchdogRef = useRef(0);
   const handedOffRef = useRef(false);
   const finishRecordRef = useRef(null);
   const startListeningRef = useRef(null);
   const resetRef = useRef(null);
   const wakeRecognizerRef = useRef(null);
-  /** After the user grants mic once (Talk click or wake), keep quiet wake listening while idle. */
-  const wakeEnabledRef = useRef(false);
-  /** True while TTS is playing and barge-in is armed. */
+  /** True while TTS is playing. */
   const speakingRef = useRef(false);
   const bargeInArmedAtRef = useRef(0);
   const speakInterruptedRef = useRef(false);
@@ -118,9 +118,17 @@ export function AiVoiceTalkButton() {
     }
   }, []);
 
+  const clearWaitWatchdog = useCallback(() => {
+    if (waitWatchdogRef.current) {
+      window.clearTimeout(waitWatchdogRef.current);
+      waitWatchdogRef.current = 0;
+    }
+  }, []);
+
   const stopMicHard = useCallback(() => {
     clearPauseTimer();
     clearResumeTimer();
+    clearWaitWatchdog();
     const recognizer = recognizerRef.current;
     recognizerRef.current = null;
     try {
@@ -136,7 +144,7 @@ export function AiVoiceTalkButton() {
       /* ignore */
     }
     stopAssistantSpeech();
-  }, [clearPauseTimer, clearResumeTimer]);
+  }, [clearPauseTimer, clearResumeTimer, clearWaitWatchdog]);
 
   const stopWakeListener = useCallback(() => {
     const wake = wakeRecognizerRef.current;
@@ -218,6 +226,7 @@ export function AiVoiceTalkButton() {
       speakingRef.current = false;
       handedOffRef.current = true;
       clearPauseTimer();
+      clearWaitWatchdog();
       // Release mic while waiting for the answer — session stays on until Stop.
       const recognizer = recognizerRef.current;
       recognizerRef.current = null;
@@ -237,6 +246,22 @@ export function AiVoiceTalkButton() {
       setSuggestOpen(false);
       setLevel(0);
 
+      // Recover if the assistant never signals voice-complete (stuck "Waiting…").
+      waitWatchdogRef.current = window.setTimeout(() => {
+        waitWatchdogRef.current = 0;
+        if (cancelledRef.current || !conversationActiveRef.current) return;
+        if (!handedOffRef.current) return;
+        handedOffRef.current = false;
+        speakingRef.current = false;
+        notifyError("Talk timed out waiting for an answer. Listening again — ask once more.");
+        setPhase("listening");
+        setHeard("");
+        resumeTimerRef.current = window.setTimeout(() => {
+          if (cancelledRef.current || !conversationActiveRef.current) return;
+          void startListeningRef.current?.({ resume: true });
+        }, RESUME_LISTEN_MS);
+      }, WAITING_WATCHDOG_MS);
+
       requestAiAssist({
         message: q,
         autoSend: true,
@@ -249,7 +274,7 @@ export function AiVoiceTalkButton() {
         }),
       });
     },
-    [capabilities, clearPauseTimer, endTalkPolitely, pathname],
+    [capabilities, clearPauseTimer, clearWaitWatchdog, endTalkPolitely, pathname],
   );
 
   useEffect(() => {
@@ -488,7 +513,6 @@ export function AiVoiceTalkButton() {
       if (!resume) {
         conversationActiveRef.current = true;
         setSessionActive(true);
-        wakeEnabledRef.current = true;
         stopWakeListener();
       }
       if (!conversationActiveRef.current || cancelledRef.current) return;
@@ -522,7 +546,7 @@ export function AiVoiceTalkButton() {
         } catch {
           /* ignore */
         }
-        await new Promise((r) => window.setTimeout(r, resume ? 30 : 60));
+        await new Promise((r) => window.setTimeout(r, resume ? 80 : 60));
         if (cancelledRef.current || !conversationActiveRef.current) return;
 
         const recognizer = createSpeechRecognizer({
@@ -617,115 +641,23 @@ export function AiVoiceTalkButton() {
     startListeningRef.current = startListening;
   }, [startListening]);
 
-  // Quiet wake-word listener while idle: say "Hi Centrix" / "Talk to Centrix Assistant"
-  // to start Talk (no banner until woken). Requires mic permission (granted earlier or via Talk click).
+  // Wake-word listening is disabled for now — it kept the mic busy and slowed the app.
+  // Talk starts only when the user clicks the Talk button.
   useEffect(() => {
-    if (!orgAiEnabled || !voiceSupported || sessionActive) {
-      stopWakeListener();
-      return undefined;
-    }
-    if (!canUseBrowserSpeechRecognition()) return undefined;
-
-    let disposed = false;
-    let restartTimer = 0;
-
-    const startWake = async () => {
-      if (disposed || conversationActiveRef.current || sessionActive) return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-
-      // Browsers block SpeechRecognition without mic permission — don't spin forever.
-      const permitted =
-        wakeEnabledRef.current || (await hasMicrophonePermission());
-      if (disposed || conversationActiveRef.current) return;
-      if (!permitted) {
-        // Wait until the user clicks "Talk to Centrix Assistant" once (grants mic).
-        return;
-      }
-      wakeEnabledRef.current = true;
-
-      stopWakeListener();
-
-      const wake = createSpeechRecognizer({
-        lang: "en-US",
-        continuous: true,
-        minConfidence: 0.15,
-        onFinal: (text) => {
-          if (disposed || conversationActiveRef.current) return;
-          if (!isCentrixWakePhrase(text)) return;
-          wakeEnabledRef.current = true;
-          stopWakeListener();
-          cancelledRef.current = false;
-          const question = stripCentrixWakePrefix(text);
-          // Greeting only ("Hi Centrix") → open mic and listen for the real question.
-          // Greeting + question → send the question immediately.
-          if (question) {
-            void startListeningRef.current?.({ resume: false, seedMessage: question });
-          } else {
-            void startListeningRef.current?.({ resume: false });
-          }
-        },
-        onError: ({ code }) => {
-          wakeRecognizerRef.current = null;
-          // Need a click once for mic permission — then wake works.
-          if (code === "not-allowed" || code === "audio-capture" || code === "service-not-allowed") {
-            wakeEnabledRef.current = false;
-            return;
-          }
-          if (disposed || conversationActiveRef.current) return;
-          restartTimer = window.setTimeout(() => {
-            void startWake();
-          }, 1200);
-        },
-        onEnd: () => {
-          wakeRecognizerRef.current = null;
-          if (disposed || conversationActiveRef.current) return;
-          restartTimer = window.setTimeout(() => {
-            void startWake();
-          }, 400);
-        },
-      });
-
-      if (!wake) return;
-      wakeRecognizerRef.current = wake;
-      try {
-        wake.start();
-      } catch {
-        wakeRecognizerRef.current = null;
-      }
-    };
-
-    // Small delay so Talk Stop can release the mic before wake re-attaches.
-    restartTimer = window.setTimeout(() => {
-      void startWake();
-    }, wakeEnabledRef.current ? 500 : 900);
-
-    const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        stopWakeListener();
-      } else if (!conversationActiveRef.current) {
-        restartTimer = window.setTimeout(() => {
-          void startWake();
-        }, 400);
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-
+    stopWakeListener();
     return () => {
-      disposed = true;
-      window.clearTimeout(restartTimer);
-      document.removeEventListener("visibilitychange", onVis);
       stopWakeListener();
     };
-  }, [orgAiEnabled, sessionActive, stopWakeListener, voiceSupported]);
+  }, [stopWakeListener]);
 
-  // While CentrixAssistant is speaking, listen for barge-in follow-ups.
+  // While CentrixAssistant is speaking — UI only. Do NOT open the mic during TTS:
+  // Chrome's SpeechRecognition often dies until a full page reload when mic+TTS overlap.
   useEffect(() => {
     return subscribeAiVoiceSpeaking((payload = {}) => {
       if (cancelledRef.current || !conversationActiveRef.current) return;
+      clearWaitWatchdog();
       speakInterruptedRef.current = false;
       speakingRef.current = true;
-      // Unlock handoff so a follow-up can cut in mid-answer.
-      handedOffRef.current = false;
       setSessionActive(true);
       setPhase("speaking");
       if (payload.brief) setSpokenReply(payload.brief);
@@ -733,17 +665,19 @@ export function AiVoiceTalkButton() {
       setInterimHeard("");
       setLevel(0);
       clearResumeTimer();
-      // Short delay so we don't pick up the start of TTS as the user.
-      window.setTimeout(() => {
-        if (!speakingRef.current || cancelledRef.current || !conversationActiveRef.current) return;
-        startBargeInListening();
-      }, BARGE_IN_GUARD_MS);
+      if (ENABLE_BARGE_IN) {
+        window.setTimeout(() => {
+          if (!speakingRef.current || cancelledRef.current || !conversationActiveRef.current) return;
+          startBargeInListening();
+        }, BARGE_IN_GUARD_MS);
+      }
     });
-  }, [clearResumeTimer, startBargeInListening]);
+  }, [clearResumeTimer, clearWaitWatchdog, startBargeInListening]);
 
   // After the spoken answer finishes, keep the conversation going without another click.
   useEffect(() => {
     return subscribeAiVoiceComplete((payload = {}) => {
+      clearWaitWatchdog();
       if (cancelledRef.current || !conversationActiveRef.current) {
         speakingRef.current = false;
         setSessionActive(false);
@@ -776,12 +710,13 @@ export function AiVoiceTalkButton() {
       setSessionActive(true);
       setPhase("listening");
       clearResumeTimer();
+      // Longer cool-down so the browser releases the audio session before STT restarts.
       resumeTimerRef.current = window.setTimeout(() => {
         if (cancelledRef.current || !conversationActiveRef.current) return;
         void startListeningRef.current?.({ resume: true });
       }, RESUME_LISTEN_MS);
     });
-  }, [clearResumeTimer]);
+  }, [clearResumeTimer, clearWaitWatchdog]);
 
   const onClick = useCallback(() => {
     if (sessionActive || phase !== "idle") {
@@ -810,7 +745,7 @@ export function AiVoiceTalkButton() {
     phase === "listening"
       ? "Listening…"
       : phase === "speaking"
-        ? "Speaking… (interrupt OK)"
+        ? "Speaking…"
         : phase === "waiting"
           ? "Waiting…"
           : "Talk to Centrix Assistant";
@@ -846,9 +781,9 @@ export function AiVoiceTalkButton() {
         title={
           micModeOn
             ? phase === "speaking"
-              ? "Speak to interrupt and ask a follow-up — or Stop"
+              ? "Stop — or wait for the answer to finish, then ask a follow-up"
               : "Stop conversation — or say no / nothing else to close"
-            : "Talk to Centrix Assistant — click once to enable the mic, then say “Hi Centrix” anytime"
+            : "Talk to Centrix Assistant — click to start a voice conversation"
         }
         aria-pressed={micModeOn}
       >
@@ -885,14 +820,14 @@ export function AiVoiceTalkButton() {
                 {phase === "listening"
                   ? `Talk to Centrix Assistant · listening to ${speakerFirst}`
                   : phase === "speaking"
-                    ? "Talk to Centrix Assistant · speaking — interrupt anytime"
+                    ? "Talk to Centrix Assistant · speaking"
                     : "Talk to Centrix Assistant · getting answer…"}
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
                   ? `Ask in English — or say “nothing else” / “no” to close`
                   : phase === "speaking"
-                    ? "Start talking to pause this answer and ask a follow-up"
+                    ? "I’ll listen again when finished — tap Stop anytime"
                     : "I’ll speak a short answer; open the assistant only if you want full detail"}
               </p>
 
@@ -910,7 +845,7 @@ export function AiVoiceTalkButton() {
                     {phase === "listening"
                       ? "Waiting for your voice…"
                       : phase === "speaking"
-                        ? "Speak to interrupt…"
+                        ? "Listening again after this answer…"
                         : "Understanding…"}
                   </p>
                 )}

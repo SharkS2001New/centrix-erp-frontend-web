@@ -144,6 +144,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Quote → accept → provision org → first invoice.",
       },
       {
+        href: "/platform/marketing",
+        label: "Marketing portfolios",
+        icon: "star",
+        description: "AI-assisted Centrix portfolios for shops, hotels, spas, and more.",
+      },
+      {
         href: "/platform/invoice-templates",
         label: "Templates",
         icon: "package",
