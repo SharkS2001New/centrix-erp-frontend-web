@@ -83,6 +83,23 @@ describe("spokenBriefForSpeech", () => {
     expect(brief).not.toMatch(/Kenyan Shillings \(Kenyan Shillings\)/);
     expect(brief.length).toBeLessThanOrEqual(560);
   });
+
+  it("speaks screen locations in words instead of paths", () => {
+    const brief = spokenBriefForSpeech(
+      "Today 13 employees clocked in. The full history is on /hr/attendance and /hr/attendance/history.",
+    );
+    expect(brief).toMatch(/HR Attendance/);
+    expect(brief).toMatch(/HR Attendance History/);
+    expect(brief).not.toMatch(/\/hr\//);
+  });
+
+  it("humanizes single-segment paths like /price-history", () => {
+    const brief = spokenBriefForSpeech(
+      "The formal log is on the Price history screen at /price-history.",
+    );
+    expect(brief).toMatch(/Price History/);
+    expect(brief).not.toMatch(/\/price-history/);
+  });
 });
 
 describe("isTalkEndPhrase", () => {

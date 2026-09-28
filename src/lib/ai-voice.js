@@ -200,6 +200,55 @@ export function plainTextForSpeech(raw) {
   return text.slice(0, 1200);
 }
 
+function titleCasePathSegment(raw) {
+  const cleaned = String(raw ?? "").replace(/[-_]+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => {
+      const lower = w.toLowerCase();
+      if (lower === "hr" || lower === "lpo" || lower === "grn" || lower === "vat") {
+        return lower.toUpperCase();
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+/** `/hr/attendance` → `HR Attendance` */
+export function humanizeCentrixPath(path) {
+  let p = String(path ?? "").trim();
+  if (!p) return "";
+  p = p.replace(/^\/+/, "");
+  p = p.split("?")[0].split("#")[0];
+  const parts = p
+    .split("/")
+    .filter(Boolean)
+    .map(titleCasePathSegment)
+    .filter(Boolean);
+  if (parts.length === 0) return String(path ?? "").trim();
+  return parts.join(" ");
+}
+
+/** Replace bare Centrix paths with natural location wording for speech. */
+export function humanizeSpokenPaths(raw) {
+  let text = String(raw ?? "");
+  text = text.replace(/(?<![A-Za-z0-9])(\/[a-z][a-z0-9_-]*(?:\/[a-z0-9_-]+)*)\/?/gi, (full, path) => {
+    const human = humanizeCentrixPath(path);
+    return human || full;
+  });
+  text = text.replace(
+    /\b(on|at|in|via|under)\s+((?:HR|LPO|GRN|VAT|[A-Z][a-z]+)(?:\s+[A-Z][a-z0-9]+){1,4})/g,
+    (full, prep, place) => {
+      const p = String(prep).toLowerCase();
+      if (p === "on" || p === "at" || p === "via") return `in ${place}`;
+      return `${prep} ${place}`;
+    },
+  );
+  return text;
+}
+
 /** Format a numeric cell for speech (keep commas for clarity). */
 function speakAmount(raw) {
   const s = String(raw ?? "").replace(/[^\d.,]/g, "").trim();
@@ -296,6 +345,7 @@ export function spokenBriefForSpeech(raw) {
   text = text.split(/\n(?=Detail\b|Open\b)/i)[0] ?? text;
   text = text.replace(/^[-*]\s+/gm, "");
   text = plainTextForSpeech(text);
+  text = humanizeSpokenPaths(text);
   // Prefer a single spoken currency phrase (avoid "Kenyan Shillings (Kenyan Shillings)").
   text = text.replace(/Kenyan Shillings\s*\(\s*KES\s*\)/gi, "Kenyan Shillings");
   text = text.replace(/\bKES\b/gi, "Kenyan Shillings");
