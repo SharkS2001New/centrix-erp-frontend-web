@@ -383,6 +383,31 @@ export function humanizeSpokenPaths(raw) {
   return text;
 }
 
+/**
+ * Talk TTS: expand abbreviations and prefer product/supplier names over codes.
+ */
+export function humanizeSpokenErpTerms(raw) {
+  let text = String(raw ?? "");
+
+  // "Sugar × 10" / "Sugar x 10" → "Sugar quantity 10"
+  text = text.replace(/\s*[×xX]\s*(?=\d)/g, " quantity ");
+
+  text = text.replace(/\bordered[_\s-]?qtys?\b/gi, "ordered quantity");
+  text = text.replace(/\bqtys?\b/gi, "quantity");
+
+  // Drop bracketed / parenthetical SKUs: "Sugar [SUG50]" → "Sugar"
+  text = text.replace(/\s*[\[(]\s*`?[A-Z0-9][A-Z0-9._\-/]{1,32}`?\s*[\])]/g, "");
+  // Drop backtick-only codes left in prose: `SUG50`
+  text = text.replace(/`([A-Z0-9][A-Z0-9._\-/]{1,32})`/g, "");
+  // "product code SUG50" / "supplier code VND01" → drop the code token
+  text = text.replace(/\b(product|supplier)\s+codes?\s+[A-Z0-9][A-Z0-9._\-/]{1,32}\b/gi, "$1");
+  text = text.replace(/\b(?:SKU|stock\s*code|item\s*code)\s*[:=]?\s*[A-Z0-9][A-Z0-9._\-/]{1,32}\b/gi, "");
+  // Trailing " — SUG50" style after a name (short all-caps/digit codes only)
+  text = text.replace(/\s+[—–-]\s+[A-Z0-9][A-Z0-9._\-/]{1,16}(?=\s|[.,;:]|$)/g, "");
+
+  return text.replace(/\s{2,}/g, " ").trim();
+}
+
 /** Format a numeric cell for speech (keep commas for clarity). */
 function speakAmount(raw) {
   const s = String(raw ?? "").replace(/[^\d.,]/g, "").trim();
@@ -480,6 +505,7 @@ export function spokenBriefForSpeech(raw) {
   text = text.replace(/^[-*]\s+/gm, "");
   text = plainTextForSpeech(text);
   text = humanizeSpokenPaths(text);
+  text = humanizeSpokenErpTerms(text);
   // Prefer a single spoken currency phrase (avoid "Kenyan Shillings (Kenyan Shillings)").
   text = text.replace(/Kenyan Shillings\s*\(\s*KES\s*\)/gi, "Kenyan Shillings");
   text = text.replace(/\bKES\b/gi, "Kenyan Shillings");

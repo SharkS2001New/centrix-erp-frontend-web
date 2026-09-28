@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  humanizeSpokenErpTerms,
   isRetryableSpeechError,
   isCentrixWakePhrase,
   isTalkEndPhrase,
@@ -18,6 +19,22 @@ describe("plainTextForSpeech", () => {
   it("caps length for TTS", () => {
     const long = "a".repeat(2000);
     expect(plainTextForSpeech(long).length).toBe(1200);
+  });
+});
+
+describe("humanizeSpokenErpTerms", () => {
+  it("reads qty as quantity and x-qty as quantity N", () => {
+    expect(humanizeSpokenErpTerms("Ordered qty is 12")).toMatch(/Ordered quantity is 12/i);
+    expect(humanizeSpokenErpTerms("Sugar x 10")).toMatch(/Sugar quantity 10/i);
+    expect(humanizeSpokenErpTerms("Oil × 5")).toMatch(/Oil quantity 5/i);
+  });
+
+  it("prefers product and supplier names over codes", () => {
+    expect(humanizeSpokenErpTerms("Sugar [SUG50] for Bidco [VND01]")).toBe(
+      "Sugar for Bidco",
+    );
+    expect(humanizeSpokenErpTerms("Product `6161100100015` is low")).toMatch(/Product is low/i);
+    expect(humanizeSpokenErpTerms("supplier code VND01")).toMatch(/^supplier$/i);
   });
 });
 
@@ -99,6 +116,17 @@ describe("spokenBriefForSpeech", () => {
     );
     expect(brief).toMatch(/Price History/);
     expect(brief).not.toMatch(/\/price-history/);
+  });
+
+  it("says quantity and product names instead of qty and codes", () => {
+    const brief = spokenBriefForSpeech(
+      "LPO draft: Bidco [VND01], Sugar [SUG50] x 10. Ordered qty matches the request.",
+    );
+    expect(brief).toMatch(/quantity/i);
+    expect(brief).not.toMatch(/\bqty\b/i);
+    expect(brief).toMatch(/Sugar/);
+    expect(brief).toMatch(/Bidco/);
+    expect(brief).not.toMatch(/SUG50|VND01/);
   });
 });
 
