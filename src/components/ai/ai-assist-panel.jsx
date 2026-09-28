@@ -287,30 +287,31 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const speakVoiceReplyIfNeeded = useCallback((content, meta = null) => {
     const detailed = isDetailedAssistantReply(meta, content);
     const formNeedsPanel = assistantReplyNeedsPanel(meta);
-    // Voice: open the sidebar when the answer has a table / long figures so they can look.
-    const openForDetail = Boolean(voiceAskedRef.current && detailed);
-    const needsPanel = formNeedsPanel || openForDetail;
-    if (needsPanel) {
+    // Talk stays hands-free for normal answers. Only open the sidebar when the
+    // user must continue a write (form / pending create-product etc.) — not for
+    // every long spoken reply.
+    if (formNeedsPanel) {
       setOpen(true);
     }
 
     if (!voiceAskedRef.current || !content) {
       voiceAskedRef.current = false;
-      notifyAiVoiceComplete({ detailed, needsPanel });
+      notifyAiVoiceComplete({ detailed, needsPanel: formNeedsPanel });
       return;
     }
     let brief = spokenBriefForSpeech(content);
-    if (openForDetail && brief && !/opened the assistant/i.test(brief)) {
-      brief = `${brief} I've opened the assistant with the full breakdown — take a look there.`.trim();
+    if (formNeedsPanel && brief && !/type (the rest|details|in the assistant)/i.test(brief)) {
+      brief =
+        `${brief} You can type the missing details in the assistant if that is easier.`.trim();
     }
     voiceAskedRef.current = false;
     if (!brief) {
-      notifyAiVoiceComplete({ detailed, needsPanel });
+      notifyAiVoiceComplete({ detailed, needsPanel: formNeedsPanel });
       return;
     }
     const key = brief.slice(0, 80);
     if (lastSpokenRef.current === key) {
-      notifyAiVoiceComplete({ detailed, needsPanel, brief });
+      notifyAiVoiceComplete({ detailed, needsPanel: formNeedsPanel, brief });
       return;
     }
     lastSpokenRef.current = key;
@@ -318,7 +319,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     void speakAssistantText(brief, { rate: 1.05 }).then((result) => {
       notifyAiVoiceComplete({
         detailed,
-        needsPanel,
+        needsPanel: formNeedsPanel,
         brief,
         interrupted: result === "interrupted",
       });
@@ -1000,7 +1001,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                   value={input}
                   entityRefs={entityRefs}
                   disabled={loading}
-                  placeholder="Ask anything… Type Help for ideas · @ for products, suppliers, customers"
+                  placeholder={
+                    isWritePendingAction(pendingAction)
+                      ? "Type the missing details here — same conversation as Talk. Then reply confirm when ready."
+                      : "Ask anything… Type Help for ideas · @ for products, suppliers, customers"
+                  }
                   textareaClassName="min-h-[96px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
                   onChange={({ text, entityRefs: nextRefs }) => {
                     setInput(text);

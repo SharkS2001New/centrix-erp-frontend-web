@@ -82,6 +82,7 @@ export function AiVoiceTalkButton() {
   const [interimHeard, setInterimHeard] = useState("");
   const [spokenReply, setSpokenReply] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [typeContinue, setTypeContinue] = useState(false);
   const [level, setLevel] = useState(0);
   const [warming, setWarming] = useState(false);
 
@@ -189,6 +190,7 @@ export function AiVoiceTalkButton() {
     setInterimHeard("");
     setSpokenReply("");
     setSuggestOpen(false);
+    setTypeContinue(false);
     setLevel(0);
     voiceFinalRef.current = "";
     interimHeardRef.current = "";
@@ -744,6 +746,7 @@ export function AiVoiceTalkButton() {
         setInterimHeard("");
         setLevel(0);
         setSuggestOpen(false);
+        setTypeContinue(false);
         handedOffRef.current = false;
         return;
       }
@@ -759,8 +762,9 @@ export function AiVoiceTalkButton() {
       if (payload.brief) {
         setSpokenReply(payload.brief);
       }
-      // Suggest opening the sidebar for long answers; forms already force-open the panel.
+      // Suggest opening for long read-only answers; writes already open the panel.
       setSuggestOpen(Boolean(payload.detailed) && !payload.needsPanel);
+      setTypeContinue(Boolean(payload.needsPanel));
 
       handedOffRef.current = false;
       setHeard("");
@@ -785,6 +789,13 @@ export function AiVoiceTalkButton() {
     }
     if (warming) return;
 
+    // Previous Stop leaves cancelledRef true. Clear it here so reopen works
+    // without a full page reload (startListening also clears it, but we gate
+    // on cancelledRef after warmup — that gate was blocking forever).
+    cancelledRef.current = false;
+    conversationActiveRef.current = true;
+    handedOffRef.current = false;
+
     // Warm STT/TTS under this user gesture so the first listen responds quickly
     // (same idea as Manager Talk warmup-on-click).
     setWarming(true);
@@ -797,7 +808,8 @@ export function AiVoiceTalkButton() {
       setWarming(false);
     }
     if (cancelledRef.current) {
-      // Stop was pressed during warmup — stay idle.
+      // Stop was pressed during this warmup — stay idle.
+      conversationActiveRef.current = false;
       setPhase("idle");
       setSessionActive(false);
       return;
@@ -910,10 +922,12 @@ export function AiVoiceTalkButton() {
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? `Ask in English — tap Stop anytime to end Talk`
+                  ? typeContinue
+                    ? "Speak more details, or type them in the assistant — same conversation"
+                    : `Ask in English — tap Stop anytime to end Talk`
                   : phase === "speaking"
                     ? "I’ll listen again when finished — tap Stop to end Talk"
-                    : "I’ll speak the key figures; the full table opens in the assistant when needed"}
+                    : "Speak naturally — the assistant only opens when you need to type or confirm"}
               </p>
 
               <div className="mt-2 min-h-[2.5rem] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-800/80">
@@ -945,7 +959,20 @@ export function AiVoiceTalkButton() {
                 </div>
               ) : null}
 
-              {suggestOpen ? (
+              {typeContinue ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-slate-500">
+                    Hard to say aloud? Type the details in chat — it continues this same step.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onOpenAssistant}
+                    className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-500"
+                  >
+                    Type in assistant
+                  </button>
+                </div>
+              ) : suggestOpen ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <p className="text-xs text-slate-500">Answer has more detail.</p>
                   <button

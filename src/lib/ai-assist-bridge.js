@@ -107,25 +107,65 @@ export function isNavigateActionResult(res) {
   return href.startsWith("/");
 }
 
+/** Pending write that still needs fields collected in chat/Talk (not ready to confirm). */
+function isCollectingPendingWrite(pending) {
+  if (!pending || typeof pending !== "object") return false;
+  const type = String(pending.type ?? "");
+  if (!type) return false;
+  const isWrite =
+    type.startsWith("create_") ||
+    type.startsWith("update_") ||
+    type.startsWith("record_") ||
+    type.startsWith("submit_") ||
+    type.startsWith("approve_") ||
+    type.startsWith("mark_") ||
+    type.startsWith("receive_") ||
+    type.startsWith("delete_");
+  if (!isWrite) return false;
+  return !pending.ready_to_confirm;
+}
+
 /** True when the reply needs the sidebar (forms, confirms, long detail). */
 export function isDetailedAssistantReply(res, content) {
   if (res?.form_spec?.fields?.length) return true;
-  if (res?.pending_action) return true;
+  // Mid-collect writes stay in Talk/chat — don't treat "Got supplier…" as a panel dump.
+  if (res?.pending_action && !isCollectingPendingWrite(res.pending_action)) return true;
   // Pure navigation opens the route — don't force the Talk sidebar open.
   if (isNavigateActionResult(res)) return false;
-  if (res?.action_result) return true;
+  // Successful writes are summarized in Talk; don't treat every action_result as
+  // "open the assistant" (that was forcing the panel on small replies).
   if (Array.isArray(res?.document_links) && res.document_links.length > 0) return true;
   const text = String(content ?? res?.message ?? res?.reply ?? "");
   if (!text.trim()) return false;
   if (text.includes("|") && text.includes("\n")) return true;
   if ((text.match(/^\s*[-*]\s+/gm) || []).length >= 4) return true;
-  if (text.length > 480) return true;
+  // Long prose alone should not yank the sidebar open during Talk.
+  if (text.length > 900) return true;
   return false;
 }
 
 /** True when the user must interact in the panel (confirm / fill form). */
 export function assistantReplyNeedsPanel(res) {
-  return Boolean(res?.form_spec?.fields?.length || res?.pending_action);
+  if (res?.form_spec?.fields?.length) return true;
+  const pending = res?.pending_action;
+  if (!pending) return false;
+  // Keep Talk hands-free while collecting supplier / lines — only open when ready to confirm.
+  return Boolean(pending.ready_to_confirm);
+}
+
+/** Pending create/update that is easier to finish by typing than speaking. */
+export function isWritePendingAction(pending) {
+  const type = String(pending?.type ?? "");
+  if (!type) return false;
+  return (
+    type.startsWith("create_") ||
+    type.startsWith("update_") ||
+    type === "record_customer_payment" ||
+    type.startsWith("submit_") ||
+    type.startsWith("approve_") ||
+    type.startsWith("mark_") ||
+    type.startsWith("receive_")
+  );
 }
 
 /** Build a lightweight page_context payload for chat. */

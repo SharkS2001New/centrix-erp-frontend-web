@@ -71,6 +71,7 @@ export function PlatformAiTrainingScreen() {
 
   const [knowledge, setKnowledge] = useState([]);
   const [filterWorkspace, setFilterWorkspace] = useState("");
+  const [knowledgeSearch, setKnowledgeSearch] = useState("");
   const [status, setStatus] = useState(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [savingKnowledge, setSavingKnowledge] = useState(false);
@@ -81,6 +82,7 @@ export function PlatformAiTrainingScreen() {
   const [deletingAllNotes, setDeletingAllNotes] = useState(false);
   const fileInputRef = useRef(null);
   const replaceFileInputRef = useRef(null);
+  const foundationSyncedRef = useRef(false);
   const [installingFoundation, setInstallingFoundation] = useState(false);
   const [duplicateThreshold, setDuplicateThreshold] = useState(85);
   const [duplicateScan, setDuplicateScan] = useState(null);
@@ -126,6 +128,24 @@ export function PlatformAiTrainingScreen() {
 
   const starters = useMemo(() => aiStartersForWorkspace(testWorkspace), [testWorkspace]);
   const noteCount = status?.knowledge_count ?? knowledge.length;
+
+  const filteredKnowledge = useMemo(() => {
+    const q = knowledgeSearch.trim().toLowerCase();
+    if (!q) return knowledge;
+    return knowledge.filter((entry) => {
+      const hay = [
+        entry.topic,
+        entry.content,
+        entry.path,
+        entry.workspace_id,
+        entry.source,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [knowledge, knowledgeSearch]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -179,6 +199,20 @@ export function PlatformAiTrainingScreen() {
     loadKnowledge();
     loadOrganizations();
   }, [loadKnowledge, loadOrganizations]);
+
+  // First visit: pull curated foundation Q&As into the editable Knowledge list.
+  useEffect(() => {
+    if (foundationSyncedRef.current) return;
+    foundationSyncedRef.current = true;
+    void syncFoundationNotes({ silent: true }).then((res) => {
+      if (res && (res.created ?? 0) > 0) {
+        notifySuccess(
+          `Loaded ${res.created} foundation training note(s) into Knowledge. Search and Edit any of them.`,
+        );
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
+  }, []);
 
   useEffect(() => {
     loadKnowledge();
@@ -276,20 +310,35 @@ export function PlatformAiTrainingScreen() {
     }
   }
 
-  async function installFoundation() {
+  async function syncFoundationNotes({ silent = false } = {}) {
     setInstallingFoundation(true);
     try {
       const res = await installFoundationTrainingNotes();
       await loadKnowledge();
       await loadStatus();
-      notifySuccess(
-        `Foundation notes: ${res.created ?? 0} added, ${res.skipped ?? 0} already present.`,
-      );
+      const created = res.created ?? 0;
+      const skipped = res.skipped ?? 0;
+      const total = res.total_in_config ?? created + skipped;
+      if (!silent) {
+        notifySuccess(
+          created > 0
+            ? `Foundation notes synced: ${created} added (${total} in catalog, ${skipped} already present). They appear below — click Edit to change any.`
+            : `Foundation notes are up to date (${skipped} present of ${total} in catalog). Search or edit any note below.`,
+        );
+      }
+      return res;
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Failed to install foundation notes.");
+      if (!silent) {
+        notifyError(err instanceof ApiError ? err.message : "Failed to sync foundation notes.");
+      }
+      return null;
     } finally {
       setInstallingFoundation(false);
     }
+  }
+
+  async function installFoundation() {
+    await syncFoundationNotes({ silent: false });
   }
 
   async function importBulkQa(e) {
@@ -688,8 +737,17 @@ export function PlatformAiTrainingScreen() {
 
   function toggleSelectAllNotes() {
     setSelectedNoteIds((prev) => {
-      if (knowledge.length > 0 && prev.size === knowledge.length) return new Set();
-      return new Set(knowledge.map((e) => e.id));
+      const shownIds = filteredKnowledge.map((e) => e.id);
+      if (shownIds.length === 0) return prev;
+      const allShownSelected = shownIds.every((id) => prev.has(id));
+      if (allShownSelected) {
+        const next = new Set(prev);
+        shownIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      const next = new Set(prev);
+      shownIds.forEach((id) => next.add(id));
+      return next;
     });
   }
 
@@ -873,7 +931,7 @@ export function PlatformAiTrainingScreen() {
                 disabled={installingFoundation}
                 onClick={() => void installFoundation()}
               >
-                {installingFoundation ? "Installing…" : "Install foundation notes"}
+                {installingFoundation ? "Syncing…" : "Sync foundation notes"}
               </PrimaryButton>
             </div>
             </div>
@@ -1043,6 +1101,19 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                   }))}
 />
               </div>
+              <p className="theme-subtext mt-1 text-xs">
+                Foundation catalog notes sync here automatically so you can search and edit them. Use{" "}
+                <span className="font-medium">Sync foundation notes</span> to pull any new ones from the catalog.
+              </p>
+              <label className="mt-3 block shrink-0 text-sm">
+                <span className="sr-only">Search notes</span>
+                <input
+                  className={`${inputClassName()} w-full`}
+                  value={knowledgeSearch}
+                  onChange={(e) => setKnowledgeSearch(e.target.value)}
+                  placeholder="Search question, answer, path, or foundation…"
+                />
+              </label>
 
               <div className="mt-4 shrink-0 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
                 <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1189,7 +1260,12 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                 <p className="theme-subtext mt-4 text-sm">Loading…</p>
               ) : knowledge.length === 0 ? (
                 <p className="theme-subtext mt-4 text-sm">
-                  No platform training notes yet. Click &quot;Install foundation notes&quot; or add a Q&A above.
+                  No platform training notes yet. Foundation notes sync on open — or click &quot;Sync foundation
+                  notes&quot; / add a Q&A above.
+                </p>
+              ) : filteredKnowledge.length === 0 ? (
+                <p className="theme-subtext mt-4 text-sm">
+                  No notes match “{knowledgeSearch}”. Clear the search or change the workspace filter.
                 </p>
               ) : (
                 <>
@@ -1197,10 +1273,14 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                     <label className="theme-subtext flex cursor-pointer items-center gap-2 text-xs">
                       <input
                         type="checkbox"
-                        checked={knowledge.length > 0 && selectedNoteIds.size === knowledge.length}
+                        checked={
+                          filteredKnowledge.length > 0 &&
+                          filteredKnowledge.every((e) => selectedNoteIds.has(e.id))
+                        }
                         onChange={toggleSelectAllNotes}
                       />
-                      Select all ({selectedNoteIds.size}/{knowledge.length})
+                      Select all shown ({selectedNoteIds.size}/{filteredKnowledge.length}
+                      {knowledgeSearch.trim() ? ` of ${knowledge.length}` : ""})
                     </label>
                     <button
                       type="button"
@@ -1214,7 +1294,7 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                     </button>
                   </div>
                 <ul className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                  {knowledge.map((entry) => (
+                  {filteredKnowledge.map((entry) => (
                     <li key={entry.id} className="rounded-lg border border-[var(--theme-border)] p-3 text-sm">
                       <div className="flex items-start justify-between gap-2">
                         <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
@@ -1228,6 +1308,11 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
                           <p className="theme-heading font-medium">{entry.topic}</p>
                           <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
                           <p className="theme-subtext mt-2 text-xs">
+                            {entry.source === "foundation_seed" ? (
+                              <span className="mr-1 rounded bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-800">
+                                Foundation
+                              </span>
+                            ) : null}
                             Platform-wide
                             {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
                             {entry.path ? ` · ${entry.path}` : ""}

@@ -627,10 +627,7 @@ function buildProformaInvoiceHtml(sale, options) {
     : "";
 
   const watermarkHtml = effectiveBranding
-    ? buildReportWatermarkHtml({
-        ...effectiveBranding,
-        watermarkText: customerName || effectiveBranding.organizationName || "",
-      })
+    ? buildReportWatermarkHtml(effectiveBranding)
     : "";
 
   const showTotalsBreakdown = salesSettings?.show_proforma_totals_breakdown !== false;

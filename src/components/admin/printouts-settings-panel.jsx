@@ -305,6 +305,12 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
             checked={form.show_organization_on_documents}
             onChange={(v) => setForm((f) => ({ ...f, show_organization_on_documents: v }))}
           />
+          <Toggle
+            label="Show company watermark on documents"
+            description="When enabled, print a light diagonal company-name watermark on PDFs and printouts (Manager downloads included). Leave off if it distracts from details."
+            checked={Boolean(form.show_watermark_on_documents)}
+            onChange={(v) => setForm((f) => ({ ...f, show_watermark_on_documents: v }))}
+          />
           <Field label="Report and document header">
             <SearchableSelect
               className={inputClassName()}

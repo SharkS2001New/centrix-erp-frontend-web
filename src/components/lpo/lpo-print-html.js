@@ -258,10 +258,7 @@ export function buildLpoPrintHtml({
     { label: "Authorised By", value: signatures.authorisedBy || null },
   ]);
 
-  const watermarkHtml = buildReportWatermarkHtml({
-    ...branding,
-    watermarkText: supplierName || branding.organizationName || "",
-  });
+  const watermarkHtml = buildReportWatermarkHtml(branding);
 
   const footerLinesHtml = footerLines
     .map((line) => `<p>${escapeProfessionalHtml(line)}</p>`)

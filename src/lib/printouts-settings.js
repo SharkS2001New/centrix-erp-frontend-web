@@ -48,6 +48,7 @@ import {
 export const EMPTY_PRINTOUTS_FORM = {
   document_footer_text: "",
   show_organization_on_documents: true,
+  show_watermark_on_documents: false,
   document_header_display: "auto",
   ...printFontFormDefaults(),
   ...documentLogoFormDefaults(),
@@ -279,6 +280,7 @@ export function printoutsGeneralFormFromApi(res) {
   return {
     document_footer_text: general.document_footer_text,
     show_organization_on_documents: general.show_organization_on_documents,
+    show_watermark_on_documents: Boolean(general.show_watermark_on_documents),
     document_header_display: general.document_header_display,
     ...printFontFormFromGeneral(merged),
     ...documentLogoFormFromGeneral(merged),
@@ -402,6 +404,7 @@ export function printoutsHospitalityPayloadFromForm(form) {
 export function printoutsGeneralPayloadFromForm(form) {
   return {
     show_organization_on_documents: Boolean(form.show_organization_on_documents),
+    show_watermark_on_documents: Boolean(form.show_watermark_on_documents),
     document_header_display: form.document_header_display || "auto",
     document_footer_text: String(form.document_footer_text ?? "").trim(),
     ...printFontPayloadFromForm(form),

@@ -70,10 +70,11 @@ export function resolveReportBranding({
 
   return {
     showHeader,
+    showWatermark: settings.show_watermark_on_documents === true,
     display: resolveDisplay(preference, hasLogo),
     organizationName,
     logoUrl,
-    watermarkText: organizationName || "Centrix ERP",
+    watermarkText: organizationName || "",
     documentFooterText: settings.document_footer_text?.trim?.() || "",
   };
 }
@@ -149,16 +150,6 @@ export function reportWatermarkCss() {
     line-height: 1;
     transform: translate(-50%, -50%) rotate(-32deg);
   }
-  .watermark-logo {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 55%;
-    max-height: 55%;
-    opacity: 0.05;
-    object-fit: contain;
-  }
   @media print {
     .watermark-text {
       color: rgba(15, 23, 42, 0.08);
@@ -178,17 +169,15 @@ export function reportWatermarkCss() {
 
 /** @param {ReturnType<resolveReportBranding>} branding */
 export function buildReportWatermarkHtml(branding) {
-  const text = branding?.watermarkText?.trim?.() || "";
+  if (!branding?.showWatermark) return "";
+
+  const text = branding?.watermarkText?.trim?.() || branding?.organizationName?.trim?.() || "";
   if (!text) return "";
 
-  const logo =
-    branding.logoUrl && branding.display !== "name"
-      ? `<img class="watermark-logo" src="${escapeHtml(branding.logoUrl)}" alt="">`
-      : "";
-
+  // Text-only company name — matches PDF/Manager; avoids opaque logo overlays.
   const len = Math.max(text.length, 8);
 
-  return `<div class="watermark"><div class="watermark-text" style="--wm-len:${len}">${escapeHtml(text)}</div>${logo}</div>`;
+  return `<div class="watermark"><div class="watermark-text" style="--wm-len:${len}">${escapeHtml(text)}</div></div>`;
 }
 
 export function reportDocumentStyles(generalSettings = null) {
