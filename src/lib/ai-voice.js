@@ -6,7 +6,13 @@
  * often surface as a misleading `network` error.
  */
 
+import { normalizeTalkVoice } from "@/lib/ai-settings";
+
 const TTS_PREF_KEY = "centrix_ai_tts";
+const TALK_VOICE_CACHE_KEY = "centrix_talk_voice";
+
+/** @type {{ id: string, locale: string, gender: string, label: string } | null} */
+let cachedTalkVoice = null;
 
 /** Locales Chrome Web Speech handles reliably enough for Centrix. */
 const SAFE_SPEECH_LANGS = new Set([
@@ -56,10 +62,138 @@ export function isSpeechSynthesisSupported() {
  */
 export function preferredSpeechLang() {
   if (typeof navigator === "undefined") return "en-GB";
+  const preferred = getTalkVoicePreference()?.locale;
+  if (preferred && SAFE_SPEECH_LANGS.has(preferred)) return preferred;
   const raw = String(navigator.language || "en-GB").trim().replace(/_/g, "-");
   if (SAFE_SPEECH_LANGS.has(raw)) return raw;
   if (/^en(-|$)/i.test(raw)) return "en-GB";
   return "en-GB";
+}
+
+/** Cache platform Talk voice preference (from /ai/status or capabilities). */
+export function setTalkVoicePreference(raw) {
+  const voice = normalizeTalkVoice(raw);
+  cachedTalkVoice = voice;
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TALK_VOICE_CACHE_KEY, JSON.stringify(voice));
+    }
+  } catch {
+    /* ignore */
+  }
+  return voice;
+}
+
+export function getTalkVoicePreference() {
+  if (cachedTalkVoice) return cachedTalkVoice;
+  try {
+    if (typeof window !== "undefined") {
+      const raw = window.localStorage.getItem(TALK_VOICE_CACHE_KEY);
+      if (raw) {
+        cachedTalkVoice = normalizeTalkVoice(JSON.parse(raw));
+        return cachedTalkVoice;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  cachedTalkVoice = normalizeTalkVoice(null);
+  return cachedTalkVoice;
+}
+
+const FEMALE_NAME_HINTS =
+  /\b(female|woman|girl|samantha|karen|moira|tessa|fiona|victoria|zira|susan|jenny|aria|sara|sarah|emily|kate|serena|linda|hazel|martha|catherine|veena|raveena|allison|ava|emma|olivia|siri|natasha|fran|nicky|lesley)\b/i;
+const MALE_NAME_HINTS =
+  /\b(male|man|boy|daniel|david|mark|fred|alex|tom|thomas|george|james|ryan|guy|brian|arthur|oliver|arthur|aaron|lee|rishi|eddy|noah|william|john|bruce|gordon|matthew)\b/i;
+
+/**
+ * Score a browser SpeechSynthesisVoice against platform locale + gender preference.
+ * @param {SpeechSynthesisVoice} voice
+ * @param {{ locale?: string, gender?: string }} pref
+ */
+export function scoreTalkVoiceCandidate(voice, pref) {
+  if (!voice) return -1;
+  const locale = String(pref?.locale || "en-GB").replace(/_/g, "-").toLowerCase();
+  const gender = String(pref?.gender || "female").toLowerCase();
+  const lang = String(voice.lang || "").replace(/_/g, "-").toLowerCase();
+  const name = String(voice.name || "");
+  let score = 0;
+
+  if (lang === locale.toLowerCase()) score += 100;
+  else if (lang.startsWith(locale.slice(0, 2))) score += 40;
+  else if (!/^en/i.test(lang)) return -1;
+
+  if (locale.startsWith("en-gb") && /gb|uk|british/i.test(`${lang} ${name}`)) score += 25;
+  if (locale.startsWith("en-us") && /us|american/i.test(`${lang} ${name}`)) score += 25;
+
+  if (gender === "female") {
+    if (FEMALE_NAME_HINTS.test(name)) score += 50;
+    if (MALE_NAME_HINTS.test(name)) score -= 40;
+  } else if (gender === "male") {
+    if (MALE_NAME_HINTS.test(name)) score += 50;
+    if (FEMALE_NAME_HINTS.test(name)) score -= 40;
+  }
+
+  if (voice.localService) score += 5;
+  if (voice.default) score += 2;
+  return score;
+}
+
+/**
+ * @param {SpeechSynthesisVoice[]} voices
+ * @param {{ locale?: string, gender?: string } | null} [pref]
+ * @returns {SpeechSynthesisVoice | null}
+ */
+export function pickTalkSynthesisVoice(voices, pref = null) {
+  const preference = normalizeTalkVoice(pref || getTalkVoicePreference());
+  const list = Array.isArray(voices) ? voices : [];
+  if (list.length === 0) return null;
+  let best = null;
+  let bestScore = -1;
+  for (const voice of list) {
+    const score = scoreTalkVoiceCandidate(voice, preference);
+    if (score > bestScore) {
+      bestScore = score;
+      best = voice;
+    }
+  }
+  return bestScore > 0 ? best : list.find((v) => /^en/i.test(v.lang || "")) || list[0] || null;
+}
+
+function loadSynthesisVoices() {
+  if (!isSpeechSynthesisSupported()) return [];
+  const existing = window.speechSynthesis.getVoices();
+  if (existing?.length) return existing;
+  return [];
+}
+
+/** Wait briefly for Chrome to populate speechSynthesis.getVoices(). */
+export function ensureSynthesisVoices(timeoutMs = 1500) {
+  if (!isSpeechSynthesisSupported()) return Promise.resolve([]);
+  const existing = loadSynthesisVoices();
+  if (existing.length) return Promise.resolve(existing);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (voices) => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      try {
+        window.speechSynthesis.removeEventListener("voiceschanged", onChange);
+      } catch {
+        /* ignore */
+      }
+      resolve(voices?.length ? voices : loadSynthesisVoices());
+    };
+    const onChange = () => finish(loadSynthesisVoices());
+    const timer = window.setTimeout(() => finish(loadSynthesisVoices()), timeoutMs);
+    try {
+      window.speechSynthesis.addEventListener("voiceschanged", onChange);
+      window.speechSynthesis.getVoices();
+    } catch {
+      finish([]);
+    }
+  });
 }
 
 /** Clean mic transcript before sending (Kenyan English / fast speech) — mirrors Manager Talk. */
@@ -834,15 +968,23 @@ export function createSpeechRecognizer(options = {}) {
  * Speak text aloud. Resolves when utterance ends (or immediately if unsupported/empty).
  * @returns {Promise<true | false | "interrupted">} true = finished, "interrupted" = cancelled mid-speech
  */
-export function speakAssistantText(text, { lang = "en-GB", rate = 0.98 } = {}) {
-  if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
+export async function speakAssistantText(text, { lang, rate = 0.98, voicePreference = null } = {}) {
+  if (!isSpeechSynthesisSupported()) return false;
   const plain = plainTextForSpeech(text);
-  if (!plain) return Promise.resolve(false);
+  if (!plain) return false;
+  const preference = normalizeTalkVoice(voicePreference || getTalkVoicePreference());
+  const speakLang = lang || preference.locale || preferredSpeechLang();
+  const voices = await ensureSynthesisVoices();
   window.speechSynthesis.cancel();
   return new Promise((resolve) => {
     const utter = new SpeechSynthesisUtterance(plain);
-    utter.lang = lang || preferredSpeechLang();
+    utter.lang = speakLang;
     utter.rate = rate;
+    const picked = pickTalkSynthesisVoice(voices, preference);
+    if (picked) {
+      utter.voice = picked;
+      if (picked.lang) utter.lang = picked.lang;
+    }
     let settled = false;
     // ~12–14 chars/sec at rate 1; keep generous so we never cut off mid-sentence.
     const msPerChar = 110 / Math.max(0.75, rate);

@@ -181,6 +181,37 @@ export function canUseAiTalk({ capabilities, hasPermission }) {
   return flag !== false;
 }
 
+/** Platform Talk voice presets (ERP web + Manager pick closest on-device voice). */
+export const TALK_VOICE_OPTIONS = [
+  { id: "en-GB-female", locale: "en-GB", gender: "female", label: "British English · Female" },
+  { id: "en-GB-male", locale: "en-GB", gender: "male", label: "British English · Male" },
+  { id: "en-US-female", locale: "en-US", gender: "female", label: "American English · Female" },
+  { id: "en-US-male", locale: "en-US", gender: "male", label: "American English · Male" },
+];
+
+export function normalizeTalkVoice(raw) {
+  const fallback = TALK_VOICE_OPTIONS[0];
+  if (!raw) return { ...fallback };
+  if (typeof raw === "object") {
+    const id = String(raw.id || "").trim();
+    const hit = TALK_VOICE_OPTIONS.find((o) => o.id === id);
+    if (hit) return { ...hit };
+    const locale = String(raw.locale || "en-GB").replace(/_/g, "-");
+    const gender = String(raw.gender || "female").toLowerCase();
+    const byParts = TALK_VOICE_OPTIONS.find(
+      (o) => o.locale.toLowerCase() === locale.toLowerCase() && o.gender === gender,
+    );
+    return byParts ? { ...byParts } : { ...fallback };
+  }
+  const id = String(raw).trim().replace(/_/g, "-");
+  const hit = TALK_VOICE_OPTIONS.find((o) => o.id.toLowerCase() === id.toLowerCase());
+  return hit ? { ...hit } : { ...fallback };
+}
+
+export function talkVoiceFromCapabilities(capabilities) {
+  return normalizeTalkVoice(capabilities?.ai_assistant?.talk_voice);
+}
+
 export function aiFormFromApi(res) {
   const settings = res?.settings ?? res?.ai ?? {};
   const platformOffersFree = Boolean(
@@ -192,10 +223,12 @@ export function aiFormFromApi(res) {
       settings.use_platform_ai ??
       (platformOffersFree && !hasOrgKey),
   );
+  const talkVoice = normalizeTalkVoice(settings.talk_voice ?? res?.talk_voice);
 
   return {
     enabled: Boolean(settings.enabled),
     talk_enabled: settings.talk_enabled !== false,
+    talk_voice: talkVoice.id,
     talk_provider: settings.talk_provider === "openai" ? "openai" : "gemini",
     talk_api_key: "",
     talk_model: settings.talk_model ?? "",
@@ -274,6 +307,9 @@ export function aiPayloadFromForm(form, options = {}) {
     payload.talk_enabled = form.talk_enabled !== false;
     if (["openai", "gemini"].includes(form.talk_provider)) {
       payload.talk_provider = form.talk_provider;
+    }
+    if (form.talk_voice) {
+      payload.talk_voice = normalizeTalkVoice(form.talk_voice).id;
     }
     if (form.talk_api_key && !form.talk_api_key.startsWith("••••")) {
       payload.talk_api_key = form.talk_api_key;

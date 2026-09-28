@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
+import { CatalogPageShell, Field, PrimaryButton, SecondaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { aiFormFromApi, aiPayloadFromForm, normalizeTalkVoice, TALK_VOICE_OPTIONS } from "@/lib/ai-settings";
 import { aiTrainingApiBase } from "@/lib/platform-ai-training";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PasswordInput } from "@/components/auth/password-input";
+import {
+  isSpeechSynthesisSupported,
+  setTalkVoicePreference,
+  speakAssistantText,
+  stopAssistantSpeech,
+} from "@/lib/ai-voice";
 
 function SavedKeyField({
   label,
@@ -64,6 +70,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   const [testingProvider, setTestingProvider] = useState(null);
   const [testResult, setTestResult] = useState(null);
   const [useBoth, setUseBoth] = useState(false);
+  const [testingVoice, setTestingVoice] = useState(false);
 
   const loadAiSettings = useCallback(async () => {
     setLoading(true);
@@ -89,6 +96,12 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   useEffect(() => {
     loadAiSettings();
   }, [loadAiSettings]);
+
+  useEffect(() => {
+    return () => {
+      stopAssistantSpeech();
+    };
+  }, []);
 
   const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
   const geminiSaved = Boolean(
@@ -187,7 +200,37 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     }
   }
 
-  const busy = saving || testingProvider !== null;
+  async function testTalkVoice() {
+    if (!isSpeechSynthesisSupported()) {
+      notifyError("This browser cannot speak. Try Chrome or Edge to preview Talk voice.");
+      return;
+    }
+    const preference = normalizeTalkVoice(aiForm.talk_voice);
+    setTalkVoicePreference(preference);
+    setTestingVoice(true);
+    try {
+      const sample =
+        preference.gender === "male"
+          ? `Hello, I am Centrix Talk using ${preference.label}. Sales, stock, and debtors are ready when you are.`
+          : `Hello, I am Centrix Talk using ${preference.label}. Ask me about sales, stock, or debtors anytime.`;
+      const result = await speakAssistantText(sample, {
+        voicePreference: preference,
+        rate: 1.0,
+      });
+      if (result === false) {
+        notifyError("Could not play a preview. Check that your device has English voices installed.");
+      }
+    } finally {
+      setTestingVoice(false);
+    }
+  }
+
+  function stopTalkVoicePreview() {
+    stopAssistantSpeech();
+    setTestingVoice(false);
+  }
+
+  const busy = saving || testingProvider !== null || testingVoice;
   const canTestGemini = geminiSaved;
   const canTestOpenAi = openaiSaved;
 
@@ -282,13 +325,55 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               <span className="block text-sm font-medium theme-heading">Enable Talk to Centrix Assistant</span>
               <span className="mt-0.5 block text-xs theme-subtext">
                 Shows the header mic so users can ask Centrix Assistant by voice and hear a short spoken reply.
-                Turn off to hide Talk across all tenants.
+                Same switch gates Centrix Talk in the Manager app. Turn off to hide Talk across all tenants.
               </span>
             </span>
           </label>
 
           {aiForm.talk_enabled !== false ? (
             <div className="rounded-xl border border-dashed px-4 py-4 theme-panel space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium theme-subtext" htmlFor="talk-voice">
+                  Talk voice (ERP + Manager)
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    id="talk-voice"
+                    className="w-full rounded-lg border theme-border bg-transparent px-3 py-2 text-sm sm:flex-1"
+                    value={aiForm.talk_voice || "en-GB-female"}
+                    onChange={(e) => {
+                      stopTalkVoicePreview();
+                      setAiForm((f) => ({ ...f, talk_voice: e.target.value }));
+                    }}
+                  >
+                    {TALK_VOICE_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex shrink-0 gap-2">
+                    <SecondaryButton
+                      type="button"
+                      disabled={busy && !testingVoice}
+                      onClick={() => {
+                        if (testingVoice) {
+                          stopTalkVoicePreview();
+                          return;
+                        }
+                        void testTalkVoice();
+                      }}
+                    >
+                      {testingVoice ? "Stop preview" : "Test voice"}
+                    </SecondaryButton>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs theme-subtext">
+                  Preview plays on this computer’s speakers using the closest local voice. Save to apply the same
+                  preference on ERP Talk and the Manager app.
+                </p>
+              </div>
+
               <div>
                 <h3 className="text-sm font-semibold theme-heading">Talk credentials (voice only)</h3>
                 <p className="mt-1 text-xs theme-subtext">

@@ -172,6 +172,21 @@ describe("looksLikeCompleteUtterance", () => {
   });
 });
 
+describe("pickTalkSynthesisVoice", () => {
+  it("prefers matching locale and gender hints", async () => {
+    const { pickTalkSynthesisVoice, setTalkVoicePreference } = await import("@/lib/ai-voice");
+    setTalkVoicePreference({ id: "en-GB-female", locale: "en-GB", gender: "female" });
+    const voices = [
+      { name: "Microsoft David", lang: "en-US", localService: true, default: false },
+      { name: "Google UK English Female", lang: "en-GB", localService: true, default: false },
+      { name: "Google UK English Male", lang: "en-GB", localService: true, default: false },
+    ];
+    const picked = pickTalkSynthesisVoice(voices);
+    expect(picked?.name).toMatch(/Female/i);
+    expect(picked?.lang).toBe("en-GB");
+  });
+});
+
 describe("warmTalkEngines", () => {
   it("is exported and idempotent when speech APIs are missing", async () => {
     const { warmTalkEngines } = await import("@/lib/ai-voice");

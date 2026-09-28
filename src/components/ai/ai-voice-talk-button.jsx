@@ -12,7 +12,7 @@ import {
 } from "@/lib/ai-assist-bridge";
 import { notifyError } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
-import { canUseAiTalk } from "@/lib/ai-settings";
+import { canUseAiTalk, talkVoiceFromCapabilities } from "@/lib/ai-settings";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import {
@@ -25,6 +25,7 @@ import {
   looksLikeCompleteUtterance,
   normalizeSpokenTranscript,
   preferredSpeechLang,
+  setTalkVoicePreference,
   speakAssistantText,
   speechErrorMessage,
   stopAssistantSpeech,
@@ -92,6 +93,11 @@ export function AiVoiceTalkButton() {
   const cancelledRef = useRef(false);
   /** Stays true for the whole Talk session until Stop — enables continuous turns. */
   const conversationActiveRef = useRef(false);
+
+  useEffect(() => {
+    setTalkVoicePreference(talkVoiceFromCapabilities(capabilities));
+  }, [capabilities]);
+
   const pauseTimerRef = useRef(0);
   const resumeTimerRef = useRef(0);
   const waitWatchdogRef = useRef(0);

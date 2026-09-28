@@ -55,6 +55,16 @@ describe("ai insights settings helpers", () => {
     expect(aiPayloadFromForm(form, { includeInsights: false }).talk_enabled).toBeUndefined();
   });
 
+  it("round-trips platform talk_voice in credentials payload", () => {
+    const form = aiFormFromApi({
+      settings: { enabled: true, talk_enabled: true, talk_voice: "en-US-male" },
+    });
+    expect(form.talk_voice).toBe("en-US-male");
+    expect(
+      aiPayloadFromForm(form, { includeInsights: false, includePlatformGemini: true }).talk_voice,
+    ).toBe("en-US-male");
+  });
+
   it("gates Talk on platform talk_enabled", () => {
     const allow = () => true;
     const base = {

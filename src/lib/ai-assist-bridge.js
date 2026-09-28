@@ -98,10 +98,21 @@ export function openAiAssistPanel(pageContext = null) {
   });
 }
 
+/** True when action_result is a deep-link navigate (ERP should open the path). */
+export function isNavigateActionResult(res) {
+  const result = res?.action_result?.result;
+  if (!result || typeof result !== "object") return false;
+  if (!result.navigate) return false;
+  const href = String(result.path || result.href || "").trim();
+  return href.startsWith("/");
+}
+
 /** True when the reply needs the sidebar (forms, confirms, long detail). */
 export function isDetailedAssistantReply(res, content) {
   if (res?.form_spec?.fields?.length) return true;
   if (res?.pending_action) return true;
+  // Pure navigation opens the route — don't force the Talk sidebar open.
+  if (isNavigateActionResult(res)) return false;
   if (res?.action_result) return true;
   if (Array.isArray(res?.document_links) && res.document_links.length > 0) return true;
   const text = String(content ?? res?.message ?? res?.reply ?? "");

@@ -22,13 +22,13 @@ import {
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
-import { buildPageContext, notifyAiVoiceComplete, notifyAiVoiceSpeaking, subscribeAiAssistRequests, isDetailedAssistantReply, assistantReplyNeedsPanel } from "@/lib/ai-assist-bridge";
+import { buildPageContext, notifyAiVoiceComplete, notifyAiVoiceSpeaking, subscribeAiAssistRequests, isDetailedAssistantReply, assistantReplyNeedsPanel, isNavigateActionResult } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { AiMessageContent } from "@/components/ai/ai-message-content";
 import { EntityMentionTextarea } from "@/components/ai/entity-mention-textarea";
 import { serializeEntityRefs } from "@/lib/ai/entity-mention-search";
 import { userAskedForChart, preferredChartType } from "@/lib/ai-message-format";
-import { speakAssistantText, spokenBriefForSpeech, stopAssistantSpeech } from "@/lib/ai-voice";
+import { speakAssistantText, spokenBriefForSpeech, stopAssistantSpeech, setTalkVoicePreference } from "@/lib/ai-voice";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 
 function closePanel(setOpen, setExpanded) {
@@ -255,7 +255,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   useEffect(() => {
     if (!canUse) return;
     apiRequest("/ai/status")
-      .then(setStatus)
+      .then((res) => {
+        setStatus(res);
+        if (res?.talk_voice) setTalkVoicePreference(res.talk_voice);
+      })
       .catch(() => setStatus({ enabled: false }));
   }, [canUse]);
 
@@ -377,6 +380,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             res.action_result.result.document_links ?? res.document_links ?? [],
         });
         clearActionState();
+        // ERP Talk / assistant: open the screen immediately (switch workspace when needed).
+        if (isNavigateActionResult(res)) {
+          const href = res.action_result.result.path || res.action_result.result.href;
+          void navigateFromAi(href);
+        }
       } else if (Array.isArray(res.document_links) && res.document_links.length > 0) {
         setActionResult((prev) => ({
           ...(prev && typeof prev === "object" ? prev : {}),
@@ -388,7 +396,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         clearActionState();
       }
     },
-    [clearActionState, speakVoiceReplyIfNeeded],
+    [clearActionState, navigateFromAi, speakVoiceReplyIfNeeded],
   );
 
   const startNewConversation = useCallback(() => {
