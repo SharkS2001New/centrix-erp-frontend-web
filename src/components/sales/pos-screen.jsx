@@ -6322,7 +6322,7 @@ export function PosScreen({ standalone = false }) {
       : codeLike
         ? 0
         : liveCreateOrderSearch
-          ? 140
+          ? 300
           : classicLayout
             ? 40
             : 60;
@@ -9747,24 +9747,28 @@ export function PosScreen({ standalone = false }) {
       await persistPreviousOrderLocalDraft(withMarkers);
       return;
     }
-    await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
-    for (const row of remainingLines) {
-      await apiRequest(`/sales/carts/${cart.id}/lines`, {
-        method: "POST",
-        body: {
-          product_code: row.product_code,
-          quantity: row.quantity,
-          unit_price: row.unit_price,
-          display_unit_price:
-            row.display_unit_price != null ? Number(row.display_unit_price) : undefined,
-          amount: row.amount != null ? Number(row.amount) : undefined,
-          uom: row.uom,
-          on_wholesale_retail: row.on_wholesale_retail,
-          discount_given: Number(row.discount_given ?? 0),
-          product_vat: row.product_vat != null ? Number(row.product_vat) : undefined,
-        },
-      });
-    }
+    const linePayload = (remainingLines ?? [])
+      .filter((row) => row?.product_code && Number(row.quantity) > 0)
+      .map((row) => ({
+        product_code: row.product_code,
+        quantity: row.quantity,
+        unit_price: row.unit_price,
+        display_unit_price:
+          row.display_unit_price != null ? Number(row.display_unit_price) : undefined,
+        amount: row.amount != null ? Number(row.amount) : undefined,
+        uom: row.uom,
+        on_wholesale_retail: row.on_wholesale_retail,
+        discount_given: Number(row.discount_given ?? 0),
+        product_vat: row.product_vat != null ? Number(row.product_vat) : undefined,
+      }));
+    await apiRequest(`/sales/carts/${cart.id}/lines`, {
+      method: "PUT",
+      body: {
+        lines: linePayload,
+        order_discount: Number(cart.order_discount ?? 0) || 0,
+      },
+      ...POS_CART_REQUEST,
+    });
     await refreshCart(cart.id);
   }
 

@@ -186,18 +186,9 @@ export default function MarketingPortfolioEditorPage() {
 
   return (
     <CatalogPageShell
-      breadcrumb={
-        <AdminBreadcrumb
-          items={[
-            { label: "Platform", href: "/platform" },
-            { label: "Marketing portfolios", href: "/platform/marketing" },
-            { label: portfolio.title || `#${id}` },
-          ]}
-        />
-      }
       title={portfolio.title}
-      description={`${portfolio.prospect_name}${portfolio.business_name ? ` · ${portfolio.business_name}` : ""}`}
-      actions={
+      subtitle={`${portfolio.prospect_name}${portfolio.business_name ? ` · ${portfolio.business_name}` : ""}`}
+      action={
         <div className="flex flex-wrap gap-2">
           <span
             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -221,6 +212,14 @@ export default function MarketingPortfolioEditorPage() {
         </div>
       }
     >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "Marketing portfolios", href: "/platform/marketing" },
+          { label: portfolio.title || `#${id}` },
+        ]}
+      />
+
       {shareUrl ? (
         <div className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
           Share URL:{" "}

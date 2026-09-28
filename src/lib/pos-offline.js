@@ -298,27 +298,56 @@ export async function warmPosOfflineCatalog({ force = false, awaitStock = false 
   }
 
   const products = [];
-  let page = 1;
   let lastPage = 1;
-  do {
-    const res = await apiRequest("/products", {
-      searchParams: {
-        status: "active",
-        per_page: 200,
-        page,
-        fields: "lean",
-      },
-      loading: false,
-      reportIssues: false,
-    });
-    const rows = Array.isArray(res?.data) ? res.data : [];
-    for (const row of rows) {
-      const product = stripProductStockFields(row);
-      if (isSellableCatalogProduct(product)) products.push(product);
+  // First page must succeed before parallelizing remaining pages (need last_page).
+  const firstRes = await apiRequest("/products", {
+    searchParams: {
+      status: "active",
+      per_page: 200,
+      page: 1,
+      fields: "lean",
+    },
+    loading: false,
+    reportIssues: false,
+  });
+  const firstRows = Array.isArray(firstRes?.data) ? firstRes.data : [];
+  for (const row of firstRows) {
+    const product = stripProductStockFields(row);
+    if (isSellableCatalogProduct(product)) products.push(product);
+  }
+  lastPage = Number(firstRes?.last_page ?? firstRes?.meta?.last_page ?? 1);
+  lastPage = Math.min(Math.max(1, lastPage), 50);
+
+  // Parallelize remaining pages (cap concurrency at 4) to cut POS open time.
+  if (lastPage > 1) {
+    const remaining = [];
+    for (let p = 2; p <= lastPage; p += 1) remaining.push(p);
+    const CONCURRENCY = 4;
+    for (let i = 0; i < remaining.length; i += CONCURRENCY) {
+      const slice = remaining.slice(i, i + CONCURRENCY);
+      const pages = await Promise.all(
+        slice.map((pageNum) =>
+          apiRequest("/products", {
+            searchParams: {
+              status: "active",
+              per_page: 200,
+              page: pageNum,
+              fields: "lean",
+            },
+            loading: false,
+            reportIssues: false,
+          }).catch(() => ({ data: [] })),
+        ),
+      );
+      for (const res of pages) {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        for (const row of rows) {
+          const product = stripProductStockFields(row);
+          if (isSellableCatalogProduct(product)) products.push(product);
+        }
+      }
     }
-    lastPage = Number(res?.last_page ?? res?.meta?.last_page ?? page);
-    page += 1;
-  } while (page <= lastPage && page <= 50);
+  }
 
   // Full replace so soft/permanent deletes drop out of local search immediately.
   const warmedAt = Date.now();

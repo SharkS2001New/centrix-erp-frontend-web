@@ -78,22 +78,21 @@ export default function PlatformMarketingPortfoliosPage() {
 
   return (
     <CatalogPageShell
-      breadcrumb={
-        <AdminBreadcrumb
-          items={[
-            { label: "Platform", href: "/platform" },
-            { label: "Marketing portfolios" },
-          ]}
-        />
-      }
       title="Marketing portfolios"
-      description="Create prospect-ready Centrix portfolios with AI — shop, supermarket, hotel, spa, and more."
-      actions={
+      subtitle="Create prospect-ready Centrix portfolios with AI — shop, supermarket, hotel, spa, and more."
+      action={
         <PrimaryButton onClick={() => router.push("/platform/marketing/new")}>
           New portfolio
         </PrimaryButton>
       }
     >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "Marketing portfolios" },
+        ]}
+      />
+
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">Search</span>
@@ -150,8 +149,15 @@ export default function PlatformMarketingPortfoliosPage() {
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                  No portfolios yet. Create one for a prospect in under a minute.
+                <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                  <p>No portfolios yet. Create one for a prospect in under a minute.</p>
+                  <button
+                    type="button"
+                    className="mt-3 text-sm font-medium text-[#185FA5] hover:underline"
+                    onClick={() => router.push("/platform/marketing/new")}
+                  >
+                    Create first portfolio
+                  </button>
                 </td>
               </tr>
             ) : (

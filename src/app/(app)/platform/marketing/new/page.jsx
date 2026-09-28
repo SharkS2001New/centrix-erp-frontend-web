@@ -97,18 +97,19 @@ export default function NewMarketingPortfolioPage() {
 
   return (
     <CatalogPageShell
-      breadcrumb={
-        <AdminBreadcrumb
-          items={[
-            { label: "Platform", href: "/platform" },
-            { label: "Marketing portfolios", href: "/platform/marketing" },
-            { label: "New" },
-          ]}
-        />
-      }
       title="New marketing portfolio"
-      description="Fill the prospect brief. AI will turn it into a professional Centrix portfolio."
+      subtitle="Fill the prospect brief. AI will turn it into a professional Centrix portfolio."
+      backHref="/platform/marketing"
+      backLabel="Marketing portfolios"
     >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "Marketing portfolios", href: "/platform/marketing" },
+          { label: "New" },
+        ]}
+      />
+
       <form onSubmit={onSubmit} className="mx-auto max-w-3xl space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Prospect name *" value={form.prospect_name} onChange={(v) => setField("prospect_name", v)} />
