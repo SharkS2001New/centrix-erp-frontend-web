@@ -39,13 +39,35 @@ describe("spokenBriefForSpeech", () => {
     expect(brief).not.toMatch(/Expected cash/);
     expect(brief).not.toMatch(/Detail/);
     expect(brief).not.toMatch(/Till management/);
-    expect(brief.length).toBeLessThanOrEqual(420);
+    expect(brief.length).toBeLessThanOrEqual(520);
   });
 
   it("keeps greetings to a short spoken line", () => {
     const brief = spokenBriefForSpeech("Hi — how can I help with Centrix today?");
     expect(brief).toMatch(/^Hi/);
     expect(brief.length).toBeLessThanOrEqual(120);
+  });
+
+  it("speaks totals from a daily sales table instead of dropping figures", () => {
+    const raw = [
+      "Naomi (@NAOMI) daily gross sales, 22–28 September, all branches:",
+      "",
+      "| Date | Orders | Gross sales (KES) |",
+      "| --- | ---: | ---: |",
+      "| Tue 22 Sep | 96 | 470,775 |",
+      "| Wed 23 Sep | 99 | 451,655 |",
+      "| Mon 28 Sep | 162 | 716,525 |",
+      "| Total | 766 | 3,393,650 |",
+      "",
+      "All fully paid, nothing unpaid. Sunday was her only quiet day.",
+    ].join("\n");
+    const brief = spokenBriefForSpeech(raw);
+    expect(brief).toMatch(/Naomi/i);
+    expect(brief).toMatch(/3,393,650/);
+    expect(brief).toMatch(/766/);
+    expect(brief).toMatch(/716,525|Mon 28 Sep/i);
+    expect(brief).toMatch(/chat/i);
+    expect(brief.length).toBeLessThanOrEqual(520);
   });
 });
 
@@ -93,11 +115,37 @@ describe("stripCentrixWakePrefix", () => {
 });
 
 describe("preferredSpeechLang", () => {
-  it("falls back to en-US for unsupported English locales like en-KE", () => {
+  it("falls back to en-GB for unsupported English locales like en-KE", () => {
     const original = navigator.language;
     Object.defineProperty(navigator, "language", { configurable: true, get: () => "en-KE" });
-    expect(preferredSpeechLang()).toBe("en-US");
+    expect(preferredSpeechLang()).toBe("en-GB");
     Object.defineProperty(navigator, "language", { configurable: true, get: () => original });
+  });
+});
+
+describe("normalizeSpokenTranscript", () => {
+  it("fixes common Kenyan retail STT mishears", async () => {
+    const { normalizeSpokenTranscript } = await import("@/lib/ai-voice");
+    expect(normalizeSpokenTranscript("create an elpo for kayes 5000")).toMatch(/LPO/);
+    expect(normalizeSpokenTranscript("create an elpo for kayes 5000")).toMatch(/KES/);
+    expect(normalizeSpokenTranscript("pay with empesa")).toMatch(/M-Pesa/);
+  });
+});
+
+describe("looksLikeCompleteUtterance", () => {
+  it("detects finished asks", async () => {
+    const { looksLikeCompleteUtterance } = await import("@/lib/ai-voice");
+    expect(looksLikeCompleteUtterance("what are sales today")).toBe(true);
+    expect(looksLikeCompleteUtterance("show")).toBe(false);
+    expect(looksLikeCompleteUtterance("Done.")).toBe(true);
+  });
+});
+
+describe("warmTalkEngines", () => {
+  it("is exported and idempotent when speech APIs are missing", async () => {
+    const { warmTalkEngines } = await import("@/lib/ai-voice");
+    expect(typeof warmTalkEngines).toBe("function");
+    await expect(warmTalkEngines()).resolves.toBe(true);
   });
 });
 

@@ -22,19 +22,24 @@ import {
   createSpeechRecognizer,
   createVoiceRecorder,
   isTalkEndPhrase,
+  looksLikeCompleteUtterance,
+  normalizeSpokenTranscript,
+  preferredSpeechLang,
   speakAssistantText,
   speechErrorMessage,
   stopAssistantSpeech,
+  warmTalkEngines,
 } from "@/lib/ai-voice";
 
 /**
  * Pause after the last finalized phrase before sending.
- * Chrome finalizes mid-thought after short silences — keep this long enough
- * that a natural pause does not cut the user off.
+ * Matches Centrix Manager Talk handoff timings.
  */
-const HANDOFF_PAUSE_MS = 900;
-/** Extra wait when the last phrase does not look finished (no . ? !). */
-const HANDOFF_INCOMPLETE_PAUSE_MS = 1400;
+const HANDOFF_PAUSE_MS = 1000;
+/** Extra wait when the last phrase does not look finished. */
+const HANDOFF_INCOMPLETE_PAUSE_MS = 1700;
+/** Fast speakers need a longer silence before we treat the turn as done. */
+const HANDOFF_FAST_SPEECH_PAUSE_MS = 2100;
 /** After the assistant finishes speaking, briefly cool the mic then listen again. */
 const RESUME_LISTEN_MS = 220;
 /** Chrome SpeechRecognition dies if we open the mic while TTS is playing — never barge-in. */
@@ -69,7 +74,7 @@ export function AiVoiceTalkButton() {
     .trim()
     .split(/\s+/)[0] || "there";
   const [voiceSupported, setVoiceSupported] = useState(false);
-  const [phase, setPhase] = useState("idle"); // idle | listening | waiting | speaking
+  const [phase, setPhase] = useState("idle"); // idle | warming | listening | waiting | speaking
   /** True only while a Talk session is running — drives mic UI; false the moment Stop is pressed. */
   const [sessionActive, setSessionActive] = useState(false);
   const [heard, setHeard] = useState("");
@@ -77,6 +82,7 @@ export function AiVoiceTalkButton() {
   const [spokenReply, setSpokenReply] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [level, setLevel] = useState(0);
+  const [warming, setWarming] = useState(false);
 
   const orgAiEnabled = canUseAiTalk({ capabilities, hasPermission });
   const recognizerRef = useRef(null);
@@ -99,6 +105,8 @@ export function AiVoiceTalkButton() {
   const bargeInArmedAtRef = useRef(0);
   const speakInterruptedRef = useRef(false);
   const handOffToAssistantRef = useRef(null);
+  const lastFinalAtRef = useRef(0);
+  const finalBurstRef = useRef(0);
 
   useEffect(() => {
     setVoiceSupported(canUseVoiceInput());
@@ -157,13 +165,19 @@ export function AiVoiceTalkButton() {
   }, []);
 
   const reset = useCallback(() => {
+    // Hard stop first so delayed TTS/STT callbacks cannot reopen the mic UI.
     cancelledRef.current = true;
     conversationActiveRef.current = false;
     handedOffRef.current = false;
     speakingRef.current = false;
     speakInterruptedRef.current = false;
+    clearPauseTimer();
+    clearResumeTimer();
+    clearWaitWatchdog();
+    stopMicHard();
     // Hide mic mode immediately — do not wait for STT/TTS teardown.
     setSessionActive(false);
+    setWarming(false);
     setPhase("idle");
     setHeard("");
     setInterimHeard("");
@@ -172,8 +186,7 @@ export function AiVoiceTalkButton() {
     setLevel(0);
     voiceFinalRef.current = "";
     interimHeardRef.current = "";
-    stopMicHard();
-  }, [stopMicHard]);
+  }, [clearPauseTimer, clearResumeTimer, clearWaitWatchdog, stopMicHard]);
 
   useEffect(() => {
     resetRef.current = reset;
@@ -194,7 +207,10 @@ export function AiVoiceTalkButton() {
     interimHeardRef.current = "";
     setSpokenReply("Okay — talk anytime.");
     try {
-      await speakAssistantText(`Okay ${speakerFirst}, talk anytime.`, { lang: "en-US", rate: 1.05 });
+      await speakAssistantText(`Okay ${speakerFirst}, talk anytime.`, {
+        lang: preferredSpeechLang(),
+        rate: 0.98,
+      });
     } catch {
       /* ignore */
     }
@@ -214,7 +230,7 @@ export function AiVoiceTalkButton() {
 
   const handOffToAssistant = useCallback(
     (question) => {
-      const q = String(question ?? "").trim();
+      const q = normalizeSpokenTranscript(question);
       if (!q || cancelledRef.current || handedOffRef.current || !conversationActiveRef.current) return;
 
       // "Nothing else" / "no" / "bye" → close Talk instead of another AI turn.
@@ -300,6 +316,26 @@ export function AiVoiceTalkButton() {
     [clearPauseTimer, handOffToAssistant],
   );
 
+  const scheduleHandOffSmart = useCallback(() => {
+    const now = Date.now();
+    if (lastFinalAtRef.current && now - lastFinalAtRef.current < 450) {
+      finalBurstRef.current += 1;
+    } else {
+      finalBurstRef.current = 0;
+    }
+    lastFinalAtRef.current = now;
+
+    const full = voiceFinalRef.current.trim();
+    const complete = looksLikeCompleteUtterance(full);
+    const fastTalking = finalBurstRef.current >= 2;
+    const delay = fastTalking
+      ? HANDOFF_FAST_SPEECH_PAUSE_MS
+      : complete
+        ? HANDOFF_PAUSE_MS
+        : HANDOFF_INCOMPLETE_PAUSE_MS;
+    scheduleHandOff(delay);
+  }, [scheduleHandOff]);
+
   /** Listen while TTS plays — user speech pauses the answer and becomes the next question. */
   const startBargeInListening = useCallback(() => {
     if (!canUseBrowserSpeechRecognition()) return;
@@ -347,7 +383,7 @@ export function AiVoiceTalkButton() {
     };
 
     const recognizer = createSpeechRecognizer({
-      lang: "en-US",
+      lang: preferredSpeechLang(),
       continuous: true,
       minConfidence: 0.25,
       onInterim: (text) => {
@@ -511,7 +547,13 @@ export function AiVoiceTalkButton() {
   const startListening = useCallback(
     async ({ resume = false, seedMessage = null } = {}) => {
       if (!resume) {
+        // Stop / reset leaves cancelledRef true — clear it before the gate below
+        // or a fresh Talk click returns immediately and sessionActive sticks on.
+        cancelledRef.current = false;
         conversationActiveRef.current = true;
+        handedOffRef.current = false;
+        speakingRef.current = false;
+        speakInterruptedRef.current = false;
         setSessionActive(true);
         stopWakeListener();
       }
@@ -519,8 +561,11 @@ export function AiVoiceTalkButton() {
 
       cancelledRef.current = false;
       handedOffRef.current = false;
+      lastFinalAtRef.current = 0;
+      finalBurstRef.current = 0;
       clearPauseTimer();
       clearResumeTimer();
+      clearWaitWatchdog();
       stopAssistantSpeech();
       voiceFinalRef.current = "";
       interimHeardRef.current = "";
@@ -550,8 +595,8 @@ export function AiVoiceTalkButton() {
         if (cancelledRef.current || !conversationActiveRef.current) return;
 
         const recognizer = createSpeechRecognizer({
-          // Force US English — Chrome STT mishandles en-KE and Kenyan English accents fare better on en-US.
-          lang: "en-US",
+          // Prefer en-GB for Kenyan English (same as Manager Talk). Never en-KE — Chrome STT breaks.
+          lang: preferredSpeechLang(),
           continuous: true,
           // Allow lower scores so accented English is not dropped mid-sentence.
           minConfidence: 0.2,
@@ -574,8 +619,7 @@ export function AiVoiceTalkButton() {
             setInterimHeard("");
             setHeard(voiceFinalRef.current);
             setLevel(0.25);
-            const looksComplete = /[.!?…]["')\]]*\s*$/.test(text.trim());
-            scheduleHandOff(looksComplete ? HANDOFF_PAUSE_MS : HANDOFF_INCOMPLETE_PAUSE_MS);
+            scheduleHandOffSmart();
           },
           onError: ({ code }) => {
             recognizerRef.current = null;
@@ -630,8 +674,9 @@ export function AiVoiceTalkButton() {
     [
       clearPauseTimer,
       clearResumeTimer,
+      clearWaitWatchdog,
       handOffToAssistant,
-      scheduleHandOff,
+      scheduleHandOffSmart,
       startRecordingFallback,
       stopWakeListener,
     ],
@@ -667,7 +712,13 @@ export function AiVoiceTalkButton() {
       clearResumeTimer();
       if (ENABLE_BARGE_IN) {
         window.setTimeout(() => {
-          if (!speakingRef.current || cancelledRef.current || !conversationActiveRef.current) return;
+          if (
+            cancelledRef.current ||
+            !conversationActiveRef.current ||
+            !speakingRef.current
+          ) {
+            return;
+          }
           startBargeInListening();
         }, BARGE_IN_GUARD_MS);
       }
@@ -678,6 +729,7 @@ export function AiVoiceTalkButton() {
   useEffect(() => {
     return subscribeAiVoiceComplete((payload = {}) => {
       clearWaitWatchdog();
+      // Stop was pressed — never reopen listening or show the mic banner.
       if (cancelledRef.current || !conversationActiveRef.current) {
         speakingRef.current = false;
         setSessionActive(false);
@@ -685,6 +737,7 @@ export function AiVoiceTalkButton() {
         setHeard("");
         setInterimHeard("");
         setLevel(0);
+        setSuggestOpen(false);
         handedOffRef.current = false;
         return;
       }
@@ -718,13 +771,33 @@ export function AiVoiceTalkButton() {
     });
   }, [clearResumeTimer, clearWaitWatchdog]);
 
-  const onClick = useCallback(() => {
-    if (sessionActive || phase !== "idle") {
+  const onClick = useCallback(async () => {
+    // Active session (listening / waiting / speaking) → Stop ends Talk completely.
+    if (sessionActive || (phase !== "idle" && phase !== "warming")) {
       reset();
       return;
     }
+    if (warming) return;
+
+    // Warm STT/TTS under this user gesture so the first listen responds quickly
+    // (same idea as Manager Talk warmup-on-click).
+    setWarming(true);
+    setPhase("warming");
+    try {
+      await warmTalkEngines();
+    } catch {
+      /* still try to listen */
+    } finally {
+      setWarming(false);
+    }
+    if (cancelledRef.current) {
+      // Stop was pressed during warmup — stay idle.
+      setPhase("idle");
+      setSessionActive(false);
+      return;
+    }
     void startListening({ resume: false });
-  }, [phase, reset, sessionActive, startListening]);
+  }, [phase, reset, sessionActive, startListening, warming]);
 
   const onOpenAssistant = useCallback(() => {
     openAiAssistPanel(
@@ -739,38 +812,45 @@ export function AiVoiceTalkButton() {
   if (!orgAiEnabled || !voiceSupported) return null;
 
   // Mic mode UI only while Talk session is on — never after Stop.
-  const micModeOn = sessionActive && phase !== "idle";
+  const micModeOn = sessionActive && phase !== "idle" && phase !== "warming";
   const liveHeard = heard.trim() || interimHeard.trim();
   const buttonLabel =
-    phase === "listening"
-      ? "Listening…"
-      : phase === "speaking"
-        ? "Speaking…"
-        : phase === "waiting"
-          ? "Waiting…"
-          : "Talk to Centrix Assistant";
+    phase === "warming"
+      ? "Starting…"
+      : phase === "listening"
+        ? "Listening…"
+        : phase === "speaking"
+          ? "Speaking…"
+          : phase === "waiting"
+            ? "Waiting…"
+            : "Talk to Centrix Assistant";
   const buttonLabelShort =
-    phase === "listening"
-      ? "Listening…"
-      : phase === "speaking"
-        ? "Speaking…"
-        : phase === "waiting"
-          ? "Waiting…"
-          : "Talk";
+    phase === "warming"
+      ? "Starting…"
+      : phase === "listening"
+        ? "Listening…"
+        : phase === "speaking"
+          ? "Speaking…"
+          : phase === "waiting"
+            ? "Waiting…"
+            : "Talk";
 
   return (
     <>
       <button
         type="button"
         onClick={onClick}
+        disabled={warming}
         data-phase={
-          micModeOn
-            ? phase === "waiting"
-              ? "thinking"
-              : phase === "speaking"
-                ? "speaking"
-                : phase
-            : "idle"
+          warming
+            ? "warming"
+            : micModeOn
+              ? phase === "waiting"
+                ? "thinking"
+                : phase === "speaking"
+                  ? "speaking"
+                  : phase
+              : "idle"
         }
         className="app-topbar-ai-talk-btn"
         aria-label={
@@ -780,16 +860,15 @@ export function AiVoiceTalkButton() {
         }
         title={
           micModeOn
-            ? phase === "speaking"
-              ? "Stop — or wait for the answer to finish, then ask a follow-up"
-              : "Stop conversation — or say no / nothing else to close"
+            ? "Stop Talk — ends the conversation until you click Start again"
             : "Talk to Centrix Assistant — click to start a voice conversation"
         }
         aria-pressed={micModeOn}
+        aria-busy={warming}
       >
         <MicIcon className={`h-4 w-4 ${phase === "listening" && micModeOn ? "animate-pulse" : ""}`} />
-        <span className="max-sm:hidden">{micModeOn ? buttonLabel : "Talk to Centrix Assistant"}</span>
-        <span className="sm:hidden">{micModeOn ? buttonLabelShort : "Talk"}</span>
+        <span className="max-sm:hidden">{micModeOn || warming ? buttonLabel : "Talk to Centrix Assistant"}</span>
+        <span className="sm:hidden">{micModeOn || warming ? buttonLabelShort : "Talk"}</span>
       </button>
 
       {micModeOn ? (
@@ -825,10 +904,10 @@ export function AiVoiceTalkButton() {
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {phase === "listening"
-                  ? `Ask in English — or say “nothing else” / “no” to close`
+                  ? `Ask in English — tap Stop anytime to end Talk`
                   : phase === "speaking"
-                    ? "I’ll listen again when finished — tap Stop anytime"
-                    : "I’ll speak a short answer; open the assistant only if you want full detail"}
+                    ? "I’ll listen again when finished — tap Stop to end Talk"
+                    : "I’ll speak the key figures; the full table opens in the assistant when needed"}
               </p>
 
               <div className="mt-2 min-h-[2.5rem] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-800/80">

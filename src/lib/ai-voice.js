@@ -49,13 +49,121 @@ export function isSpeechSynthesisSupported() {
   return typeof window.speechSynthesis !== "undefined";
 }
 
-/** Prefer browser language only when Chrome STT supports it; else en-US. */
+/**
+ * Prefer browser language only when Chrome STT supports it.
+ * Kenyan English (en-KE) is unsupported and breaks Chrome STT — use en-GB
+ * (same default as Centrix Manager Talk) for rhythm/spelling closer to KE English.
+ */
 export function preferredSpeechLang() {
-  if (typeof navigator === "undefined") return "en-US";
-  const raw = String(navigator.language || "en-US").trim();
+  if (typeof navigator === "undefined") return "en-GB";
+  const raw = String(navigator.language || "en-GB").trim().replace(/_/g, "-");
   if (SAFE_SPEECH_LANGS.has(raw)) return raw;
-  if (/^en(-|$)/i.test(raw)) return "en-US";
-  return "en-US";
+  if (/^en(-|$)/i.test(raw)) return "en-GB";
+  return "en-GB";
+}
+
+/** Clean mic transcript before sending (Kenyan English / fast speech) — mirrors Manager Talk. */
+export function normalizeSpokenTranscript(raw) {
+  let text = String(raw ?? "").trim();
+  if (!text) return "";
+  text = text.replace(/\s+/g, " ");
+  const replacements = [
+    [/\b(el ?p ?o|elpo|l\.?p\.?o\.?|purchase oder|purchase order)\b/gi, "LPO"],
+    [/\b(kayes|kays|kess|kes|kenya shillings?|kenyan shillings?)\b/gi, "KES"],
+    [/\b(m[- ]?pesa|empesa)\b/gi, "M-Pesa"],
+    [/\b(stock on hand|stocks on hand)\b/gi, "stock on hand"],
+    [/\bcentrixassistant\b/gi, "Centrix Assistant"],
+  ];
+  for (const [re, to] of replacements) {
+    text = text.replace(re, to);
+  }
+  text = text.replace(/\b(um+|uh+|eh+|ah+|you know|basically)\b[,.]?\s*/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** True when the utterance looks finished enough to send soon — mirrors Manager Talk. */
+export function looksLikeCompleteUtterance(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return false;
+  if (/[.!?]$/.test(text)) return true;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 8) return true;
+  if (
+    words.length >= 4 &&
+    /^(what|how|who|when|where|which|show|list|get|give|tell|check|create|make|add|update|find|open|total|sales|stock)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+let talkWarmInFlight = null;
+let talkWarmDone = false;
+
+/**
+ * Warm STT / TTS on the Talk button click (user gesture) so the first listen
+ * is not a cold Chrome SpeechRecognition + voices load. Safe to call repeatedly.
+ * Mirrors Centrix Manager `TalkWarmupService.ensureWarmed()`.
+ */
+export async function warmTalkEngines() {
+  if (talkWarmDone) return true;
+  if (talkWarmInFlight) return talkWarmInFlight;
+
+  talkWarmInFlight = (async () => {
+    const tasks = [];
+
+    if (isSpeechSynthesisSupported()) {
+      tasks.push(
+        new Promise((resolve) => {
+          try {
+            const existing = window.speechSynthesis.getVoices();
+            if (existing?.length) {
+              resolve();
+              return;
+            }
+            const finish = () => {
+              window.clearTimeout(timer);
+              window.speechSynthesis.removeEventListener("voiceschanged", finish);
+              resolve();
+            };
+            const timer = window.setTimeout(finish, 700);
+            window.speechSynthesis.addEventListener("voiceschanged", finish);
+            // Nudge Chrome to populate voices.
+            window.speechSynthesis.getVoices();
+          } catch {
+            resolve();
+          }
+        }),
+      );
+    }
+
+    if (canUseBrowserSpeechRecognition()) {
+      // Touch the constructor only — do NOT start() here. A warm start() would
+      // consume the user gesture and cause the real listen start to fail.
+      try {
+        const SpeechRecognition =
+          window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = preferredSpeechLang();
+        recognition.interimResults = true;
+        recognition.continuous = true;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    await Promise.all(tasks);
+    talkWarmDone = true;
+    return true;
+  })();
+
+  try {
+    return await talkWarmInFlight;
+  } finally {
+    talkWarmInFlight = null;
+  }
 }
 
 export function getAiTtsPref() {
@@ -92,12 +200,98 @@ export function plainTextForSpeech(raw) {
   return text.slice(0, 1200);
 }
 
+/** Format a numeric cell for speech (keep commas for clarity). */
+function speakAmount(raw) {
+  const s = String(raw ?? "").replace(/[^\d.,]/g, "").trim();
+  return s || "";
+}
+
 /**
- * Spoken answer for Talk mode — short spoken summary only (no tables / “Open …” footers).
+ * Pull Total / best-day figures from markdown (or tab) tables so Talk can speak
+ * numbers even when plainTextForSpeech strips table rows.
+ */
+export function spokenSummaryFromFigureTables(raw) {
+  const lines = String(raw ?? "").split(/\n/);
+  /** @type {string[][]} */
+  const rows = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let cells = [];
+    if (trimmed.includes("|")) {
+      if (/^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(trimmed)) continue;
+      cells = trimmed
+        .split("|")
+        .map((c) => c.trim())
+        .filter(Boolean);
+    } else if (/\t/.test(trimmed) || /\s{2,}/.test(trimmed)) {
+      cells = trimmed.split(/\t+|\s{2,}/).map((c) => c.trim()).filter(Boolean);
+    } else {
+      continue;
+    }
+    if (cells.length < 2) continue;
+    if (/^date$/i.test(cells[0]) || /^day$/i.test(cells[0])) continue;
+    if (/orders/i.test(cells[0]) && /gross/i.test(cells.join(" "))) continue;
+    rows.push(cells);
+  }
+
+  if (rows.length === 0) return "";
+
+  const totalRow = rows.find((r) => /^total\b/i.test(r[0]));
+  const dayRows = rows.filter((r) => !/^total\b/i.test(r[0]));
+
+  const moneyFrom = (cells) => {
+    // Prefer larger money-looking values (gross) over small order counts.
+    const candidates = cells
+      .slice(1)
+      .map((c) => ({ raw: c, n: Number(String(c).replace(/,/g, "")) }))
+      .filter((x) => Number.isFinite(x.n) && x.n >= 100);
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.n - a.n);
+    return candidates[0];
+  };
+
+  const parts = [];
+  if (totalRow) {
+    const orders = totalRow.slice(1).find((c) => /^\d{1,5}$/.test(String(c).replace(/,/g, "")));
+    const gross = moneyFrom(totalRow);
+    if (gross) {
+      parts.push(
+        `Total about ${speakAmount(gross.raw)} Kenyan Shillings` +
+          (orders ? ` across ${orders} orders` : "") +
+          ".",
+      );
+    }
+  }
+
+  let best = null;
+  for (const row of dayRows) {
+    const gross = moneyFrom(row);
+    if (!gross) continue;
+    if (!best || gross.n > best.n) {
+      best = { label: row[0], ...gross };
+    }
+  }
+  if (best && best.label && !/^—$|^-$|^n\/?a$/i.test(best.label)) {
+    parts.push(`Best day ${best.label} with about ${speakAmount(best.raw)}.`);
+  }
+
+  if (parts.length === 0) return "";
+  parts.push("Full day-by-day is in the chat.");
+  return parts.join(" ");
+}
+
+/**
+ * Spoken answer for Talk mode — short spoken summary with key figures.
  * Speaks "Kenyan Shillings" instead of the KES abbreviation.
+ * Tables are summarised (totals / best day) instead of being dropped silently.
  */
 export function spokenBriefForSpeech(raw) {
-  let text = String(raw ?? "");
+  const source = String(raw ?? "");
+  const tableSummary = spokenSummaryFromFigureTables(source);
+
+  let text = source;
   // Drop trailing “Open …” / “Detail …” sections so TTS stays on the answer.
   text = text.split(/\n(?=Detail\b|Open\b)/i)[0] ?? text;
   text = text.replace(/^[-*]\s+/gm, "");
@@ -108,7 +302,20 @@ export function spokenBriefForSpeech(raw) {
   if (sentences.length > 0) {
     text = sentences.slice(0, 2).join(" ");
   }
-  return text.slice(0, 420).trim();
+
+  const hasMoney = /\d[\d,]{2,}/.test(text);
+  if (tableSummary) {
+    // Prefer an intro line (who / period) + table totals when prose lost the numbers.
+    const intro = sentences[0] && !hasMoney ? sentences[0] : hasMoney ? text : "";
+    if (!hasMoney) {
+      text = [intro, tableSummary].filter(Boolean).join(" ").trim();
+    } else if (!/total about|across \d+ orders|full day-by-day/i.test(text)) {
+      // Prose already has some amounts — still append the compact total if useful.
+      text = `${text} ${tableSummary}`.trim();
+    }
+  }
+
+  return text.slice(0, 520).trim();
 }
 
 export function speechErrorMessage(code) {
@@ -567,7 +774,7 @@ export function createSpeechRecognizer(options = {}) {
  * Speak text aloud. Resolves when utterance ends (or immediately if unsupported/empty).
  * @returns {Promise<true | false | "interrupted">} true = finished, "interrupted" = cancelled mid-speech
  */
-export function speakAssistantText(text, { lang = "en-US", rate = 1.05 } = {}) {
+export function speakAssistantText(text, { lang = "en-GB", rate = 0.98 } = {}) {
   if (!isSpeechSynthesisSupported()) return Promise.resolve(false);
   const plain = plainTextForSpeech(text);
   if (!plain) return Promise.resolve(false);

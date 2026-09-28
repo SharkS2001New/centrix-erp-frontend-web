@@ -113,6 +113,12 @@ export default function PlatformSpeedPage() {
   const healthNa = healthChecks.filter((c) => c.ok == null).length;
   const queries = Array.isArray(result?.slow_queries?.queries) ? result.slow_queries.queries : [];
   const recentIssues = Array.isArray(result?.slow_issues?.recent) ? result.slow_issues.recent : [];
+  const slowAvailable = result?.slow_queries?.available !== false;
+  const slowEmptyHint =
+    result?.slow_queries?.empty_hint ||
+    (slowAvailable
+      ? null
+      : result?.slow_queries?.reason || "performance_schema unavailable on this MySQL instance.");
   const likelyHint =
     clientProbe?.likely === "api"
       ? "Likely API / server"
@@ -123,7 +129,7 @@ export default function PlatformSpeedPage() {
   return (
     <CatalogPageShell
       title="ERP Speed"
-      subtitle="Live latency probe plus infra health, slow MySQL digests, and client-reported slow requests."
+      subtitle="Live latency, infra status, MySQL digests, and client slow reports — not historical APM charts."
       action={
         <PrimaryButton type="button" showIcon={false} onClick={() => void measure()} disabled={loading}>
           {loading ? "Measuring…" : result ? "Measure now" : "Measure"}
@@ -156,6 +162,10 @@ export default function PlatformSpeedPage() {
           </Link>
           .
         </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Server time is the cheap DB/Redis probe only — the queue worker live test runs on Infrastructure
+          health so Measure stays honest.
+        </p>
         {result?.checked_at ? (
           <p className="mt-2 text-xs text-slate-500">Last checked: {formatCheckedAt(result.checked_at)}</p>
         ) : null}
@@ -181,12 +191,12 @@ export default function PlatformSpeedPage() {
               hint={likelyHint}
             />
             <KpiCard
-              label="Server time"
+              label="Probe time"
               value={formatMs(clientProbe?.server_ms ?? result.server_ms)}
               hint={
                 clientProbe?.network_estimate_ms != null
                   ? `Network ~${formatMs(clientProbe.network_estimate_ms)}`
-                  : "From this snapshot request"
+                  : "DB/Redis ping (not full health)"
               }
             />
             <KpiCard
@@ -194,7 +204,7 @@ export default function PlatformSpeedPage() {
               value={formatMs(result.latency_probe?.db_ms)}
               hint={
                 result.latency_probe?.redis_skipped
-                  ? "Redis not in use"
+                  ? "Redis not configured as cache/queue"
                   : `Redis ${formatMs(result.latency_probe?.redis_ms)}`
               }
             />
@@ -212,6 +222,7 @@ export default function PlatformSpeedPage() {
                 <p className="text-xs text-slate-500">
                   {healthPass} OK · {healthFail} fail · {healthNa} N/A
                   {result.health?.hostname ? ` · host ${result.health.hostname}` : ""}
+                  {result.health_ms != null ? ` · gathered in ${formatMs(result.health_ms)}` : ""}
                 </p>
               </div>
               <Link
@@ -240,9 +251,11 @@ export default function PlatformSpeedPage() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Top slow queries</h2>
                 <p className="text-xs text-slate-500">
-                  {result.slow_queries?.available === false
+                  {!slowAvailable
                     ? result.slow_queries?.reason || "performance_schema unavailable"
-                    : "MySQL digests (top 5 by total time)"}
+                    : result.slow_queries?.list_mode === "notable"
+                      ? "Top Centrix digests (none crossed slow thresholds yet)"
+                      : "MySQL digests (top 5 by total time)"}
                 </p>
               </div>
               <Link
@@ -253,7 +266,25 @@ export default function PlatformSpeedPage() {
               </Link>
             </div>
             {queries.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-500">No slow digests to show.</p>
+              <div className="space-y-2 px-4 py-6 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">No slow digests to show</p>
+                {slowEmptyHint ? <p>{slowEmptyHint}</p> : null}
+                {Array.isArray(result.slow_queries?.enable_hint) &&
+                result.slow_queries.enable_hint.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5 font-mono text-xs text-slate-500">
+                    {result.slow_queries.enable_hint.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="text-xs text-slate-500">
+                  Use Capture digests on{" "}
+                  <Link href="/platform/slow-queries" className="font-medium text-[#185FA5] hover:underline">
+                    Slow queries
+                  </Link>
+                  , generate Centrix traffic, then refresh.
+                </p>
+              </div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>
@@ -285,7 +316,8 @@ export default function PlatformSpeedPage() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Recent slow client reports</h2>
                 <p className="text-xs text-slate-500">
-                  Open / acknowledged requests that exceeded the slow threshold
+                  Open / acknowledged requests that exceeded the slow threshold (client RTT and server both
+                  look slow)
                 </p>
               </div>
               <Link
@@ -296,7 +328,13 @@ export default function PlatformSpeedPage() {
               </Link>
             </div>
             {recentIssues.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-500">No active slow reports.</p>
+              <div className="space-y-1 px-4 py-6 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">No active slow reports</p>
+                <p className="text-xs text-slate-500">
+                  Client reports only appear when a request is slow on both the browser and the API — empty
+                  here usually means nothing has crossed that bar yet, not that monitoring is broken.
+                </p>
+              </div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>

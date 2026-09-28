@@ -134,10 +134,14 @@ export function AccountingCustomerInvoicesIdScreen() {
   }
 
   async function deletePayment(payment) {
+    const isMirroredOrderTenders =
+      String(payment.notes || "").trim() === "Order tenders not yet on the invoice";
     const ok = await confirm(
       confirmDeleteOptions(
         "this payment",
-        `Delete the ${currency(payment.amount_paid)} payment from ${date(payment.date_paid)}? This cannot be undone.`,
+        isMirroredOrderTenders
+          ? `Delete the ${currency(payment.amount_paid)} order tender from ${date(payment.date_paid)}? This also reverses the payment on the linked sales order so the invoice can be collected again.`
+          : `Delete the ${currency(payment.amount_paid)} payment from ${date(payment.date_paid)}? This cannot be undone.`,
       ),
     );
     if (!ok) return;

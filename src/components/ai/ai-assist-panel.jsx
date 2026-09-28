@@ -283,7 +283,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
   const speakVoiceReplyIfNeeded = useCallback((content, meta = null) => {
     const detailed = isDetailedAssistantReply(meta, content);
-    const needsPanel = assistantReplyNeedsPanel(meta);
+    const formNeedsPanel = assistantReplyNeedsPanel(meta);
+    // Voice: open the sidebar when the answer has a table / long figures so they can look.
+    const openForDetail = Boolean(voiceAskedRef.current && detailed);
+    const needsPanel = formNeedsPanel || openForDetail;
     if (needsPanel) {
       setOpen(true);
     }
@@ -293,7 +296,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       notifyAiVoiceComplete({ detailed, needsPanel });
       return;
     }
-    const brief = spokenBriefForSpeech(content);
+    let brief = spokenBriefForSpeech(content);
+    if (openForDetail && brief && !/opened the assistant/i.test(brief)) {
+      brief = `${brief} I've opened the assistant with the full breakdown — take a look there.`.trim();
+    }
     voiceAskedRef.current = false;
     if (!brief) {
       notifyAiVoiceComplete({ detailed, needsPanel });
