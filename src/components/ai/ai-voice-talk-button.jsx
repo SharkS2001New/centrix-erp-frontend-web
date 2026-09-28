@@ -207,7 +207,7 @@ export function AiVoiceTalkButton() {
     interimHeardRef.current = "";
     setSpokenReply("Okay — talk anytime.");
     try {
-      await speakAssistantText(`Okay ${speakerFirst}, talk anytime.`, {
+      await speakAssistantText(`Okay — talk anytime.`, {
         lang: preferredSpeechLang(),
         rate: 0.98,
       });
@@ -217,7 +217,7 @@ export function AiVoiceTalkButton() {
     setSpokenReply("");
     // Allow wake word again after a polite close.
     cancelledRef.current = false;
-  }, [speakerFirst, stopMicHard]);
+  }, [stopMicHard]);
 
   useEffect(() => {
     return () => {
