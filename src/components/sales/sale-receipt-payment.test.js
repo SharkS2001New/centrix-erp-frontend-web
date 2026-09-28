@@ -56,6 +56,29 @@ describe("sale receipt payment rows", () => {
     expect(rows).toEqual([{ label: "Balance due", value: 22535 }]);
   });
 
+  it("does not invent Cash from stale amount_paid when there are no payment rows", () => {
+    const sale = {
+      order_total: 15705,
+      amount_paid: 1400,
+      payment_method_code: "CASH",
+      payment_status: "partial",
+      channel: "mobile",
+      cash: 0,
+      mpesa_amount: 0,
+      equity_amount: 0,
+      kcb_amount: 0,
+      payments: [],
+    };
+    const tenders = resolveSaleReceiptTenders(sale, 15705);
+    expect(tenders.cashAmount).toBe(0);
+    expect(tenders.amountPaid).toBe(0);
+    expect(tenders.balanceDue).toBe(15705);
+
+    const rows = buildUsedPaymentRows(sale, 15705, { showAllMethods: true });
+    expect(rows.find((r) => r.label === "Cash")?.value).toBe(0);
+    expect(rows.find((r) => r.label === "Balance due")?.value).toBe(15705);
+  });
+
   it("prints partial cash paid plus balance due", () => {
     const rows = buildUsedPaymentRows(
       {

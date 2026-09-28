@@ -113,8 +113,26 @@ export function resolveSaleReceiptTenders(sale, orderTotal) {
     cashAmount + mpesaAmount + equityAmount + kcbAmount + voucherAmount + pointsAmount,
   );
 
-  // Columns empty but amount_paid is set — attribute paid amount to the recorded method.
+  // Columns empty but amount_paid is set — only attribute to a method when payment
+  // rows exist (or tenders will be rebuilt). Never invent Cash from a stale amount_paid
+  // alone (mobile save-only same-day append bug printed phantom Cash).
   if (tenderPaid <= 0.009) {
+    const hasPaymentRows =
+      Array.isArray(sale?.payments) &&
+      sale.payments.some((p) => Math.abs(Number(p?.amount ?? 0)) > 0.009);
+    if (!hasPaymentRows) {
+      return {
+        cashAmount: 0,
+        mpesaAmount: 0,
+        equityAmount: 0,
+        kcbAmount: 0,
+        voucherAmount: 0,
+        pointsAmount: 0,
+        amountPaid: 0,
+        tenderPaid: 0,
+        balanceDue: Math.max(0, total),
+      };
+    }
     const code = String(sale?.payment_method_code ?? "CASH").toUpperCase();
     if (code.includes("MPESA") || code.includes("AIRTEL")) mpesaAmount = amountPaid;
     else if (code.includes("EQUITY")) equityAmount = amountPaid;
