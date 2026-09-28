@@ -36,10 +36,10 @@ describe("spokenBriefForSpeech", () => {
     expect(brief).toMatch(/Diana: opening float Kenyan Shillings 20,000/);
     expect(brief).toMatch(/M-Pesa/);
     expect(brief).not.toMatch(/\bKES\b/);
-    expect(brief).not.toMatch(/Expected cash/);
+    expect(brief).toMatch(/Expected cash/);
     expect(brief).not.toMatch(/Detail/);
     expect(brief).not.toMatch(/Till management/);
-    expect(brief.length).toBeLessThanOrEqual(520);
+    expect(brief.length).toBeLessThanOrEqual(560);
   });
 
   it("keeps greetings to a short spoken line", () => {
@@ -67,7 +67,21 @@ describe("spokenBriefForSpeech", () => {
     expect(brief).toMatch(/766/);
     expect(brief).toMatch(/716,525|Mon 28 Sep/i);
     expect(brief).toMatch(/chat/i);
-    expect(brief.length).toBeLessThanOrEqual(520);
+    expect(brief.length).toBeLessThanOrEqual(560);
+  });
+
+  it("keeps up to three spoken sentences without cutting mid-word", () => {
+    const raw =
+      "Yes, there were 15 unusual large orders this week. " +
+      "There were also 15 after-hours sales on 26 September. " +
+      "The average order was about KES 10,576, and the biggest was KES 750,500 on 23 September.";
+    const brief = spokenBriefForSpeech(raw);
+    expect(brief).toMatch(/15 unusual large orders/);
+    expect(brief).toMatch(/after-hours/);
+    expect(brief).toMatch(/23 September/);
+    expect(brief).not.toMatch(/Septembe$/);
+    expect(brief).not.toMatch(/Kenyan Shillings \(Kenyan Shillings\)/);
+    expect(brief.length).toBeLessThanOrEqual(560);
   });
 });
 

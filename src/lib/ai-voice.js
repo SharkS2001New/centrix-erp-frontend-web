@@ -283,7 +283,7 @@ export function spokenSummaryFromFigureTables(raw) {
 }
 
 /**
- * Spoken answer for Talk mode — short spoken summary with key figures.
+ * Spoken answer for Talk mode — up to ~3 sentences with key figures.
  * Speaks "Kenyan Shillings" instead of the KES abbreviation.
  * Tables are summarised (totals / best day) instead of being dropped silently.
  */
@@ -296,11 +296,13 @@ export function spokenBriefForSpeech(raw) {
   text = text.split(/\n(?=Detail\b|Open\b)/i)[0] ?? text;
   text = text.replace(/^[-*]\s+/gm, "");
   text = plainTextForSpeech(text);
-  // KES → Kenyan Shillings for natural speech (keep bare amounts readable).
+  // Prefer a single spoken currency phrase (avoid "Kenyan Shillings (Kenyan Shillings)").
+  text = text.replace(/Kenyan Shillings\s*\(\s*KES\s*\)/gi, "Kenyan Shillings");
   text = text.replace(/\bKES\b/gi, "Kenyan Shillings");
+  text = text.replace(/Kenyan Shillings\s*\(\s*Kenyan Shillings\s*\)/gi, "Kenyan Shillings");
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length > 0) {
-    text = sentences.slice(0, 2).join(" ");
+    text = sentences.slice(0, 3).join(" ");
   }
 
   const hasMoney = /\d[\d,]{2,}/.test(text);
@@ -315,7 +317,15 @@ export function spokenBriefForSpeech(raw) {
     }
   }
 
-  return text.slice(0, 520).trim();
+  const maxLen = 560;
+  if (text.length > maxLen) {
+    text = text.slice(0, maxLen);
+    const lastSpace = text.lastIndexOf(" ");
+    if (lastSpace > 320) text = text.slice(0, lastSpace);
+    text = text.trimEnd();
+    if (text && !/[.!?]$/.test(text)) text = `${text}.`;
+  }
+  return text.trim();
 }
 
 export function speechErrorMessage(code) {
