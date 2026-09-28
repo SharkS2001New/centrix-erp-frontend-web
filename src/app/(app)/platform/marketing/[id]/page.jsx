@@ -120,7 +120,7 @@ export default function MarketingPortfolioEditorPage() {
       });
       setPortfolio(res.data);
       setTab("preview");
-      notifySuccess("Portfolio generated with AI.");
+      notifySuccess(res.message || "Portfolio generated.");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Generate failed.");
     } finally {
@@ -201,7 +201,7 @@ export default function MarketingPortfolioEditorPage() {
             {busy === "save" ? "Saving…" : "Save"}
           </button>
           <PrimaryButton disabled={!!busy} onClick={() => void onGenerate()}>
-            {busy === "generate" ? "Generating…" : "Generate with AI"}
+            {busy === "generate" ? "Generating…" : "Generate portfolio"}
           </PrimaryButton>
           <button type="button" className={SECONDARY_BTN_CLASS} disabled={!!busy} onClick={() => void onShare()}>
             Share link
@@ -249,12 +249,12 @@ export default function MarketingPortfolioEditorPage() {
       </div>
 
       <label className="mb-4 block text-sm">
-        <span className="mb-1 block font-medium text-slate-700">AI instruction (optional)</span>
+        <span className="mb-1 block font-medium text-slate-700">Instruction (optional)</span>
         <input
           className="w-full rounded-lg border border-slate-200 px-3 py-2"
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
-          placeholder="e.g. Emphasise multi-till EOD and low stock alerts"
+          placeholder="e.g. Emphasise multi-till EOD — or leave blank for a general vertical portfolio"
         />
       </label>
 
