@@ -3202,6 +3202,32 @@ html[data-theme="dark"] .pos-workspace-classic {
   white-space: nowrap;
 }
 
+.classic-pos-cart-clear-btn {
+  flex-shrink: 0;
+  margin-left: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.classic-pos-cart-clear-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.classic-pos-cart-clear-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .classic-pos-mode-hint {
   font-size: 0.72rem;
   font-weight: 700;

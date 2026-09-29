@@ -265,6 +265,11 @@ export function ClassicPosCartTable({
   onEntryQtyCommit = null,
   onEmptyDoubleClick = null,
   tableScrollRef = null,
+  /** Clear all / Cancel order (previous-order edit) — classic has no modern cart footer. */
+  clearCartLabel = null,
+  clearCartTitle = null,
+  onClearCart = null,
+  clearCartDisabled = false,
 }) {
   const skipEntryQtyBlurCommitRef = useRef(false);
 
@@ -297,6 +302,17 @@ export function ClassicPosCartTable({
             </button>
           ) : null}
           <span className="classic-pos-cart-caption-text">{orderCaption}</span>
+          {typeof onClearCart === "function" && clearCartLabel ? (
+            <button
+              type="button"
+              className="classic-pos-cart-clear-btn"
+              disabled={busy || clearCartDisabled}
+              title={clearCartTitle || clearCartLabel}
+              onClick={() => onClearCart()}
+            >
+              {clearCartLabel}
+            </button>
+          ) : null}
           {orderNavHint ? (
             <span className="classic-pos-order-nav-hint" title={orderNavHint}>
               {orderNavHint}

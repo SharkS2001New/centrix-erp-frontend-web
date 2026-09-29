@@ -5383,9 +5383,12 @@ export function PosScreen({ standalone = false }) {
       console.error("Failed to save previous-order edit draft", e);
     }
     if (!editedOrderHasLocalDraftChanges(nextCart)) return;
+    // queuePreviousOrderEditOutboxNow reads cartRef — sync it to nextCart first so
+    // empty Clear / last-line delete queues a cancel, not the stale cart with lines.
+    cartRef.current = nextCart;
     if (immediate) {
       try {
-        await queuePreviousOrderEditOutboxNow({ force: true });
+        await queuePreviousOrderEditOutboxNow({ force: true, cart: nextCart });
       } catch (e) {
         console.error("Failed to upsert previous-order outbox after edit", e);
         scheduleEditedOrderAutosave({ immediate: true });
@@ -10685,7 +10688,11 @@ export function PosScreen({ standalone = false }) {
                 : `${targets.length} items`;
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
             paintRemoved(nextCart);
-            if (standalone && instantAutoEditSync) {
+            if ((nextCart.lines?.length ?? 0) === 0 && nextCart.held_order_num) {
+              setStatusMessage(
+                `Cash Sales #${formatPosBrowseLabel(working)} — cancelling order on sync…`,
+              );
+            } else if (standalone && instantAutoEditSync) {
               setStatusMessage(
                 `${label} removed from Cash Sales #${formatPosBrowseLabel(working)} — syncing…`,
               );
@@ -10990,8 +10997,10 @@ export function PosScreen({ standalone = false }) {
       await runWithLineSaveOverlay(
         async () => {
           if (onlinePreviousOrderDraft) {
-            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+            // Paint empty cart into cartRef before persist so outbox queues cancel
+            // (queuePreviousOrderEditOutboxNow reads cartRef / optional cart override).
             paintCleared(nextCart);
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
             // Empty previous-order edit must upload cancel — queue alone leaves the
             // sale live until something else flushes Pending sync.
             if ((nextCart.lines?.length ?? 0) === 0 && nextCart.held_order_num) {
@@ -13242,10 +13251,13 @@ export function PosScreen({ standalone = false }) {
    *   has set skipEditAutosaveRef (normal autosave stays skipped).
    * @returns {Promise<number|null>} held order num when queued
    */
-  async function queuePreviousOrderEditOutboxNow({ force = false } = {}) {
+  async function queuePreviousOrderEditOutboxNow({ force = false, cart: cartOverride = null } = {}) {
     if (!standalone) return null;
     if (!force && skipEditAutosaveRef.current) return null;
-    let cartNow = cartRef.current;
+    let cartNow = cartOverride ?? cartRef.current;
+    if (cartOverride) {
+      cartRef.current = cartOverride;
+    }
     if (!cartNow?.held_order_num) return null;
     if (isFreshWorkspacePlaceholder(cartNow)) return null;
 
@@ -18774,6 +18786,20 @@ export function PosScreen({ standalone = false }) {
                 onEmptyDoubleClick={
                   standalone ? () => void startFreshWorkspace() : null
                 }
+                clearCartLabel={
+                  (cart?.lines?.length ?? 0) > 0
+                    ? isCartEditSession
+                      ? "Cancel order"
+                      : "Clear all"
+                    : null
+                }
+                clearCartTitle={
+                  isCartEditSession
+                    ? "Clear all lines and cancel this Cash Sales order on sync"
+                    : "Clear all lines from cart"
+                }
+                onClearCart={() => void clearAllLines()}
+                clearCartDisabled={busy || !(cart?.lines?.length > 0)}
               />
             ) : (
             <table
