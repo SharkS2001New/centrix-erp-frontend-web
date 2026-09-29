@@ -10694,6 +10694,14 @@ export function PosScreen({ standalone = false }) {
                 `${label} removed from revised Cash Sales #${formatPosBrowseLabel(working)}. Saved locally — syncing…`,
               );
             }
+            // Last line removed → empty edit = cancel on sync (same as Clear all).
+            if ((nextCart.lines?.length ?? 0) === 0 && nextCart.held_order_num) {
+              const workspaceGeneration = freshWorkspaceGenerationRef.current;
+              flushPreviousOrderEditOutboxInBackground(
+                nextCart.held_order_num,
+                workspaceGeneration,
+              );
+            }
             return;
           }
 
@@ -10932,13 +10940,11 @@ export function PosScreen({ standalone = false }) {
     if (!liveCart?.id || !liveCart?.lines?.length) return;
     if (
       !(await confirm({
-        title: "Clear cart",
+        title: isPreviousOrderEditSession(liveCart) ? "Cancel order" : "Clear cart",
         message: liveCart.held_order_num
-          ? instantAutoEditSync
-            ? "Clear all items? This cancels the order and records a full return once payment breakdown is entered."
-            : "Clear all items? Enter the return, then Alt+P to cancel this order and record the refund."
+          ? `Clear all items from Cash Sales #${formatPosBrowseLabel(liveCart)}? This cancels the order on the server (full return) once sync completes.`
           : "Clear all items from the cart?",
-        confirmLabel: "Clear",
+        confirmLabel: isPreviousOrderEditSession(liveCart) ? "Cancel order" : "Clear",
         destructive: true,
       }))
     ) {
@@ -10972,9 +10978,7 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
       setStatusMessage(
         isPreviousOrderEditSession(working)
-          ? instantAutoEditSync
-            ? "Lines cleared — recording full return and cancelling order…"
-            : "Lines cleared — enter the return, then Alt+P to cancel this order."
+          ? "Lines cleared — cancelling order on sync…"
           : "Cart cleared.",
       );
       window.requestAnimationFrame(() => {
@@ -10988,6 +10992,15 @@ export function PosScreen({ standalone = false }) {
           if (onlinePreviousOrderDraft) {
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
             paintCleared(nextCart);
+            // Empty previous-order edit must upload cancel — queue alone leaves the
+            // sale live until something else flushes Pending sync.
+            if ((nextCart.lines?.length ?? 0) === 0 && nextCart.held_order_num) {
+              const workspaceGeneration = freshWorkspaceGenerationRef.current;
+              flushPreviousOrderEditOutboxInBackground(
+                nextCart.held_order_num,
+                workspaceGeneration,
+              );
+            }
             return;
           }
 
@@ -19075,8 +19088,12 @@ export function PosScreen({ standalone = false }) {
                 onClick={removeSelectedLine}
               />
               <PosActionButton
-                label="Clear all"
-                title="Clear all lines from cart"
+                label={isCartEditSession ? "Cancel order" : "Clear all"}
+                title={
+                  isCartEditSession
+                    ? "Clear all lines and cancel this Cash Sales order on sync"
+                    : "Clear all lines from cart"
+                }
                 icon="⌫"
                 iconClass="pos-cart-action-icon--warn"
                 disabled={busy || !cart?.lines?.length}
