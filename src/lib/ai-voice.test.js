@@ -175,10 +175,41 @@ describe("stripCentrixWakePrefix", () => {
 
 describe("preferredSpeechLang", () => {
   it("falls back to en-GB for unsupported English locales like en-KE", () => {
-    const original = navigator.language;
-    Object.defineProperty(navigator, "language", { configurable: true, get: () => "en-KE" });
-    expect(preferredSpeechLang()).toBe("en-GB");
-    Object.defineProperty(navigator, "language", { configurable: true, get: () => original });
+    const previous = globalThis.navigator;
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      writable: true,
+      value: { language: "en-KE" },
+    });
+    try {
+      expect(preferredSpeechLang()).toBe("en-GB");
+    } finally {
+      if (previous === undefined) {
+        Reflect.deleteProperty(globalThis, "navigator");
+      } else {
+        Object.defineProperty(globalThis, "navigator", {
+          configurable: true,
+          writable: true,
+          value: previous,
+        });
+      }
+    }
+  });
+
+  it("defaults to en-GB when navigator is unavailable", () => {
+    const previous = globalThis.navigator;
+    Reflect.deleteProperty(globalThis, "navigator");
+    try {
+      expect(preferredSpeechLang()).toBe("en-GB");
+    } finally {
+      if (previous !== undefined) {
+        Object.defineProperty(globalThis, "navigator", {
+          configurable: true,
+          writable: true,
+          value: previous,
+        });
+      }
+    }
   });
 });
 
