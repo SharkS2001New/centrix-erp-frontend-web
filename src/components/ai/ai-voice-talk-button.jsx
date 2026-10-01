@@ -112,6 +112,8 @@ export function AiVoiceTalkButton() {
   const bargeInArmedAtRef = useRef(0);
   const speakInterruptedRef = useRef(false);
   const handOffToAssistantRef = useRef(null);
+  const scheduleHandOffRef = useRef(null);
+  const startBargeInListeningRef = useRef(null);
   const lastFinalAtRef = useRef(0);
   const finalBurstRef = useRef(0);
 
@@ -311,7 +313,7 @@ export function AiVoiceTalkButton() {
       pauseTimerRef.current = window.setTimeout(() => {
         // Still hearing interim speech — wait longer instead of cutting off.
         if (interimHeardRef.current.trim()) {
-          scheduleHandOff(HANDOFF_PAUSE_MS);
+          scheduleHandOffRef.current?.(HANDOFF_PAUSE_MS);
           return;
         }
         const spoken = voiceFinalRef.current.trim();
@@ -323,6 +325,10 @@ export function AiVoiceTalkButton() {
     },
     [clearPauseTimer, handOffToAssistant],
   );
+
+  useEffect(() => {
+    scheduleHandOffRef.current = scheduleHandOff;
+  }, [scheduleHandOff]);
 
   const scheduleHandOffSmart = useCallback(() => {
     const now = Date.now();
@@ -421,7 +427,7 @@ export function AiVoiceTalkButton() {
         if (speakingRef.current && conversationActiveRef.current && !cancelledRef.current) {
           window.setTimeout(() => {
             if (speakingRef.current && conversationActiveRef.current && !cancelledRef.current) {
-              startBargeInListening();
+              startBargeInListeningRef.current?.();
             }
           }, 200);
         }
@@ -436,6 +442,10 @@ export function AiVoiceTalkButton() {
       recognizerRef.current = null;
     }
   }, [clearPauseTimer]);
+
+  useEffect(() => {
+    startBargeInListeningRef.current = startBargeInListening;
+  }, [startBargeInListening]);
 
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
@@ -935,7 +945,7 @@ export function AiVoiceTalkButton() {
                 {liveHeard ? (
                   <p className="mt-0.5 text-sm text-slate-900 dark:text-slate-100">
                     “{liveHeard}”
-                    {interimHeard && !voiceFinalRef.current ? (
+                    {interimHeard && heard.trim() === interimHeard.trim() ? (
                       <span className="ml-1 text-xs italic text-slate-400">…</span>
                     ) : null}
                   </p>
