@@ -8,6 +8,7 @@ import {
   returnLineCountId,
   returnQtyInputLevels,
 } from "@/components/sales/customer-returns-shared";
+import { uomIsFullPackageOnly } from "@/lib/uom-packaging";
 import { uomConversionFactor } from "@/lib/stock-uom";
 
 export function CustomerReturnQtyInputs({
@@ -23,8 +24,15 @@ export function CustomerReturnQtyInputs({
   const lineId = returnLineCountId(line);
   const levels = returnQtyInputLevels(line, uom);
   const maxBase = Number(line.max_return_qty) || 0;
+  const isRetail = Number(line.on_wholesale_retail) === 1;
+  // Full-package-only UOMs expose a single "full" level — still use pack inputs so
+  // cashiers enter bags/jerricans matching Qty sold, not raw base pieces.
+  const usePackInputs =
+    Boolean(uom) &&
+    !isRetail &&
+    (uomIsFullPackageOnly(uom) || levels.length > 1);
 
-  if (!uom || levels.length <= 1) {
+  if (!usePackInputs) {
     const unit = customerReturnLineUnitLabel(line, uomById);
     return (
       <div className="flex flex-col items-end gap-1">
@@ -32,7 +40,7 @@ export function CustomerReturnQtyInputs({
           type="number"
           min="0"
           max={maxBase || undefined}
-          step={uomConversionFactor(uom) > 1 && Number(line.on_wholesale_retail) !== 1 ? "1" : "any"}
+          step={uomConversionFactor(uom) > 1 && !isRetail ? "1" : "any"}
           value={line.return_qty}
           onChange={(e) => onSimpleQtyChange(e.target.value)}
           disabled={disabled}

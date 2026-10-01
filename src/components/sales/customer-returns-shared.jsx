@@ -1,6 +1,11 @@
 "use client";
 
-import { smallPackagingLabel, uomStockTakeLevels } from "@/lib/uom-packaging";
+import {
+  fullPackageLabel,
+  smallPackagingLabel,
+  uomIsFullPackageOnly,
+  uomStockTakeLevels,
+} from "@/lib/uom-packaging";
 import { legacySaleLineQtyLabel, legacySaleLineUom, saleLineQtyLabel } from "@/lib/sale-line-items";
 import { formatDisplayQty, stockTakeCountsToBase } from "@/lib/stock-uom";
 import {
@@ -169,7 +174,11 @@ export function customerReturnLineUnitLabel(line, uomById, options = {}) {
     return legacySaleLineUom(line) ?? "";
   }
   const uom = resolveCustomerReturnLineUom(line, uomById);
-  if (uom) return smallPackagingLabel(uom);
+  if (uom) {
+    if (Number(line?.on_wholesale_retail) === 1) return smallPackagingLabel(uom);
+    if (uomIsFullPackageOnly(uom)) return fullPackageLabel(uom);
+    return smallPackagingLabel(uom);
+  }
   if (line?.uom) return line.uom;
   return "units";
 }
@@ -222,7 +231,11 @@ export function emptyReturnLineFromSaleItem(item) {
     return_qty: 0,
     unit_price: unitPrice,
     display_unit_price:
-      item.display_unit_price != null ? Number(item.display_unit_price) : undefined,
+      item.display_unit_price != null
+        ? Number(item.display_unit_price)
+        : unitPrice > 0
+          ? unitPrice
+          : undefined,
     line_total: Number(item.line_total ?? item.amount ?? 0),
     amount: 0,
     line_no: item.line_no ?? null,
@@ -232,24 +245,19 @@ export function emptyReturnLineFromSaleItem(item) {
   };
 }
 
-/** Cashier-facing sold unit for return tables — prefer display / amount÷qty over amortized base. */
+/**
+ * Cashier-facing sold unit price for return tables.
+ * Prefer sold/pack display price — never amount ÷ base qty (that yields piece/kg price
+ * while qty is shown in cartons/bags).
+ */
 export function customerReturnSoldUnitPrice(line) {
   const storedDisplay = Number(line?.display_unit_price);
   if (Number.isFinite(storedDisplay) && storedDisplay > 0) return storedDisplay;
 
-  const returnQty = Number(line?.return_qty ?? 0);
-  const amount = Number(line?.amount ?? 0);
-  if (returnQty > 0 && amount > 0) {
-    return Math.round((amount / returnQty) * 100) / 100;
-  }
+  const storedUnit = Number(line?.unit_price);
+  if (Number.isFinite(storedUnit) && storedUnit > 0) return storedUnit;
 
-  const soldQty = Number(line?.quantity_sold ?? line?.max_return_qty ?? 0);
-  const lineTotal = Number(line?.line_total ?? 0);
-  if (soldQty > 0 && lineTotal > 0) {
-    return Math.round((lineTotal / soldQty) * 100) / 100;
-  }
-
-  return Number(line?.unit_price ?? 0) || 0;
+  return 0;
 }
 
 export function recalcReturnLine(line) {

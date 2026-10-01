@@ -191,6 +191,14 @@ export function suggestKraFailureFix(rawError, options = {}) {
     return "Retry the submission so a fresh receipt reference is assigned. If it still fails, check for a duplicate CU on KRA invoices.";
   }
 
+  if (
+    code === "34" ||
+    code === "034" ||
+    /SetPluData|Error processing PLU|product upload data is invalid/i.test(text)
+  ) {
+    return "Fix product names (English/ASCII only), prices, and tax types in Catalog, then retry Upload to KRA device.";
+  }
+
   if (/amount bypass|skipped|below.*threshold|fiscalization.*disabled|kra.*disabled/i.test(text)) {
     return "This sale was intentionally skipped for KRA. Adjust the amount-bypass / KRA settings in Finance if it should be fiscalized, then retry.";
   }
