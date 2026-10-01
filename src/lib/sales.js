@@ -416,13 +416,13 @@ export function parseOrderNumberQuery(query) {
   return null;
 }
 
-/** Normalize list search so S0034 reaches the API as the order number digits. */
+/** Normalize list search so S1554 and 1554 hit the API as the same order reference. */
 export function normalizeSalesListSearchQuery(query) {
   const q = String(query ?? "").trim();
   if (!q) return "";
   const stripped = q.replace(/^#+/, "");
   const orderNum = parseOrderNumberQuery(stripped);
-  if (orderNum != null && /^S/i.test(stripped)) {
+  if (orderNum != null) {
     return String(orderNum);
   }
   return q;

@@ -213,10 +213,11 @@ export function emptyReturnLineFromSaleItem(item) {
   const qty = Number(item.quantity_sold ?? item.quantity ?? 0);
   const unitPrice = Number(item.display_unit_price ?? item.unit_price ?? item.selling_price ?? 0);
   const alreadyReturned = Number(item.already_returned ?? 0);
+  const pendingReturnQty = Number(item.pending_return_qty ?? 0);
   const maxReturnQty =
     item.max_return_qty != null
       ? Number(item.max_return_qty)
-      : Math.max(0, qty - alreadyReturned);
+      : Math.max(0, qty - alreadyReturned - pendingReturnQty);
 
   return {
     sale_item_id: item.sale_item_id ?? item.id ?? null,
@@ -227,6 +228,7 @@ export function emptyReturnLineFromSaleItem(item) {
     product: item.product ?? null,
     quantity_sold: qty,
     already_returned: alreadyReturned,
+    pending_return_qty: pendingReturnQty,
     max_return_qty: maxReturnQty,
     return_qty: 0,
     unit_price: unitPrice,

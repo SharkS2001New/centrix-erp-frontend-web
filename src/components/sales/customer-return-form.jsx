@@ -558,6 +558,11 @@ export function CustomerReturnForm({
                   </td>
                   <td className="px-3 py-3 text-right text-slate-500">
                     {customerReturnLineQtyLabel(line, uomById, "already_returned")}
+                    {Number(line.pending_return_qty) > 0 ? (
+                      <p className="mt-1 text-[10px] text-amber-700">
+                        Pending {customerReturnLineQtyLabel(line, uomById, "pending_return_qty")}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-3 py-3 text-right">
                     <CustomerReturnQtyInputs

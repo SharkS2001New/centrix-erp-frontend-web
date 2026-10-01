@@ -876,13 +876,11 @@ export default function SalesOrdersListScreen({
       const methodCol = String(debouncedColumnFilters.method ?? "").trim();
       const placedByCol = String(debouncedColumnFilters.placed_by ?? "").trim();
       if (orderCol) {
-        const digits = orderCol.replace(/^S/i, "").replace(/\D/g, "");
-        // S… → org order_num. Bare digits → Cash Sales / pos_order_num (never treat
-        // large tickets as org S# — that returned the wrong receipt after daily resets).
-        if (/^S/i.test(orderCol)) {
-          extra.filter_order = digits || orderCol;
-        } else if (digits) {
-          extra.filter_pos_order = digits;
+        const digits = orderCol.replace(/^#?S/i, "").replace(/\D/g, "");
+        // S1554 and 1554 both mean the same org / invoice order # (backend matches
+        // order_num or pos_order_num). Do not send bare digits only as filter_pos_order.
+        if (digits) {
+          extra.filter_order = digits;
         } else {
           extra.filter_order = orderCol;
         }
