@@ -2126,7 +2126,10 @@ export default function SalesOrdersListScreen({
           <OrderSummaryStats
             summary={summary}
             hint={summaryHint}
-            showGrossWhenExpenses={queueConfig?.slug === "mobile"}
+            showExpensesCard={
+              queueConfig?.slug === "mobile" &&
+              isMobileOrdersExpensesCardEnabled(capabilities)
+            }
           />
           )
         ) : null}

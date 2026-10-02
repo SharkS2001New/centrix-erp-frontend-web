@@ -209,7 +209,11 @@ export function formatOrderGroupDate(sale) {
   });
 }
 
-export function OrderSummaryStats({ summary, hint = "Today", showGrossWhenExpenses = false }) {
+export function OrderSummaryStats({
+  summary,
+  hint = "Today",
+  showExpensesCard = false,
+}) {
   const cancelled = Number(summary.cancelled ?? 0);
   const expired = Number(summary.expired ?? 0);
   const expenseTotal = Number(summary.expense_total ?? 0);
@@ -221,19 +225,26 @@ export function OrderSummaryStats({ summary, hint = "Today", showGrossWhenExpens
   if (cancelled > 0) ordersHintParts.push(`${cancelled} cancelled`);
   if (expired > 0) ordersHintParts.push(`${expired} expired`);
 
-  const useGrossCard = showGrossWhenExpenses && expenseTotal > 0.009;
-  const revenueValue = useGrossCard ? grossRevenue : netRevenue;
-  const revenueLabel = useGrossCard ? "Gross sales" : "Revenue";
-  const revenueHint = useGrossCard
-    ? `${hint} · net ${formatSaleKes(netRevenue)} after ${formatSaleKes(expenseTotal)} expenses`
-    : expenseTotal > 0.009
-      ? `${hint} · less ${formatSaleKes(expenseTotal)} expenses`
-      : hint;
+  const hasExpenses = expenseTotal > 0.009;
+  const revenueHint = hasExpenses
+    ? `${hint} · before expenses ${formatSaleKes(grossRevenue)}`
+    : hint;
+  const showExpenseStat = showExpensesCard;
+  const gridClass = showExpenseStat
+    ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+    : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4";
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={gridClass}>
       <StatCard label="Orders" value={String(summary.total)} hint={ordersHintParts.join(" · ")} />
-      <StatCard label={revenueLabel} value={formatSaleKes(revenueValue)} hint={revenueHint} />
+      <StatCard label="Revenue" value={formatSaleKes(netRevenue)} hint={revenueHint} />
+      {showExpenseStat ? (
+        <StatCard
+          label="Expenses"
+          value={formatSaleKes(expenseTotal)}
+          hint={hasExpenses ? hint : `${hint} · none approved`}
+        />
+      ) : null}
       <StatCard
         label="Unpaid / partial"
         value={String(summary.unpaid + summary.partial)}
