@@ -1532,7 +1532,15 @@ export function resolveOrderWorkflowActions(
 
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
 
-  if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
+  // Payment can be collected later — prefer fulfillment (e.g. Confirm → Processed)
+  // over advancing into unpaid / partially paid / paid when a balance remains.
+  // Without this, Pending on the Unpaid queue only offered Confirm → Unpaid and
+  // stalled distribution (Processed + Unpaid dual badge is the intended state).
+  const primaryIsPaymentStep = Boolean(advanceStatus && PAYMENT_STEP_KEYS.has(advanceStatus));
+  const primaryIsGated = Boolean(
+    advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid),
+  );
+  if (advanceStatus && balanceDue > 0.01 && (primaryIsGated || primaryIsPaymentStep)) {
     const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(
       status,
       workflow,
@@ -1540,7 +1548,11 @@ export function resolveOrderWorkflowActions(
       totalPaid,
       capabilities,
     );
-    advanceStatus = fulfillmentAdvance ?? null;
+    if (fulfillmentAdvance) {
+      advanceStatus = fulfillmentAdvance;
+    } else if (primaryIsGated) {
+      advanceStatus = null;
+    }
   }
 
   const showCollectPayment = canRecordOrderPayment(sale, totalPaid, capabilities);

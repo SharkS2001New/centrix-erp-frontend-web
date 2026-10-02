@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import "@/lib/sales";
 import {
   canRecordOrderPayment,
+  DEFAULT_ORDER_WORKFLOW,
   isPaymentGatedWorkflowTransition,
   resolveOrderWorkflowActions,
   saleBalanceDue,
@@ -84,5 +85,72 @@ describe("completed orders with AR remaining", () => {
 
   it("allows collecting the remaining AR on a completed order", () => {
     expect(canRecordOrderPayment(sale)).toBe(true);
+  });
+});
+
+describe("unpaid / partial can advance to Processed without paying", () => {
+  const workflow = DEFAULT_ORDER_WORKFLOW;
+
+  it("offers Confirm → Processed from Pending while a balance remains", () => {
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "pending",
+        order_total: 4470,
+        amount_paid: 0,
+        payment_status: "unpaid",
+      },
+      workflow,
+    );
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
+  it("offers Confirm → Processed from Unpaid while a balance remains", () => {
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "unpaid",
+        order_total: 4470,
+        amount_paid: 0,
+        payment_status: "unpaid",
+      },
+      workflow,
+    );
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
+  it("offers Confirm → Processed from Partially paid while a balance remains", () => {
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "pending_payment",
+        order_total: 4470,
+        amount_paid: 1000,
+        payment_status: "partial",
+      },
+      workflow,
+    );
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
+  it("offers Confirm → Processed from Paid so distribution can continue", () => {
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "paid",
+        order_total: 4470,
+        amount_paid: 4470,
+        payment_status: "paid",
+      },
+      workflow,
+    );
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
+  it("shows Processed + Unpaid dual badge after fulfillment advance", () => {
+    const sale = {
+      status: "processed",
+      order_total: 4470,
+      amount_paid: 0,
+      payment_status: "unpaid",
+    };
+    expect(shouldShowPaymentStatusBadge(sale)).toBe(true);
+    expect(resolvePaymentStatusFromAmounts(sale)).toBe("unpaid");
   });
 });
