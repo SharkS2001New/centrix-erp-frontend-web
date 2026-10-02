@@ -379,7 +379,7 @@ describe("order action stage gates", () => {
     expect(canRecordOrderPayment(processedUnpaid, null, caps)).toBe(true);
   });
 
-  it("shows collect payment only on unpaid and partially paid queue pages", () => {
+  it("shows collect payment from platform collect_payment_statuses, not only on unpaid queue pages", () => {
     const caps = {
       module_settings: {
         sales: { collect_payment_statuses: ["unpaid", "pending_payment"] },
@@ -397,12 +397,22 @@ describe("order action stage gates", () => {
       order_total: 500,
       amount_paid: 0,
     };
+    const bookedUnpaid = {
+      status: "booked",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+    };
 
-    expect(canCollectPaymentOnQueue(unpaidSale, "booked", null, caps)).toBe(false);
-    expect(canCollectPaymentOnQueue(unpaidSale, "all", null, caps)).toBe(false);
+    // Unpaid stage — Collect payment on any list (All Orders, Unpaid, …).
+    expect(canCollectPaymentOnQueue(unpaidSale, "all", null, caps)).toBe(true);
     expect(canCollectPaymentOnQueue(unpaidSale, "unpaid", null, caps)).toBe(true);
-    expect(canCollectPaymentOnQueue(processedUnpaid, "unpaid", null, caps)).toBe(true);
-    expect(canCollectPaymentOnQueue(processedUnpaid, "pending_payment", null, caps)).toBe(true);
+    expect(canCollectPaymentOnQueue(unpaidSale, "booked", null, caps)).toBe(true);
+    // Fulfillment still unpaid — Collect payment stays available.
+    expect(canCollectPaymentOnQueue(processedUnpaid, "all", null, caps)).toBe(true);
+    expect(canCollectPaymentOnQueue(processedUnpaid, "processed", null, caps)).toBe(true);
+    // Booked is not a configured collect stage.
+    expect(canCollectPaymentOnQueue(bookedUnpaid, "all", null, caps)).toBe(false);
   });
 
   it("allows mobile channel when Mobile pseudo-stage is configured", () => {

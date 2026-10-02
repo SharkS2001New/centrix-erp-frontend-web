@@ -1200,9 +1200,12 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
   return false;
 }
 
-/** Whether payment can be collected on this order list — Unpaid / Partially paid pages only. */
+/** Whether payment can be collected for this order (platform Order actions by stage). */
 export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null, capabilities = null) {
-  if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
+  // Gated by sales.collect_payment_statuses (typically unpaid + pending_payment), not by
+  // which list page is open. Queue-only gating hid Collect payment next to Confirm → Processed
+  // on workflow Unpaid / Partially paid pages after those queues stopped being amount filters.
+  void queueSlug;
   return canRecordOrderPayment(sale, totalPaid, capabilities);
 }
 

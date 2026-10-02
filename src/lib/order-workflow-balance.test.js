@@ -131,6 +131,62 @@ describe("unpaid / partial can advance to Processed without paying", () => {
     expect(actions.advanceStatus).toBe("processed");
   });
 
+  it("offers Collect payment and Confirm → Processed together on unpaid / partial stages", () => {
+    const caps = {
+      module_settings: {
+        sales: { collect_payment_statuses: ["unpaid", "pending_payment"] },
+      },
+    };
+    const unpaid = resolveOrderWorkflowActions(
+      {
+        status: "unpaid",
+        order_total: 4470,
+        amount_paid: 0,
+        payment_status: "unpaid",
+      },
+      workflow,
+      null,
+      caps,
+    );
+    expect(unpaid.showCollectPayment).toBe(true);
+    expect(unpaid.advanceStatus).toBe("processed");
+
+    const partial = resolveOrderWorkflowActions(
+      {
+        status: "pending_payment",
+        order_total: 4470,
+        amount_paid: 1000,
+        payment_status: "partial",
+      },
+      workflow,
+      null,
+      caps,
+    );
+    expect(partial.showCollectPayment).toBe(true);
+    expect(partial.advanceStatus).toBe("processed");
+  });
+
+  it("hides Collect payment when platform collect_payment_statuses exclude the stage", () => {
+    const caps = {
+      module_settings: {
+        sales: { collect_payment_statuses: ["delivered"] },
+      },
+    };
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "unpaid",
+        order_total: 4470,
+        amount_paid: 0,
+        payment_status: "unpaid",
+      },
+      workflow,
+      null,
+      caps,
+    );
+    expect(actions.showCollectPayment).toBe(false);
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
   it("offers Confirm → Processed from Partially paid while a balance remains", () => {
     const actions = resolveOrderWorkflowActions(
       {

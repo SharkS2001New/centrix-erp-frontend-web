@@ -33,11 +33,13 @@ function renderInline(text, keyPrefix, onNavigate) {
     const bold = remaining.match(/\*\*(.+?)\*\*/);
     const italic = remaining.match(/(?<!\*)\*([^*]+)\*(?!\*)/);
     const code = remaining.match(/`([^`]+)`/);
+    const mdLink = remaining.match(/\[([^\]]+)\]\((\/[^)\s]+|https?:\/\/[^)\s]+)\)/);
 
     const candidates = [
       bold ? { kind: "bold", match: bold, at: bold.index ?? 0 } : null,
       italic ? { kind: "italic", match: italic, at: italic.index ?? 0 } : null,
       code ? { kind: "code", match: code, at: code.index ?? 0 } : null,
+      mdLink ? { kind: "mdLink", match: mdLink, at: mdLink.index ?? 0 } : null,
     ].filter(Boolean);
 
     if (candidates.length === 0) {
@@ -61,6 +63,14 @@ function renderInline(text, keyPrefix, onNavigate) {
       segments.push({
         type: "italic",
         children: renderInline(inner, `${keyPrefix}-i${guard}`, onNavigate),
+      });
+    } else if (next.kind === "mdLink") {
+      const href = next.match[2];
+      segments.push({
+        type: "link",
+        href,
+        value: inner,
+        external: /^https?:\/\//i.test(href),
       });
     } else {
       segments.push({ type: "code", value: inner });
