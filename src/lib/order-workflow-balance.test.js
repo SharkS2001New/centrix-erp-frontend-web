@@ -104,6 +104,20 @@ describe("unpaid / partial can advance to Processed without paying", () => {
     expect(actions.advanceStatus).toBe("processed");
   });
 
+  it("offers Confirm → Processed from Unpaid even when amount_paid looks settled", () => {
+    const actions = resolveOrderWorkflowActions(
+      {
+        status: "unpaid",
+        order_total: 4730,
+        amount_paid: 6010,
+        payment_status: "paid",
+        balance_due: 0,
+      },
+      workflow,
+    );
+    expect(actions.advanceStatus).toBe("processed");
+  });
+
   it("offers Confirm → Processed from Unpaid while a balance remains", () => {
     const actions = resolveOrderWorkflowActions(
       {

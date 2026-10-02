@@ -944,6 +944,9 @@ export function distributionOrderQueueNavItems() {
   ];
 }
 
+/** Workflow stages whose primary meaning is payment settlement (distinct from amount buckets). */
+const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
+
 export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, includeWhatsapp = true, capabilities = null } = {}) {
   if (!slug || slug === "all") {
     return {
@@ -1048,45 +1051,24 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  // Unpaid / Partially paid / Paid queues always filter by amount paid vs total (same as
-  // summary cards and Sales by User unpaid). Workflow status alone is stale on POS.
-  const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
-  if (paymentStatusFilter) {
-    const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-    const isPaidQueue = paymentStatusFilter === "paid";
-
-    return {
-      slug: step.key,
-      title: salesOrderQueueTitle(step.label),
-      subtitle: isPaidQueue
-        ? "Fully paid orders — matched by amount paid vs total (same basis as X / Z total sales)"
-        : step.key === "unpaid"
-          ? "Orders with nothing collected yet — matched by amount paid, not workflow label"
-          : "Orders with a remaining balance after a partial payment — matched by amounts",
-      // Payment queues are amount-based across pipeline stages — do not lock a workflow status.
-      // Status control still shows Unpaid / Partially paid / Paid for clarity.
-      fixedStatusFilter: null,
-      statusFilterDisplay: step.key,
-      fixedPaymentStatusFilter: paymentStatusFilter,
-      fixedSourceFilter: null,
-      showRouteColumn: Boolean(deferPayment) && !isPaidQueue,
-      showDeliveryDateColumn: Boolean(deferPayment) && !isPaidQueue,
-      lockStatusFilter: true,
-      lockSourceFilter: false,
-      // Same terminal exclusions as Sales by User — keep booked/pending/completed unpaid visible.
-      excludeStatuses: ["cancelled", "expired"],
-      requireOutstandingBalance: !isPaidQueue,
-    };
-  }
+  // Unpaid / Partially paid / Paid sidebar queues are workflow *stages* (sales.status),
+  // not amount-based payment buckets. Amount unpaid across any stage belongs on Shop
+  // Debtors / payment_status filters — mixing them pulled Pending onto Unpaid Orders
+  // and hid Confirm → Processed behind Confirm → Partially paid.
+  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
+  const isPaymentStage = PAYMENT_STEP_KEYS.has(step.key);
 
   return {
     slug: step.key,
     title: salesOrderQueueTitle(step.label),
-    subtitle: `Orders currently in ${step.label.toLowerCase()} status`,
+    subtitle: isPaymentStage
+      ? `Orders currently in ${step.label.toLowerCase()} workflow status — payment can be collected without blocking Processed / distribution`
+      : `Orders currently in ${step.label.toLowerCase()} status`,
     fixedStatusFilter: step.key,
+    fixedPaymentStatusFilter: null,
     fixedSourceFilter: null,
-    showRouteColumn: false,
-    showDeliveryDateColumn: false,
+    showRouteColumn: Boolean(deferPayment) && isPaymentStage && step.key !== "paid",
+    showDeliveryDateColumn: Boolean(deferPayment) && isPaymentStage && step.key !== "paid",
     lockStatusFilter: true,
     lockSourceFilter: false,
   };
@@ -1118,8 +1100,6 @@ export function workflowStatusFilterOptionsFromConfig(config) {
   }
   return options;
 }
-
-const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
 
 /** Default workflow steps where payment collection is the primary action. */
 export const PAYMENT_COLLECT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment"]);
@@ -1532,15 +1512,20 @@ export function resolveOrderWorkflowActions(
 
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
 
-  // Payment can be collected later — prefer fulfillment (e.g. Confirm → Processed)
-  // over advancing into unpaid / partially paid / paid when a balance remains.
-  // Without this, Pending on the Unpaid queue only offered Confirm → Unpaid and
-  // stalled distribution (Processed + Unpaid dual badge is the intended state).
+  // Settlement must not block fulfillment. From unpaid / partially paid / paid stages,
+  // or when the naive next step is still a payment stage (and balance remains), prefer
+  // Confirm → Processed so distribution can continue. Dual badge = workflow + payment.
+  const onPaymentWorkflowStage = PAYMENT_STEP_KEYS.has(status);
   const primaryIsPaymentStep = Boolean(advanceStatus && PAYMENT_STEP_KEYS.has(advanceStatus));
   const primaryIsGated = Boolean(
     advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid),
   );
-  if (advanceStatus && balanceDue > 0.01 && (primaryIsGated || primaryIsPaymentStep)) {
+  const preferFulfillment =
+    onPaymentWorkflowStage ||
+    primaryIsGated ||
+    (primaryIsPaymentStep && balanceDue > 0.01);
+
+  if (advanceStatus && preferFulfillment) {
     const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(
       status,
       workflow,

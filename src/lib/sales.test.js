@@ -449,15 +449,12 @@ describe("resolveSalesOrderQueue", () => {
     module_settings: { sales: { show_checkout_on_create_order: false } },
   };
 
-  it("distribution unpaid queue filters by amounts across pipeline (matches Sales by User unpaid)", () => {
+  it("unpaid queue filters by workflow status unpaid (not amount unpaid)", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, { capabilities: distributionCaps });
 
-    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
-    expect(config?.fixedStatusFilter).toBeNull();
-    expect(config?.statusFilterDisplay).toBe("unpaid");
-    expect(config?.includeStatuses).toBeUndefined();
-    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
-    expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.fixedStatusFilter).toBe("unpaid");
+    expect(config?.fixedPaymentStatusFilter).toBeNull();
+    expect(config?.requireOutstandingBalance).toBeUndefined();
     expect(config?.showRouteColumn).toBe(true);
   });
 
@@ -467,42 +464,36 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.excludeStatuses).toEqual(["cancelled"]);
   });
 
-  it("distribution pending_payment queue filters by partial amounts across pipeline", () => {
+  it("pending_payment queue filters by workflow status pending_payment", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: distributionCaps,
     });
 
-    expect(config?.fixedPaymentStatusFilter).toBe("partial");
-    expect(config?.statusFilterDisplay).toBe("pending_payment");
-    expect(config?.includeStatuses).toBeUndefined();
-    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
-    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedStatusFilter).toBe("pending_payment");
+    expect(config?.fixedPaymentStatusFilter).toBeNull();
+    expect(config?.showRouteColumn).toBe(true);
   });
 
-  it("retail unpaid queue filters by payment amounts, not workflow stage alone", () => {
+  it("retail unpaid queue is the unpaid workflow stage", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBeNull();
-    expect(config?.statusFilterDisplay).toBe("unpaid");
-    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
-    expect(config?.requireOutstandingBalance).toBe(true);
-    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
+    expect(config?.fixedStatusFilter).toBe("unpaid");
+    expect(config?.fixedPaymentStatusFilter).toBeNull();
+    expect(config?.requireOutstandingBalance).toBeUndefined();
   });
 
-  it("retail pending_payment queue filters by partial amounts", () => {
+  it("retail pending_payment queue is the partially paid workflow stage", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBeNull();
-    expect(config?.statusFilterDisplay).toBe("pending_payment");
-    expect(config?.fixedPaymentStatusFilter).toBe("partial");
-    expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.fixedStatusFilter).toBe("pending_payment");
+    expect(config?.fixedPaymentStatusFilter).toBeNull();
   });
 
-  it("retail paid queue filters by fully paid amounts (matches X/Z ORDTTL)", () => {
+  it("retail paid queue is the paid workflow stage", () => {
     const pipelineWithPaid = {
       pipeline: [
         { key: "booked", label: "Booked" },
@@ -516,9 +507,9 @@ describe("resolveSalesOrderQueue", () => {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBeNull();
-    expect(config?.fixedPaymentStatusFilter).toBe("paid");
-    expect(config?.requireOutstandingBalance).toBe(false);
+    expect(config?.fixedStatusFilter).toBe("paid");
+    expect(config?.fixedPaymentStatusFilter).toBeNull();
+    expect(config?.requireOutstandingBalance).toBeUndefined();
     expect(config?.dateRangeDays).toBeUndefined();
   });
 
