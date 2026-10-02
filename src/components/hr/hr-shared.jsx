@@ -448,27 +448,51 @@ export function composeEmployeeDisplayName(source) {
 export function attendanceLatenessParts(row) {
   const clockIn = Number(row?.late_minutes ?? 0) || 0;
   const lunch = Number(row?.lunch_late_minutes ?? 0) || 0;
+  const earlyLeave = Number(row?.early_leave_minutes ?? 0) || 0;
   const total = Number(row?.total_late_minutes ?? clockIn + lunch) || 0;
-  return { clockIn, lunch, total };
+  return { clockIn, lunch, earlyLeave, total };
 }
 
 export function formatAttendanceLateness(row, empty = "—") {
-  const { clockIn, lunch, total } = attendanceLatenessParts(row);
-  if (total <= 0) return empty;
-  if (clockIn > 0 && lunch > 0) return `${total}m (in ${clockIn}m · lunch ${lunch}m)`;
-  if (lunch > 0) return `${total}m lunch`;
-  return `${total}m`;
+  const { clockIn, lunch, earlyLeave, total } = attendanceLatenessParts(row);
+  const parts = [];
+  if (clockIn > 0 && lunch > 0) parts.push(`${total}m (in ${clockIn}m · lunch ${lunch}m)`);
+  else if (lunch > 0) parts.push(`${lunch}m lunch`);
+  else if (clockIn > 0 || total > 0) parts.push(`${total || clockIn}m`);
+  if (earlyLeave > 0) parts.push(`${earlyLeave}m early leave`);
+  if (parts.length === 0) return empty;
+  return parts.join(" · ");
 }
 
 export function payrollLatenessLabel(attendance, lateMinutes) {
   const clockIn = Number(attendance?.clock_in_late_minutes_total ?? 0) || 0;
   const lunch = Number(attendance?.lunch_late_minutes_total ?? 0) || 0;
-  const total = Number(lateMinutes ?? attendance?.late_minutes_total ?? clockIn + lunch) || 0;
+  const earlyLeave = Number(
+    attendance?.early_leave_minutes_total
+      ?? attendance?.attendance?.early_leave_minutes_total
+      ?? 0,
+  ) || 0;
+  const total = Number(lateMinutes ?? attendance?.late_minutes_total ?? clockIn + lunch + earlyLeave) || 0;
   if (total <= 0) return "";
-  if (clockIn > 0 && lunch > 0) {
-    return `Lateness (${total} min: ${clockIn} clock-in + ${lunch} lunch)`;
+  if (clockIn <= 0 && lunch <= 0 && earlyLeave > 0) {
+    return `Early leave (${earlyLeave} min)`;
   }
-  if (lunch > 0 && clockIn <= 0) return `Lateness from lunch (${total} min)`;
+  // Older payroll meta may not break out early leave — if clock-in/lunch are zero,
+  // the hold is early leave (payroll folds it into late_minutes_total).
+  if (clockIn <= 0 && lunch <= 0 && total > 0) {
+    return `Early leave (${total} min)`;
+  }
+  if (clockIn > 0 && lunch > 0) {
+    const suffix = earlyLeave > 0 ? ` + ${earlyLeave} early leave` : "";
+    return `Lateness (${total} min: ${clockIn} clock-in + ${lunch} lunch${suffix})`;
+  }
+  if (lunch > 0 && clockIn <= 0) {
+    const suffix = earlyLeave > 0 ? ` + ${earlyLeave} early leave` : "";
+    return `Lateness from lunch (${total} min${suffix})`;
+  }
+  if (earlyLeave > 0 && clockIn > 0) {
+    return `Lateness (${total} min: ${clockIn} clock-in + ${earlyLeave} early leave)`;
+  }
   return `Lateness (${total} min)`;
 }
 
@@ -943,14 +967,32 @@ export function buildPayrollAttendanceNote(payroll, { forReceipt = false } = {})
   }
   if (lateMinutes > 0) {
     const lateParts = [];
-    if (Number(attendance.clock_in_late_minutes_total ?? 0) > 0) {
-      lateParts.push(`${attendance.clock_in_late_minutes_total} min late clock-in`);
+    const clockInLate = Number(attendance.clock_in_late_minutes_total ?? 0);
+    const lunchLate = Number(attendance.lunch_late_minutes_total ?? 0);
+    const earlyLeave = Number(
+      attendance.early_leave_minutes_total
+        ?? payroll.early_leave_minutes_total
+        ?? 0,
+    );
+    if (clockInLate > 0) {
+      lateParts.push(`${clockInLate} min late clock-in`);
     }
-    if (Number(attendance.lunch_late_minutes_total ?? 0) > 0) {
-      lateParts.push(`${attendance.lunch_late_minutes_total} min late from lunch`);
+    if (lunchLate > 0) {
+      lateParts.push(`${lunchLate} min late from lunch`);
     }
-    lateParts.push(`${lateMinutes} min late overall`);
-    parts.push(lateParts.join(" · "));
+    if (earlyLeave > 0) {
+      lateParts.push(`${earlyLeave} min early leave`);
+    }
+    if (clockInLate <= 0 && lunchLate <= 0 && earlyLeave <= 0 && lateMinutes > 0) {
+      // Legacy payroll meta without early_leave breakdown.
+      parts.push(`${lateMinutes} min early leave`);
+    } else if (clockInLate <= 0 && lunchLate <= 0 && earlyLeave > 0) {
+      // Early leave alone — do not say "late overall".
+      parts.push(lateParts.join(" · "));
+    } else {
+      lateParts.push(`${lateMinutes} min late overall`);
+      parts.push(lateParts.join(" · "));
+    }
   }
 
   // Full payable month with nothing else to report — label already shows "30 of 30".

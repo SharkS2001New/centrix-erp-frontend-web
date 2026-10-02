@@ -50,6 +50,7 @@ function mapLatenessExportRow(r) {
     late_in: minutesLabel(r.late_minutes),
     lunch: r.lunch_minutes != null ? `${r.lunch_minutes}m` : r.lunch_status || "",
     lunch_late: minutesLabel(r.lunch_late_minutes),
+    early_leave: minutesLabel(r.early_leave_minutes),
     overall_late: formatAttendanceLateness(r),
     status: r.status || "",
     waiver: r.pending_waiver
@@ -68,6 +69,7 @@ const LATENESS_EXPORT_COLUMNS = [
   { key: "late_in", label: "Late in" },
   { key: "lunch", label: "Lunch" },
   { key: "lunch_late", label: "Late from lunch" },
+  { key: "early_leave", label: "Early leave" },
   { key: "overall_late", label: "Overall late" },
   { key: "status", label: "Status" },
   { key: "waiver", label: "Waiver" },
@@ -282,7 +284,7 @@ export function HrLatenessScreen() {
   return (
     <CatalogPageShell
       title="Lateness"
-      subtitle="Late clock-in (after shift start + grace), late return from lunch, and overall lateness deducted on payroll. Select rows to request waivers."
+      subtitle="Late clock-in, late return from lunch, and early leave (over 15 min) deducted on payroll. Select rows to request waivers."
       action={
         <HrPageActions>
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={load} disabled={loading}>
@@ -352,6 +354,7 @@ export function HrLatenessScreen() {
                 <th className="py-2 pr-4 font-medium">Late in</th>
                 <th className="py-2 pr-4 font-medium">Lunch</th>
                 <th className="py-2 pr-4 font-medium">Late from lunch</th>
+                <th className="py-2 pr-4 font-medium">Early leave</th>
                 <th className="py-2 pr-4 font-medium">Overall late</th>
                 <th className="py-2 pr-4 font-medium">Status</th>
                 <th className="py-2 pr-4 font-medium">Waiver</th>
@@ -374,6 +377,7 @@ export function HrLatenessScreen() {
                     {r.lunch_minutes != null ? `${r.lunch_minutes}m` : r.lunch_status || "—"}
                   </td>
                   <td className="py-2 pr-4">{minutesLabel(r.lunch_late_minutes)}</td>
+                  <td className="py-2 pr-4">{minutesLabel(r.early_leave_minutes)}</td>
                   <td className="py-2 pr-4 font-medium">{formatAttendanceLateness(r)}</td>
                   <td className="py-2 pr-4">{r.status || "—"}</td>
                   <td className="py-2 pr-4">{waiverLabel(r)}</td>
