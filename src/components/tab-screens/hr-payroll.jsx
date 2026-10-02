@@ -998,7 +998,7 @@ export function HrPayrollScreen() {
         <p className="text-xs text-slate-500">
           SACCO and similar types must use Apply to all employees or be assigned under Deductions.
           {hrSettings.enable_cash_advance_deductions && hrSettings.deduct_cash_advances_on_payroll
-            ? " Cash advances deduct the full balance (e.g. KES 2,500) per repayment rules."
+            ? " Cash advances clear the remaining balance each run (as much as net pay allows; leftover stays for the next cycle)."
             : ""}{" "}
           Only employees with a work shift are included.
         </p>

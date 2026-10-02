@@ -18,6 +18,7 @@ import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
 import { notifySuccess } from "@/lib/notify";
+import { P } from "@/lib/permission-codes";
 import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { HrDateField, HrFilterButton } from "@/components/hr/hr-list-toolbar";
 
@@ -59,6 +60,10 @@ export function HrCashAdvancesScreen() {
   const highlightAdvanceId = searchParams.get("advance_id");
   const { hasPermission, user, organization, generalSettings, capabilities } = useAuth();
   const canApprove = canApproveCashAdvances({ hasPermission });
+  const canMarkRepaid =
+    canApprove ||
+    hasPermission(P.hr.cash_advances.edit) ||
+    hasPermission("hr.manage");
   const defaultRange = useMemo(
     () => getReportsDefaultDateRange(capabilities?.module_settings),
     [capabilities?.module_settings],
@@ -120,7 +125,7 @@ export function HrCashAdvancesScreen() {
         r.status === "open" && next > 0 ? formatHrKesFull(next) : "—",
       repayment:
         mode === "full_next_cycle"
-          ? "Full balance next cycle"
+          ? "Full balance until cleared"
           : `${formatHrKesFull(r.repayment_amount)} / payroll`,
       status: statusLabel(r.status),
       notes: r.notes || "",
@@ -260,7 +265,7 @@ export function HrCashAdvancesScreen() {
           render: (r) => {
             const mode = r.repayment_mode === "fixed_per_cycle" ? "fixed_per_cycle" : "full_next_cycle";
             return mode === "full_next_cycle"
-              ? "Full balance next cycle"
+              ? "Full balance until cleared"
               : `${formatHrKesFull(r.repayment_amount)} / payroll`;
           },
         },
@@ -304,6 +309,25 @@ export function HrCashAdvancesScreen() {
               </button>
             </>
           ) : null;
+        const markRepaidBtn =
+          canMarkRepaid && row.status === "open" ? (
+            <button
+              type="button"
+              className="ml-3 text-emerald-700 hover:underline"
+              onClick={async () => {
+                const outstanding = formatHrKesFull(row.balance);
+                const ok = window.confirm(
+                  `Mark this cash advance as repaid?\n\nOutstanding ${outstanding} will be cleared and it will not be deducted on the next payroll.\n\nUse this when the employee already repaid outside payroll (cash, M-Pesa, etc.).`,
+                );
+                if (!ok) return;
+                await apiRequest(`/employee-cash-advances/${row.id}/mark-repaid`, { method: "POST" });
+                notifySuccess("Cash advance marked as repaid");
+                reload();
+              }}
+            >
+              Mark repaid
+            </button>
+          ) : null;
         const printBtn = (
           <button
             type="button"
@@ -319,6 +343,7 @@ export function HrCashAdvancesScreen() {
           <>
             {reminder}
             {approval}
+            {markRepaidBtn}
             {printBtn}
           </>
         );
@@ -404,7 +429,7 @@ export function HrCashAdvancesScreen() {
               onChange={(v) => setForm((p) => ({ ...p, repayment_mode: v }))}
               className={inputClassName()}
               options={[
-                { value: "full_next_cycle", label: "Deduct full balance on next payroll" },
+                { value: "full_next_cycle", label: "Clear full remaining balance each payroll" },
                 { value: "fixed_per_cycle", label: "Fixed amount each payroll cycle" },
               ]}
             />

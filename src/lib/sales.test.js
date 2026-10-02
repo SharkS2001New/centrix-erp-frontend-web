@@ -459,12 +459,16 @@ describe("resolveSalesOrderQueue", () => {
     module_settings: { sales: { show_checkout_on_create_order: false } },
   };
 
-  it("unpaid queue filters by workflow status unpaid (not amount unpaid)", () => {
+  it("unpaid queue includes dual-badge unpaid (Processed + Unpaid) via payment filter", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, { capabilities: distributionCaps });
 
-    expect(config?.fixedStatusFilter).toBe("unpaid");
-    expect(config?.fixedPaymentStatusFilter).toBeNull();
-    expect(config?.requireOutstandingBalance).toBeUndefined();
+    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.statusFilterDisplay).toBe("unpaid");
+    expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.excludeStatuses).toEqual(
+      expect.arrayContaining(["pending", "booked", "cancelled", "expired"]),
+    );
     expect(config?.showRouteColumn).toBe(true);
   });
 
@@ -474,36 +478,42 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.excludeStatuses).toEqual(["cancelled"]);
   });
 
-  it("pending_payment queue filters by workflow status pending_payment", () => {
+  it("pending_payment queue includes dual-badge partial via payment filter", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: distributionCaps,
     });
 
-    expect(config?.fixedStatusFilter).toBe("pending_payment");
-    expect(config?.fixedPaymentStatusFilter).toBeNull();
-    expect(config?.showRouteColumn).toBe(true);
+    expect(config?.fixedPaymentStatusFilter).toBe("partial");
+    expect(config?.statusFilterDisplay).toBe("pending_payment");
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.excludeStatuses).toEqual(
+      expect.arrayContaining(["pending", "booked"]),
+    );
   });
 
-  it("retail unpaid queue is the unpaid workflow stage", () => {
+  it("retail unpaid queue uses payment unpaid and excludes early stages", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBe("unpaid");
-    expect(config?.fixedPaymentStatusFilter).toBeNull();
-    expect(config?.requireOutstandingBalance).toBeUndefined();
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
+    expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.excludeStatuses).toEqual(
+      expect.arrayContaining(["pending", "booked"]),
+    );
   });
 
-  it("retail pending_payment queue is the partially paid workflow stage", () => {
+  it("retail pending_payment queue uses payment partial", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBe("pending_payment");
-    expect(config?.fixedPaymentStatusFilter).toBeNull();
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("partial");
   });
 
-  it("retail paid queue is the paid workflow stage", () => {
+  it("retail paid queue uses payment paid and includes fulfilled paid dual status", () => {
     const pipelineWithPaid = {
       pipeline: [
         { key: "booked", label: "Booked" },
@@ -517,10 +527,12 @@ describe("resolveSalesOrderQueue", () => {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBe("paid");
-    expect(config?.fixedPaymentStatusFilter).toBeNull();
-    expect(config?.requireOutstandingBalance).toBeUndefined();
-    expect(config?.dateRangeDays).toBeUndefined();
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("paid");
+    expect(config?.requireOutstandingBalance).toBe(false);
+    expect(config?.excludeStatuses).toEqual(
+      expect.arrayContaining(["pending", "booked"]),
+    );
   });
 
   it("does not hard-code date windows for cancelled, expired, completed, delivered, mobile, or payment queues", () => {

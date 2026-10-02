@@ -1051,24 +1051,53 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  // Unpaid / Partially paid / Paid sidebar queues are workflow *stages* (sales.status),
-  // not amount-based payment buckets. Amount unpaid across any stage belongs on Shop
-  // Debtors / payment_status filters — mixing them pulled Pending onto Unpaid Orders
-  // and hid Confirm → Processed behind Confirm → Partially paid.
-  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-  const isPaymentStage = PAYMENT_STEP_KEYS.has(step.key);
+  // Unpaid / Partially paid / Paid tabs track settlement — include dual-badge rows
+  // (e.g. Processed + Unpaid) via payment_status, while excluding early workflow stages
+  // (Pending / Booked) so those stay on their own tabs.
+  const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
+  if (paymentStatusFilter) {
+    const deferPayment = orgDefersPaymentToFulfillment(capabilities);
+    const isPaidQueue = paymentStatusFilter === "paid";
+
+    return {
+      slug: step.key,
+      title: salesOrderQueueTitle(step.label),
+      subtitle: isPaidQueue
+        ? "Orders settled in full — includes Processed / Delivered that are fully paid"
+        : step.key === "unpaid"
+          ? "Unpaid settlement — workflow Unpaid plus Processed / Delivered still unpaid"
+          : "Partial settlement — workflow Partially paid plus Processed / Delivered still partial",
+      fixedStatusFilter: null,
+      statusFilterDisplay: step.key,
+      fixedPaymentStatusFilter: paymentStatusFilter,
+      fixedSourceFilter: null,
+      showRouteColumn: Boolean(deferPayment) && !isPaidQueue,
+      showDeliveryDateColumn: Boolean(deferPayment) && !isPaidQueue,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      // Keep Pending / Booked on their own queues — dual-badge fulfillment rows stay here.
+      excludeStatuses: [
+        "cancelled",
+        "expired",
+        "draft",
+        "held",
+        "booked",
+        "pending",
+        "pending_approval",
+        "editable",
+      ],
+      requireOutstandingBalance: !isPaidQueue,
+    };
+  }
 
   return {
     slug: step.key,
     title: salesOrderQueueTitle(step.label),
-    subtitle: isPaymentStage
-      ? `Orders currently in ${step.label.toLowerCase()} workflow status — payment can be collected without blocking Processed / distribution`
-      : `Orders currently in ${step.label.toLowerCase()} status`,
+    subtitle: `Orders currently in ${step.label.toLowerCase()} status`,
     fixedStatusFilter: step.key,
-    fixedPaymentStatusFilter: null,
     fixedSourceFilter: null,
-    showRouteColumn: Boolean(deferPayment) && isPaymentStage && step.key !== "paid",
-    showDeliveryDateColumn: Boolean(deferPayment) && isPaymentStage && step.key !== "paid",
+    showRouteColumn: false,
+    showDeliveryDateColumn: false,
     lockStatusFilter: true,
     lockSourceFilter: false,
   };

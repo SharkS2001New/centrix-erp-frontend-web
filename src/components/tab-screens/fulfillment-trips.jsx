@@ -10,6 +10,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { P } from "@/lib/permission-codes";
 import {
   CatalogPageShell,
   Field,
@@ -78,8 +81,13 @@ function formatTripCash(trip) {
 }
 
 export function FulfillmentTripsScreen() {
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, hasPermission } = useAuth();
+  const confirm = useConfirm();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
+  const canDeleteTrip =
+    Boolean(user?.is_admin) ||
+    hasPermission(P.fulfillment.trips.delete) ||
+    hasPermission("fulfillment.manage");
 
   const [trips, setTrips] = useState([]);
   const [total, setTotal] = useState(0);
@@ -87,6 +95,7 @@ export function FulfillmentTripsScreen() {
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState(null);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -186,6 +195,39 @@ export function FulfillmentTripsScreen() {
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
+  }
+
+  async function deleteTripChart(trip) {
+    if (!trip?.id || !canDeleteTrip || trip.status === "completed") return;
+
+    const needsCancel = !["draft", "cancelled"].includes(String(trip.status ?? ""));
+    const ok = await confirm({
+      title: needsCancel ? "Cancel and delete trip chart" : "Delete trip chart",
+      message: needsCancel
+        ? `Cancel trip chart ${trip.trip_code ?? trip.id} and permanently delete it? Assigned orders return to the dispatch board.`
+        : `Permanently delete trip chart ${trip.trip_code ?? trip.id}? Assigned orders return to the dispatch board.`,
+      confirmLabel: needsCancel ? "Cancel & delete" : "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setDeletingId(trip.id);
+    setError(null);
+    try {
+      if (needsCancel) {
+        await apiRequest(`/dispatch-trips/${trip.id}/cancel`, { method: "POST" });
+      }
+      await apiRequest(`/dispatch-trips/${trip.id}`, { method: "DELETE" });
+      notifySuccess("Trip chart deleted.");
+      clearSelection();
+      await loadData();
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not delete trip chart";
+      setError(message);
+      notifyError(message);
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const buildExportSearchParams = useCallback(
@@ -373,6 +415,16 @@ export function FulfillmentTripsScreen() {
                         <Link href={`/fulfillment/trips/${trip.id}`} className="text-[#185FA5] hover:underline">
                           Open
                         </Link>
+                        {canDeleteTrip && trip.status !== "completed" ? (
+                          <button
+                            type="button"
+                            className="font-medium text-red-700 hover:underline disabled:opacity-50"
+                            disabled={deletingId === trip.id}
+                            onClick={() => void deleteTripChart(trip)}
+                          >
+                            {deletingId === trip.id ? "Deleting…" : "Delete"}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

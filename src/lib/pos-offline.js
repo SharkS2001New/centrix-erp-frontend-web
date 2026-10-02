@@ -301,15 +301,15 @@ export async function warmPosOfflineCatalog({ force = false, awaitStock = false 
   let lastPage = 1;
   // First page must succeed before parallelizing remaining pages (need last_page).
   const firstRes = await apiRequest("/products", {
-    searchParams: {
-      status: "active",
-      per_page: 200,
+      searchParams: {
+        status: "active",
+        per_page: 200,
       page: 1,
-      fields: "lean",
-    },
-    loading: false,
-    reportIssues: false,
-  });
+        fields: "lean",
+      },
+      loading: false,
+      reportIssues: false,
+    });
   const firstRows = Array.isArray(firstRes?.data) ? firstRes.data : [];
   for (const row of firstRows) {
     const product = stripProductStockFields(row);
@@ -340,11 +340,11 @@ export async function warmPosOfflineCatalog({ force = false, awaitStock = false 
         ),
       );
       for (const res of pages) {
-        const rows = Array.isArray(res?.data) ? res.data : [];
-        for (const row of rows) {
-          const product = stripProductStockFields(row);
-          if (isSellableCatalogProduct(product)) products.push(product);
-        }
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    for (const row of rows) {
+      const product = stripProductStockFields(row);
+      if (isSellableCatalogProduct(product)) products.push(product);
+    }
       }
     }
   }
