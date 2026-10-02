@@ -209,25 +209,31 @@ export function formatOrderGroupDate(sale) {
   });
 }
 
-export function OrderSummaryStats({ summary, hint = "Today" }) {
+export function OrderSummaryStats({ summary, hint = "Today", showGrossWhenExpenses = false }) {
   const cancelled = Number(summary.cancelled ?? 0);
   const expired = Number(summary.expired ?? 0);
   const expenseTotal = Number(summary.expense_total ?? 0);
+  const grossRevenue = Number(summary.gross_revenue ?? summary.revenue ?? 0);
+  const netRevenue = Number(summary.revenue ?? 0);
   const ordersHintParts = [hint];
   // Terminal counts only when the current result set still includes them
   // (e.g. Status = Cancelled). All browse excludes them from the query.
   if (cancelled > 0) ordersHintParts.push(`${cancelled} cancelled`);
   if (expired > 0) ordersHintParts.push(`${expired} expired`);
 
-  const revenueHint =
-    expenseTotal > 0.009
+  const useGrossCard = showGrossWhenExpenses && expenseTotal > 0.009;
+  const revenueValue = useGrossCard ? grossRevenue : netRevenue;
+  const revenueLabel = useGrossCard ? "Gross sales" : "Revenue";
+  const revenueHint = useGrossCard
+    ? `${hint} · net ${formatSaleKes(netRevenue)} after ${formatSaleKes(expenseTotal)} expenses`
+    : expenseTotal > 0.009
       ? `${hint} · less ${formatSaleKes(expenseTotal)} expenses`
       : hint;
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard label="Orders" value={String(summary.total)} hint={ordersHintParts.join(" · ")} />
-      <StatCard label="Revenue" value={formatSaleKes(summary.revenue)} hint={revenueHint} />
+      <StatCard label={revenueLabel} value={formatSaleKes(revenueValue)} hint={revenueHint} />
       <StatCard
         label="Unpaid / partial"
         value={String(summary.unpaid + summary.partial)}

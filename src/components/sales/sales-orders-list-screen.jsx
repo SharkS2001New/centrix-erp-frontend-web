@@ -2123,7 +2123,11 @@ export default function SalesOrdersListScreen({
               routeById={routeById}
             />
           ) : (
-          <OrderSummaryStats summary={summary} hint={summaryHint} />
+          <OrderSummaryStats
+            summary={summary}
+            hint={summaryHint}
+            showGrossWhenExpenses={queueConfig?.slug === "mobile"}
+          />
           )
         ) : null}
 

@@ -168,7 +168,18 @@ export function CustomerReturnForm({
       }
       setReturnCounts(nextCounts);
       setReturnAll(false);
-      setInvoiceHint(`Loaded ${nextLines.length} item(s) from invoice.`);
+      const pendingLines = nextLines.filter((line) => Number(line.pending_return_qty) > 0);
+      if (pendingLines.length > 0) {
+        const pendingParts = pendingLines.map(
+          (line) =>
+            `${line.product_name || line.product_code}: ${customerReturnLineQtyLabel(line, uomById, "pending_return_qty")}`,
+        );
+        setInvoiceHint(
+          `Loaded ${nextLines.length} item(s). Pending return already holds ${pendingParts.join("; ")} — approve or edit that return; only the leftover quantity can be returned here.`,
+        );
+      } else {
+        setInvoiceHint(`Loaded ${nextLines.length} item(s) from invoice.`);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load invoice");
       setLines([]);
@@ -438,7 +449,15 @@ export function CustomerReturnForm({
               />
             ))}
           </datalist>
-          {invoiceHint ? <p className="mt-1 text-xs text-emerald-700">{invoiceHint}</p> : null}
+          {invoiceHint ? (
+            <p
+              className={`mt-1 text-xs ${
+                /pending return/i.test(invoiceHint) ? "text-amber-800" : "text-emerald-700"
+              }`}
+            >
+              {invoiceHint}
+            </p>
+          ) : null}
           <div className="mt-1 flex flex-wrap gap-2">
             {saleOptions.slice(0, 5).map((sale) => (
               <button
