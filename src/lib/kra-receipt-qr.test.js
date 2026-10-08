@@ -3,6 +3,8 @@ import {
   buildKraThermalQrHtml,
   extractKraReceiptData,
   ensureKraQrForPrint,
+  sanitizeKraSignatureLink,
+  kraReceiptQrDataUrl,
 } from "@/lib/kra-receipt-qr";
 
 vi.mock("@/lib/api", () => ({
@@ -18,6 +20,27 @@ describe("kra receipt QR", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("repairs a junk year prefix so the eTIMS payload can be encoded as a QR", () => {
+    const dirty =
+      "úb26-10-08 10:04 DEJA02220240050 0000311 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=P052177271G00WQPSBIRXYBUPAZIY_test";
+    expect(sanitizeKraSignatureLink(dirty)).toBe(
+      "2026-10-08 10:04 DEJA02220240050 0000311 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=P052177271G00WQPSBIRXYBUPAZIY_test",
+    );
+  });
+
+  it("keeps a clean https verification link", () => {
+    expect(sanitizeKraSignatureLink("https://etims.example/verify/1")).toBe(
+      "https://etims.example/verify/1",
+    );
+  });
+
+  it("builds a QR image from a junk-prefixed eTIMS payload", async () => {
+    const dataUrl = await kraReceiptQrDataUrl(
+      "úb26-10-08 10:04 DEJA02220240050 0000311 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=ABC_test",
+    );
+    expect(dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
   it("extracts signature link from nested response_payload aliases", () => {

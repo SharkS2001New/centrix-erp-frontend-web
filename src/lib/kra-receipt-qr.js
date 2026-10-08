@@ -11,6 +11,35 @@ function firstNonEmpty(...values) {
   return null;
 }
 
+/**
+ * Comstore sometimes returns the eTIMS QR payload with junk bytes in place of
+ * the "20" year prefix (prints as "úb26-10-08 …" and the QR encoder rejects it).
+ * Recover the scannable payload, or the https verification URL on its own.
+ */
+export function sanitizeKraSignatureLink(raw) {
+  const text = String(raw ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+
+  const urlMatch = text.match(/https:\/\/\S+/i);
+  const url = urlMatch ? urlMatch[0].replace(/[),.;]+$/, "") : null;
+
+  const full = text.match(
+    /(20\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+\S+\s+\S+\s+https:\/\/\S+)/i,
+  );
+  if (full) return full[1].replace(/[),.;]+$/, "");
+
+  const shortYear = text.match(
+    /(\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+\S+\s+\S+\s+https:\/\/\S+)/i,
+  );
+  if (shortYear) return `20${shortYear[1].replace(/[),.;]+$/, "")}`;
+
+  if (url) return url;
+  return text;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -63,7 +92,7 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
       ? kra.request_payload
       : null;
 
-  const signatureLink = firstNonEmpty(
+  const signatureLink = sanitizeKraSignatureLink(firstNonEmpty(
     kra.signature_link,
     kra.kra_signature_link,
     kra.signatureLink,
@@ -92,7 +121,7 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     nestedPayload?.verificationUrl,
     nestedPayload?.InvoiceUrl,
     nestedPayload?.invoice_url,
-  );
+  ));
   const invoiceNumber = firstNonEmpty(
     kra.invoice_number,
     kra.kra_cu_inv_no,
@@ -144,18 +173,24 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
 
 /** Build a data-URL QR image for the KRA ERA verification link. */
 export async function kraReceiptQrDataUrl(link, { size = 120 } = {}) {
-  const url = String(link ?? "").trim();
-  if (!url) return null;
-  try {
-    return await QRCode.toDataURL(url, {
-      width: Math.max(72, Number(size) || 120),
-      margin: 1,
-      errorCorrectionLevel: "M",
-      color: { dark: "#000000", light: "#ffffff" },
-    });
-  } catch {
-    return null;
+  const cleaned = sanitizeKraSignatureLink(link);
+  if (!cleaned) return null;
+  const urlOnly = cleaned.match(/https:\/\/\S+/i)?.[0] ?? null;
+  const candidates = urlOnly && urlOnly !== cleaned ? [cleaned, urlOnly] : [cleaned];
+  const width = Math.max(72, Number(size) || 120);
+  for (const value of candidates) {
+    try {
+      return await QRCode.toDataURL(value, {
+        width,
+        margin: 1,
+        errorCorrectionLevel: "M",
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+    } catch {
+      // Try the bare https link if the full payload cannot be encoded.
+    }
   }
+  return null;
 }
 
 export function escapeKraHtml(value) {
