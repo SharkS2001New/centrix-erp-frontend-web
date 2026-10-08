@@ -36,6 +36,35 @@ describe("kra receipt QR", () => {
     );
   });
 
+  it("draws a QR from a receipt signature when signature_link is empty", async () => {
+    const payload =
+      "úb26-10-08 11:27 DEJA02220240050 0000314 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=P052177271G00OPG3THZSANEFZJDR_test";
+    const kra = extractKraReceiptData({
+      kra_response: {
+        status: "success",
+        invoice_number: "1791447390",
+        serial_number: "DEJA02220240050",
+        receipt_signature: payload,
+        signature_link: null,
+        kra_timestamp: "2026-10-08 11:26:31",
+      },
+    });
+    expect(kra?.signatureLink).toBe(
+      "2026-10-08 11:27 DEJA02220240050 0000314 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=P052177271G00OPG3THZSANEFZJDR_test",
+    );
+    expect(kra?.receiptSignature).toBeNull();
+
+    const { kraData, kraQrDataUrl } = await ensureKraQrForPrint(
+      { kra_response: { status: "success", receipt_signature: payload, invoice_number: "1791447390" } },
+      { allowNetwork: false },
+    );
+    expect(kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
+    const html = buildKraThermalQrHtml(kraData, kraQrDataUrl);
+    expect(html).toContain("<img");
+    expect(html).not.toContain("úb26-10-08");
+    expect(html).not.toContain("indexEtimsReceiptData");
+  });
+
   it("builds a QR image from a junk-prefixed eTIMS payload", async () => {
     const dataUrl = await kraReceiptQrDataUrl(
       "úb26-10-08 10:04 DEJA02220240050 0000311 https://etims.kra.go.ke/common/link/etims/receipt/indexEtimsReceiptData?Data=ABC_test",

@@ -40,6 +40,12 @@ export function sanitizeKraSignatureLink(raw) {
   return text;
 }
 
+/** True when text is the eTIMS QR payload (date + control unit + verification URL), not a short human signature. */
+export function looksLikeEtimsQrPayload(raw) {
+  const text = sanitizeKraSignatureLink(raw);
+  return Boolean(text && /https:\/\/\S+/i.test(text));
+}
+
 function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -92,7 +98,7 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
       ? kra.request_payload
       : null;
 
-  const signatureLink = sanitizeKraSignatureLink(firstNonEmpty(
+  const signatureCandidates = [
     kra.signature_link,
     kra.kra_signature_link,
     kra.signatureLink,
@@ -121,7 +127,8 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     nestedPayload?.verificationUrl,
     nestedPayload?.InvoiceUrl,
     nestedPayload?.invoice_url,
-  ));
+  ];
+  let signatureLink = sanitizeKraSignatureLink(firstNonEmpty(...signatureCandidates));
   const invoiceNumber = firstNonEmpty(
     kra.invoice_number,
     kra.kra_cu_inv_no,
@@ -130,13 +137,24 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     payload?.["cu-inv-no"],
     payload?.cu_inv_no,
   );
-  const receiptSignature = firstNonEmpty(
+  const receiptSignatureRaw = firstNonEmpty(
     kra.receipt_signature,
     kra.kra_receipt_signature,
     payload?.receipt_signature,
-    payload?.signature,
     payload?.["Receipt Signature"],
+    payload?.signature,
+    nestedPayload?.receipt_signature,
+    nestedPayload?.["Receipt Signature"],
+    nestedPayload?.signature,
   );
+  // Comstore often puts the scannable eTIMS string on Receipt Signature and leaves
+  // signature_link empty. That string must become the QR, not a line of text.
+  if (!looksLikeEtimsQrPayload(signatureLink) && looksLikeEtimsQrPayload(receiptSignatureRaw)) {
+    signatureLink = sanitizeKraSignatureLink(receiptSignatureRaw);
+  }
+  const receiptSignature = looksLikeEtimsQrPayload(receiptSignatureRaw)
+    ? null
+    : receiptSignatureRaw;
   const serialNumber = firstNonEmpty(
     kra.serial_number,
     kra.kra_serial_number,
@@ -257,7 +275,7 @@ export function buildKraFiscalBlockHtml(
     html += buyerDetailHtml;
   }
 
-  if (kra.receiptSignature) {
+  if (kra.receiptSignature && !looksLikeEtimsQrPayload(kra.receiptSignature)) {
     html += `<div style="font-size:8px;word-break:break-all;margin-top:6px;">${escapeKraHtml(kra.receiptSignature)}</div>`;
   }
   if (kra.timestamp) {
