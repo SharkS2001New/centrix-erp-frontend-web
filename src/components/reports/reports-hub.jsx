@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { useAuth } from "@/contexts/auth-context";
+import { licenceNeedsPayment } from "@/lib/organization-license";
+import { REPORT_MODULE_BY_SLUG } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import {
@@ -79,7 +81,7 @@ const CATEGORY_ICONS = {
 };
 
 export function ReportsHub() {
-  const { hasPermission, hasNavPermission, isModuleEnabled, isSuperAdmin, user, organization, capabilities } =
+  const { hasPermission, hasNavPermission, isModuleEnabled, isSuperAdmin, user, organization, capabilities, organizationLicense } =
     useAuth();
   const workspaceId =
     getStoredWorkspace() ??
@@ -119,7 +121,8 @@ export function ReportsHub() {
         reports: cat.reports.filter(
           (r) =>
             canViewReport(r.key, hasPermission) &&
-            reportVisibleForCatalog(r.key, capabilities),
+            reportVisibleForCatalog(r.key, capabilities) &&
+            (!licenceNeedsPayment(organizationLicense) || REPORT_MODULE_BY_SLUG[r.key] === "sales.reports"),
         ),
       }))
       .filter((cat) => cat.reports.length > 0)
@@ -130,8 +133,15 @@ export function ReportsHub() {
     );
     const withCustom = mergeCustomReportsIntoCategories(permitted, workspaceTemplates);
 
-    return filterReportCategoriesForWorkspace(withCustom, workspaceId, capabilities?.modules);
-  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities]);
+    const scoped = filterReportCategoriesForWorkspace(withCustom, workspaceId, capabilities?.modules);
+    if (!licenceNeedsPayment(organizationLicense)) return scoped;
+    return scoped
+      .map((cat) => ({
+        ...cat,
+        reports: cat.reports.filter((r) => REPORT_MODULE_BY_SLUG[r.key] === "sales.reports"),
+      }))
+      .filter((cat) => cat.reports.length > 0);
+  }, [catalog, customTemplates, hasPermission, organizationLicense, workspaceId, capabilities]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {
@@ -169,7 +179,7 @@ export function ReportsHub() {
       <AdminBreadcrumb items={[{ label: WORKSPACE_REPORT_OVERVIEW_LABEL }]} />
 
       <div className="mb-6 flex flex-wrap gap-3">
-        {hasPermission(P.reports.builder.view) ? (
+        {hasPermission(P.reports.builder.view) && !licenceNeedsPayment(organizationLicense) ? (
           <Link
             href="/reports/builder"
             className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
@@ -179,17 +189,19 @@ export function ReportsHub() {
         ) : null}
       </div>
 
-      <AiInsightsHubSection />
+      {licenceNeedsPayment(organizationLicense) ? null : <AiInsightsHubSection />}
 
       <DashboardErrorBanner message={error ?? dashError} />
 
-      <ReportsOverviewSummary
-        workspaceId={workspaceId}
-        totalReports={totalReportCount}
-        categoryCount={categories.length}
-        customReportCount={customReportCount}
-        onError={setDashError}
-      />
+      {licenceNeedsPayment(organizationLicense) ? null : (
+        <ReportsOverviewSummary
+          workspaceId={workspaceId}
+          totalReports={totalReportCount}
+          categoryCount={categories.length}
+          customReportCount={customReportCount}
+          onError={setDashError}
+        />
+      )}
 
       <DashboardSection title="All reports" subtitle={`Browse ${totalReportCount} reports in this module`}>
         <div className="mb-4 flex flex-wrap items-center justify-end gap-2">

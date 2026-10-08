@@ -3,9 +3,9 @@
  *
  * Backend contract (login, capabilities, and every authenticated API):
  * - Include `license` (or `subscription`) on `/auth/login` and `/erp/capabilities`.
- * - When expired: reject login and revoke active sessions with HTTP 401/403 and
- *   `code` one of LICENSE_EXPIRED_API_CODES (all users, including mobile apps).
- * - Mobile apps must treat the same codes as hard logout / block sign-in.
+ * - Free trial, unpaid, and expired licences stay signed in.
+ * - Those organisations can open products, customers, suppliers, and sales reports.
+ * - Every other API returns `organization_license_upgrade_required` until they pay.
  */
 
 import { formatBillingDate } from "@/lib/platform-billing";
@@ -108,6 +108,9 @@ export function resolveOrganizationLicense(source = null) {
     days_remaining: daysRemaining,
     warning_days: warningDays,
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
+    access: raw.access === "free" || raw.access === "expired" || raw.access === "full" ? raw.access : null,
+    paybill: raw.paybill && typeof raw.paybill === "object" ? raw.paybill : null,
+    offers: Array.isArray(raw.offers) ? raw.offers : [],
   };
 }
 
@@ -119,6 +122,54 @@ export function licenseFromAuthState({ capabilities = null, organization = null 
     resolveOrganizationLicense(organization?.subscription) ||
     null
   );
+}
+
+/** Paid licence, free trial / unpaid, or an expired licence that can still sign in. */
+export function licenseAccessMode(license) {
+  if (license?.access === "full" || license?.access === "free" || license?.access === "expired") {
+    return license.access;
+  }
+  if (!license) return "full";
+  if (license.status === "missing") return "free";
+  if (isLicenseExpired(license)) return "expired";
+  if (license.is_trial || license.status === "trialing") return "free";
+  return "full";
+}
+
+export function licenceNeedsPayment(license) {
+  const mode = licenseAccessMode(license);
+  return mode === "free" || mode === "expired";
+}
+
+const LIMITED_SALES_REPORTS = new Set([
+  "daily-sales",
+  "sales-by-product",
+  "sales-by-supplier",
+  "sales-by-user",
+  "sales-by-customer",
+  "sales-by-channel",
+  "sales-pipeline",
+  "vat-collected",
+  "category-sales",
+  "discount-summary",
+  "payment-collection",
+  "credit-outstanding",
+  "till-sessions",
+  "eod-cashier",
+  "eod-report",
+  "returns",
+]);
+
+/** Pages a free or expired organisation may open. Everything else goes to the payment screen. */
+export function isLimitedLicencePath(pathname) {
+  const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
+  if (path === "/subscribe") return true;
+  if (path === "/products" || path.startsWith("/products/")) return true;
+  if (path === "/customers" || path.startsWith("/customers/")) return true;
+  if (path === "/suppliers" || /^\/suppliers\/\d+$/.test(path)) return true;
+  if (path === "/reports") return true;
+  const report = path.match(/^\/reports\/([^/]+)$/);
+  return Boolean(report && LIMITED_SALES_REPORTS.has(report[1]));
 }
 
 export function isLicenseExpired(license) {

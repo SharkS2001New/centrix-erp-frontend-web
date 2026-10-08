@@ -1,12 +1,14 @@
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
+import Link from "next/link";
 import {
-  isLicenseExpired,
   isLicenseExpiringSoon,
-  licenseExpiredMessage,
+  licenceNeedsPayment,
+  licenseAccessMode,
   licenseWarningMessage,
 } from "@/lib/organization-license";
+import { LicensePaybillInstructions } from "@/components/shared/license-paybill-instructions";
 
 /**
  * Sticky banner when the org licence is expired or within the 7-day warning window.
@@ -17,28 +19,33 @@ export function LicenseExpiryBanner({ className = "" }) {
 
   if (isSuperAdmin?.() || !organizationLicense) return null;
 
-  const expired = isLicenseExpired(organizationLicense);
+  const limited = licenceNeedsPayment(organizationLicense);
   const soon = isLicenseExpiringSoon(organizationLicense);
-  if (!expired && !soon) return null;
+  if (!limited && !soon) return null;
+
+  const mode = licenseAccessMode(organizationLicense);
+  const limitedMessage =
+    mode === "expired"
+      ? "This Centrix licence has expired. Products, customers, suppliers, and sales reports stay open. Pay to restore everything else."
+      : "This organisation is on the free Centrix plan. Products, customers, suppliers, and sales reports are open. Choose a paid plan to use the rest of Centrix.";
 
   return (
     <div
       className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm ${
-        expired
+        limited
           ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
           : "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
       } ${className}`}
       role="alert"
       aria-live="assertive"
     >
-      <p className="font-medium">
-        {expired
-          ? licenseExpiredMessage(organizationLicense)
-          : licenseWarningMessage(organizationLicense)}
-      </p>
-      {!expired ? (
-        <span className="shrink-0 text-xs font-medium opacity-80">Contact your Centrix administrator to renew.</span>
-      ) : null}
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-medium">{limited ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
+        <LicensePaybillInstructions paybill={organizationLicense.paybill} />
+      </div>
+      <Link href="/subscribe" className="shrink-0 text-xs font-semibold underline">
+        {limited ? "Choose a plan" : "View payment options"}
+      </Link>
     </div>
   );
 }

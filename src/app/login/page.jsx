@@ -10,6 +10,7 @@ import {
   isLicenseExpiredApiError,
   licenseExpiredMessage,
 } from "@/lib/organization-license";
+import { LicensePaybillInstructions } from "@/components/shared/license-paybill-instructions";
 import {
   clearStoredCompanyCode,
   getDefaultCompanyCode,
@@ -62,6 +63,7 @@ function LoginForm() {
   const [pinBinding, setPinBinding] = useState(() => getHotelPinDeviceBinding());
   const [usePasswordOverride, setUsePasswordOverride] = useState(false);
   const [error, setError] = useState(null);
+  const [paybill, setPaybill] = useState(null);
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [signInProgress, setSignInProgress] = useState(0);
@@ -236,12 +238,14 @@ function LoginForm() {
       } else {
         setSessionConflict(false);
         if (isLicenseExpiredApiError(err)) {
+          setPaybill(err instanceof ApiError ? err.body?.license?.paybill ?? null : null);
           setError(
             err instanceof ApiError
               ? err.message
               : licenseExpiredMessage(null),
           );
         } else {
+          setPaybill(null);
           setError(
             userFacingNetworkErrorMessage(
               err,
@@ -297,12 +301,14 @@ function LoginForm() {
       } else {
         setSessionConflict(false);
         if (isLicenseExpiredApiError(err)) {
+          setPaybill(err instanceof ApiError ? err.body?.license?.paybill ?? null : null);
           setError(
             err instanceof ApiError
               ? err.message
               : licenseExpiredMessage(null),
           );
         } else {
+          setPaybill(null);
           setError(
             userFacingNetworkErrorMessage(
               err,
@@ -488,6 +494,7 @@ function LoginForm() {
         >
           <form onSubmit={onVerifyMfa} className="mt-6 space-y-4">
             {error ? <AuthError>{error}</AuthError> : null}
+          <LicensePaybillInstructions paybill={paybill} />
             <AuthField label="Verification code">
               <input
                 className={authInputClass()}
@@ -619,6 +626,7 @@ function LoginForm() {
               </div>
               {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
               {error ? <AuthError>{error}</AuthError> : null}
+          <LicensePaybillInstructions paybill={paybill} />
               {sessionConflict ? (
                 <button
                   type="button"
@@ -712,6 +720,7 @@ function LoginForm() {
           </AuthField>
           {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
           {error ? <AuthError>{error}</AuthError> : null}
+          <LicensePaybillInstructions paybill={paybill} />
           {sessionConflict ? (
             <button
               type="button"

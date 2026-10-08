@@ -14,6 +14,21 @@ function formatTime(iso) {
   return formatAppDateTime(iso);
 }
 
+function LicenceBadge({ access, label, compact = false, onHeader = false }) {
+  if (access !== "free" && access !== "expired") return null;
+  const text = label || (access === "free" ? "Free plan" : "Expired");
+  const tone = onHeader
+    ? "bg-white/95 text-slate-900"
+    : access === "expired"
+      ? "bg-red-100 text-red-800"
+      : "bg-amber-100 text-amber-900";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${compact ? "mt-1" : ""} ${tone}`}>
+      {text}
+    </span>
+  );
+}
+
 function ApplicationBadge({ label }) {
   if (!label) return <span className="text-slate-400">—</span>;
 
@@ -98,6 +113,7 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
             · Active users ({sessions.length})
           </span>
         </h2>
+        <LicenceBadge access={org.licence_access} label={org.licence_label} onHeader />
         <span className="ml-auto font-mono text-xs opacity-90">{org.company_code}</span>
       </div>
 
@@ -116,7 +132,10 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
           <tbody className="divide-y divide-slate-100">
             {sessions.map((session) => (
               <tr key={session.id} className="theme-table-body-row">
-                <td className="px-4 py-3 font-semibold text-slate-900">{session.username}</td>
+                <td className="px-4 py-3 font-semibold text-slate-900">
+                  {session.username}
+                  <LicenceBadge access={session.licence_access} label={session.licence_label} compact />
+                </td>
                 <td className="px-4 py-3">
                   <ApplicationBadge label={session.active_workspace_label} />
                 </td>

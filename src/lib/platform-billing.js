@@ -193,6 +193,10 @@ export function emptyPlanForm(overrides = {}) {
     price: "",
     first_payment_price: "",
     renewal_price: "",
+    monthly_price: "",
+    yearly_price: "",
+    token_pack_price: "",
+    token_pack_days: "",
     currency: "KES",
     seat_limit: "",
     workspace_keys: [],
@@ -218,6 +222,10 @@ export function planRecordToForm(record) {
     price: renewal != null ? String(renewal) : "",
     first_payment_price: first != null ? String(first) : "",
     renewal_price: renewal != null ? String(renewal) : "",
+    monthly_price: record.monthly_price != null ? String(record.monthly_price) : "",
+    yearly_price: record.yearly_price != null ? String(record.yearly_price) : "",
+    token_pack_price: record.token_pack_price != null ? String(record.token_pack_price) : "",
+    token_pack_days: record.token_pack_days != null ? String(record.token_pack_days) : "",
     currency: record.currency ?? "KES",
     seat_limit: record.seat_limit != null ? String(record.seat_limit) : "",
     workspace_keys: Array.isArray(record.workspace_keys)
@@ -229,6 +237,12 @@ export function planRecordToForm(record) {
       ? String(record.auto_invoice_template_id)
       : "",
   };
+}
+
+function optionalMoney(value) {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function planFormToPayload(form) {
@@ -243,6 +257,12 @@ export function planFormToPayload(form) {
     price: renewal,
     first_payment_price: first,
     renewal_price: renewal,
+    monthly_price: optionalMoney(form.monthly_price),
+    yearly_price: optionalMoney(form.yearly_price),
+    token_pack_price: optionalMoney(form.token_pack_price),
+    token_pack_days: form.token_pack_days === "" || form.token_pack_days == null
+      ? null
+      : Number(form.token_pack_days),
     currency: form.currency || "KES",
     seat_limit:
       form.license_basis === "user"

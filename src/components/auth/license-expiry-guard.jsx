@@ -1,46 +1,44 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
 import {
-  dismissLicenseWarning,
-  isLicenseExpired,
   isLicenseExpiringSoon,
-  licenseExpiredMessage,
+  isLimitedLicencePath,
+  licenceNeedsPayment,
   licenseWarningMessage,
   wasLicenseWarningDismissed,
+  dismissLicenseWarning,
 } from "@/lib/organization-license";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * Enforces org licence lock: expired → sign out all (client fallback).
- * Within 7 days of expiry → always warn on login / session (modal once per tab + banner).
- * Platform super-admins are exempt so they can extend licences.
+ * Free, trial, and expired licences stay signed in.
+ * Any page outside products, customers, suppliers, and sales reports
+ * is sent to the Centrix payment screen.
  */
 export function LicenseExpiryGuard({ children }) {
-  const { organizationLicense, loading, isSuperAdmin, logout } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { organizationLicense, loading, isSuperAdmin } = useAuth();
   const [promptOpen, setPromptOpen] = useState(false);
-  const lockingOut = useRef(false);
+  const limited =
+    !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
+  const allowed = isLimitedLicencePath(pathname);
 
   useEffect(() => {
-    if (loading || !hasAuthSession() || isSuperAdmin()) return;
-    if (!organizationLicense || !isLicenseExpired(organizationLicense)) return;
-    if (lockingOut.current) return;
-    lockingOut.current = true;
-    void logout({ reason: "license" });
-  }, [organizationLicense, isSuperAdmin, loading, logout]);
+    if (!limited || allowed) return;
+    router.replace("/subscribe");
+  }, [allowed, limited, router]);
 
   useEffect(() => {
-    if (loading || !hasAuthSession() || isSuperAdmin()) {
+    if (loading || !hasAuthSession() || isSuperAdmin() || limited) {
       setPromptOpen(false);
       return;
     }
-    if (!organizationLicense || isLicenseExpired(organizationLicense)) {
-      setPromptOpen(false);
-      return;
-    }
-    if (!isLicenseExpiringSoon(organizationLicense)) {
+    if (!organizationLicense || !isLicenseExpiringSoon(organizationLicense)) {
       setPromptOpen(false);
       return;
     }
@@ -49,26 +47,12 @@ export function LicenseExpiryGuard({ children }) {
       return;
     }
     setPromptOpen(true);
-  }, [organizationLicense, isSuperAdmin, loading]);
+  }, [organizationLicense, isSuperAdmin, limited, loading]);
 
-  function handleDismiss() {
-    dismissLicenseWarning();
-    setPromptOpen(false);
-  }
-
-  const expired =
-    !loading &&
-    hasAuthSession() &&
-    !isSuperAdmin() &&
-    organizationLicense &&
-    isLicenseExpired(organizationLicense);
-
-  if (expired) {
+  if (limited && !allowed) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
-        <p className="max-w-md text-center text-sm text-slate-600">
-          {licenseExpiredMessage(organizationLicense)} Signing you out…
-        </p>
+        <p className="max-w-md text-center text-sm text-slate-600">Opening the Centrix payment page…</p>
       </div>
     );
   }
@@ -89,11 +73,11 @@ export function LicenseExpiryGuard({ children }) {
             </h2>
             <p className="mt-3 text-sm text-slate-600">{licenseWarningMessage(organizationLicense)}</p>
             <p className="mt-2 text-xs text-slate-500">
-              After expiry, all users (web and mobile) are signed out and cannot use Centrix until the
-              licence is renewed or extended by the platform administrator.
+              After expiry you can still sign in, but only products, customers, suppliers, and sales reports
+              stay open until you renew on the Centrix Paybill.
             </p>
             <div className="mt-5 flex justify-end">
-              <PrimaryButton type="button" showIcon={false} onClick={handleDismiss}>
+              <PrimaryButton type="button" showIcon={false} onClick={() => { dismissLicenseWarning(); setPromptOpen(false); }}>
                 I understand
               </PrimaryButton>
             </div>

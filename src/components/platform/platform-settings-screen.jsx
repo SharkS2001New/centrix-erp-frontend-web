@@ -13,6 +13,7 @@ import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-c
 import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platform-kenya-payroll-settings-panel";
 import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
 import { PlatformThemeSettingsPanel } from "@/components/platform/platform-theme-settings-panel";
+import { PlatformPaybillSettingsPanel } from "@/components/platform/platform-paybill-settings-panel";
 
 const TABS = [
   { id: "theme", label: "Theme" },
@@ -21,6 +22,7 @@ const TABS = [
   { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
   { id: "payroll", label: "Payroll" },
+  { id: "paybill", label: "Licence Paybill" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -83,6 +85,8 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
               ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
               : activeTab === "payroll"
                 ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
+                : activeTab === "paybill"
+                  ? "Centrix M-Pesa Paybill for monthly, yearly, and token licence payments."
                 : "Email digest, instant WhatsApp/email, and test sends for System errors & reports.";
 
   return (
@@ -109,6 +113,7 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
           <PlatformKenyaPayrollSettingsPanel />
         </div>
       ) : null}
+      {activeTab === "paybill" ? <PlatformPaybillSettingsPanel /> : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );

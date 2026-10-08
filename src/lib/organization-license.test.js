@@ -3,6 +3,9 @@ import {
   addCalendarDays,
   isLicenseExpired,
   isLicenseExpiringSoon,
+  isLimitedLicencePath,
+  licenseAccessMode,
+  licenceNeedsPayment,
   resolveOrganizationLicense,
   canExtendPlatformLicence,
   canStartPlatformTrial,
@@ -41,6 +44,30 @@ describe("organization license", () => {
       status: "missing",
     });
     expect(isLicenseExpired(license)).toBe(true);
+  });
+
+  it("keeps free and expired users on the allowed pages", () => {
+    expect(licenseAccessMode({ access: "free" })).toBe("free");
+    expect(licenceNeedsPayment({ access: "expired" })).toBe(true);
+    expect(licenceNeedsPayment({ access: "full" })).toBe(false);
+    expect(isLimitedLicencePath("/products")).toBe(true);
+    expect(isLimitedLicencePath("/customers/4")).toBe(true);
+    expect(isLimitedLicencePath("/suppliers")).toBe(true);
+    expect(isLimitedLicencePath("/suppliers/invoices")).toBe(false);
+    expect(isLimitedLicencePath("/reports/daily-sales")).toBe(true);
+    expect(isLimitedLicencePath("/reports/profit-loss")).toBe(false);
+    expect(isLimitedLicencePath("/sales/pos")).toBe(false);
+    expect(isLimitedLicencePath("/subscribe")).toBe(true);
+  });
+
+  it("keeps paybill instructions from the licence payload", () => {
+    const license = resolveOrganizationLicense({
+      status: "active",
+      expires_at: "2099-01-01",
+      paybill: { short_code: "4036507", account_number: "MOON" },
+    });
+    expect(license?.paybill?.short_code).toBe("4036507");
+    expect(license?.paybill?.account_number).toBe("MOON");
   });
 
   it("reads nested license / trial payload", () => {

@@ -129,7 +129,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/plans",
         label: "Plans",
         icon: "package",
-        description: "Monthly and annual subscription packages (modules, seats, price).",
+        description: "Monthly, yearly, and token Paybill prices, plus modules and seats.",
       },
       {
         href: "/platform/subscriptions",
