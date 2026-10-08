@@ -50,6 +50,11 @@ import {
   normalizeHospitalityServices,
 } from "@/lib/hospitality-services";
 import {
+  BACKOFFICE_SECTION_CATALOG,
+  BACKOFFICE_SECTION_DEFAULTS,
+  normalizeBackofficeSections,
+} from "@/lib/backoffice-sections";
+import {
   HOSPITALITY_PAYMENT_WORKFLOW_CATALOG,
   HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS,
   normalizeHospitalityPaymentWorkflow,
@@ -415,6 +420,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     append_same_day_customer_orders: false,
     enable_backoffice_order_edit: true,
     backoffice_order_edit_layout: "modern",
+    backoffice_sections: { ...BACKOFFICE_SECTION_DEFAULTS },
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
@@ -521,6 +527,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     backoffice_order_edit_layout:
       apiPayload.backoffice_order_edit_layout === "classic" ? "classic" : "modern",
+    backoffice_sections: normalizeBackofficeSections(apiPayload.backoffice_sections),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
     reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
     cart_reservation_ttl_minutes:
@@ -2080,6 +2087,40 @@ export function OrganizationModuleToggles({
                       </p>
                     </div>
                   ) : null}
+                  <div className="border-t border-[var(--theme-border)] pt-3">
+                    <p className="text-sm font-medium text-slate-900">Sidebar sections</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Turn a section off to hide it from this organization. Staff can only be given
+                      access to sections that stay on.
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {BACKOFFICE_SECTION_CATALOG.map((section) => {
+                        const sections = normalizeBackofficeSections(salesPlatform?.backoffice_sections);
+                        return (
+                          <label
+                            key={section.key}
+                            className="flex items-center gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              className="rounded border-[var(--theme-border)]"
+                              checked={sections[section.key] !== false}
+                              onChange={(e) =>
+                                onSalesChange({
+                                  ...(salesPlatform ?? {}),
+                                  backoffice_sections: {
+                                    ...sections,
+                                    [section.key]: e.target.checked,
+                                  },
+                                })
+                              }
+                            />
+                            <span>{section.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               ) : null}
               {workspace.id === "hotel_bar_pos" && enabled ? (

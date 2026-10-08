@@ -50,6 +50,17 @@ describe("organization license", () => {
     expect(licenseAccessMode({ access: "free" })).toBe("free");
     expect(licenceNeedsPayment({ access: "expired" })).toBe(true);
     expect(licenceNeedsPayment({ access: "full" })).toBe(false);
+    expect(licenceNeedsPayment({ access: "trial" })).toBe(false);
+    expect(licenseAccessMode({ status: "trialing", is_trial: true, days_remaining: 5 })).toBe("trial");
+    const withModules = resolveOrganizationLicense({
+      status: "trialing",
+      is_trial: true,
+      expires_at: "2099-01-01",
+      access: "trial",
+      modules: ["backoffice", "hr"],
+    });
+    expect(withModules?.modules).toEqual(["backoffice", "hr"]);
+    expect(licenceNeedsPayment(withModules)).toBe(false);
     expect(isLimitedLicencePath("/products")).toBe(true);
     expect(isLimitedLicencePath("/customers/4")).toBe(true);
     expect(isLimitedLicencePath("/suppliers")).toBe(true);

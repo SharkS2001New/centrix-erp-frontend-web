@@ -12,6 +12,7 @@ import {
   sortWorkspaces,
 } from "@/lib/workspace-constants";
 import { filterWorkspacesByIndustry } from "@/lib/workspace-modules";
+import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
 
 export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/workspace-constants";
 
@@ -181,7 +182,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   distribution: ["/fulfillment"],
 };
 
-export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/notifications"];
+export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/notifications", "/subscribe"];
 
 export function workspaceIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;
@@ -550,7 +551,16 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext,
   const visible = typeof isItemVisible === "function" ? isItemVisible : () => true;
 
   return sections
-    .filter((section) => sectionBelongsToWorkspace(section, workspaceId))
+    .filter((section) => {
+      if (!sectionBelongsToWorkspace(section, workspaceId)) return false;
+      if (
+        workspaceId === "backoffice" &&
+        !isBackofficeSectionEnabled(navContext?.capabilities, section.id)
+      ) {
+        return false;
+      }
+      return true;
+    })
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {

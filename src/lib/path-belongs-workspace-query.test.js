@@ -8,4 +8,10 @@ describe("pathBelongsToWorkspace query strip", () => {
     expect(pathBelongsToWorkspace("/reports/other-deductions?payroll_run_id=12", "hr")).toBe(true);
     expect(pathBelongsToWorkspace("/reports/bank-transfer?payroll_run_id=12", "hr")).toBe(true);
   });
+
+  it("keeps the Centrix payment page inside every workspace", () => {
+    for (const workspaceId of ["backoffice", "pos", "hr", "accounting", "admin"]) {
+      expect(pathBelongsToWorkspace("/subscribe", workspaceId)).toBe(true);
+    }
+  });
 });

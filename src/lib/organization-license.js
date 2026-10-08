@@ -108,8 +108,9 @@ export function resolveOrganizationLicense(source = null) {
     days_remaining: daysRemaining,
     warning_days: warningDays,
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
-    access: ["free", "expired", "full", "token"].includes(raw.access) ? raw.access : null,
+    access: ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null,
     token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
+    modules: Array.isArray(raw.modules) ? raw.modules.map((key) => String(key)) : [],
     paybill: raw.paybill && typeof raw.paybill === "object" ? raw.paybill : null,
     offers: Array.isArray(raw.offers) ? raw.offers : [],
   };
@@ -125,15 +126,15 @@ export function licenseFromAuthState({ capabilities = null, organization = null 
   );
 }
 
-/** Paid licence, free trial / unpaid, or an expired licence that can still sign in. */
+/** Paid licence, active free trial, unpaid, or an expired licence that can still sign in. */
 export function licenseAccessMode(license) {
-  if (license?.access === "full" || license?.access === "free" || license?.access === "expired" || license?.access === "token") {
+  if (["full", "free", "expired", "token", "trial"].includes(license?.access)) {
     return license.access;
   }
   if (!license) return "full";
   if (license.status === "missing") return "free";
   if (isLicenseExpired(license)) return "expired";
-  if (license.is_trial || license.status === "trialing") return "free";
+  if (license.is_trial || license.status === "trialing") return "trial";
   return "full";
 }
 

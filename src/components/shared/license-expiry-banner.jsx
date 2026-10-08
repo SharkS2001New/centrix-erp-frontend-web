@@ -22,19 +22,21 @@ export function LicenseExpiryBanner({ className = "" }) {
   const limited = licenceNeedsPayment(organizationLicense);
   const soon = isLicenseExpiringSoon(organizationLicense);
   const mode = licenseAccessMode(organizationLicense);
-  if (!limited && !soon && mode !== "token") return null;
+  if (!limited && !soon && mode !== "token" && mode !== "trial") return null;
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
-    mode === "token"
+    mode === "trial"
+      ? `You are on a free trial${organizationLicense.expires_at ? ` until ${organizationLicense.expires_at}` : ""}. Centrix stays open. Pay the Centrix Paybill when you want to keep these modules.`
+      : mode === "token"
       ? `This organisation has ${tokenBalance} Centrix token${tokenBalance === 1 ? "" : "s"}. Each create, update, or delete uses 1 token. Reading is free.`
       : mode === "expired"
-        ? "This Centrix licence has expired. Products, customers, suppliers, and sales reports stay open. Pay to restore everything else."
-        : "This organisation is on the free Centrix plan. Products, customers, suppliers, and sales reports are open. Choose a paid plan to use the rest of Centrix.";
+        ? "This Centrix licence has expired. You can still sign in. Products, customers, suppliers, and sales reports stay open. Pay the Centrix Paybill to restore the modules."
+        : "This organisation has no paid Centrix plan yet. Products, customers, suppliers, and sales reports are open. Choose modules and pay the Centrix Paybill to use the rest.";
 
   return (
     <div
       className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm ${
-        mode === "token"
+        mode === "token" || mode === "trial"
           ? "border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100"
           : limited
             ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
@@ -44,11 +46,11 @@ export function LicenseExpiryBanner({ className = "" }) {
       aria-live="assertive"
     >
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="font-medium">{limited || mode === "token" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
+        <p className="font-medium">{limited || mode === "token" || mode === "trial" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
         <LicensePaybillInstructions paybill={organizationLicense.paybill} />
       </div>
       <Link href="/subscribe" className="shrink-0 text-xs font-semibold underline">
-        {limited ? "Choose a plan" : "View payment options"}
+        {mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
       </Link>
     </div>
   );

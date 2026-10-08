@@ -15,9 +15,10 @@ import {
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * Free, trial, and expired licences stay signed in.
- * Any page outside products, customers, suppliers, and sales reports
- * is sent to the Centrix payment screen.
+ * An active free trial uses the whole system.
+ * After the trial or a paid period ends, the user stays signed in.
+ * Pages outside products, customers, suppliers, and sales reports
+ * go to the Centrix payment screen.
  */
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();

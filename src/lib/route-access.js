@@ -18,7 +18,8 @@ import {
 import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
+import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
+import { WORKSPACE_SECTION_IDS, defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
@@ -136,12 +137,50 @@ function canAccessSupplierSubroute(pathname, ctx) {
  *        Optional target workspace for access checks during module switch
  *        (before setStoredWorkspace updates). Defaults to the stored workspace.
  */
+function workspacesOwningSection(sectionId) {
+  return Object.entries(WORKSPACE_SECTION_IDS)
+    .filter(([, ids]) => ids.includes(sectionId))
+    .map(([workspaceId]) => workspaceId);
+}
+
+/** Hide a URL when it belongs only to a Backoffice sidebar section this organization turned off. */
+export function isBackofficePathDisabled(pathname, capabilities) {
+  const path = String(pathname || "").split(/[?#]/)[0];
+  if (!path) return false;
+
+  let blocked = false;
+  let allowedElsewhere = false;
+
+  for (const section of navSections) {
+    for (const item of section.items ?? []) {
+      const href = String(item.href || "").split(/[?#]/)[0];
+      if (!href) continue;
+      const matches = item.exact ? path === href : path === href || path.startsWith(`${href}/`);
+      if (!matches) continue;
+
+      const owners = workspacesOwningSection(section.id).filter(
+        (workspaceId) => workspaceId !== "hospitality_backoffice" && workspaceId !== "hotel_bar_pos",
+      );
+      const backofficeOnly = owners.length === 1 && owners[0] === "backoffice";
+      if (backofficeOnly && !isBackofficeSectionEnabled(capabilities, section.id)) {
+        blocked = true;
+      } else if (owners.length > 0) {
+        allowedElsewhere = true;
+      }
+    }
+  }
+
+  return blocked && !allowedElsewhere;
+}
+
 export function canAccessRoute(pathname, ctx, options = {}) {
   if (!pathname || pathname === "/login") return true;
 
   if (isPlatformShellUser(ctx)) {
     return isPlatformShellRoute(pathname);
   }
+
+  if (isBackofficePathDisabled(pathname, ctx?.capabilities)) return false;
 
   if (pathname === "/admin/settings" || pathname.startsWith("/admin/settings/")) {
     return canAccessTenantOrganizationSettings({

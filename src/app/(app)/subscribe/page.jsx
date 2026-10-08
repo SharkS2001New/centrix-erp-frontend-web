@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
-import { formatBillingMoney } from "@/lib/platform-billing";
-import { licenseAccessMode, licenceNeedsPayment } from "@/lib/organization-license";
+import { formatBillingMoney, workspaceLabels } from "@/lib/platform-billing";
+import { licenseAccessMode } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 
 const FREE_FEATURES = [
@@ -29,6 +29,7 @@ export default function SubscribePage() {
   const selected = offers.find((offer) => offer.id === selectedId) ?? offers[0] ?? null;
   const paybill = organizationLicense?.paybill;
   const account = paybill?.account_number || organization?.company_code || "";
+  const modules = workspaceLabels(organizationLicense?.modules ?? []);
 
   async function checkPayment() {
     setChecking(true);
@@ -36,7 +37,8 @@ export default function SubscribePage() {
     try {
       const next = await refreshCapabilities({ force: true });
       const license = next?.license ?? next?.subscription ?? organizationLicense;
-      if (!licenceNeedsPayment(license)) {
+      const nextMode = licenseAccessMode(license);
+      if (nextMode === "full" || nextMode === "token") {
         const home = resolveHomePath({
           user,
           organization,
@@ -46,7 +48,11 @@ export default function SubscribePage() {
         router.replace(home || "/dashboard");
         return;
       }
-      setNotice("M-Pesa has not confirmed this payment yet. Pay the exact amount for the plan you chose, then check again.");
+      setNotice(
+        nextMode === "trial"
+          ? "You are still on the free trial. When M-Pesa confirms the payment, Centrix marks this organisation as paid."
+          : "M-Pesa has not confirmed this payment yet. Pay the exact amount for the plan you chose, then check again.",
+      );
     } catch {
       setNotice("Could not check the licence. Stay on this page and try again in a moment.");
     } finally {
@@ -58,23 +64,40 @@ export default function SubscribePage() {
     <CatalogPageShell
       title="Choose how to pay for Centrix"
       subtitle={
-        mode === "expired"
-          ? "Your licence has expired. You can still use products, customers, suppliers, and sales reports."
-          : "You are on the free plan. You can still use products, customers, suppliers, and sales reports."
+        mode === "trial"
+          ? "Your free trial is still open. These are the modules you keep when you pay the Centrix Paybill."
+          : mode === "expired"
+            ? "Your trial or paid period has ended. You can still sign in. Pay the Centrix Paybill to open these modules again."
+            : "Choose the modules and how you want to pay. Until M-Pesa confirms the payment, products, customers, suppliers, and sales reports stay open."
       }
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
           <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-slate-900">What you can use before you pay</h2>
-            <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
-              {FREE_FEATURES.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
+            <h2 className="text-sm font-semibold text-slate-900">Modules this payment covers</h2>
+            {modules.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                {modules.map((module) => (
+                  <li key={module}>{module}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-slate-600">
+                The plan on this organisation does not list modules yet. A platform administrator adds them on the plan, such as Backoffice, Accounting, or Human Resources.
+              </p>
+            )}
             <p className="mt-2 text-sm text-slate-600">
-              Sales, stock movements, payroll, accounting, and the rest of Centrix stay closed until a Paybill payment is confirmed. Opening those pages returns you here.
+              {mode === "trial"
+                ? "You can keep using Centrix during the trial. Paying monthly, yearly, or with tokens keeps these modules after the trial date."
+                : "Until the payment is confirmed, you can still use products, customers, suppliers, and sales reports."}
             </p>
+            {mode !== "trial" ? (
+              <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                {FREE_FEATURES.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
+            ) : null}
           </section>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -145,7 +168,11 @@ export default function SubscribePage() {
             <li>Choose monthly, yearly, or token.</li>
             <li>On your phone, pay the exact amount to the Paybill above.</li>
             <li>Use the account number shown here.</li>
-            <li>Come back and check. Centrix opens the rest of the system when Safaricom confirms the payment.</li>
+            <li>
+              {mode === "trial"
+                ? "Come back and check. A confirmed payment keeps these modules open after the trial ends."
+                : "Come back and check. A confirmed payment opens these modules again."}
+            </li>
           </ol>
           <PrimaryButton type="button" showIcon={false} className="mt-4 w-full" disabled={checking} onClick={() => void checkPayment()}>
             {checking ? "Checking…" : "I have paid — check again"}

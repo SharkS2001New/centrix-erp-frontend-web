@@ -15,13 +15,13 @@ function formatTime(iso) {
 }
 
 function LicenceBadge({ access, label, compact = false, onHeader = false }) {
-  if (access !== "free" && access !== "expired" && access !== "token") return null;
-  const text = label || (access === "free" ? "Free plan" : access === "token" ? "Tokens" : "Expired");
+  if (access !== "free" && access !== "expired" && access !== "token" && access !== "trial") return null;
+  const text = label || (access === "trial" ? "Free trial" : access === "free" ? "Free plan" : access === "token" ? "Tokens" : "Expired");
   const tone = onHeader
     ? "bg-white/95 text-slate-900"
     : access === "expired"
       ? "bg-red-100 text-red-800"
-      : access === "token"
+      : access === "token" || access === "trial"
         ? "bg-sky-100 text-sky-900"
         : "bg-amber-100 text-amber-900";
   return (
