@@ -15,13 +15,15 @@ function formatTime(iso) {
 }
 
 function LicenceBadge({ access, label, compact = false, onHeader = false }) {
-  if (access !== "free" && access !== "expired") return null;
-  const text = label || (access === "free" ? "Free plan" : "Expired");
+  if (access !== "free" && access !== "expired" && access !== "token") return null;
+  const text = label || (access === "free" ? "Free plan" : access === "token" ? "Tokens" : "Expired");
   const tone = onHeader
     ? "bg-white/95 text-slate-900"
     : access === "expired"
       ? "bg-red-100 text-red-800"
-      : "bg-amber-100 text-amber-900";
+      : access === "token"
+        ? "bg-sky-100 text-sky-900"
+        : "bg-amber-100 text-amber-900";
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${compact ? "mt-1" : ""} ${tone}`}>
       {text}

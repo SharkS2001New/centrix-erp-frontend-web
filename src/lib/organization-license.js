@@ -108,7 +108,8 @@ export function resolveOrganizationLicense(source = null) {
     days_remaining: daysRemaining,
     warning_days: warningDays,
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
-    access: raw.access === "free" || raw.access === "expired" || raw.access === "full" ? raw.access : null,
+    access: ["free", "expired", "full", "token"].includes(raw.access) ? raw.access : null,
+    token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
     paybill: raw.paybill && typeof raw.paybill === "object" ? raw.paybill : null,
     offers: Array.isArray(raw.offers) ? raw.offers : [],
   };
@@ -126,7 +127,7 @@ export function licenseFromAuthState({ capabilities = null, organization = null 
 
 /** Paid licence, free trial / unpaid, or an expired licence that can still sign in. */
 export function licenseAccessMode(license) {
-  if (license?.access === "full" || license?.access === "free" || license?.access === "expired") {
+  if (license?.access === "full" || license?.access === "free" || license?.access === "expired" || license?.access === "token") {
     return license.access;
   }
   if (!license) return "full";

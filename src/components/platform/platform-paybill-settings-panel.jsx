@@ -17,6 +17,7 @@ const NOTES = {
   no_price: "Plan has no Paybill price",
   awaiting_price: "Waiting for the rest of a plan price",
   stacked: "More than one plan price was covered",
+  tokens: "Shillings were added as tokens",
 };
 
 export function PlatformPaybillSettingsPanel() {

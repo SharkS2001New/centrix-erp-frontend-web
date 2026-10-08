@@ -180,11 +180,15 @@ function fallbackOffers() {
     {
       id: "token",
       title: "Token subscription",
-      price: null,
+      price: 500,
       currency: "KES",
-      period: "A prepaid block of days",
-      summary: "A token is prepaid licence time. It is not an AI credit.",
-      features: ["Full Centrix for the number of days on the token", "Use it instead of a monthly or yearly plan"],
+      period: "1 KES = 1 token",
+      summary: "Paying 500 KES gives the organisation 500 tokens. Any other amount works the same way.",
+      features: [
+        "Each create, update, or delete uses 1 token",
+        "Reading pages and reports uses 0 tokens",
+        "Every user spends from the same balance",
+      ],
     },
   ];
 }
