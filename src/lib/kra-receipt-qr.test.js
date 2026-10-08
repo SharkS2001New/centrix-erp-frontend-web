@@ -137,6 +137,8 @@ describe("kra receipt QR", () => {
     expect(html).toContain("CU Invoice: CU-4");
     expect(html).not.toContain("Customer KRA PIN");
     expect(html).toContain("overflow:visible");
+    expect(html).toContain("width:100px;height:100px;max-width:none");
+    expect(html).not.toMatch(/<img[^>]*max-width:\s*100%/);
     expect(html).not.toMatch(/kra-etims-block[^>]*overflow:hidden/);
   });
 

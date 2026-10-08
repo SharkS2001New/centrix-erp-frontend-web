@@ -99,7 +99,8 @@ export function buildThermalReceiptCss({
     .footer-text { font-size: ${fpx(8)}; color: #000; margin-top: 3px; letter-spacing: normal; line-height: 1.3; font-weight: var(--print-w-footer, 700); word-break: break-word; overflow-wrap: anywhere; text-transform: none; }
     .footer-line-divider { margin: 3px 0; }
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 2px; letter-spacing: normal; line-height: 1.25; word-break: break-word; overflow-wrap: anywhere; text-transform: none; }
-    .kra-etims-block { page-break-inside: avoid; break-inside: avoid; max-width: 100%; overflow: visible; box-sizing: border-box; }
+    .kra-etims-block { page-break-inside: avoid; break-inside: avoid; overflow: visible; box-sizing: border-box; }
+    .kra-etims-block img, .kra-etims-qr { display: block; margin: 0 auto; width: 100px; height: 100px; max-width: none; max-height: none; }
     .kra-etims-caption { margin-top: 4px; font-size: ${px(8)}; font-weight: 700; color: #000; line-height: 1.35; text-align: center; padding: 0 1px; overflow-wrap: anywhere; word-break: break-word; }
     /* Extra feed after eTIMS QR so the cutter does not slice the compliance block. */
     .receipt-tearoff { display: block; height: 12mm; min-height: 12mm; width: 100%; page-break-inside: avoid; break-inside: avoid; }

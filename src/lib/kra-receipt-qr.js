@@ -264,7 +264,7 @@ export function buildKraFiscalBlockHtml(
 
   if (qrDataUrl && kra.signatureLink) {
     html += `<div style="margin:10px 0 6px;">
-      <img src="${qrDataUrl}" alt="KRA verification QR code" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
+      <img class="kra-etims-qr" src="${qrDataUrl}" alt="KRA verification QR code" width="${qrSize}" height="${qrSize}" style="${kraQrImageStyle(qrSize)}" />
       <div style="font-size:${isThermal ? "9px" : "9px"};margin-top:4px;color:#000;font-weight:700;line-height:1.35;">Scan to verify on KRA eTIMS</div>
       ${buyerDetailHtml}
     </div>`;
@@ -286,6 +286,16 @@ export function buildKraFiscalBlockHtml(
   return html;
 }
 
+/**
+ * Fixed pixel box for the QR bitmap.
+ * wkhtmltopdf (Print Agent) lays out `img { max-width: 100% }` at 0×0, so the
+ * code is in the HTML but never paints on receipts or A4 invoices.
+ */
+function kraQrImageStyle(size) {
+  const px = Math.max(72, Number(size) || 100);
+  return `display:block;margin:0 auto;width:${px}px;height:${px}px;max-width:none;max-height:none;`;
+}
+
 /** Centered KRA eTIMS QR for printed sale documents. */
 export function buildKraDocumentQrHtml(
   kra,
@@ -296,6 +306,7 @@ export function buildKraDocumentQrHtml(
 
   const isThermal = layout === "thermal";
   const fontSize = isThermal ? "9px" : "10px";
+  const qrPx = Math.max(72, Number(size) || 100);
   // A4 keeps QR compact so it fits above the fixed print edge footer on page 1.
   const padding = isThermal ? "4px 0" : "6px 0";
   const margin = isThermal ? "4px 0 0" : "8px 0";
@@ -310,8 +321,8 @@ export function buildKraDocumentQrHtml(
     includeInvoiceFallback: true,
   });
 
-  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;break-inside:avoid;max-width:100%;overflow:visible;box-sizing:border-box;">
-      <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;max-width:100%;" />
+  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;break-inside:avoid;overflow:visible;box-sizing:border-box;">
+      <img class="kra-etims-qr" src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${qrPx}" height="${qrPx}" style="${kraQrImageStyle(qrPx)}" />
       <div class="${captionClass}" style="${captionStyle}${isThermal ? "max-width:100%;padding:0 1px;overflow-wrap:anywhere;word-break:break-word;" : ""}">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
