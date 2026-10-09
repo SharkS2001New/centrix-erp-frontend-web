@@ -13,7 +13,9 @@ export const NAV_HREF_ICONS = {
   "/platform/invoices": "receipt",
   "/platform/invoice-templates": "package",
   "/platform/plans": "package",
+  "/platform/self-serve-plans": "package",
   "/platform/subscriptions": "clock",
+  "/platform/licence-payments": "receipt",
   "/platform/contracts": "file",
   "/platform/email": "chat",
   "/platform/mailbox": "chat",
@@ -28,6 +30,7 @@ export const NAV_HREF_ICONS = {
   "/platform/whats-new": "star",
   "/platform/organizations": "building",
   "/platform/organizations/new": "plus",
+  "/platform/setup-types": "package",
 
   // Dashboards
   "/dashboard": "dashboard",

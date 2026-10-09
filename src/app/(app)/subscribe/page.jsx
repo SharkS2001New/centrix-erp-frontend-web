@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { dismissLicenseWarning, licenceNeedsPayment, licenseAccessMode } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
 import { apiRequest, ApiError } from "@/lib/api";
 
 function quoteMonths(unit, months, minMonths, percent) {
@@ -46,15 +48,23 @@ export default function SubscribePage() {
   const account = paybill?.account_number || organization?.company_code || "";
   const mode = licenseAccessMode(organizationLicense);
 
-  function closeForLater() {
+  const closeForLater = useCallback(() => {
     dismissLicenseWarning();
     if (licenceNeedsPayment(organizationLicense)) {
       router.replace("/products");
       return;
     }
-    const home = resolveHomePath({ user, organization, capabilities, isSuperAdmin });
-    router.replace(home || "/dashboard");
-  }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    const resume = recallWorkspaceTabLandingPath(organization?.id, getStoredWorkspace());
+    if (resume && !resume.startsWith("/profile") && !resume.startsWith("/subscribe")) {
+      router.replace(resume);
+      return;
+    }
+    router.replace("/dashboard");
+  }, [organization?.id, organizationLicense, router]);
 
   useEffect(() => {
     function onKey(event) {
@@ -62,7 +72,7 @@ export default function SubscribePage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [closeForLater]);
 
   async function leaveIfPaid(license) {
     const nextMode = licenseAccessMode(license);
@@ -135,20 +145,21 @@ export default function SubscribePage() {
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/70">
-      <div className="min-h-full bg-white px-4 py-8 sm:px-8">
+      <div className="min-h-full bg-white">
+        <div className="flex justify-end px-4 pt-4 sm:px-6">
+          <button
+            type="button"
+            onClick={closeForLater}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Close
+          </button>
+        </div>
+        <div className="px-4 pb-8 sm:px-8">
         <div className="mx-auto max-w-5xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#185FA5]">Centrix subscription</p>
-              <h1 className="mt-1 text-2xl font-semibold text-slate-900">Choose how to use Centrix</h1>
-            </div>
-            <button
-              type="button"
-              onClick={closeForLater}
-              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Not today
-            </button>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#185FA5]">Centrix subscription</p>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-900">Choose how to use Centrix</h1>
           </div>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
             {mode === "expired"
@@ -158,7 +169,7 @@ export default function SubscribePage() {
 
           {plans.length === 0 ? (
             <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              No monthly plans are published yet. A platform administrator creates them under Plans, each with its own price and feature list.
+              No monthly plans are published yet. A platform administrator creates them under Self-serve plans, each with its own price and feature list.
             </p>
           ) : (
             <div className="mt-6 grid gap-3 md:grid-cols-2">
@@ -275,6 +286,7 @@ export default function SubscribePage() {
           ) : null}
 
           {notice ? <p className="mt-4 text-sm text-slate-700">{notice}</p> : null}
+        </div>
         </div>
       </div>
     </div>

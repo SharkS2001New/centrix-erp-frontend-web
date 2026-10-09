@@ -113,6 +113,9 @@ export function resolveOrganizationLicense(source = null) {
     modules: Array.isArray(raw.modules) ? raw.modules.map((key) => String(key)) : [],
     paybill: raw.paybill && typeof raw.paybill === "object" ? raw.paybill : null,
     offers: Array.isArray(raw.offers) ? raw.offers : [],
+    plans: Array.isArray(raw.plans) ? raw.plans : [],
+    duration_discount:
+      raw.duration_discount && typeof raw.duration_discount === "object" ? raw.duration_discount : null,
   };
 }
 

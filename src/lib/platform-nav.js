@@ -29,6 +29,12 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "plus",
         description: "Provision a new company code, modules, sales behaviour, and initial administrator.",
       },
+      {
+        href: "/platform/setup-types",
+        label: "Setup types",
+        icon: "package",
+        description: "Applications such as External POS, and menu groups, saved for each setup type.",
+      },
     ],
   },
   {
@@ -126,6 +132,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Create monthly, yearly, and token prices. Paybill payments match these and auto-subscribe the organisation.",
       },
       {
+        href: "/platform/self-serve-plans",
+        label: "Self-serve plans",
+        icon: "package",
+        description: "Plans an organisation chooses and pays for on the subscription screen.",
+      },
+      {
         href: "/platform/invoices",
         label: "Invoices",
         icon: "receipt",
@@ -136,6 +148,12 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Subscriptions",
         icon: "clock",
         description: "Tenant plan assignments, renewals, overdue status, and draft invoices.",
+      },
+      {
+        href: "/platform/licence-payments",
+        label: "Licence payments",
+        icon: "receipt",
+        description: "M-Pesa payments on the Centrix Paybill and whether each one extended a licence.",
       },
       {
         href: "/platform/contracts",
@@ -166,7 +184,7 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Platform settings",
         icon: "chat",
         description:
-          "Email delivery, WhatsApp, AI credentials, setup types, R2 backups, and alert notifications.",
+          "Email delivery, WhatsApp, AI credentials, R2 backups, and alert notifications.",
       },
     ],
   },

@@ -14,7 +14,6 @@ import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platfor
 import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
 import { PlatformThemeSettingsPanel } from "@/components/platform/platform-theme-settings-panel";
 import { PlatformPaybillSettingsPanel } from "@/components/platform/platform-paybill-settings-panel";
-import { PlatformSetupTypesPanel } from "@/components/platform/platform-setup-types-panel";
 
 const TABS = [
   { id: "theme", label: "Theme" },
@@ -24,7 +23,6 @@ const TABS = [
   { id: "alerts", label: "Alert notifications" },
   { id: "payroll", label: "Payroll" },
   { id: "paybill", label: "Licence Paybill" },
-  { id: "setup-types", label: "Setup types" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -41,6 +39,9 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
   useEffect(() => {
     if (requestedTab === "mailbox") {
       router.replace("/platform/mailbox");
+    }
+    if (requestedTab === "setup-types") {
+      router.replace("/platform/setup-types");
     }
     if (requestedTab === "ai-credentials" || requestedTab === "credentials") {
       router.replace("/platform/settings?tab=ai");
@@ -89,8 +90,6 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
                 ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
                 : activeTab === "paybill"
                   ? "Centrix M-Pesa Paybill for monthly, yearly, and token licence payments."
-                  : activeTab === "setup-types"
-                    ? "Menu groups saved for each setup type, such as Small shop."
                 : "Email digest, instant WhatsApp/email, and test sends for System errors & reports.";
 
   return (
@@ -118,7 +117,6 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
         </div>
       ) : null}
       {activeTab === "paybill" ? <PlatformPaybillSettingsPanel /> : null}
-      {activeTab === "setup-types" ? <PlatformSetupTypesPanel /> : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );

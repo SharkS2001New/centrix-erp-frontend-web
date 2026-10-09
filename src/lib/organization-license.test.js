@@ -78,6 +78,14 @@ describe("organization license", () => {
       paybill: { short_code: "4036507", account_number: "MOON" },
     });
     expect(license?.paybill?.short_code).toBe("4036507");
+    const withPlans = resolveOrganizationLicense({
+      status: "trialing",
+      access: "trial",
+      plans: [{ id: 1, name: "Sales", monthly_price: 2000 }],
+      duration_discount: { percent: 10, min_months: 3 },
+    });
+    expect(withPlans?.plans).toEqual([{ id: 1, name: "Sales", monthly_price: 2000 }]);
+    expect(withPlans?.duration_discount?.percent).toBe(10);
     expect(license?.paybill?.account_number).toBe("MOON");
   });
 
