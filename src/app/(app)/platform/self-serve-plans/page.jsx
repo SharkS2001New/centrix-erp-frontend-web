@@ -40,7 +40,8 @@ function emptyForm() {
   return {
     name: "",
     description: "",
-    monthly_price: "",
+    interval: "monthly",
+    price: "",
     feature_details: [{ label: "", detail: "" }],
     workspace_keys: [],
     section_keys: [],
@@ -52,10 +53,14 @@ function recordToForm(plan) {
   const features = Array.isArray(plan.feature_details) && plan.feature_details.length > 0
     ? plan.feature_details.map((row) => ({ label: row?.label ?? "", detail: row?.detail ?? "" }))
     : [{ label: "", detail: "" }];
+  const yearly = plan.interval === "annual" || plan.interval === "yearly";
   return {
     name: plan.name ?? "",
     description: plan.description ?? "",
-    monthly_price: plan.monthly_price != null ? String(plan.monthly_price) : "",
+    interval: yearly ? "yearly" : "monthly",
+    price: yearly
+      ? (plan.yearly_price != null ? String(plan.yearly_price) : "")
+      : (plan.monthly_price != null ? String(plan.monthly_price) : ""),
     feature_details: features,
     workspace_keys: Array.isArray(plan.workspace_keys) ? [...plan.workspace_keys] : [],
     section_keys: Array.isArray(plan.section_keys) ? [...plan.section_keys] : [],
@@ -64,17 +69,19 @@ function recordToForm(plan) {
 }
 
 function formToPayload(form) {
-  const monthly = Number(form.monthly_price);
+  const amount = Number(form.price);
+  const yearly = form.interval === "yearly";
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
-    interval: "monthly",
+    interval: yearly ? "annual" : "monthly",
     license_basis: "org",
     currency: "KES",
-    price: monthly,
-    first_payment_price: monthly,
-    renewal_price: monthly,
-    monthly_price: monthly,
+    price: amount,
+    first_payment_price: amount,
+    renewal_price: amount,
+    monthly_price: yearly ? null : amount,
+    yearly_price: yearly ? amount : null,
     workspace_keys: form.workspace_keys ?? [],
     section_keys: form.section_keys ?? [],
     feature_details: (form.feature_details ?? [])
@@ -125,13 +132,13 @@ export default function SelfServePlansPage() {
 
   async function handleSave(event) {
     event.preventDefault();
-    const monthly = Number(form.monthly_price);
+    const amount = Number(form.price);
     if (!form.name.trim()) {
       notifyError("Enter a plan name.");
       return;
     }
-    if (!Number.isFinite(monthly) || monthly <= 0) {
-      notifyError("Enter a monthly price greater than 0.");
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notifyError(form.interval === "yearly" ? "Enter a yearly price greater than 0." : "Enter a monthly price greater than 0.");
       return;
     }
     setSaving(true);
@@ -173,7 +180,7 @@ export default function SelfServePlansPage() {
   return (
     <CatalogPageShell
       title="Self-serve plans"
-      subtitle="These are the plans an organisation sees on Choose a plan. Each one needs its own monthly price and the features it turns on."
+      subtitle="Monthly plans appear on the Monthly tab. Yearly plans appear on the Yearly tab. Each one needs its own price and the features it turns on."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
 
@@ -204,7 +211,8 @@ export default function SelfServePlansPage() {
               <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3">Plan</th>
-                  <th className="px-5 py-3">Monthly price</th>
+                  <th className="px-5 py-3">Billing</th>
+                  <th className="px-5 py-3">Price</th>
                   <th className="px-5 py-3">Features</th>
                   <th className="px-5 py-3">On the subscribe screen</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -217,7 +225,13 @@ export default function SelfServePlansPage() {
                       <p className="font-medium text-slate-900">{plan.name}</p>
                       {plan.description ? <p className="text-xs text-slate-500">{plan.description}</p> : null}
                     </td>
-                    <td className="px-5 py-3 tabular-nums">{formatBillingMoney(plan.monthly_price, plan.currency || "KES")}</td>
+                    <td className="px-5 py-3">{plan.interval === "annual" || plan.interval === "yearly" ? "Yearly" : "Monthly"}</td>
+                    <td className="px-5 py-3 tabular-nums">
+                      {formatBillingMoney(
+                        plan.interval === "annual" || plan.interval === "yearly" ? plan.yearly_price : plan.monthly_price,
+                        plan.currency || "KES",
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">{plan.feature_details?.length ?? 0}</td>
                     <td className="px-5 py-3">
                       {plan.is_active ? (
@@ -263,10 +277,19 @@ export default function SelfServePlansPage() {
                 <span className="mb-1 block text-xs font-medium text-slate-600">Short description</span>
                 <input className={inputClass} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Sales, customers, and the reports that belong to them" />
               </label>
-              <label className="block max-w-xs text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Monthly price (KES)</span>
-                <input className={inputClass} inputMode="decimal" value={form.monthly_price} onChange={(e) => setForm((f) => ({ ...f, monthly_price: e.target.value }))} placeholder="2000" />
-              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Shows on</span>
+                  <select className={inputClass} value={form.interval} onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">{form.interval === "yearly" ? "Yearly price (KES)" : "Monthly price (KES)"}</span>
+                  <input className={inputClass} inputMode="decimal" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder={form.interval === "yearly" ? "15000" : "2000"} />
+                </label>
+              </div>
 
               <div>
                 <p className="mb-1 text-xs font-medium text-slate-600">What the organisation reads on the card</p>

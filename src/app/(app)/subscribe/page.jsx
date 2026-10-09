@@ -32,22 +32,49 @@ export default function SubscribePage() {
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
   const [planId, setPlanId] = useState(plans[0]?.id ?? null);
   const [billing, setBilling] = useState("monthly");
+  const [tokenPack, setTokenPack] = useState(null);
   const [step, setStep] = useState("plans");
   const [phone, setPhone] = useState(user?.phone || organizationLicense?.paybill?.account_phone || "");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
 
-  const selected = plans.find((plan) => plan.id === planId) ?? plans[0] ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/erp/organization/billing")
+      .then((res) => {
+        if (cancelled) return;
+        const policy = res.data?.policy ?? {};
+        setTokenPack({
+          tokens: Number(policy.token_pack_tokens) || 0,
+          price: Number(policy.token_pack_price_kes) || 0,
+          saleTokens: Number(policy.sale_tokens) || 1,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const visiblePlans = billing === "yearly"
+    ? plans.filter((plan) => plan.interval === "yearly")
+    : billing === "monthly"
+      ? plans.filter((plan) => plan.interval !== "yearly")
+      : [];
+  const selected = billing === "token" ? null : (visiblePlans.find((plan) => plan.id === planId) ?? null);
   const minMonths = Number(selected?.discount_min_months ?? discount.min_months ?? 3);
   const percent = Number(selected?.discount_percent ?? discount.percent ?? 0);
   const billedMonths = billing === "yearly" ? 12 : 1;
   const quote = useMemo(
-    () => (selected ? quoteMonths(Number(selected.monthly_price) || 0, billedMonths, minMonths, percent) : null),
-    [selected, billedMonths, minMonths, percent],
+    () => (selected && billing === "monthly" ? quoteMonths(Number(selected.monthly_price) || 0, billedMonths, minMonths, percent) : null),
+    [selected, billedMonths, minMonths, percent, billing],
   );
-  const yearlyPrice = Number(selected?.yearly_price) || 0;
-  const due = billing === "yearly" && yearlyPrice > 0 ? yearlyPrice : quote?.amount ?? 0;
+  const due = billing === "token"
+    ? Number(tokenPack?.price) || 0
+    : billing === "yearly"
+      ? Number(selected?.yearly_price) || 0
+      : quote?.amount ?? 0;
   const paybill = organizationLicense?.paybill;
   const account = paybill?.account_number || organization?.company_code || "";
   const mode = licenseAccessMode(organizationLicense);
@@ -104,8 +131,8 @@ export default function SubscribePage() {
   }
 
   async function payNow() {
-    if (!selected) {
-      setNotice("A platform administrator still needs to publish a monthly plan.");
+    if (billing !== "token" && !selected) {
+      setNotice(billing === "yearly" ? "Choose a yearly plan." : "Choose a monthly plan.");
       return;
     }
     setBusy("stk");
@@ -113,7 +140,9 @@ export default function SubscribePage() {
     try {
       const res = await apiRequest("/erp/organization/licence/stk", {
         method: "POST",
-        body: { plan_id: selected.id, months: quote.months, phone, billing },
+        body: billing === "token"
+          ? { billing: "token", phone }
+          : { plan_id: selected.id, months: billing === "yearly" ? 12 : quote.months, phone, billing },
       });
       setNotice(res.message || "Check your phone for the M-Pesa prompt.");
     } catch (err) {
@@ -124,13 +153,15 @@ export default function SubscribePage() {
   }
 
   async function notifyAdmin() {
-    if (!selected) return;
+    if (billing !== "token" && !selected) return;
     setBusy("manual");
     setNotice("");
     try {
       const res = await apiRequest("/erp/organization/licence/notify", {
         method: "POST",
-        body: { plan_id: selected.id, months: quote.months, billing },
+        body: billing === "token"
+          ? { billing: "token" }
+          : { plan_id: selected.id, months: billing === "yearly" ? 12 : quote.months, billing },
       });
       setNotice(res.message || "Centrix has been notified on WhatsApp.");
     } catch (err) {
@@ -146,7 +177,9 @@ export default function SubscribePage() {
     try {
       const res = await apiRequest("/erp/organization/licence/verify", {
         method: "POST",
-        body: { mpesa_code: code.trim(), plan_id: selected?.id, months: quote?.months, billing },
+        body: billing === "token"
+          ? { mpesa_code: code.trim(), billing: "token" }
+          : { mpesa_code: code.trim(), plan_id: selected?.id, months: billing === "yearly" ? 12 : quote?.months, billing },
       });
       if (await leaveIfPaid(res.license)) return;
       const next = await refreshCapabilities({ force: true });
@@ -160,16 +193,16 @@ export default function SubscribePage() {
   }
 
   function openCheckout(plan) {
-    setPlanId(plan.id);
+    if (plan) setPlanId(plan.id);
     setNotice("");
     setStep("checkout");
   }
 
-  const recommendedIndex = plans.length >= 3 ? 2 : Math.max(0, plans.length - 1);
+  const recommendedIndex = visiblePlans.length >= 3 ? 2 : Math.max(0, visiblePlans.length - 1);
   const currency = selected?.currency || "KES";
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black text-white">
+    <div className="theme-page fixed inset-0 z-[80] overflow-y-auto">
       <button
         type="button"
         onClick={closeForLater}
@@ -178,7 +211,7 @@ export default function SubscribePage() {
         Close
       </button>
       <div className="mx-auto min-h-full max-w-6xl px-4 pb-16 pt-16 sm:px-8">
-        {step === "checkout" && selected && quote ? (
+        {step === "checkout" && (billing === "token" || selected) ? (
           <CheckoutStep
             selected={selected}
             billing={billing}
@@ -200,14 +233,17 @@ export default function SubscribePage() {
           />
         ) : (
           <PlansStep
-            plans={plans}
+            plans={visiblePlans}
             billing={billing}
-            setBilling={setBilling}
+            setBilling={(next) => {
+              setBilling(next);
+              setPlanId(null);
+            }}
             mode={mode}
+            tokenPack={tokenPack}
+            tokenBalance={Number(organizationLicense?.token_balance) || 0}
             currentName={mode === "full" ? organizationLicense?.plan_name : ""}
             recommendedIndex={recommendedIndex}
-            minMonths={minMonths}
-            percent={percent}
             onPay={openCheckout}
           />
         )}
@@ -216,86 +252,114 @@ export default function SubscribePage() {
   );
 }
 
-function listedPrice(plan, billing, minMonths, percent) {
+function listedPrice(plan, billing) {
   const currency = plan.currency || "KES";
   if (billing === "yearly") {
-    const yearly = Number(plan.yearly_price) || 0;
-    if (yearly > 0) return { amount: yearly, suffix: "/ year", currency };
-    const quoted = quoteMonths(Number(plan.monthly_price) || 0, 12, minMonths, percent);
-    return { amount: quoted.amount, suffix: "/ year", currency };
+    return { amount: Number(plan.yearly_price) || 0, suffix: "/ year", currency };
   }
   return { amount: Number(plan.monthly_price) || 0, suffix: "/ month", currency };
 }
 
-function PlansStep({ plans, billing, setBilling, mode, currentName, recommendedIndex, minMonths, percent, onPay }) {
+function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, currentName, recommendedIndex, onPay }) {
+  const emptyCopy = billing === "yearly"
+    ? "No yearly plans are published yet. A platform administrator sets those under Self-serve plans."
+    : billing === "monthly"
+      ? "No monthly plans are published yet. A platform administrator sets those under Self-serve plans."
+      : "A platform administrator has not published a token pack yet.";
   return (
     <div>
-      <h1 className="text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
-      <div className="mx-auto mt-6 flex w-fit rounded-full bg-white/10 p-1 text-sm">
-        {["monthly", "yearly"].map((option) => (
+      <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
+      <div className="mx-auto mt-6 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
+        {["token", "monthly", "yearly"].map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => setBilling(option)}
-            className={`rounded-full px-5 py-1.5 capitalize ${billing === option ? "bg-white/15 text-white" : "text-white/70"}`}
+            className={`rounded-full px-5 py-1.5 capitalize ${
+              billing === option
+                ? "bg-[var(--theme-primary)] text-[var(--theme-primary-fg)]"
+                : "text-[var(--theme-text-muted)]"
+            }`}
           >
-            {option}
+            {option === "yearly" ? "Yearly" : option === "monthly" ? "Monthly" : "Token"}
           </button>
         ))}
       </div>
-      <p className="mx-auto mt-4 max-w-2xl text-center text-sm text-white/60">
-        {mode === "expired"
-          ? "This organisation’s paid period has ended. Choose a plan to open those features again."
-          : "Choose the plan this organisation should use. Features left off a plan stay hidden."}
+      <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
+        {billing === "token"
+          ? "Buy a token pack. Each completed sale uses tokens when the order is saved online."
+          : mode === "expired"
+            ? "This organisation’s paid period has ended. Choose a plan to open those features again."
+            : "Choose the plan this organisation should use. Features left off a plan stay hidden."}
       </p>
-      {plans.length === 0 ? (
-        <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-white/15 p-4 text-center text-sm text-amber-200">
-          No plans are published yet. A platform administrator creates them under Self-serve plans.
+      {billing === "token" ? (
+        tokenPack && tokenPack.price > 0 ? (
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <article className="theme-panel flex flex-col rounded-2xl border border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)] p-5">
+              <p className="theme-text-muted text-sm">Token pack</p>
+              <h2 className="theme-heading mt-3 text-xl font-semibold">{tokenPack.tokens} tokens</h2>
+              <p className="theme-heading mt-6 text-4xl font-semibold tracking-tight">
+                {formatBillingMoney(tokenPack.price, "KES")}
+              </p>
+              <button type="button" onClick={() => onPay(null)} className="theme-primary-btn mt-5 w-full rounded-lg px-4 py-2.5 text-sm font-semibold">
+                Pay now
+              </button>
+              <ul className="theme-text-muted mt-6 space-y-3 text-sm">
+                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>{tokenBalance} tokens remaining</span></li>
+                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>Each completed sale uses {tokenPack.saleTokens} token{tokenPack.saleTokens === 1 ? "" : "s"}</span></li>
+                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>Reading stays free</span></li>
+              </ul>
+            </article>
+          </div>
+        ) : (
+          <p className="theme-panel theme-text-muted mx-auto mt-8 max-w-lg rounded-2xl border p-4 text-center text-sm">{emptyCopy}</p>
+        )
+      ) : plans.length === 0 ? (
+        <p className="theme-panel theme-text-muted mx-auto mt-8 max-w-lg rounded-2xl border p-4 text-center text-sm">
+          {emptyCopy}
         </p>
       ) : (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan, index) => {
-            const price = listedPrice(plan, billing, minMonths, percent);
+            const price = listedPrice(plan, billing);
             const current = currentName && plan.name === currentName;
             const recommended = index === recommendedIndex && !current;
             return (
               <article
                 key={plan.id}
                 className={`flex flex-col rounded-2xl border p-5 ${
-                  recommended ? "border-blue-400/40 bg-[#12315f]" : "border-white/15 bg-[#2a2a2a]"
+                  recommended
+                    ? "border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)]"
+                    : "theme-panel"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm text-white/80">{plan.name}</p>
+                  <p className="theme-text-muted text-sm">{plan.name}</p>
                   {recommended ? (
-                    <span className="rounded-full bg-blue-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-100">
+                    <span className="rounded-full bg-[var(--theme-primary)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary-fg)]">
                       Recommended
                     </span>
                   ) : null}
                 </div>
-                <h2 className="mt-3 text-xl font-semibold">{plan.description || plan.name}</h2>
-                <p className="mt-6 text-4xl font-semibold tracking-tight">
+                <h2 className="theme-heading mt-3 text-xl font-semibold">{plan.description || plan.name}</h2>
+                <p className="theme-heading mt-6 text-4xl font-semibold tracking-tight">
                   {formatBillingMoney(price.amount, price.currency)}
-                  <span className="text-base font-normal text-white/60"> {price.suffix}</span>
+                  <span className="theme-subtext text-base font-normal"> {price.suffix}</span>
                 </p>
                 <button
                   type="button"
                   disabled={current}
                   onClick={() => onPay(plan)}
-                  className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold ${
-                    current
-                      ? "cursor-default border border-white/20 text-white/50"
-                      : recommended
-                        ? "bg-[#3b82f6] text-white hover:bg-blue-500"
-                        : "bg-white text-black hover:bg-white/90"
+                  className={`mt-5 w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:cursor-default ${
+                    recommended ? "theme-primary-btn" : "theme-secondary-btn"
                   }`}
                 >
                   {current ? "Your current plan" : "Pay now"}
                 </button>
-                <ul className="mt-6 space-y-3 text-sm text-white/80">
+                <ul className="theme-text-muted mt-6 space-y-3 text-sm">
                   {(plan.features ?? []).map((feature) => (
                     <li key={feature} className="flex gap-2">
-                      <span className="mt-0.5 text-white/50">✓</span>
+                      <span className="mt-0.5 text-[var(--theme-primary)]">✓</span>
                       <span>{feature}</span>
                     </li>
                   ))}
@@ -328,35 +392,36 @@ function CheckoutStep({
   onNotify,
   onCheck,
 }) {
-  const features = (selected.features ?? []).slice(0, 5);
-  const inputClass = "w-full rounded-xl border border-white/10 bg-[#2a2a2a] px-3 py-3 text-sm text-white outline-none focus:border-white/30";
+  const features = (selected?.features ?? []).slice(0, 5);
+  const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
+  const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
   return (
     <div>
-      <button type="button" onClick={onBack} className="text-sm text-white/80 hover:text-white">
+      <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
         ‹ Configure your plan
       </button>
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
-          <h2 className="text-sm font-medium">Pay with</h2>
-          <div className="mt-3 inline-flex rounded-xl border border-white/15 bg-[#2a2a2a] px-4 py-3 text-sm font-semibold">
+          <h2 className="theme-heading text-sm font-medium">Pay with</h2>
+          <div className="theme-inset-panel mt-3 inline-flex rounded-xl border px-4 py-3 text-sm font-semibold">
             M-Pesa
           </div>
           <label className="mt-4 block text-sm">
-            <span className="mb-1 block text-xs text-white/50">M-Pesa phone</span>
+            <span className="theme-subtext mb-1 block text-xs">M-Pesa phone</span>
             <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07…" />
           </label>
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-white/10 bg-[#2a2a2a] px-3 py-3">
-              <dt className="text-xs text-white/50">Paybill</dt>
-              <dd className="mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
+            <div className={fieldClass}>
+              <dt className="theme-subtext text-xs">Paybill</dt>
+              <dd className="theme-heading mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
             </div>
-            <div className="rounded-xl border border-white/10 bg-[#2a2a2a] px-3 py-3">
-              <dt className="text-xs text-white/50">Account</dt>
-              <dd className="mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>
+            <div className={fieldClass}>
+              <dt className="theme-subtext text-xs">Account</dt>
+              <dd className="theme-heading mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>
             </div>
           </dl>
           <label className="mt-4 block text-sm">
-            <span className="mb-1 block text-xs text-white/50">M-Pesa code, after you pay</span>
+            <span className="theme-subtext mb-1 block text-xs">M-Pesa code, after you pay</span>
             <input
               className={`${inputClass} font-mono uppercase`}
               value={code}
@@ -365,38 +430,38 @@ function CheckoutStep({
             />
           </label>
           <div className="mt-4 flex flex-wrap gap-4 text-sm">
-            <button type="button" className="text-white/70 underline" disabled={busy !== ""} onClick={onCheck}>
+            <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onCheck}>
               {busy === "check" ? "Checking…" : "I have paid — check again"}
             </button>
-            <button type="button" className="text-white/70 underline" disabled={busy !== ""} onClick={onNotify}>
+            <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onNotify}>
               {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
             </button>
           </div>
-          {notice ? <p className="mt-4 text-sm text-amber-200">{notice}</p> : null}
+          {notice ? <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm">{notice}</p> : null}
         </section>
-        <aside className="rounded-3xl border border-white/10 bg-[#2a2a2a] p-6">
-          <h2 className="text-2xl font-semibold">{selected.name}</h2>
-          <p className="mt-4 text-sm font-medium text-white/70">Top features</p>
-          <ul className="mt-3 space-y-2 text-sm text-white/80">
+        <aside className="theme-panel rounded-3xl border p-6">
+          <h2 className="theme-heading text-2xl font-semibold">{billing === "token" ? "Token pack" : selected?.name}</h2>
+          <p className="theme-text-muted mt-4 text-sm font-medium">Top features</p>
+          <ul className="theme-text-muted mt-3 space-y-2 text-sm">
             {features.map((feature) => (
               <li key={feature} className="flex gap-2">
-                <span className="text-white/40">✦</span>
+                <span className="text-[var(--theme-primary)]">✦</span>
                 <span>{feature}</span>
               </li>
             ))}
           </ul>
           <dl className="mt-6 space-y-2 text-sm">
             <div className="flex justify-between gap-4">
-              <dt className="text-white/70">{billing === "yearly" ? "Yearly subscription" : "Monthly subscription"}</dt>
-              <dd>{formatBillingMoney(due, currency)}</dd>
+              <dt className="theme-text-muted">{billing === "token" ? "Token pack" : billing === "yearly" ? "Yearly subscription" : "Monthly subscription"}</dt>
+              <dd className="theme-heading">{formatBillingMoney(due, currency)}</dd>
             </div>
             {billing === "monthly" && quote?.discount > 0 ? (
-              <div className="flex justify-between gap-4 text-white/70">
+              <div className="theme-text-muted flex justify-between gap-4">
                 <dt>Discount</dt>
                 <dd>−{formatBillingMoney(quote.discount, currency)}</dd>
               </div>
             ) : null}
-            <div className="flex justify-between gap-4 border-t border-white/10 pt-3 font-semibold">
+            <div className="theme-heading flex justify-between gap-4 border-t border-[var(--theme-border)] pt-3 font-semibold">
               <dt>Due today</dt>
               <dd>{formatBillingMoney(due, currency)}</dd>
             </div>
@@ -405,11 +470,11 @@ function CheckoutStep({
             type="button"
             disabled={busy !== ""}
             onClick={onPay}
-            className="mt-6 w-full rounded-full bg-white py-3 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-60"
+            className="theme-primary-btn mt-6 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
           >
             {busy === "stk" ? "Sending prompt…" : "Subscribe"}
           </button>
-          <p className="mt-4 text-xs leading-5 text-white/45">
+          <p className="theme-subtext mt-4 text-xs leading-5">
             Pay {formatBillingMoney(due, currency)} to Paybill {paybill?.short_code || "—"} account {account || "your organisation code"}.
             The prompt goes to the M-Pesa phone above. This does not renew by itself.
           </p>
