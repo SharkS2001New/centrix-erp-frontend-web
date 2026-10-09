@@ -11,7 +11,6 @@ import {
   isMpesaC2bReconciliationEnabled,
 } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
-import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 import {
   isPlatformWhatsappEnabled,
@@ -338,37 +337,6 @@ const NAV_SECTION_DEFINITIONS = [
           P.sales.order_queues.mobile.view,
         ],
         requireMobileFleetNav: true,
-      },
-    ],
-  },
-  {
-    id: "legacy_system",
-    label: "Legacy orders (Old system)",
-    icon: "🗃️",
-    collapsible: true,
-    requireLegacyArchive: true,
-    items: [
-      {
-        href: "/reports/legacy-archive",
-        label: "Legacy sales archive",
-        module: "sales.reports",
-        permission: P.reports.legacy_archive.view,
-        reportKey: "legacy-archive",
-        requireLegacyArchive: true,
-      },
-      {
-        href: "/sales/legacy-orders",
-        label: "Legacy orders",
-        module: "sales.backend",
-        permission: P.sales.legacy_orders.view,
-        requireLegacyArchive: true,
-      },
-      {
-        href: "/sales/legacy-returns",
-        label: "Legacy returns",
-        module: "sales.backend",
-        permission: P.sales.returns.view,
-        requireLegacyArchive: true,
       },
     ],
   },
@@ -1418,9 +1386,6 @@ export function isNavSectionVisible(section, navContext) {
   if (section.requireOrgMobileSales && !isOrgMobileSalesEnabled(navContext.capabilities)) {
     return false;
   }
-  if (section.requireLegacyArchive && !isLegacyArchiveEnabled(navContext.capabilities)) {
-    return false;
-  }
   if (section.requireHospitalityIndustry && !isHospitalityIndustry(navContext.capabilities)) {
     return false;
   }
@@ -1464,7 +1429,6 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
-  if (item.requireLegacyArchive && !isLegacyArchiveEnabled(capabilities)) return false;
   if (
     item.requireHospitalityService &&
     !isHospitalityServiceEnabled(capabilities, item.requireHospitalityService)

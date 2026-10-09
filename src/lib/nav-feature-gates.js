@@ -1,5 +1,40 @@
+import { isBackofficeSectionEnabled, usesTillFloat } from "@/lib/backoffice-sections";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
-import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
+
+/** Report slugs that disappear when their Backoffice section is off for the organisation. */
+const REPORT_BACKOFFICE_SECTION = {
+  "daily-sales": "sales_orders",
+  "sales-by-product": "sales_orders",
+  "sales-by-user": "sales_orders",
+  "sales-by-channel": "sales_orders",
+  "sales-pipeline": "sales_orders",
+  "category-sales": "products",
+  "price-list": "products",
+  "sales-by-customer": "customers",
+  "credit-outstanding": "customers",
+  "customer-statement": "customers",
+  "sales-by-supplier": "suppliers",
+  "open-lpo": "suppliers",
+  "purchases-by-supplier": "suppliers",
+  "supplier-returns": "suppliers",
+  "stock-on-hand": "inventory",
+  "low-stock": "inventory",
+  "stock-movement": "inventory",
+  "stock-chain": "inventory",
+  "stock-valuation": "inventory",
+  "stock-reservations": "inventory",
+  "stock-transfers": "stock_movements",
+  "branch-stock-transfers": "stock_movements",
+  "stock-receipts": "stock_movements",
+  damages: "stock_movements",
+  returns: "after_sales",
+  "eod-cashier": "pos",
+  "eod-report": "pos",
+  "till-sessions": "pos",
+  "discount-summary": "pos",
+  "payment-collection": "pos",
+  "vat-collected": "pos",
+};
 
 /** Local copy to avoid importing sales-settings (circular via distribution-settings). */
 function orgMobileSalesEnabledForNav(capabilities) {
@@ -72,8 +107,13 @@ export function isKraNavEnabled(capabilities) {
 export function isReportNavEnabled(reportKey, capabilities) {
   if (!reportKey) return true;
 
-  if (reportKey === "legacy-archive") {
-    return isLegacyArchiveEnabled(capabilities);
+  if (reportKey === "till-sessions" && usesTillFloat(capabilities)) {
+    return isBackofficeSectionEnabled(capabilities, "pos");
+  }
+
+  const section = REPORT_BACKOFFICE_SECTION[reportKey];
+  if (section && !isBackofficeSectionEnabled(capabilities, section)) {
+    return false;
   }
 
   if (reportKey === "kra-receipts" || reportKey === "kra-invoices" || reportKey === "kra-compliance-summary" || reportKey === "kra-unfiscalized-sales") {

@@ -8,7 +8,6 @@ export const BACKOFFICE_SECTION_CATALOG = [
   { key: "sales_orders", label: "Sales & orders" },
   { key: "shop_debtors", label: "Shop debtors" },
   { key: "field_sales", label: "Field sales" },
-  { key: "legacy_system", label: "Legacy orders" },
   { key: "after_sales", label: "After sales" },
   { key: "promotions", label: "Promotions & loyalty" },
   { key: "customers", label: "Customers" },
@@ -47,9 +46,20 @@ export function backofficeSectionsFromCapabilities(capabilitiesOrSettings) {
   return normalizeBackofficeSections(raw);
 }
 
+/** External POS or backoffice create-order is using an operating float. */
+export function usesTillFloat(capabilitiesOrSettings) {
+  const sales =
+    capabilitiesOrSettings?.module_settings?.sales ??
+    capabilitiesOrSettings?.sales ??
+    capabilitiesOrSettings ??
+    {};
+  return Boolean(sales.require_pos_till_float || sales.require_backoffice_till_float);
+}
+
 /** A section the organization was not given is hidden. Unknown ids stay visible. */
 export function isBackofficeSectionEnabled(capabilitiesOrSettings, sectionId) {
   if (!sectionId) return true;
+  if (sectionId === "pos" && usesTillFloat(capabilitiesOrSettings)) return true;
   const sections = backofficeSectionsFromCapabilities(capabilitiesOrSettings);
   if (!Object.prototype.hasOwnProperty.call(sections, sectionId)) return true;
   return sections[sectionId] !== false;

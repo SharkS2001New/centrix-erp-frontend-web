@@ -12,7 +12,8 @@ import {
   sortWorkspaces,
 } from "@/lib/workspace-constants";
 import { filterWorkspacesByIndustry } from "@/lib/workspace-modules";
-import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
+import { isBackofficeSectionEnabled, usesTillFloat } from "@/lib/backoffice-sections";
+import { isAccountingSectionEnabled, isHrSectionEnabled } from "@/lib/menu-groups";
 
 export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/workspace-constants";
 
@@ -35,7 +36,6 @@ export const WORKSPACE_SECTION_IDS = {
     "sales_orders",
     "shop_debtors",
     "field_sales",
-    "legacy_system",
     "after_sales",
     "promotions",
     "customers",
@@ -559,6 +559,15 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext,
       ) {
         return false;
       }
+      if (workspaceId === "hr" && !isHrSectionEnabled(navContext?.capabilities, section.id)) {
+        return false;
+      }
+      if (
+        workspaceId === "accounting" &&
+        !isAccountingSectionEnabled(navContext?.capabilities, section.id)
+      ) {
+        return false;
+      }
       return true;
     })
     .map((section) => ({
@@ -567,10 +576,31 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext,
         if (item.href === "/reports" && !workspaceHasEnabledReports(workspaceId, navContext?.capabilities?.modules)) {
           return false;
         }
+        if (
+          workspaceId === "backoffice" &&
+          usesTillFloat(navContext?.capabilities) &&
+          section.id === "reports" &&
+          item.href === "/reports/till-sessions"
+        ) {
+          return false;
+        }
         if (!navItemBelongsToWorkspace(item, workspaceId)) return false;
         return visible(item, navContext);
       }),
     }))
+    .map((section) => {
+      if (section.id !== "pos" || !usesTillFloat(navContext?.capabilities)) return section;
+      if (section.items.some((item) => item.href === "/reports/till-sessions")) return section;
+      const tillSessions = {
+        href: "/reports/till-sessions",
+        label: "Till sessions",
+        module: "sales.reports",
+        permission: "reports.till_sessions.view",
+        reportKey: "till-sessions",
+      };
+      if (!visible(tillSessions, navContext)) return section;
+      return { ...section, items: [...section.items, tillSessions] };
+    })
     .filter((section) => section.items.length > 0)
     .sort((a, b) => (orderRank.get(a.id) ?? 999) - (orderRank.get(b.id) ?? 999));
 }

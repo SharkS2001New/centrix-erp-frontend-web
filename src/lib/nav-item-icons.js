@@ -26,7 +26,6 @@ export const NAV_HREF_ICONS = {
   "/platform/data-retention": "database",
   "/platform/health": "alert",
   "/platform/whats-new": "star",
-  "/platform/legacy-import-converter": "upload",
   "/platform/organizations": "building",
   "/platform/organizations/new": "plus",
 
@@ -87,11 +86,6 @@ export const NAV_HREF_ICONS = {
   // After sales
   "/sales/returns": "return",
   "/sales/reservations": "calendar",
-
-  // Legacy (old system)
-  "/reports/legacy-archive": "archive",
-  "/sales/legacy-orders": "list",
-  "/sales/legacy-returns": "return",
 
   // Promotions
   "/sales/vouchers": "tag",

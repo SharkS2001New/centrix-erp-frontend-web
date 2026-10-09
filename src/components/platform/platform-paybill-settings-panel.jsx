@@ -21,7 +21,12 @@ const NOTES = {
 };
 
 export function PlatformPaybillSettingsPanel() {
-  const [form, setForm] = useState({ short_code: "", account_name_prefix: "" });
+  const [form, setForm] = useState({
+    short_code: "",
+    account_name_prefix: "",
+    duration_discount_percent: "0",
+    duration_discount_min_months: "3",
+  });
   const [payments, setPayments] = useState([]);
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -37,6 +42,8 @@ export function PlatformPaybillSettingsPanel() {
       setForm({
         short_code: settings.data?.short_code ?? "",
         account_name_prefix: settings.data?.account_name_prefix ?? "",
+        duration_discount_percent: String(settings.data?.duration_discount_percent ?? 0),
+        duration_discount_min_months: String(settings.data?.duration_discount_min_months ?? 3),
       });
       setPayments(Array.isArray(rows.data) ? rows.data : []);
     } catch (err) {
@@ -59,6 +66,8 @@ export function PlatformPaybillSettingsPanel() {
         body: {
           short_code: form.short_code.trim(),
           account_name_prefix: form.account_name_prefix.trim(),
+          duration_discount_percent: Number(form.duration_discount_percent) || 0,
+          duration_discount_min_months: Number(form.duration_discount_min_months) || 3,
         },
       });
       notifySuccess("Centrix Paybill saved.");
@@ -94,6 +103,31 @@ export function PlatformPaybillSettingsPanel() {
             placeholder="CENTRIX"
           />
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Discount when paying extra months (%)</span>
+            <input
+              className={inputClass}
+              inputMode="decimal"
+              value={form.duration_discount_percent}
+              onChange={(e) => setForm((f) => ({ ...f, duration_discount_percent: e.target.value }))}
+              placeholder="10"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Discount starts after this many months</span>
+            <input
+              className={inputClass}
+              inputMode="numeric"
+              value={form.duration_discount_min_months}
+              onChange={(e) => setForm((f) => ({ ...f, duration_discount_min_months: e.target.value }))}
+              placeholder="3"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">
+          A monthly plan can be paid for several months. The percentage applies only when the organisation pays for more months than the number above.
+        </p>
         <PrimaryButton type="submit" showIcon={false} disabled={saving || loading}>
           {saving ? "Saving…" : "Save Paybill"}
         </PrimaryButton>

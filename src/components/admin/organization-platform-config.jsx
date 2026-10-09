@@ -50,10 +50,17 @@ import {
   normalizeHospitalityServices,
 } from "@/lib/hospitality-services";
 import {
-  BACKOFFICE_SECTION_CATALOG,
   BACKOFFICE_SECTION_DEFAULTS,
   normalizeBackofficeSections,
 } from "@/lib/backoffice-sections";
+import {
+  ACCOUNTING_MENU_CATALOG,
+  BACKOFFICE_SECTION_CATALOG,
+  HR_MENU_CATALOG,
+  lockedMenuGroups,
+  menuGroupStateFromProfile,
+  normalizeMenuGroups,
+} from "@/lib/menu-groups";
 import {
   HOSPITALITY_PAYMENT_WORKFLOW_CATALOG,
   HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS,
@@ -398,6 +405,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
       backend: deploymentProfile === "distribution" ? "order_completed" : "order_created",
     },
     require_pos_till_float: false,
+    require_backoffice_till_float: false,
     external_pos_layout: "modern",
     backoffice_product_search_mode: "indexeddb",
     classic_pos_theme_template: CLASSIC_POS_THEME_DEFAULT,
@@ -421,6 +429,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_backoffice_order_edit: true,
     backoffice_order_edit_layout: "modern",
     backoffice_sections: { ...BACKOFFICE_SECTION_DEFAULTS },
+    hr_sections: normalizeMenuGroups(HR_MENU_CATALOG, null),
+    accounting_sections: normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, null),
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
@@ -479,6 +489,7 @@ export function salesPlatformFromApi(apiPayload) {
       showCheckoutOnCreate: posCheckout,
     }),
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
+    require_backoffice_till_float: Boolean(apiPayload.require_backoffice_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
     backoffice_product_search_mode:
@@ -528,6 +539,8 @@ export function salesPlatformFromApi(apiPayload) {
     backoffice_order_edit_layout:
       apiPayload.backoffice_order_edit_layout === "classic" ? "classic" : "modern",
     backoffice_sections: normalizeBackofficeSections(apiPayload.backoffice_sections),
+    hr_sections: normalizeMenuGroups(HR_MENU_CATALOG, apiPayload.hr_sections),
+    accounting_sections: normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, apiPayload.accounting_sections),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
     reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
     cart_reservation_ttl_minutes:
@@ -1931,6 +1944,55 @@ export function groupModulesByDomain(moduleOptions) {
   });
 }
 
+function MenuGroupPicker({
+  title,
+  description,
+  catalog,
+  values,
+  locks = {},
+  onChange,
+  defaultOpen = false,
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
+    >
+      <summary className="cursor-pointer text-sm font-medium text-slate-900">{title}</summary>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {catalog.map((section) => {
+          const lock = locks[section.key];
+          const checked = lock ? true : values?.[section.key] !== false;
+          return (
+            <label
+              key={section.key}
+              className="flex items-start gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-[var(--theme-border)]"
+                checked={checked}
+                disabled={Boolean(lock)}
+                onChange={(event) => {
+                  if (lock) return;
+                  onChange({ ...values, [section.key]: event.target.checked });
+                }}
+              />
+              <span>
+                <span className="block">{section.label}</span>
+                {lock ? <span className="mt-0.5 block text-xs text-slate-500">{lock}</span> : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 export function OrganizationModuleToggles({
   moduleOptions = [],
   enabledModules,
@@ -2087,40 +2149,52 @@ export function OrganizationModuleToggles({
                       </p>
                     </div>
                   ) : null}
-                  <div className="border-t border-[var(--theme-border)] pt-3">
-                    <p className="text-sm font-medium text-slate-900">Sidebar sections</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Turn a section off to hide it from this organization. Staff can only be given
-                      access to sections that stay on.
-                    </p>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {BACKOFFICE_SECTION_CATALOG.map((section) => {
-                        const sections = normalizeBackofficeSections(salesPlatform?.backoffice_sections);
-                        return (
-                          <label
-                            key={section.key}
-                            className="flex items-center gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              className="rounded border-[var(--theme-border)]"
-                              checked={sections[section.key] !== false}
-                              onChange={(e) =>
-                                onSalesChange({
-                                  ...(salesPlatform ?? {}),
-                                  backoffice_sections: {
-                                    ...sections,
-                                    [section.key]: e.target.checked,
-                                  },
-                                })
-                              }
-                            />
-                            <span>{section.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <MenuGroupPicker
+                    title="Backoffice menu groups"
+                    description="These are the sidebar groups in Backoffice. Turn a group off to hide those links. Staff can only be given access to groups that stay on."
+                    catalog={BACKOFFICE_SECTION_CATALOG}
+                    values={normalizeBackofficeSections(salesPlatform?.backoffice_sections)}
+                    locks={lockedMenuGroups(salesPlatform)}
+                    defaultOpen
+                    onChange={(next) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        backoffice_sections: next,
+                      })
+                    }
+                  />
+                </div>
+              ) : null}
+              {workspace.id === "hr" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 pl-8">
+                  <MenuGroupPicker
+                    title="Human resources menu groups"
+                    description="Sidebar groups inside Human Resources. Select every group this organisation should keep."
+                    catalog={HR_MENU_CATALOG}
+                    values={normalizeMenuGroups(HR_MENU_CATALOG, salesPlatform?.hr_sections)}
+                    onChange={(next) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        hr_sections: next,
+                      })
+                    }
+                  />
+                </div>
+              ) : null}
+              {workspace.id === "accounting" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 pl-8">
+                  <MenuGroupPicker
+                    title="Accounting menu groups"
+                    description="Sidebar groups inside Accounting. Select every group this organisation should keep."
+                    catalog={ACCOUNTING_MENU_CATALOG}
+                    values={normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, salesPlatform?.accounting_sections)}
+                    onChange={(next) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        accounting_sections: next,
+                      })
+                    }
+                  />
                 </div>
               ) : null}
               {workspace.id === "hotel_bar_pos" && enabled ? (

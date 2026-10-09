@@ -201,6 +201,8 @@ export function emptyPlanForm(overrides = {}) {
     seat_limit: "",
     workspace_keys: [],
     module_keys: [],
+    section_keys: [],
+    feature_details: [],
     is_active: true,
     auto_invoice_template_id: "",
     ...overrides,
@@ -232,6 +234,13 @@ export function planRecordToForm(record) {
       ? [...record.workspace_keys]
       : [],
     module_keys: Array.isArray(record.module_keys) ? [...record.module_keys] : [],
+    section_keys: Array.isArray(record.section_keys) ? [...record.section_keys] : [],
+    feature_details: Array.isArray(record.feature_details)
+      ? record.feature_details.map((row) => ({
+          label: row?.label ?? "",
+          detail: row?.detail ?? "",
+        }))
+      : [],
     is_active: record.is_active !== false,
     auto_invoice_template_id: record.auto_invoice_template_id
       ? String(record.auto_invoice_template_id)
@@ -274,6 +283,13 @@ export function planFormToPayload(form) {
           : Number(form.seat_limit),
     workspace_keys: form.workspace_keys ?? [],
     module_keys: form.module_keys ?? [],
+    section_keys: form.section_keys ?? [],
+    feature_details: (form.feature_details ?? [])
+      .map((row) => ({
+        label: String(row?.label ?? "").trim(),
+        detail: String(row?.detail ?? "").trim() || null,
+      }))
+      .filter((row) => row.label !== ""),
     is_active: form.is_active !== false,
     auto_invoice_template_id: form.auto_invoice_template_id
       ? Number(form.auto_invoice_template_id)

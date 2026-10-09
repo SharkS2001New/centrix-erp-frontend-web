@@ -66,7 +66,6 @@ const SECTION_FALLBACK_ICON = {
   pricing_tax: "percent",
   sales_orders: "receipt",
   field_sales: "mobile",
-  legacy_system: "archive",
   after_sales: "return",
   promotions: "tag",
   customers: "hr",

@@ -39,6 +39,7 @@ export const TAB_WORKSPACE_EXCLUDED_PREFIXES = [
   "/change-password",
   "/login",
   "/platform",
+  "/subscribe",
 ];
 
 export function isTabWorkspaceEnabled(capabilities) {

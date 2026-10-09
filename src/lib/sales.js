@@ -174,12 +174,7 @@ export function formatOrderNumber(saleOrNum) {
   if (saleOrNum == null || saleOrNum === "") return "—";
   if (typeof saleOrNum === "object") {
     const num = saleOrNum.order_num ?? saleOrNum.id;
-    if (num == null || num === "") {
-      const legacyLabel =
-        saleOrNum.fulfillment_meta?.legacy_order_label ?? saleOrNum.legacy_order_label;
-      if (legacyLabel) return legacyLabel;
-      return "—";
-    }
+    if (num == null || num === "") return "—";
     return `S${String(num).padStart(4, "0")}`;
   }
   return `S${String(saleOrNum).padStart(4, "0")}`;
@@ -444,27 +439,6 @@ export function formatSalePlacedDateTime(valueOrSale) {
       ? salePlacedAt(valueOrSale)
       : valueOrSale;
   return formatAppDateTime(value);
-}
-
-/** Original legacy order total (before returns zero out the live sale total). */
-export function legacyOrderDisplayTotal(row) {
-  const summary = row?.legacy_return_summary;
-  if (summary?.original_order_total != null && summary.original_order_total !== "") {
-    const fromSummary = Number(summary.original_order_total);
-    if (Number.isFinite(fromSummary)) return fromSummary;
-  }
-
-  const meta = row?.fulfillment_meta ?? {};
-  if (meta.legacy_order_total != null && meta.legacy_order_total !== "") {
-    const fromMeta = Number(meta.legacy_order_total);
-    if (Number.isFinite(fromMeta)) return fromMeta;
-  }
-
-  const returned = Number(summary?.returned_total ?? 0);
-  const current = Number(row?.order_total ?? 0);
-  if (returned > 0) return returned + current;
-
-  return current;
 }
 
 export function saleCustomerLabel(sale) {

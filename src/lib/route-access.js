@@ -19,17 +19,11 @@ import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
+import { isAccountingSectionEnabled, isHrSectionEnabled } from "@/lib/menu-groups";
 import { WORKSPACE_SECTION_IDS, defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
-import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { reportVisibleForCatalog } from "@/lib/reports/catalog-ui";
-
-const LEGACY_ARCHIVE_ROUTE_PREFIXES = [
-  "/sales/legacy-orders",
-  "/sales/legacy-returns",
-  "/reports/legacy-archive",
-];
 
 function flattenNavItems() {
   const items = [];
@@ -161,8 +155,12 @@ export function isBackofficePathDisabled(pathname, capabilities) {
       const owners = workspacesOwningSection(section.id).filter(
         (workspaceId) => workspaceId !== "hospitality_backoffice" && workspaceId !== "hotel_bar_pos",
       );
-      const backofficeOnly = owners.length === 1 && owners[0] === "backoffice";
-      if (backofficeOnly && !isBackofficeSectionEnabled(capabilities, section.id)) {
+      const onlyOwner = owners.length === 1 ? owners[0] : null;
+      const sectionOff =
+        (onlyOwner === "backoffice" && !isBackofficeSectionEnabled(capabilities, section.id)) ||
+        (onlyOwner === "hr" && !isHrSectionEnabled(capabilities, section.id)) ||
+        (onlyOwner === "accounting" && !isAccountingSectionEnabled(capabilities, section.id));
+      if (sectionOff) {
         blocked = true;
       } else if (owners.length > 0) {
         allowedElsewhere = true;
@@ -281,15 +279,6 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     return false;
   }
 
-  if (
-    LEGACY_ARCHIVE_ROUTE_PREFIXES.some(
-      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-    ) &&
-    !isLegacyArchiveEnabled(ctx.capabilities)
-  ) {
-    return false;
-  }
-
   const salesOrderQueueMatch = pathname.match(/^\/sales\/orders\/queues\/([^/]+)$/);
   if (salesOrderQueueMatch) {
     const check =
@@ -368,9 +357,6 @@ export function canAccessRoute(pathname, ctx, options = {}) {
   const reportMatch = pathname.match(/^\/reports\/([^/]+)$/);
   if (reportMatch) {
     const slug = reportMatch[1];
-    if (slug === "legacy-archive" && !isLegacyArchiveEnabled(ctx.capabilities)) {
-      return false;
-    }
     if (!reportVisibleForCatalog(slug, ctx.capabilities)) {
       return false;
     }

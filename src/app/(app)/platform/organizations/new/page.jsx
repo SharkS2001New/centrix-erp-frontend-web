@@ -34,6 +34,7 @@ import {
   ensureSubscriptionAfterProvision,
 } from "@/lib/provision-subscription";
 import { formatBillingDate, formatBillingMoney } from "@/lib/platform-billing";
+import { menuGroupStateFromProfile } from "@/lib/menu-groups";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function RegisterOrganizationPage() {
@@ -178,7 +179,11 @@ export default function RegisterOrganizationPage() {
         defaultSalesPlatformState(nextProfile).enable_mobile_orders !== false,
       ),
     );
-    setSalesPlatform(defaultSalesPlatformState(nextProfile));
+    const preset = profilePresets.find((profile) => profile.key === nextProfile);
+    setSalesPlatform({
+      ...defaultSalesPlatformState(nextProfile),
+      ...menuGroupStateFromProfile(preset),
+    });
   }
 
   function onIndustryChange(nextIndustry) {

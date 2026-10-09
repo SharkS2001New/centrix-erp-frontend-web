@@ -20,6 +20,7 @@ import {
   workspaceLabels,
 } from "@/lib/platform-billing";
 import { useConfirm } from "@/lib/use-confirm";
+import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100";
@@ -82,6 +83,15 @@ export default function PlatformPlansPage() {
       if (set.has(id)) set.delete(id);
       else set.add(id);
       return { ...prev, workspace_keys: [...set] };
+    });
+  }
+
+  function toggleSection(key) {
+    setForm((prev) => {
+      const set = new Set(prev.section_keys ?? []);
+      if (set.has(key)) set.delete(key);
+      else set.add(key);
+      return { ...prev, section_keys: [...set] };
     });
   }
 
@@ -472,6 +482,86 @@ export default function PlatformPlansPage() {
                           onChange={() => toggleModule(mod.key)}
                         />
                         {mod.label}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-600">What this plan includes</p>
+                <p className="mb-2 text-xs text-slate-500">
+                  These lines are what the organisation sees when they choose a plan. Add a short name and a sentence of detail.
+                </p>
+                <div className="space-y-2">
+                  {(form.feature_details ?? []).map((row, index) => (
+                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                      <input
+                        className={inputClass}
+                        value={row.label}
+                        placeholder="Sales & orders"
+                        onChange={(e) =>
+                          setForm((f) => {
+                            const next = [...(f.feature_details ?? [])];
+                            next[index] = { ...next[index], label: e.target.value };
+                            return { ...f, feature_details: next };
+                          })
+                        }
+                      />
+                      <input
+                        className={inputClass}
+                        value={row.detail}
+                        placeholder="Orders, invoices, and the sales reports that belong to them"
+                        onChange={(e) =>
+                          setForm((f) => {
+                            const next = [...(f.feature_details ?? [])];
+                            next[index] = { ...next[index], detail: e.target.value };
+                            return { ...f, feature_details: next };
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 text-sm text-slate-500 hover:bg-slate-100"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            feature_details: (f.feature_details ?? []).filter((_, i) => i !== index),
+                          }))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="mt-2 text-sm font-medium text-[#185FA5]"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      feature_details: [...(f.feature_details ?? []), { label: "", detail: "" }],
+                    }))
+                  }
+                >
+                  Add a feature
+                </button>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this plan turns on</p>
+                <p className="mb-2 text-xs text-slate-500">
+                  Leave all of these off to keep the organisation&apos;s current sections. Checked sections are the only Backoffice areas this plan opens, including their reports.
+                </p>
+                <ul className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                  {BACKOFFICE_SECTION_CATALOG.map((section) => (
+                    <li key={section.key}>
+                      <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={(form.section_keys ?? []).includes(section.key)}
+                          onChange={() => toggleSection(section.key)}
+                        />
+                        {section.label}
                       </label>
                     </li>
                   ))}

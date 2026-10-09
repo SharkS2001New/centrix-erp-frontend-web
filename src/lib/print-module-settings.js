@@ -101,10 +101,7 @@ export async function ensureSaleForPrint(sale) {
     return sale;
   }
 
-  const isLegacy = Boolean(sale?.fulfillment_meta?.legacy_import);
-  const endpoints = isLegacy
-    ? [`/legacy-orders/${sale.id}?for_print=1`, `/legacy-orders/${sale.id}`, `/sales/${sale.id}`]
-    : [`/sales/${sale.id}`, `/legacy-orders/${sale.id}?for_print=1`];
+  const endpoints = [`/sales/${sale.id}`];
 
   const existingKra = sale.kra_response ?? sale.kraResponse ?? null;
   const existingHasLink = saleHasKraVerificationLink(sale);

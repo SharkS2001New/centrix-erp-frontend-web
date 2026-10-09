@@ -155,12 +155,6 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "package",
         description: "Invoice design layouts and saved billing package templates.",
       },
-      {
-        href: "/platform/legacy-import-converter",
-        label: "Legacy data converter",
-        icon: "upload",
-        description: "Convert legacy exports into Centrix import templates.",
-      },
     ],
   },
   {
@@ -172,7 +166,7 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Platform settings",
         icon: "chat",
         description:
-          "Email delivery, WhatsApp, AI credentials, R2 backups, and alert notifications.",
+          "Email delivery, WhatsApp, AI credentials, setup types, R2 backups, and alert notifications.",
       },
     ],
   },

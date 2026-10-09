@@ -26,7 +26,6 @@ export const REPORT_UI_ROUTES = {
   "hospitality-eod-cashier": "/hospitality/end-of-day",
   "customer-statement": "/reports/customer-statement",
   "subledger-reconciliation": "/reports/subledger-reconciliation",
-  "legacy-archive": "/reports/legacy-archive",
   "price-list": "/reports/price-list",
   "profit-loss-gl": "/accounting/profit-loss",
   "trial-balance": "/accounting/trial-balance",

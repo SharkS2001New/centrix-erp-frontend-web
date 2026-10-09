@@ -93,7 +93,6 @@ export const P = {
     returns: { view: "sales.returns.view", create: "sales.returns.create" },
     loading_sheets: { view: "sales.loading_sheets.view" },
     field_attendance: { view: "sales.field_attendance.view", create: "sales.field_attendance.create" },
-    legacy_orders: { view: "sales.legacy_orders.view" },
   },
   mobile_sales: {
     dashboard: { view: "mobile_sales.dashboard.view" },
@@ -320,7 +319,6 @@ export const P = {
     kra_compliance_summary: { view: "reports.kra_compliance_summary.view" },
     kra_unfiscalized_sales: { view: "reports.kra_unfiscalized_sales.view" },
     payroll_summary: { view: "reports.payroll_summary.view" },
-    legacy_archive: { view: "reports.legacy_archive.view" },
     builder: {
       view: "reports.builder.view",
       create: "reports.builder.create",
@@ -473,7 +471,6 @@ export function reportPermissionCode(reportKey) {
     "trip-cash-settlement": P.reports.trip_cash_settlement.view,
     "pod-compliance": P.reports.pod_compliance.view,
     "driver-deliveries": P.reports.driver_deliveries.view,
-    "legacy-archive": P.reports.legacy_archive.view,
     "journal-register": P.reports.journal_register.view,
     "ar-aging": P.reports.ar_aging.view,
     "hospitality-occupancy": P.hospitality.reports.view,

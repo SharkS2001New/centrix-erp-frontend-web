@@ -14,12 +14,6 @@ export const PLATFORM_ADMIN_LINKS = [
   { href: "equity-accounts", label: "Equity Bank accounts", description: "Equity paybill / collection accounts for routes and shops." },
   { href: "kra-responses", label: "KRA device logs", description: "Fiscal submissions, invoice preview, retry, and device payloads." },
   { href: "audit", label: "Audit log", description: "Who changed what across this organization." },
-  {
-    href: "legacy-archive",
-    label: "Legacy archive",
-    description: "Enable LightStores historical sales and set the cutover date.",
-    external: true,
-  },
 ];
 
 /** @param {string|number} orgId */
@@ -31,11 +25,6 @@ export function platformAdminHref(orgId, segment) {
 /** @param {string|number} orgId */
 export function platformOrgSettingsHref(orgId) {
   return `/platform/organizations/${orgId}/settings`;
-}
-
-/** @param {string|number} orgId */
-export function platformOrgLegacyArchiveHref(orgId) {
-  return `/platform/organizations/${orgId}/legacy-archive`;
 }
 
 /** @param {string|number} orgId */

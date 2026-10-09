@@ -87,9 +87,6 @@ export const SCREEN_COMPONENTS = {
   "sales-credit-notes-supplier": lazy(() =>
     import("@/components/tab-screens/sales-credit-notes-supplier").then((m) => ({ default: m.SalesCreditNotesSupplierScreen })),
   ),
-  "sales-legacy-returns-new": lazy(() =>
-    import("@/components/tab-screens/sales-legacy-returns-new").then((m) => ({ default: m.SalesLegacyReturnsNewScreen })),
-  ),
   "sales-returns-new": lazy(() =>
     import("@/components/tab-screens/sales-returns-new").then((m) => ({ default: m.SalesReturnsNewScreen })),
   ),
@@ -480,9 +477,6 @@ export const SCREEN_COMPONENTS = {
   "reports-end-of-day": lazy(() =>
     import("@/components/tab-screens/reports-end-of-day").then((m) => ({ default: m.ReportsEndOfDayScreen })),
   ),
-  "reports-legacy-archive": lazy(() =>
-    import("@/components/tab-screens/reports-legacy-archive").then((m) => ({ default: m.ReportsLegacyArchiveScreen })),
-  ),
   "reports-price-list": lazy(() =>
     import("@/components/tab-screens/reports-price-list").then((m) => ({ default: m.ReportsPriceListScreen })),
   ),
@@ -503,12 +497,6 @@ export const SCREEN_COMPONENTS = {
   ),
   "sales-field-attendance": lazy(() =>
     import("@/components/tab-screens/sales-field-attendance").then((m) => ({ default: m.SalesFieldAttendanceScreen })),
-  ),
-  "sales-legacy-orders": lazy(() =>
-    import("@/components/tab-screens/sales-legacy-orders").then((m) => ({ default: m.SalesLegacyOrdersScreen })),
-  ),
-  "sales-legacy-returns": lazy(() =>
-    import("@/components/tab-screens/sales-legacy-returns").then((m) => ({ default: m.SalesLegacyReturnsScreen })),
   ),
   "sales-loading-sheets": lazy(() =>
     import("@/components/tab-screens/sales-loading-sheets").then((m) => ({ default: m.SalesLoadingSheetsScreen })),

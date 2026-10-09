@@ -134,10 +134,6 @@ function match_sales_credit_notes_supplier(pathname) {
   return pathname === "/sales/credit-notes/supplier";
 }
 
-function match_sales_legacy_returns_new(pathname) {
-  return pathname === "/sales/legacy-returns/new";
-}
-
 function match_sales_returns_new(pathname) {
   return pathname === "/sales/returns/new";
 }
@@ -733,10 +729,6 @@ function match_reports_end_of_day(pathname) {
   return pathname === "/reports/end-of-day";
 }
 
-function match_reports_legacy_archive(pathname) {
-  return pathname === "/reports/legacy-archive";
-}
-
 function match_reports_price_list(pathname) {
   return pathname === "/reports/price-list";
 }
@@ -763,14 +755,6 @@ function match_sales_end_of_day(pathname) {
 
 function match_sales_field_attendance(pathname) {
   return pathname === "/sales/field-attendance";
-}
-
-function match_sales_legacy_orders(pathname) {
-  return pathname === "/sales/legacy-orders";
-}
-
-function match_sales_legacy_returns(pathname) {
-  return pathname === "/sales/legacy-returns";
 }
 
 function match_sales_loading_sheets(pathname) {
@@ -892,7 +876,7 @@ function match_products_code(pathname) {
 function match_reports_key(pathname) {
   const m = pathname.match("^/reports/([^/]+)$");
   if (!m) return false;
-  if (["builder","custom","customer-statement","end-of-day","legacy-archive","price-list","subledger-reconciliation","supplier-statement"].includes(m[1])) return false;
+  if (["builder","custom","customer-statement","end-of-day","price-list","subledger-reconciliation","supplier-statement"].includes(m[1])) return false;
   return true;
 }
 
@@ -1187,12 +1171,6 @@ export const SCREEN_REGISTRY = [
     title: "Supplier",
     route: "/sales/credit-notes/supplier",
     match: match_sales_credit_notes_supplier,
-  },
-  {
-    id: "sales-legacy-returns-new",
-    title: "New",
-    route: "/sales/legacy-returns/new",
-    match: match_sales_legacy_returns_new,
   },
   {
     id: "sales-returns-new",
@@ -1975,12 +1953,6 @@ export const SCREEN_REGISTRY = [
     match: match_reports_end_of_day,
   },
   {
-    id: "reports-legacy-archive",
-    title: "Legacy Archive",
-    route: "/reports/legacy-archive",
-    match: match_reports_legacy_archive,
-  },
-  {
     id: "reports-price-list",
     title: "Price List",
     route: "/reports/price-list",
@@ -2021,18 +1993,6 @@ export const SCREEN_REGISTRY = [
     title: "Field Attendance",
     route: "/sales/field-attendance",
     match: match_sales_field_attendance,
-  },
-  {
-    id: "sales-legacy-orders",
-    title: "Legacy Orders",
-    route: "/sales/legacy-orders",
-    match: match_sales_legacy_orders,
-  },
-  {
-    id: "sales-legacy-returns",
-    title: "Legacy Returns",
-    route: "/sales/legacy-returns",
-    match: match_sales_legacy_returns,
   },
   {
     id: "sales-loading-sheets",

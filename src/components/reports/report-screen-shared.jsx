@@ -299,7 +299,7 @@ export function ReportTable({
                       {section.rows.map((row, idx) => (
                         <tr
                           key={row.id ?? `${section.id}-${idx}`}
-                          className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
+                          className={TABLE_BODY_ROW_CLASS}
                         >
                           {renderReportDataCells(columns, row)}
                         </tr>
@@ -324,7 +324,7 @@ export function ReportTable({
               : rows.map((row, idx) => (
                   <tr
                     key={row.id ?? idx}
-                    className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
+                    className={TABLE_BODY_ROW_CLASS}
                   >
                     {renderReportDataCells(columns, row)}
                   </tr>
