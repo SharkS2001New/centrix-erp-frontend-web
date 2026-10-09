@@ -25,12 +25,159 @@ import {
   workspaceLabels,
 } from "@/lib/platform-billing";
 import {
+  addCalendarDays,
   isLicenseExpired,
   isLicenseExpiringSoon,
   resolveOrganizationLicense,
 } from "@/lib/organization-license";
+import { periodEndForPlanInterval } from "@/lib/provision-subscription";
 import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
 import { EditSubscriptionPeriodModal } from "@/components/platform/edit-subscription-period-modal";
+
+function AssignOrganizationPlan({ organizationId, onSaved }) {
+  const [plans, setPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [planId, setPlanId] = useState("");
+  const [mode, setMode] = useState("trial");
+  const [trialDays, setTrialDays] = useState("14");
+  const [seatCount, setSeatCount] = useState("1");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPlans(true);
+    void apiRequest("/admin/platform-plans", { loading: false })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = (res.data ?? []).filter((plan) => plan.is_active !== false);
+        setPlans(rows);
+        setPlanId(rows[0] ? String(rows[0].id) : "");
+      })
+      .catch(() => {
+        if (!cancelled) setPlans([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlans(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = plans.find((plan) => String(plan.id) === String(planId)) ?? null;
+
+  async function handleAssign(event) {
+    event.preventDefault();
+    if (!organizationId || !planId) {
+      notifyError("Create a payment plan, then choose it here.");
+      return;
+    }
+    const start = new Date().toISOString().slice(0, 10);
+    const isTrial = mode === "trial";
+    const end = isTrial
+      ? addCalendarDays(start, Number(trialDays) || 14)
+      : periodEndForPlanInterval(start, selected?.interval);
+    setSaving(true);
+    try {
+      await apiRequest("/admin/platform-subscriptions", {
+        method: "POST",
+        body: {
+          organization_id: Number(organizationId),
+          plan_id: Number(planId),
+          status: isTrial ? "trialing" : "active",
+          seat_count: Number(seatCount) || Number(selected?.seat_limit) || 1,
+          current_period_start: start,
+          current_period_end: end,
+          is_trial: isTrial,
+          trial_days: isTrial ? Number(trialDays) || 14 : null,
+        },
+      });
+      notifySuccess(isTrial ? "Free trial started." : "Plan assigned. Paybill payments now match this plan.");
+      await onSaved?.();
+    } catch (error) {
+      notifyError(error instanceof ApiError ? error.message : "Could not assign the plan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadingPlans) {
+    return <p className="text-sm text-slate-500">Loading payment plans…</p>;
+  }
+
+  if (plans.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+        <p>No payment plans yet. Create monthly, yearly, and token prices first, then come back and assign one.</p>
+        <Link href="/platform/plans" className="mt-3 inline-flex text-sm font-semibold text-[#185FA5] hover:underline">
+          Create payment plans
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={(event) => void handleAssign(event)} className="space-y-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-4">
+      <p className="text-sm text-slate-700">This organisation has no plan yet. Assign one so Paybill payments auto-subscribe it.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Payment plan</span>
+          <select
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={planId}
+            onChange={(event) => setPlanId(event.target.value)}
+          >
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Start as</span>
+          <select
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={mode}
+            onChange={(event) => setMode(event.target.value)}
+          >
+            <option value="trial">Free trial</option>
+            <option value="paid">Paid plan</option>
+          </select>
+        </label>
+        {mode === "trial" ? (
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Trial days</span>
+            <input
+              type="number"
+              min="1"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              value={trialDays}
+              onChange={(event) => setTrialDays(event.target.value)}
+            />
+          </label>
+        ) : null}
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Seats</span>
+          <input
+            type="number"
+            min="1"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={seatCount}
+            onChange={(event) => setSeatCount(event.target.value)}
+          />
+        </label>
+      </div>
+      <button
+        type="submit"
+        disabled={saving || !planId}
+        className="rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+      >
+        {saving ? "Saving…" : mode === "trial" ? "Start free trial" : "Assign plan"}
+      </button>
+    </form>
+  );
+}
 
 function BillingSection({ title, description, children }) {
   return (
@@ -197,18 +344,16 @@ export function OrganizationBillingPanel({
         {loading ? (
           <p className="text-sm text-slate-500">Loading subscription…</p>
         ) : !subscription ? (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40">
-            {isTenant ? (
-              "No subscription details are available yet. Contact your Centrix account manager."
-            ) : (
-              <>
-                No subscription assigned.{" "}
-                <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
-                  Assign a plan
-                </Link>
-              </>
-            )}
-          </div>
+          isTenant ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40">
+              No subscription details are available yet. Contact your Centrix account manager.
+            </div>
+          ) : (
+            <AssignOrganizationPlan
+              organizationId={organizationId}
+              onSaved={load}
+            />
+          )
         ) : (
           <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
             <div className="flex flex-wrap items-start justify-between gap-3">

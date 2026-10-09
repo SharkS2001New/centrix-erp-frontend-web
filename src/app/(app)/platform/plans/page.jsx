@@ -140,7 +140,7 @@ export default function PlatformPlansPage() {
   return (
     <CatalogPageShell
       title="Subscription plans"
-      subtitle="Org- or user-based packages with first-time and renewal prices. Used by subscriptions, contracts, and invoices."
+      subtitle="Create the payment plans customers auto-subscribe with. Set monthly, yearly, and token prices, then assign a plan on the organisation Licence tab. A matching Centrix Paybill payment applies that plan."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>

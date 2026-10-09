@@ -120,16 +120,16 @@ export const PLATFORM_LINK_GROUPS = [
     label: "Billing & tools",
     links: [
       {
+        href: "/platform/plans",
+        label: "Plans",
+        icon: "package",
+        description: "Create monthly, yearly, and token prices. Paybill payments match these and auto-subscribe the organisation.",
+      },
+      {
         href: "/platform/invoices",
         label: "Invoices",
         icon: "receipt",
         description: "Platform billing invoices for tenant subscriptions.",
-      },
-      {
-        href: "/platform/plans",
-        label: "Plans",
-        icon: "package",
-        description: "Monthly, yearly, and token Paybill prices, plus modules and seats.",
       },
       {
         href: "/platform/subscriptions",

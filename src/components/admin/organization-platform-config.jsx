@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -3094,7 +3095,6 @@ export function OrganizationDeletePanel({ organizationId, organizationName }) {
   async function handleDelete() {
     if (!canDelete) return;
     const ok = await confirm({
-      title: "Delete organization",
       message:
         "Permanently remove this organization from the platform? All users will be signed out and cannot sign in again.",
       confirmLabel: "Delete",

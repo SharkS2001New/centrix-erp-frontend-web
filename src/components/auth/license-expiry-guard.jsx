@@ -28,6 +28,7 @@ export function LicenseExpiryGuard({ children }) {
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
   const allowed = isLimitedLicencePath(pathname);
+  const choosingPlan = pathname === "/subscribe" || pathname.startsWith("/subscribe/");
 
   useEffect(() => {
     if (!limited || allowed) return;
@@ -35,7 +36,7 @@ export function LicenseExpiryGuard({ children }) {
   }, [allowed, limited, router]);
 
   useEffect(() => {
-    if (loading || !hasAuthSession() || isSuperAdmin() || limited) {
+    if (loading || !hasAuthSession() || isSuperAdmin() || limited || choosingPlan) {
       setPromptOpen(false);
       return;
     }
@@ -48,7 +49,7 @@ export function LicenseExpiryGuard({ children }) {
       return;
     }
     setPromptOpen(true);
-  }, [organizationLicense, isSuperAdmin, limited, loading]);
+  }, [choosingPlan, organizationLicense, isSuperAdmin, limited, loading]);
 
   if (limited && !allowed) {
     return (

@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { licenseAccessMode } from "@/lib/organization-license";
+import { dismissLicenseWarning, licenceNeedsPayment, licenseAccessMode } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { apiRequest, ApiError } from "@/lib/api";
 
@@ -45,6 +45,24 @@ export default function SubscribePage() {
   const paybill = organizationLicense?.paybill;
   const account = paybill?.account_number || organization?.company_code || "";
   const mode = licenseAccessMode(organizationLicense);
+
+  function closeForLater() {
+    dismissLicenseWarning();
+    if (licenceNeedsPayment(organizationLicense)) {
+      router.replace("/products");
+      return;
+    }
+    const home = resolveHomePath({ user, organization, capabilities, isSuperAdmin });
+    router.replace(home || "/dashboard");
+  }
+
+  useEffect(() => {
+    function onKey(event) {
+      if (event.key === "Escape") closeForLater();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function leaveIfPaid(license) {
     const nextMode = licenseAccessMode(license);
@@ -119,8 +137,19 @@ export default function SubscribePage() {
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/70">
       <div className="min-h-full bg-white px-4 py-8 sm:px-8">
         <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#185FA5]">Centrix subscription</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">Choose how to use Centrix</h1>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#185FA5]">Centrix subscription</p>
+              <h1 className="mt-1 text-2xl font-semibold text-slate-900">Choose how to use Centrix</h1>
+            </div>
+            <button
+              type="button"
+              onClick={closeForLater}
+              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Not today
+            </button>
+          </div>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
             {mode === "expired"
               ? "This organisation’s paid period has ended. Pick a plan to open those features again. Anything left off the plan stays hidden, including its reports."
