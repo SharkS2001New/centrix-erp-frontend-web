@@ -171,18 +171,34 @@ const LIMITED_SALES_REPORTS = new Set([
   "returns",
 ]);
 
-const TERMINAL_LICENCE_PREFIXES = ["/pos", "/hotel-bar-pos"];
+const LICENCE_RETURN_KEY = "centrix_subscribe_return";
 
-/**
- * External POS and Hotel POS open the subscription overlay.
- * Other workspaces open the billing page, which links through to that overlay.
- */
-export function licencePlanPath(pathname) {
+/** Every module opens the subscription overlay when the user wants to pay. */
+export function licencePlanPath() {
+  return "/subscribe";
+}
+
+/** Remember the module page to reopen when the subscription overlay is closed. */
+export function rememberLicenceReturn(pathname) {
+  if (typeof window === "undefined") return;
   const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
-  if (TERMINAL_LICENCE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
-    return "/subscribe";
+  if (path === "/subscribe" || path.startsWith("/subscribe")) return;
+  try {
+    window.sessionStorage.setItem(LICENCE_RETURN_KEY, path);
+  } catch {
+    /* ignore private-mode storage failures */
   }
-  return "/billing";
+}
+
+export function takeLicenceReturnPath() {
+  if (typeof window === "undefined") return null;
+  try {
+    const path = window.sessionStorage.getItem(LICENCE_RETURN_KEY);
+    window.sessionStorage.removeItem(LICENCE_RETURN_KEY);
+    return path || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Pages a free or expired organisation may open. Everything else goes to the payment screen. */

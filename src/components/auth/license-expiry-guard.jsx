@@ -9,6 +9,7 @@ import {
   isLimitedLicencePath,
   licenceNeedsPayment,
   licencePlanPath,
+  rememberLicenceReturn,
   licenseWarningMessage,
   wasLicenseWarningDismissed,
   dismissLicenseWarning,
@@ -39,6 +40,7 @@ export function LicenseExpiryGuard({ children }) {
   useEffect(() => {
     if (!limited || allowed) return;
     if (pathname === planPath || pathname.startsWith(`${planPath}/`)) return;
+    rememberLicenceReturn(pathname);
     router.replace(planPath);
   }, [allowed, limited, pathname, planPath, router]);
 

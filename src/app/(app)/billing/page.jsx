@@ -6,7 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { formatBillingDate, formatBillingMoney, planModuleLabels } from "@/lib/platform-billing";
-import { licenseAccessMode } from "@/lib/organization-license";
+import { licenseAccessMode, rememberLicenceReturn } from "@/lib/organization-license";
 
 function money(amount, currency = "KES") {
   if (amount == null || amount === "") return "Price not published";
@@ -191,7 +191,7 @@ function ModelCard({ title, price, period, summary, points, action, active }) {
           <li key={point}>{point}</li>
         ))}
       </ul>
-      <Link href="/subscribe" className="theme-primary-btn mt-4 inline-flex w-fit items-center rounded-lg px-4 py-2 text-sm font-medium">
+      <Link href="/subscribe" onClick={() => rememberLicenceReturn("/billing")} className="theme-primary-btn mt-4 inline-flex w-fit items-center rounded-lg px-4 py-2 text-sm font-medium">
         {action}
       </Link>
     </article>

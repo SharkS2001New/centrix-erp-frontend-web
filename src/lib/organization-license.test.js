@@ -73,7 +73,10 @@ describe("organization license", () => {
     expect(isLimitedLicencePath("/billing")).toBe(true);
     expect(licencePlanPath("/pos")).toBe("/subscribe");
     expect(licencePlanPath("/hotel-bar-pos")).toBe("/subscribe");
-    expect(licencePlanPath("/products")).toBe("/billing");
+    expect(licencePlanPath("/accounting")).toBe("/subscribe");
+    expect(licencePlanPath("/hr")).toBe("/subscribe");
+    expect(licencePlanPath("/fulfillment")).toBe("/subscribe");
+    expect(licencePlanPath("/products")).toBe("/subscribe");
   });
 
   it("keeps paybill instructions from the licence payload", () => {

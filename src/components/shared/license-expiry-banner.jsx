@@ -7,6 +7,7 @@ import {
   isLicenseExpiringSoon,
   licenceNeedsPayment,
   licencePlanPath,
+  rememberLicenceReturn,
   licenseAccessMode,
   licenseWarningMessage,
 } from "@/lib/organization-license";
@@ -52,7 +53,11 @@ export function LicenseExpiryBanner({ className = "" }) {
         <p className="font-medium">{limited || mode === "token" || mode === "trial" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
         <LicensePaybillInstructions paybill={organizationLicense.paybill} />
       </div>
-      <Link href={licencePlanPath(pathname)} className="shrink-0 text-xs font-semibold underline">
+      <Link
+        href={licencePlanPath(pathname)}
+        className="shrink-0 text-xs font-semibold underline"
+        onClick={() => rememberLicenceReturn(pathname)}
+      >
         {mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
       </Link>
     </div>
