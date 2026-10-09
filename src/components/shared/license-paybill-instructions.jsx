@@ -18,7 +18,7 @@ export function LicensePaybillInstructions({ paybill, className = "" }) {
       : null,
     paybill.token_pack_price != null
       ? `Tokens: pay any amount, 1 KES = 1 token (for example ${formatBillingMoney(paybill.token_pack_price, currency)} = ${Number(paybill.token_pack_price)} tokens)`
-      : "Tokens: the shillings you pay become tokens. Each save uses 1 token. Reading is free.",
+      : "Tokens: the shillings you pay become tokens. Creates, updates, and deletes spend tokens. Reading is free.",
   ].filter(Boolean);
 
   return (

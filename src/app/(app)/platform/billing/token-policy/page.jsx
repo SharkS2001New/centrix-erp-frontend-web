@@ -30,14 +30,6 @@ export default function TokenPolicyPage() {
     setPolicy((current) => ({ ...current, ...partial }));
   }
 
-  function patchAction(index, partial) {
-    setPolicy((current) => {
-      const actions = [...(current?.actions ?? [])];
-      actions[index] = { ...actions[index], ...partial };
-      return { ...current, actions };
-    });
-  }
-
   async function save() {
     setSaving(true);
     try {
@@ -64,7 +56,7 @@ export default function TokenPolicyPage() {
   return (
     <CatalogPageShell
       title="Token & usage policies"
-      subtitle="These defaults apply until you save new values. Saving them does not start charging a token per action."
+      subtitle="Set how many tokens a completed sale uses when that order is saved online. Offline sales wait until sync. Reading stays free."
     >
       <AdminBreadcrumb
         items={[
@@ -113,31 +105,14 @@ export default function TokenPolicyPage() {
         </section>
 
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Action costs</h2>
-            <button
-              type="button"
-              className="text-sm font-medium text-[#185FA5]"
-              onClick={() => patch({ actions: [...(policy.actions ?? []), { key: "", label: "", tokens: 0, notes: "" }] })}
-            >
-              Add action
-            </button>
-          </div>
-          <div className="space-y-3">
-            {(policy.actions ?? []).map((action, index) => (
-              <div key={`${action.key}-${index}`} className="grid gap-2 md:grid-cols-[1.4fr_0.4fr_1fr_auto]">
-                <input className={inputClass} placeholder="Action" value={action.label} onChange={(e) => patchAction(index, { label: e.target.value })} />
-                <input className={inputClass} type="number" min="0" value={action.tokens} onChange={(e) => patchAction(index, { tokens: Number(e.target.value) })} />
-                <input className={inputClass} placeholder="Notes" value={action.notes ?? ""} onChange={(e) => patchAction(index, { notes: e.target.value })} />
-                <button
-                  type="button"
-                  className="text-sm text-red-700"
-                  onClick={() => patch({ actions: policy.actions.filter((_, row) => row !== index) })}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+          <h2 className="text-sm font-semibold text-slate-900">Sale cost</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            One completed sale uses this many tokens when the order is saved online. An offline till sale is charged when sync uploads it. Uploading the same order again does not charge it again.
+          </p>
+          <div className="mt-4 max-w-xs">
+            <Field label="Tokens per sale">
+              <input className={inputClass} type="number" min="0" max="1000" value={policy.sale_tokens ?? 1} onChange={(e) => patch({ sale_tokens: Number(e.target.value) })} />
+            </Field>
           </div>
         </section>
 

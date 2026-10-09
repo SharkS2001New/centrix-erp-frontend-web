@@ -12,6 +12,7 @@ describe("pathBelongsToWorkspace query strip", () => {
   it("keeps the Centrix payment page inside every workspace", () => {
     for (const workspaceId of ["backoffice", "pos", "hr", "accounting", "admin"]) {
       expect(pathBelongsToWorkspace("/subscribe", workspaceId)).toBe(true);
+      expect(pathBelongsToWorkspace("/billing", workspaceId)).toBe(true);
     }
   });
 });

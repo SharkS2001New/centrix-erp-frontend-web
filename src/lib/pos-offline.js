@@ -5631,6 +5631,7 @@ export function isHealableOutboxSyncError(err) {
     return true;
   }
   if (err instanceof ApiError) {
+    if (err.body?.code === "organization_tokens_depleted") return true;
     if (!err.status || err.status === 408 || err.status === 429) return true;
     if (err.status >= 502 && err.status <= 504) return true;
     if (err.status >= 500 && /deadlock|1213|serialization failure/.test(message)) {

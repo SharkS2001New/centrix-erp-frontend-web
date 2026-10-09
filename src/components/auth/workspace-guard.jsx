@@ -57,7 +57,8 @@ export function WorkspaceGuard({ children }) {
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
     if (!workspaceId) return;
 
-    if (isTerminalWorkspace(workspaceId)) {
+    // External POS and Hotel POS stay on the till, except the shared subscription overlay and billing page.
+    if (isTerminalWorkspace(workspaceId) && !pathBelongsToWorkspace(pathname, workspaceId)) {
       router.replace(workspaceHomePath(workspaceId, capabilities));
       return;
     }

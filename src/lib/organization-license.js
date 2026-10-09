@@ -110,6 +110,12 @@ export function resolveOrganizationLicense(source = null) {
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
     access: ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null,
     token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
+    sale_tokens: raw.sale_tokens != null ? Number(raw.sale_tokens) : Number(raw.write_costs?.create ?? 1),
+    write_costs: {
+      create: Number(raw.write_costs?.create ?? 1),
+      update: Number(raw.write_costs?.update ?? 1),
+      delete: Number(raw.write_costs?.delete ?? 1),
+    },
     modules: Array.isArray(raw.modules) ? raw.modules.map((key) => String(key)) : [],
     paybill: raw.paybill && typeof raw.paybill === "object" ? raw.paybill : null,
     offers: Array.isArray(raw.offers) ? raw.offers : [],
@@ -164,6 +170,20 @@ const LIMITED_SALES_REPORTS = new Set([
   "eod-report",
   "returns",
 ]);
+
+const TERMINAL_LICENCE_PREFIXES = ["/pos", "/hotel-bar-pos"];
+
+/**
+ * External POS and Hotel POS open the subscription overlay.
+ * Other workspaces open the billing page, which links through to that overlay.
+ */
+export function licencePlanPath(pathname) {
+  const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
+  if (TERMINAL_LICENCE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+    return "/subscribe";
+  }
+  return "/billing";
+}
 
 /** Pages a free or expired organisation may open. Everything else goes to the payment screen. */
 export function isLimitedLicencePath(pathname) {

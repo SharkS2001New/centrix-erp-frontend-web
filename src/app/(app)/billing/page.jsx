@@ -71,7 +71,7 @@ export default function OrganizationBillingPage() {
               active={activeModel === "token"}
               price={money(policy.token_pack_price_kes)}
               period={`${Number(policy.token_pack_tokens) || 0} tokens`}
-              summary="Pay for a pack of tokens. Reading stays free. Listed actions spend tokens when that meter is turned on."
+              summary={`Pay for a pack of tokens. Reading stays free. Each completed sale uses ${Number(policy.sale_tokens ?? 1)} token${Number(policy.sale_tokens ?? 1) === 1 ? "" : "s"} when the order is saved online, including offline sync.`}
               points={[
                 `${Number(policy.token_value_kes) || 1} KES is the published value of 1 token`,
                 tokenBalance > 0 ? `${tokenBalance} tokens remaining` : "No tokens on this organisation yet",

@@ -135,7 +135,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/billing/token-policy",
         label: "Token & usage policies",
         icon: "settings",
-        description: "Token pack price, expiry, low-balance alerts, grace, and action costs.",
+        description: "Token pack price, expiry, low-balance alerts, grace, and create, update, and delete costs.",
       },
       {
         href: "/platform/plans",

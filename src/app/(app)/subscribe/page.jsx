@@ -8,6 +8,7 @@ import { formatBillingMoney } from "@/lib/platform-billing";
 import { dismissLicenseWarning, licenceNeedsPayment, licenseAccessMode } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
 import { apiRequest, ApiError } from "@/lib/api";
 
@@ -50,6 +51,11 @@ export default function SubscribePage() {
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
+    const workspaceId = getStoredWorkspace();
+    if (isTerminalWorkspace(workspaceId)) {
+      router.replace(workspaceHomePath(workspaceId, capabilities) || "/pos");
+      return;
+    }
     if (licenceNeedsPayment(organizationLicense)) {
       router.replace("/products");
       return;
@@ -64,7 +70,7 @@ export default function SubscribePage() {
       return;
     }
     router.replace("/dashboard");
-  }, [organization?.id, organizationLicense, router]);
+  }, [capabilities, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
     function onKey(event) {

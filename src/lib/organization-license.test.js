@@ -4,6 +4,7 @@ import {
   isLicenseExpired,
   isLicenseExpiringSoon,
   isLimitedLicencePath,
+  licencePlanPath,
   licenseAccessMode,
   licenceNeedsPayment,
   resolveOrganizationLicense,
@@ -70,6 +71,9 @@ describe("organization license", () => {
     expect(isLimitedLicencePath("/sales/pos")).toBe(false);
     expect(isLimitedLicencePath("/subscribe")).toBe(true);
     expect(isLimitedLicencePath("/billing")).toBe(true);
+    expect(licencePlanPath("/pos")).toBe("/subscribe");
+    expect(licencePlanPath("/hotel-bar-pos")).toBe("/subscribe");
+    expect(licencePlanPath("/products")).toBe("/billing");
   });
 
   it("keeps paybill instructions from the licence payload", () => {

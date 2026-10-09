@@ -8,6 +8,7 @@ import {
   isLicenseExpiringSoon,
   isLimitedLicencePath,
   licenceNeedsPayment,
+  licencePlanPath,
   licenseWarningMessage,
   wasLicenseWarningDismissed,
   dismissLicenseWarning,
@@ -28,6 +29,7 @@ export function LicenseExpiryGuard({ children }) {
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
   const allowed = isLimitedLicencePath(pathname);
+  const planPath = licencePlanPath(pathname);
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||
@@ -36,8 +38,9 @@ export function LicenseExpiryGuard({ children }) {
 
   useEffect(() => {
     if (!limited || allowed) return;
-    router.replace("/billing");
-  }, [allowed, limited, router]);
+    if (pathname === planPath || pathname.startsWith(`${planPath}/`)) return;
+    router.replace(planPath);
+  }, [allowed, limited, pathname, planPath, router]);
 
   useEffect(() => {
     if (loading || !hasAuthSession() || isSuperAdmin() || limited || choosingPlan) {

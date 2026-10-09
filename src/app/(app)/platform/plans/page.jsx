@@ -387,7 +387,7 @@ export default function PlatformPlansPage() {
                 </label>
               </div>
               <p className="text-xs text-slate-500">
-                Customers pay these amounts on the Centrix Paybill. The account number is the organisation code or the admin phone. A payment that is not the monthly or yearly price becomes tokens: 500 KES is 500 tokens. Each create, update, or delete uses 1 token. Reading is free.
+                Customers pay these amounts on the Centrix Paybill. The account number is the organisation code or the admin phone. A payment that is not the monthly or yearly price becomes tokens: 500 KES is 500 tokens. Create, update, and delete spend the token amounts on Token & usage policies. Reading is free.
               </p>
               {form.license_basis === "user" ? (
                 <label className="block text-sm">
