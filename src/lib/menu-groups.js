@@ -71,12 +71,28 @@ export function lockedMenuGroups(salesPlatform) {
   };
 }
 
+function disabledMenuGroup(catalog) {
+  return Object.fromEntries(catalog.map((section) => [section.key, false]));
+}
+
+/** A setup type only turns a menu group on when that application is included. */
 export function menuGroupStateFromProfile(profile) {
   const groups = profile?.menu_groups ?? {};
+  const apps = profile?.applications;
+  const gated = apps && typeof apps === "object";
+  const backofficeOn = !gated || apps.backoffice === true || apps.hospitality_backoffice === true;
+  const hrOn = !gated || apps.hr === true;
+  const accountingOn = !gated || apps.accounting === true;
   return {
-    backoffice_sections: normalizeBackofficeSections(groups.backoffice),
-    hr_sections: normalizeMenuGroups(HR_MENU_CATALOG, groups.hr),
-    accounting_sections: normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, groups.accounting),
+    backoffice_sections: backofficeOn
+      ? normalizeBackofficeSections(groups.backoffice)
+      : disabledMenuGroup(BACKOFFICE_SECTION_CATALOG),
+    hr_sections: hrOn
+      ? normalizeMenuGroups(HR_MENU_CATALOG, groups.hr)
+      : disabledMenuGroup(HR_MENU_CATALOG),
+    accounting_sections: accountingOn
+      ? normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, groups.accounting)
+      : disabledMenuGroup(ACCOUNTING_MENU_CATALOG),
   };
 }
 

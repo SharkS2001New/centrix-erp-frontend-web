@@ -104,21 +104,18 @@ export default function SubscribePage() {
     }
   }
 
-  async function prepareManual() {
+  async function notifyAdmin() {
     if (!selected) return;
     setBusy("manual");
     setNotice("");
     try {
-      const res = await apiRequest("/erp/organization/licence/checkout", {
+      const res = await apiRequest("/erp/organization/licence/notify", {
         method: "POST",
         body: { plan_id: selected.id, months: quote.months },
       });
-      setNotice(
-        res.message ||
-          `Pay ${formatBillingMoney(quote.amount, selected.currency || "KES")} to Paybill ${paybill?.short_code || ""} account ${account}, then enter the M-Pesa code.`,
-      );
+      setNotice(res.message || "Centrix has been notified on WhatsApp.");
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Could not prepare this payment.");
+      setNotice(err instanceof ApiError ? err.message : "Could not notify Centrix.");
     } finally {
       setBusy("");
     }
@@ -246,7 +243,10 @@ export default function SubscribePage() {
               </section>
 
               <aside className="rounded-xl border border-slate-200 p-4">
-                <h2 className="text-sm font-semibold text-slate-900">Or pay the Paybill yourself</h2>
+                <h2 className="text-sm font-semibold text-slate-900">Pay the Paybill yourself</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Pay this amount on the Paybill using the account number. Then notify Centrix on WhatsApp, or enter the M-Pesa code and check now so the payment is applied.
+                </p>
                 <dl className="mt-3 space-y-2 text-sm">
                   <div>
                     <dt className="text-xs text-slate-500">Paybill</dt>
@@ -261,14 +261,9 @@ export default function SubscribePage() {
                     <dd className="font-semibold">{formatBillingMoney(quote.amount, selected.currency || "KES")}</dd>
                   </div>
                 </dl>
-                <button
-                  type="button"
-                  className="mt-3 text-sm font-medium text-[#185FA5]"
-                  disabled={busy !== ""}
-                  onClick={() => void prepareManual()}
-                >
-                  {busy === "manual" ? "Preparing…" : "I will pay this amount manually"}
-                </button>
+                <PrimaryButton type="button" showIcon={false} className="mt-4 w-full" disabled={busy !== ""} onClick={() => void notifyAdmin()}>
+                  {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
+                </PrimaryButton>
                 <label className="mt-4 block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">M-Pesa code</span>
                   <input

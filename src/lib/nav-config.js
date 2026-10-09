@@ -1219,6 +1219,13 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.admin.license.view,
         orgAdminOnly: true,
       },
+      {
+        href: "/billing",
+        label: "Billing & subscription",
+        module: "admin",
+        permission: P.admin.license.view,
+        orgAdminOnly: true,
+      },
     ],
   },
   {

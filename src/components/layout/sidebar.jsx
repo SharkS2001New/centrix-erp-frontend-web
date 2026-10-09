@@ -486,7 +486,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
         id: "centrix-upgrade",
         label: "Centrix licence",
         icon: "💳",
-        items: [{ href: "/subscribe", label: "Choose a plan" }],
+        items: [{ href: "/billing", label: "Choose a plan" }],
       },
       ...limited,
     ];

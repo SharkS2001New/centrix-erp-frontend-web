@@ -28,11 +28,15 @@ export function LicenseExpiryGuard({ children }) {
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
   const allowed = isLimitedLicencePath(pathname);
-  const choosingPlan = pathname === "/subscribe" || pathname.startsWith("/subscribe/");
+  const choosingPlan =
+    pathname === "/subscribe" ||
+    pathname.startsWith("/subscribe/") ||
+    pathname === "/billing" ||
+    pathname.startsWith("/billing/");
 
   useEffect(() => {
     if (!limited || allowed) return;
-    router.replace("/subscribe");
+    router.replace("/billing");
   }, [allowed, limited, router]);
 
   useEffect(() => {

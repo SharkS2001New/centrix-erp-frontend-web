@@ -69,6 +69,7 @@ describe("organization license", () => {
     expect(isLimitedLicencePath("/reports/profit-loss")).toBe(false);
     expect(isLimitedLicencePath("/sales/pos")).toBe(false);
     expect(isLimitedLicencePath("/subscribe")).toBe(true);
+    expect(isLimitedLicencePath("/billing")).toBe(true);
   });
 
   it("keeps paybill instructions from the licence payload", () => {

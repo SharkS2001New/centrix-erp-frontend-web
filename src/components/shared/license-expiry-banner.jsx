@@ -49,7 +49,7 @@ export function LicenseExpiryBanner({ className = "" }) {
         <p className="font-medium">{limited || mode === "token" || mode === "trial" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
         <LicensePaybillInstructions paybill={organizationLicense.paybill} />
       </div>
-      <Link href="/subscribe" className="shrink-0 text-xs font-semibold underline">
+      <Link href="/billing" className="shrink-0 text-xs font-semibold underline">
         {mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
       </Link>
     </div>

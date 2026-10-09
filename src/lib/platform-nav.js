@@ -126,6 +126,18 @@ export const PLATFORM_LINK_GROUPS = [
     label: "Billing & tools",
     links: [
       {
+        href: "/platform/billing",
+        label: "Billing & plans",
+        icon: "wallet",
+        description: "Subscription counts, published prices, and links to token policy and licence payments.",
+      },
+      {
+        href: "/platform/billing/token-policy",
+        label: "Token & usage policies",
+        icon: "settings",
+        description: "Token pack price, expiry, low-balance alerts, grace, and action costs.",
+      },
+      {
         href: "/platform/plans",
         label: "Plans",
         icon: "package",

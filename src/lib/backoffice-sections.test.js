@@ -54,4 +54,19 @@ describe("backoffice sections", () => {
     expect(state.hr_sections.hr_people).toBe(true);
     expect(isHrSectionEnabled({ module_settings: { sales: { hr_sections: state.hr_sections } } }, "hr_payroll")).toBe(false);
   });
+
+  it("leaves menu groups off when that application is off", () => {
+    const state = menuGroupStateFromProfile({
+      applications: { backoffice: true, hr: false, accounting: true },
+      menu_groups: {
+        hr: { hr_people: true, hr_payroll: true },
+        accounting: { expenses: false },
+      },
+    });
+    expect(state.hr_sections.hr_people).toBe(false);
+    expect(state.hr_sections.hr_payroll).toBe(false);
+    expect(state.accounting_sections.expenses).toBe(false);
+    expect(state.accounting_sections.accounting).toBe(true);
+    expect(state.backoffice_sections.customers).toBe(true);
+  });
 });

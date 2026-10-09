@@ -168,7 +168,7 @@ const LIMITED_SALES_REPORTS = new Set([
 /** Pages a free or expired organisation may open. Everything else goes to the payment screen. */
 export function isLimitedLicencePath(pathname) {
   const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
-  if (path === "/subscribe") return true;
+  if (path === "/subscribe" || path === "/billing") return true;
   if (path === "/products" || path.startsWith("/products/")) return true;
   if (path === "/customers" || path.startsWith("/customers/")) return true;
   if (path === "/suppliers" || /^\/suppliers\/\d+$/.test(path)) return true;
