@@ -294,8 +294,8 @@ function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, 
       </p>
       {billing === "token" ? (
         tokenPack && tokenPack.price > 0 ? (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="theme-panel flex flex-col rounded-2xl border border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)] p-5">
+          <div className="mt-8 flex flex-wrap justify-center gap-5">
+            <article className="theme-panel flex w-full flex-col rounded-2xl border border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)] p-5 sm:w-[calc((100%-3rem)/3)] sm:min-w-[20rem] sm:flex-none">
               <p className="theme-text-muted text-sm">Token pack</p>
               <h2 className="theme-heading mt-3 text-xl font-semibold">{tokenPack.tokens} tokens</h2>
               <p className="theme-heading mt-6 text-4xl font-semibold tracking-tight">
@@ -319,7 +319,7 @@ function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, 
           {emptyCopy}
         </p>
       ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-8 flex flex-wrap justify-center gap-5">
           {plans.map((plan, index) => {
             const price = listedPrice(plan, billing);
             const current = currentName && plan.name === currentName;
@@ -327,7 +327,7 @@ function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, 
             return (
               <article
                 key={plan.id}
-                className={`flex flex-col rounded-2xl border p-5 ${
+                className={`flex w-full flex-col rounded-2xl border p-5 sm:w-[calc((100%-3rem)/3)] sm:min-w-[20rem] sm:flex-none ${
                   recommended
                     ? "border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)]"
                     : "theme-panel"

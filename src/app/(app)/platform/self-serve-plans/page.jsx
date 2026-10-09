@@ -68,6 +68,24 @@ function recordToForm(plan) {
   };
 }
 
+function PlanContents({ title, items }) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-medium text-slate-500">{title}</p>
+      {rows.length === 0 ? (
+        <p className="mt-1 text-sm text-slate-500">None</p>
+      ) : (
+        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-800">
+          {rows.map((item, index) => (
+            <li key={`${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function formToPayload(form) {
   const amount = Number(form.price);
   const yearly = form.interval === "yearly";
@@ -103,6 +121,9 @@ export default function SelfServePlansPage() {
   const [editingId, setEditingId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [words, setWords] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [created, setCreated] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +181,29 @@ export default function SelfServePlansPage() {
     }
   }
 
+  async function handleCompose(event) {
+    event.preventDefault();
+    if (words.trim().length < 8) {
+      notifyError("Describe the plan in a sentence: the name, the price, and what it includes.");
+      return;
+    }
+    setDrafting(true);
+    try {
+      const res = await apiRequest("/admin/platform-plans/compose", {
+        method: "POST",
+        body: { description: words.trim() },
+      });
+      setCreated({ summary: res.summary ?? null, plan: res.data ?? null });
+      notifySuccess(res.message || "Centrix AI created this plan.");
+      setWords("");
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Centrix AI could not create this plan.");
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   async function handleDelete(plan) {
     const ok = await confirm({
       title: "Remove this plan?",
@@ -180,9 +224,56 @@ export default function SelfServePlansPage() {
   return (
     <CatalogPageShell
       title="Self-serve plans"
-      subtitle="Monthly plans appear on the Monthly tab. Yearly plans appear on the Yearly tab. Each one needs its own price and the features it turns on."
+      subtitle="Describe a plan in words and Centrix AI publishes it, or fill the form yourself. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
+
+      <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Say the name, whether it is monthly or yearly, the price in KES, and what the organisation gets.
+        </p>
+        <textarea
+          className={`${inputClass} mt-3 min-h-24`}
+          value={words}
+          onChange={(e) => setWords(e.target.value)}
+          placeholder="Basic sales, 2000 a month. Backoffice with sales, customers, and reports."
+        />
+        <div className="mt-3 flex justify-end">
+          <PrimaryButton type="submit" showIcon={false} disabled={drafting}>
+            {drafting ? "Creating…" : "Create plan"}
+          </PrimaryButton>
+        </div>
+      </form>
+
+      {created?.summary ? (
+        <div className="theme-panel mb-4 rounded-xl border p-5 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">This plan includes</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-900">{created.summary.name}</h2>
+          {created.summary.description ? (
+            <p className="mt-1 text-sm text-slate-600">{created.summary.description}</p>
+          ) : null}
+          <p className="mt-2 text-sm font-medium text-slate-900">
+            {created.summary.interval} · {formatBillingMoney(created.summary.price, created.summary.currency || "KES")}
+          </p>
+          <PlanContents title="On the card" items={created.summary.features} />
+          <PlanContents title="Applications" items={created.summary.workspaces} />
+          <PlanContents title="Backoffice sections" items={created.summary.sections} />
+          {created.plan ? (
+            <button
+              type="button"
+              className="mt-4 text-sm font-medium text-[#185FA5]"
+              onClick={() => {
+                setEditingId(created.plan.id);
+                setForm(recordToForm(created.plan));
+                setFormOpen(true);
+              }}
+            >
+              Edit this plan
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mb-4 flex justify-end">
         <PrimaryButton
