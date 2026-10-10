@@ -10,6 +10,7 @@ export const WORKSPACE_ICONS = {
   settings: "⚙️",
   hospitality: "🏨",
   payments: "💳",
+  spa: "✂️",
 };
 
 /** Display order for the application switcher and choose-workspace screen. */
@@ -21,6 +22,7 @@ export const WORKSPACE_DISPLAY_ORDER = [
   "distribution",
   "accounting",
   "hr",
+  "spa",
   "admin",
 ];
 

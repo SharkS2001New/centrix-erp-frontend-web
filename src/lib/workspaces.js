@@ -144,6 +144,7 @@ export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 /** Route prefixes owned by each workspace (reports handled separately). */
 export const WORKSPACE_PATH_PREFIXES = {
   pos: ["/pos"],
+  spa: ["/spa"],
   hotel_bar_pos: ["/hotel-bar-pos"],
   hospitality_backoffice: [
     "/hospitality",
@@ -182,7 +183,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   distribution: ["/fulfillment"],
 };
 
-export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/notifications", "/subscribe", "/billing", "/spa"];
+export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/notifications", "/subscribe", "/billing"];
 
 export function workspaceIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;
@@ -199,7 +200,11 @@ export function workspaceLoginChannel(workspaceId) {
 export function workspacesFromCapabilities(capabilities) {
   const industry =
     capabilities?.industry ??
-    (capabilities?.deployment_profile === "hotel_bar" ? "hospitality" : "commerce");
+    (capabilities?.deployment_profile === "hotel_bar"
+      ? "hospitality"
+      : capabilities?.deployment_profile === "spa_kinyozi"
+        ? "spa"
+        : "commerce");
   return sortWorkspaces(
     filterWorkspacesByIndustry(capabilities?.workspaces ?? [], industry).filter(
       (ws) => ws.id !== "centrix_payments",

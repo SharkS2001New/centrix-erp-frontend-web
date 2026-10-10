@@ -213,6 +213,7 @@ export function PlatformSetupTypesPanel() {
           >
             <option value="commerce">Retail & Distribution</option>
             <option value="hospitality">Hotel & Hospitality</option>
+            <option value="spa">SPA & Kinyozi</option>
           </select>
         </label>
         <PrimaryButton type="submit" showIcon={false} disabled={creating || name.trim() === ""}>
@@ -232,7 +233,11 @@ export function PlatformSetupTypesPanel() {
             {profile.label}
             {profile.custom ? (
               <span className="ml-2 text-xs font-normal text-slate-500">
-                {profile.industry === "hospitality" ? "Hotel & Hospitality" : "Retail & Distribution"}
+                {profile.industry === "hospitality"
+                  ? "Hotel & Hospitality"
+                  : profile.industry === "spa"
+                    ? "SPA & Kinyozi"
+                    : "Retail & Distribution"}
               </span>
             ) : null}
           </summary>

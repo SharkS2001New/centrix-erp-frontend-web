@@ -55,6 +55,12 @@ export const PROVISIONABLE_WORKSPACES = [
     icon: "people",
   },
   {
+    id: "spa",
+    label: "SPA & Kinyozi",
+    description: "Salon and barbershop appointments, treatments, chairs, walk-in sales, clients, and stock.",
+    icon: "spa",
+  },
+  {
     id: "admin",
     label: "Administration",
     description:
@@ -120,6 +126,8 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
       return Boolean(enabledModules.hr_payroll);
     case "admin":
       return Boolean(enabledModules.admin);
+    case "spa":
+      return Boolean(enabledModules.spa);
     default:
       return false;
   }
@@ -184,6 +192,8 @@ function enableWorkspacePatch(workspaceId) {
       };
     case "admin":
       return { admin: true };
+    case "spa":
+      return { spa: true };
     default:
       return {};
   }
@@ -218,6 +228,8 @@ function disableWorkspacePatch(workspaceId) {
       return { hr_payroll: false };
     case "admin":
       return { admin: false };
+    case "spa":
+      return { spa: false };
     default:
       return {};
   }
@@ -315,9 +327,14 @@ export const HOSPITALITY_APP_IDS = [
   "admin",
 ];
 
-/** @param {"commerce" | "hospitality" | string | null | undefined} industryId */
+/** Application IDs allowed for SPA & Kinyozi tenants. */
+export const SPA_APP_IDS = ["spa", "accounting", "hr", "admin"];
+
+/** @param {"commerce" | "hospitality" | "spa" | string | null | undefined} industryId */
 export function appIdsForIndustry(industryId) {
-  return industryId === "hospitality" ? HOSPITALITY_APP_IDS : COMMERCE_APP_IDS;
+  if (industryId === "hospitality") return HOSPITALITY_APP_IDS;
+  if (industryId === "spa") return SPA_APP_IDS;
+  return COMMERCE_APP_IDS;
 }
 
 /**
@@ -329,10 +346,12 @@ export function filterWorkspacesByIndustry(workspaces, industryId) {
   if (!Array.isArray(workspaces) || workspaces.length === 0) return [];
   const allowed = new Set(appIdsForIndustry(industryId));
   // Mobile is commerce-only; Manager (approvals / reports) is shared with hospitality.
-  if (industryId !== "hospitality") {
+  if (industryId !== "hospitality" && industryId !== "spa") {
     allowed.add("mobile");
   }
-  allowed.add("manager");
+  if (industryId !== "spa") {
+    allowed.add("manager");
+  }
   return workspaces.filter((ws) => allowed.has(ws.id));
 }
 
@@ -342,24 +361,25 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
 
   const isHospitality =
     profile?.industry === "hospitality" || profileKey === "hotel_bar";
+  const isSpa = profile?.industry === "spa" || profileKey === "spa_kinyozi";
 
   // Client fallbacks when API has not yet returned application_ids.
   if (ids === undefined || ids === null) {
-    ids = isHospitality ? HOSPITALITY_APP_IDS : COMMERCE_APP_IDS;
+    ids = isHospitality ? HOSPITALITY_APP_IDS : isSpa ? SPA_APP_IDS : COMMERCE_APP_IDS;
   }
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return [];
   }
 
+  const blocked = isHospitality
+    ? ["pos", "backoffice", "distribution", "spa"]
+    : isSpa
+      ? ["pos", "backoffice", "distribution", "hotel_bar_pos", "hospitality_backoffice"]
+      : ["hotel_bar_pos", "hospitality_backoffice", "spa"];
+
   // Belt-and-suspenders: never mix industries even if a preset is misconfigured.
-  const allowed = new Set(
-    ids.filter((id) =>
-      isHospitality
-        ? !["pos", "backoffice", "distribution"].includes(id)
-        : !["hotel_bar_pos", "hospitality_backoffice"].includes(id),
-    ),
-  );
+  const allowed = new Set(ids.filter((id) => !blocked.includes(id)));
 
   return sortProvisionableWorkspaces(PROVISIONABLE_WORKSPACES.filter((ws) => allowed.has(ws.id)));
 }

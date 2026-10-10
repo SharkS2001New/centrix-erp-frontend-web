@@ -19,6 +19,13 @@ export const INDUSTRIES = [
     defaultProfile: "hotel_bar",
     profileKeys: ["hotel_bar"],
   },
+  {
+    id: "spa",
+    label: "SPA & Kinyozi",
+    description: "Salons, spas, and barbershops. Appointments, treatments, chairs, and walk-in sales.",
+    defaultProfile: "spa_kinyozi",
+    profileKeys: ["spa_kinyozi"],
+  },
 ];
 
 export function industryById(industryId) {

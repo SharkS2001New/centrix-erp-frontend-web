@@ -154,6 +154,7 @@ export function OrganizationTenantProfile({
     : [
         { id: "commerce", label: "Retail & Distribution", description: "Shops, wholesale, and logistics." },
         { id: "hospitality", label: "Hotel & Hospitality", description: "Hotels, bars, and restaurants." },
+        { id: "spa", label: "SPA & Kinyozi", description: "Salons, spas, and barbershops." },
       ];
 
   const setupProfiles = profilePresets.filter((profile) => {
@@ -286,6 +287,8 @@ export function OrganizationTenantProfile({
             <p className="mt-1 text-xs text-slate-500">
               {industry === "hospitality"
                 ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
+                : industry === "spa"
+                ? "SPA & Kinyozi setup. Retail and hotel tills stay off."
                 : deploymentProfile === "custom"
                 ? "Start from a blank setup and enable only the applications you need on the Applications tab."
                   : "Preset within this industry. Changing it updates the default application toggles."}
@@ -1778,11 +1781,12 @@ export function OrganizationConfigTabs({
   const tabs = mode === "register" ? REGISTER_ORG_TABS : MANAGE_ORG_TABS;
   const [activeTab, setActiveTab] = useState("profile");
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
+  const isSpa = industry === "spa" || deploymentProfile === "spa_kinyozi";
   const resolvedOrgId = organizationId ?? organization?.id;
   const visibleTabs = tabs
     .filter((tab) => {
       if (tab.id === "hotel") return isHospitality;
-      if (isHospitality && (tab.id === "sales" || tab.id === "workflow")) {
+      if ((isHospitality || isSpa) && (tab.id === "sales" || tab.id === "workflow")) {
         return false;
       }
       if (tab.id === "payroll") {
