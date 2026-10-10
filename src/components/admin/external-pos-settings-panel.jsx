@@ -91,6 +91,8 @@ export function ExternalPosSettingsPanel({
   const isHospitality =
     capabilities?.industry === "hospitality" ||
     capabilities?.deployment_profile === "hotel_bar";
+  const isSpa =
+    capabilities?.industry === "spa" || capabilities?.deployment_profile === "spa_kinyozi";
   const layoutFromCaps = resolveExternalPosLayout(capabilities);
   const layout = platformManaged
     ? platformForm.external_pos_layout === "classic"
@@ -181,7 +183,12 @@ export function ExternalPosSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Centrix ERP Themes</h2>
         <p className="mt-1 text-sm text-slate-500">
-          {isHospitality ? (
+          {isSpa ? (
+            <>
+              Choose the color palette for <strong>Administration</strong>. Appointments, services,
+              chairs, and walk-in sales stay in SPA & Kinyozi.
+            </>
+          ) : isHospitality ? (
             <>
               Choose separate color palettes for <strong>ERP modules</strong> (sidebar and primary
               buttons in Hotel Backoffice and Admin) and for <strong>External POS</strong> when
@@ -207,14 +214,14 @@ export function ExternalPosSettingsPanel({
               <ExternalPosPlatformFields
                 value={platformForm}
                 onChange={setPlatformForm}
-                posEnabled={hasPosSales}
+                posEnabled={hasPosSales && !isSpa}
                 showTheme
-                showLayout={hasPosSales}
-                showBehaviourToggles={hasPosSales}
+                showLayout={hasPosSales && !isSpa}
+                showBehaviourToggles={hasPosSales && !isSpa}
               />
             ) : (
               <>
-                {hasPosSales ? (
+                {hasPosSales && !isSpa ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     <p className="font-medium text-slate-900">POS layout</p>
                     <p className="mt-1 text-xs text-slate-600">
@@ -234,7 +241,18 @@ export function ExternalPosSettingsPanel({
                   externalPosColors={externalPosThemeColors}
                   onExternalPosTemplateChange={setExternalPosThemeTemplate}
                   onExternalPosColorsChange={setExternalPosThemeColors}
-                  showExternalPos={hasPosSales}
+                  showExternalPos={hasPosSales && !isSpa}
+                  erpTitle={isSpa ? "Administration theme" : "ERP modules theme"}
+                  erpDescription={
+                    isSpa
+                      ? "Sidebar and button colors for Administration. Salon appointments, services, and walk-in sales stay in SPA & Kinyozi."
+                      : "Applies to Sales, Inventory, Admin, Finance, and other backoffice modules — sidebar background and primary button colors only."
+                  }
+                  erpCustomColorsHint={
+                    isSpa
+                      ? "Optional overrides on top of the selected template. Header tints the Administration sidebar; button colors apply on Administration screens."
+                      : ""
+                  }
                 />
               </>
             )}

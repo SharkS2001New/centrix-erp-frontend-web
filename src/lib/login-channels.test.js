@@ -40,6 +40,19 @@ describe("hotel login channel labels", () => {
     ]);
   });
 
+  it("labels SPA & Kinyozi web sign-in as Centrix ERP", () => {
+    const spaCaps = {
+      industry: "spa",
+      deployment_profile: "spa_kinyozi",
+      modules: { spa: true, admin: true },
+      allowed_login_channels: ["backoffice"],
+    };
+    expect(loginChannelLabel("backoffice", spaCaps)).toBe("Centrix ERP");
+    expect(availableLoginChannelsFromCapabilities(spaCaps).map((c) => c.label)).toEqual([
+      "Centrix ERP",
+    ]);
+  });
+
   it("keeps retail channel labels", () => {
     expect(loginChannelLabel("backoffice", retailCaps)).toBe("Backoffice");
     expect(loginChannelLabel("manager", retailCaps)).toBe("Manager app");

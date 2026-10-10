@@ -264,6 +264,13 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     options.workspaceId !== undefined
       ? options.workspaceId
       : (getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx));
+
+  const spaPath = pathname === "/spa" || pathname.startsWith("/spa/");
+  const spaOrg = ctx.capabilities?.industry === "spa" || workspaceId === "spa";
+  if (spaPath && spaOrg) {
+    return true;
+  }
+
   if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
     return false;
   }

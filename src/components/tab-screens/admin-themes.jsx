@@ -7,6 +7,7 @@ import { ExternalPosSettingsPanel } from "@/components/admin/external-pos-settin
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { SettingsApiProvider } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
+import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 
 export function AdminThemesScreen() {
@@ -14,9 +15,8 @@ export function AdminThemesScreen() {
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;
-  const isHospitality =
-    capabilities?.industry === "hospitality" ||
-    capabilities?.deployment_profile === "hotel_bar";
+  const isHospitality = isHospitalityIndustry(capabilities);
+  const isSpa = isSpaIndustry(capabilities);
 
   return (
     <AdminGuard settingsOnly>
@@ -24,9 +24,11 @@ export function AdminThemesScreen() {
         <CatalogPageShell
           title="Centrix ERP Themes"
           subtitle={
-            isHospitality
-              ? "Color palette for the ERP sidebar and primary buttons across Hotel Backoffice and Admin."
-              : "Color palette for the ERP sidebar and primary buttons. Classic External POS can use the full theme palette."
+            isSpa
+              ? "Colors for Administration. Salon appointments, services, and walk-in sales stay in SPA & Kinyozi."
+              : isHospitality
+                ? "Color palette for the ERP sidebar and primary buttons across Hotel Backoffice and Admin."
+                : "Color palette for the ERP sidebar and primary buttons. Classic External POS can use the full theme palette."
           }
           banner={
             <AdminBreadcrumb

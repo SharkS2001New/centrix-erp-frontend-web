@@ -8,7 +8,8 @@ import { canAccessRoute } from "@/lib/route-access";
 import { getStoredWorkspace, readCachedAuthSnapshot } from "@/lib/auth-storage";
 import { notifyError } from "@/lib/notify";
 import { finishNavigation } from "@/lib/app-loading";
-import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
+import { pathBelongsToWorkspace } from "@/lib/workspaces";
 
 export function RoutePermissionGuard({ children }) {
   const pathname = usePathname();
@@ -53,13 +54,13 @@ export function RoutePermissionGuard({ children }) {
   const permissionsReady = Boolean(effectiveCapabilities) && !loading;
 
   useEffect(() => {
-    if (allowed || workspaceMismatch) {
-      if (allowed) notifiedPathRef.current = null;
+    if (allowed) {
+      notifiedPathRef.current = null;
       return;
     }
     if (!permissionsReady || pathname === fallbackPath) return;
 
-    if (notifiedPathRef.current !== pathname) {
+    if (!workspaceMismatch && notifiedPathRef.current !== pathname) {
       notifiedPathRef.current = pathname;
       notifyError("You do not have permission to open this page.");
       finishNavigation();
@@ -68,16 +69,16 @@ export function RoutePermissionGuard({ children }) {
   }, [allowed, fallbackPath, pathname, permissionsReady, router, workspaceMismatch]);
 
   if (!allowed) {
-    if (workspaceMismatch) {
+    if (!permissionsReady || pathname !== fallbackPath) {
       return (
         <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
-          Opening…
+          {permissionsReady ? "Opening…" : "Checking access…"}
         </div>
       );
     }
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
-        {permissionsReady ? "You do not have permission to open this page." : "Checking access…"}
+        You do not have permission to open this page.
       </div>
     );
   }

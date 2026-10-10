@@ -84,7 +84,9 @@ export function AdminRolesScreen() {
           ? "Hotel & Hospitality"
           : res.industry === "commerce"
             ? "Retail & Distribution"
-            : res.industry,
+            : res.industry === "spa"
+              ? "SPA & Kinyozi"
+              : res.industry,
       );
     }
   }, [adminPath]);

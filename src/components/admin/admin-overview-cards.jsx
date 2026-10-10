@@ -7,6 +7,7 @@ import { canAccessOrgAdminSettings } from "@/lib/admin-scope";
 import { resolveTillFloatNavFlag } from "@/lib/access-control";
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { P } from "@/lib/permission-codes";
+import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 
 const CARDS = [
   {
@@ -15,6 +16,7 @@ const CARDS = [
     description: "Inventory, finance, HR, notifications, security, and AI preferences.",
     descriptionHospitality:
       "Hotel inventory, procurement, printouts, HR, notifications, and security preferences.",
+    descriptionSpa: "Company preferences for this salon or barbershop.",
     icon: "⚙️",
     permission: P.admin.settings.view,
   },
@@ -23,6 +25,7 @@ const CARDS = [
     title: "Centrix ERP Themes",
     description: "ERP sidebar colors, primary buttons, and Classic External POS palette.",
     descriptionHospitality: "ERP sidebar colors and primary buttons for Hotel Backoffice and Admin.",
+    descriptionSpa: "Colors for Administration and SPA & Kinyozi.",
     icon: "🎨",
     permission: P.admin.settings.view,
   },
@@ -86,9 +89,8 @@ export function AdminOverviewCards() {
     user,
     capabilities,
   });
-  const isHospitality =
-    capabilities?.industry === "hospitality" ||
-    capabilities?.deployment_profile === "hotel_bar";
+  const isHospitality = isHospitalityIndustry(capabilities);
+  const isSpa = isSpaIndustry(capabilities);
   const navContext = {
     hasPermission,
     isModuleEnabled,
@@ -132,9 +134,11 @@ export function AdminOverviewCards() {
                 {card.title}
               </h2>
               <p className="theme-subtext mt-1 text-sm">
-                {isHospitality && card.descriptionHospitality
-                  ? card.descriptionHospitality
-                  : card.description}
+                {isSpa && card.descriptionSpa
+                  ? card.descriptionSpa
+                  : isHospitality && card.descriptionHospitality
+                    ? card.descriptionHospitality
+                    : card.description}
               </p>
             </div>
           </div>

@@ -63,6 +63,10 @@ export function isHospitalityIndustry(capabilities) {
   );
 }
 
+export function isSpaIndustry(capabilities) {
+  return capabilities?.industry === "spa" || capabilities?.deployment_profile === "spa_kinyozi";
+}
+
 /** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   const hospitality = isHospitalityIndustry(capabilities);
@@ -73,6 +77,18 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
     ["sales", "external-pos", "mobile", "distribution", "whatsapp"].includes(tabId)
   ) {
     return false;
+  }
+  if (isSpaIndustry(capabilities)) {
+    if (
+      ["sales", "external-pos", "mobile", "distribution", "whatsapp", "inventory", "procurement"].includes(
+        tabId,
+      )
+    ) {
+      return false;
+    }
+    if (tabId === "manager-approvals") {
+      return moduleEnabled(capabilities, "hr_payroll") || moduleEnabled(capabilities, "accounting");
+    }
   }
 
   switch (tabId) {

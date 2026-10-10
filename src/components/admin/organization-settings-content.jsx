@@ -19,7 +19,7 @@ import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
 import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
-import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
+import { isSpaIndustry, visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
 import {
   ORG_SETTINGS_PLATFORM_MESSAGE,
   TENANT_ORG_SETTINGS_SUBTITLE,
@@ -80,6 +80,11 @@ export function OrganizationSettingsContent({
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;
+
+  const effectiveSubtitle =
+    tenantSelfService && isSpaIndustry(capabilities)
+      ? "Company preferences for this salon or barbershop. Appointments, services, chairs, and walk-in sales stay in SPA & Kinyozi."
+      : subtitle;
 
   const visibleTabs = useMemo(
     () => visibleOrgSettingsTabs(TABS, capabilities, { platformManaged, tenantSelfService }),
@@ -215,7 +220,7 @@ export function OrganizationSettingsContent({
   }
 
   return (
-    <CatalogPageShell title={title} subtitle={subtitle}>
+    <CatalogPageShell title={title} subtitle={effectiveSubtitle}>
       {body}
     </CatalogPageShell>
   );

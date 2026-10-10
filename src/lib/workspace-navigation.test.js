@@ -197,3 +197,19 @@ describe("resolveAccessibleWorkspaces terminal shells", () => {
     expect(ids).toContain("pos");
   });
 });
+
+describe("resolveAccessibleWorkspaces SPA & Kinyozi", () => {
+  beforeEach(() => {
+    getStoredWorkspace.mockReturnValue(null);
+  });
+
+  it("opens the salon shell even though it has no ERP sidebar", () => {
+    const caps = {
+      industry: "spa",
+      workspaces: [{ id: "spa", label: "SPA & Kinyozi", home_path: "/spa" }],
+      modules: { spa: true },
+    };
+    const access = ctx([], caps);
+    expect(resolveAccessibleWorkspaces(access, caps).map((w) => w.id)).toEqual(["spa"]);
+  });
+});

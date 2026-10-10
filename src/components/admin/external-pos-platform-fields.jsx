@@ -108,6 +108,7 @@ export function ClassicPosThemePicker({
   title = "Centrix ERP Themes",
   description = "In backoffice modules (including Hotel Backoffice), this changes the sidebar background and primary button colors. Classic External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.",
   scope = "both",
+  customColorsHint = "",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
   const overrides = normalizeClassicPosThemeColors(colors);
@@ -181,7 +182,9 @@ export function ClassicPosThemePicker({
             <div>
               <p className="text-sm font-medium text-slate-700">Custom colors</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                {scope === "erp"
+                {customColorsHint
+                  ? customColorsHint
+                  : scope === "erp"
                   ? "Optional overrides on top of the selected template. Header tints the ERP sidebar; button and select colors apply across Sales, Inventory, Admin, and other modules."
                   : scope === "external_pos"
                     ? "Optional overrides for the External POS workspace (/pos) — workspace, header, footer, buttons, and selection highlights. Leave blank to use the template default."
@@ -228,18 +231,22 @@ export function CentrixSplitThemePickers({
   onExternalPosTemplateChange,
   onExternalPosColorsChange,
   showExternalPos = true,
+  erpTitle = "ERP modules theme",
+  erpDescription = "Applies to Sales, Inventory, Admin, Finance, and other backoffice modules — sidebar background and primary button colors only.",
+  erpCustomColorsHint = "",
 }) {
   return (
     <div className="space-y-8">
       <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
         <ClassicPosThemePicker
-          title="ERP modules theme"
+          title={erpTitle}
           scope="erp"
           value={erpTemplate}
           onChange={onErpTemplateChange}
           colors={erpColors}
           onColorsChange={onErpColorsChange}
-          description="Applies to Sales, Inventory, Admin, Finance, and other backoffice modules — sidebar background and primary button colors only."
+          description={erpDescription}
+          customColorsHint={erpCustomColorsHint}
         />
       </div>
       {showExternalPos ? (

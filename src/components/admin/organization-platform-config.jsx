@@ -147,7 +147,7 @@ export function OrganizationTenantProfile({
   const isRegister = mode === "register";
   const description = isRegister
     ? "Select industry first, then the setup type. Company code is used at sign-in."
-    : "Organization identity and industry. Existing tenants stay on Retail & Distribution unless you switch them to Hotel & Hospitality. Company code cannot be changed after registration.";
+    : "Organization identity and industry: Retail & Distribution, Hotel & Hospitality, or SPA & Kinyozi. Company code cannot be changed after registration.";
 
   const industryOptions = industries.length
     ? industries
@@ -1786,7 +1786,10 @@ export function OrganizationConfigTabs({
   const visibleTabs = tabs
     .filter((tab) => {
       if (tab.id === "hotel") return isHospitality;
-      if ((isHospitality || isSpa) && (tab.id === "sales" || tab.id === "workflow")) {
+      if (isSpa && (tab.id === "sales" || tab.id === "workflow" || tab.id === "orders_list")) {
+        return false;
+      }
+      if (isHospitality && (tab.id === "sales" || tab.id === "workflow")) {
         return false;
       }
       if (tab.id === "payroll") {
@@ -1809,13 +1812,17 @@ export function OrganizationConfigTabs({
       setActiveTab("hotel");
       return;
     }
+    if (isSpa && (activeTab === "sales" || activeTab === "workflow" || activeTab === "orders_list" || activeTab === "hotel")) {
+      setActiveTab("profile");
+      return;
+    }
     if (
       activeTab === "payroll" &&
       (!enabledModules.hr_payroll || typeof onPayrollChange !== "function")
     ) {
       setActiveTab("profile");
     }
-  }, [isHospitality, activeTab, enabledModules.hr_payroll, onPayrollChange]);
+  }, [isHospitality, isSpa, activeTab, enabledModules.hr_payroll, onPayrollChange]);
 
   return (
     <div className="w-full min-w-0 space-y-4">

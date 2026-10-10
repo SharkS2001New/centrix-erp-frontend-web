@@ -29,33 +29,40 @@ function ChooseWorkspaceContent() {
   });
 
   const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
+  const onlyWorkspaceId = workspaces.length === 1 ? workspaces[0].id : null;
+  const ctxRef = useRef(ctx);
+  const capabilitiesRef = useRef(capabilities);
+  ctxRef.current = ctx;
+  capabilitiesRef.current = capabilities;
 
   useEffect(() => {
-    if (loading || workspaces.length !== 1 || switching || autoOpenAttemptedRef.current) return;
+    if (loading || !onlyWorkspaceId || autoOpenAttemptedRef.current) return;
     autoOpenAttemptedRef.current = true;
     let cancelled = false;
     (async () => {
       setSwitching(true);
       setSwitchError(null);
       try {
+        const access = ctxRef.current;
+        const caps = capabilitiesRef.current;
         const resumePath = recallWorkspaceLandingPath(
           user?.id,
           organization?.id,
-          workspaces[0].id,
-          capabilities,
-          ctx,
+          onlyWorkspaceId,
+          caps,
+          access,
         );
-        if (isTabWorkspaceEnabled(capabilities)) {
-          seedWorkspaceTabLanding(organization?.id, workspaces[0].id, resumePath);
+        if (isTabWorkspaceEnabled(caps)) {
+          seedWorkspaceTabLanding(organization?.id, onlyWorkspaceId, resumePath);
         }
-        if (workspaces[0].id === "pos" && externalPosRequiresDatedSubscription(organizationLicense)) {
+        if (onlyWorkspaceId === "pos" && externalPosRequiresDatedSubscription(organizationLicense)) {
           if (!cancelled) {
             rememberLicenceReturn("/pos");
             router.replace("/subscribe?for=pos");
           }
           return;
         }
-        await switchWorkspace(workspaces[0].id);
+        await switchWorkspace(onlyWorkspaceId);
         if (!cancelled) router.replace(resumePath);
       } catch (err) {
         if (!cancelled) {
@@ -72,10 +79,7 @@ function ChooseWorkspaceContent() {
     loading,
     router,
     switchWorkspace,
-    workspaces,
-    switching,
-    capabilities,
-    ctx,
+    onlyWorkspaceId,
     organization?.id,
     organizationLicense,
     user?.id,

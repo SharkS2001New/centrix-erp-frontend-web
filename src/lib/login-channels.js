@@ -1,4 +1,5 @@
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isSpaIndustry } from "@/lib/org-settings-tabs";
 
 export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice" },
@@ -20,6 +21,9 @@ export function loginChannelLabel(value, capabilities) {
   if (isHotelLoginChannelContext(capabilities)) {
     if (value === "backoffice") return "Centrix ERP";
     if (value === "manager") return "Managers App";
+  }
+  if (isSpaIndustry(capabilities) && value === "backoffice") {
+    return "Centrix ERP";
   }
   return LOGIN_CHANNELS.find((channel) => channel.value === value)?.label ?? value;
 }

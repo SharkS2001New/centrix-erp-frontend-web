@@ -23,7 +23,7 @@ import {
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
-import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
+import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
@@ -1261,6 +1261,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "hospitality.backend",
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,
+        hideWhenSpaIndustry: true,
       },
       {
         href: "/admin/till-printing",
@@ -1268,6 +1269,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "admin",
         permission: P.admin.till_printing.view,
         orgAdminOnly: true,
+        hideWhenSpaIndustry: true,
       },
       {
         href: "/admin/branches",
@@ -1467,6 +1469,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
+  if (item.hideWhenSpaIndustry && isSpaIndustry(capabilities)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;
