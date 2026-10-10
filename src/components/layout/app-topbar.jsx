@@ -9,7 +9,6 @@ import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribut
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { LogOut } from "lucide-react";
 
 function MenuIcon({ className }) {
   return (
@@ -20,7 +19,7 @@ function MenuIcon({ className }) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
-  const { isSuperAdmin, logout } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const hideModuleSearch = Boolean(isSuperAdmin?.());
 
   return (
@@ -60,16 +59,6 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
           <WorkspaceSwitcher />
           <ThemeToggle compact className="hidden sm:inline-flex" />
           <UserAccountMenu />
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="theme-toggle-btn inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-2 text-xs font-medium text-red-600 dark:text-red-400"
-            aria-label="Logout"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
         </div>
       </header>
     </>

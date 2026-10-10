@@ -66,7 +66,7 @@ export const WORKSPACE_SECTION_IDS = {
   accounting: ["accounting", "expenses", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
-  spa: ["spa_front", "spa_records"],
+  spa: ["spa"],
   driving: ["driving_front", "driving_fleet", "driving_money"],
 };
 

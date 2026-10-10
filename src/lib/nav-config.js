@@ -1238,10 +1238,9 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "spa_front",
-    label: "Front desk",
-    icon: "📅",
-    collapsible: true,
+    id: "spa",
+    label: "SPA & Kinyozi",
+    collapsible: false,
     items: [
       {
         href: "/spa",
@@ -1264,14 +1263,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Clients",
         module: "spa",
       },
-    ],
-  },
-  {
-    id: "spa_records",
-    label: "Salon records",
-    icon: "✂️",
-    collapsible: true,
-    items: [
       {
         href: "/spa/services",
         label: "Services",

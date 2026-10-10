@@ -109,7 +109,7 @@ function groupNavItemsByLabel(items) {
   return blocks;
 }
 
-function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, badgeCount = 0 }) {
+function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0 }) {
   const active = isNavItemActive(item, pathname);
   const showBadge = Number(badgeCount) > 0;
 
@@ -118,14 +118,18 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
       href={item.href}
       data-pos-leave-ignore="true"
       onClick={onNavigate}
-      className={`app-sidebar-link flex items-center gap-2.5 py-1.5 text-[13px] leading-snug transition ${
-        nested
-          ? inFlyout
-            ? "px-3"
-            : "pr-3 pl-2"
-          : inFlyout
-            ? "px-4"
-            : "pr-3 pl-2"
+      className={`app-sidebar-link flex items-center transition ${
+        prominent
+          ? "gap-3 px-[18px] py-2.5 text-[14px] leading-snug"
+          : `gap-2.5 py-1.5 text-[13px] leading-snug ${
+              nested
+                ? inFlyout
+                  ? "px-3"
+                  : "pr-3 pl-2"
+                : inFlyout
+                  ? "px-4"
+                  : "pr-3 pl-2"
+            }`
       } ${active ? "app-sidebar-link-active" : ""}`}
     >
       <NavItemIcon item={item} sectionId={sectionId} />
@@ -139,7 +143,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
   );
 }
 
-function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false, badgeByHref = {} }) {
+function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false, prominent = false, badgeByHref = {} }) {
   const hasGroups = items.some((item) => item.group);
   if (!hasGroups) {
     return items.map((item) => (
@@ -150,6 +154,7 @@ function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = fa
         pathname={pathname}
         onNavigate={onNavigate}
         inFlyout={inFlyout}
+        prominent={prominent}
         badgeCount={badgeByHref[item.href] || 0}
       />
     ));
@@ -271,7 +276,7 @@ function CollapsibleNavSection({
     );
   }
 
-  if (iconOnly) {
+  if (iconOnly && section.collapsible !== false && section.label) {
     return (
       <CollapsedSectionIcon
         section={section}
@@ -279,6 +284,31 @@ function CollapsibleNavSection({
         isOpen={isFlyoutOpen}
         onToggle={() => onIconClick(section.id)}
       />
+    );
+  }
+
+  if (iconOnly) {
+    return (
+      <div className="flex flex-col py-1">
+        {section.items.map((item) => {
+          const active = isNavItemActive(item, pathname);
+          return (
+            <AppNavLink
+              key={item.href}
+              href={item.href}
+              data-pos-leave-ignore="true"
+              onClick={onNavigate}
+              className={`app-sidebar-icon-btn flex w-full items-center justify-center py-3 transition ${
+                active ? "app-sidebar-icon-btn-active" : ""
+              }`}
+              title={item.label}
+              aria-label={item.label}
+            >
+              <NavItemIcon item={item} sectionId={section.id} />
+            </AppNavLink>
+          );
+        })}
+      </div>
     );
   }
 
@@ -295,7 +325,19 @@ function CollapsibleNavSection({
   );
 
   if (!section.collapsible || !section.label) {
-    return <div className="app-sidebar-section-block">{children}</div>;
+    return (
+      <div className="app-sidebar-section-block flex flex-col py-1">
+        <SectionNavItems
+          items={section.items}
+          sectionId={section.id}
+          pathname={pathname}
+          onNavigate={onNavigate}
+          inFlyout={false}
+          prominent
+          badgeByHref={badgeByHref}
+        />
+      </div>
+    );
   }
 
   return (
