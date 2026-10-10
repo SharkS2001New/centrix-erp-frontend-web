@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 
 export function PageTitle({ title, subtitle, action }) {
@@ -52,6 +53,90 @@ export function DrivingSelect({ value, onChange, options, placeholder = "Choose"
       placeholder={placeholder}
       className={inputClass}
     />
+  );
+}
+
+export function FormSection({ title }) {
+  return <p className="theme-heading pt-1 text-xs font-semibold uppercase tracking-wide">{title}</p>;
+}
+
+export function MarkPad({ onChange }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * scale));
+    canvas.height = Math.max(1, Math.round(rect.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.scale(scale, scale);
+    context.lineWidth = 2.5;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#0f172a";
+  }, []);
+
+  function point(event) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  function start(event) {
+    const context = canvasRef.current?.getContext("2d");
+    if (!context) return;
+    drawing.current = true;
+    canvasRef.current.setPointerCapture(event.pointerId);
+    const next = point(event);
+    context.beginPath();
+    context.moveTo(next.x, next.y);
+  }
+
+  function move(event) {
+    if (!drawing.current) return;
+    const context = canvasRef.current?.getContext("2d");
+    if (!context) return;
+    const next = point(event);
+    context.lineTo(next.x, next.y);
+    context.stroke();
+  }
+
+  function end() {
+    if (!drawing.current) return;
+    drawing.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) onChange(canvas.toDataURL("image/png"));
+  }
+
+  function clear() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+    onChange("");
+  }
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        className="h-36 w-full touch-none rounded-lg border border-[var(--theme-border)] bg-white"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerLeave={end}
+      />
+      <button type="button" className="theme-secondary-btn mt-2 rounded-lg px-3 py-1.5 text-xs font-medium" onClick={clear}>
+        Clear mark
+      </button>
+    </div>
   );
 }
 
