@@ -230,6 +230,7 @@ export const NAV_HREF_ICONS = {
   "/spa/suppliers": "truck",
   "/spa/reports": "reports",
   "/admin/spa-settings": "settings",
+  "/admin/driving-settings": "settings",
   "/admin": "dashboard",
   "/admin/company": "building",
   "/admin/license": "shield",

@@ -1,5 +1,7 @@
 "use client";
 
+import { SearchableSelect } from "@/components/catalog/searchable-select";
+
 export function PageTitle({ title, subtitle, action }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -35,9 +37,38 @@ export function Field({ label, children }) {
   );
 }
 
-export const inputClass = "theme-input w-full rounded-lg px-3 py-2 text-sm outline-none";
+export const inputClass =
+  "theme-input theme-input-focus h-[38px] w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60";
 
 export const primaryButtonClass = "theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold";
+
+export function DrivingSelect({ value, onChange, options, placeholder = "Choose" }) {
+  return (
+    <SearchableSelect
+      nativeEvent
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder={placeholder}
+      className={inputClass}
+    />
+  );
+}
+
+export function FormCard({ title, hint, children, submitLabel, onSubmit }) {
+  return (
+    <Card className="mb-5 max-w-xl">
+      {title ? <h2 className="theme-heading text-sm font-semibold">{title}</h2> : null}
+      {hint ? <p className="theme-subtext mt-1 text-sm">{hint}</p> : null}
+      <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-4">
+        {children}
+        <div className="pt-1">
+          <button className={primaryButtonClass} type="submit">{submitLabel}</button>
+        </div>
+      </form>
+    </Card>
+  );
+}
 
 export function Empty({ children }) {
   return <p className="theme-subtext py-8 text-center text-sm">{children}</p>;

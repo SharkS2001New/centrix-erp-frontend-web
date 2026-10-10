@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
+import { serviceImageSrc } from "@/lib/spa/image";
 import { useSpa } from "@/lib/spa/store";
 import { Button, Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
 
@@ -97,10 +98,13 @@ export function PosScreen() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {catalog.services.filter((item) => !item.combo || spa.features.combos).map((item) => (
-            <button key={item.id} type="button" className="theme-panel rounded-xl border p-4 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "service")}>
-              <p className="text-xs text-slate-400">{item.category}</p>
-              <p className="mt-1 font-semibold">{item.name}</p>
-              <p className="mt-2 text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.duration} min</p>
+            <button key={item.id} type="button" className="theme-panel overflow-hidden rounded-xl border p-0 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "service")}>
+              {serviceImageSrc(item) ? <img src={serviceImageSrc(item)} alt="" className="h-28 w-full object-cover" /> : null}
+              <span className="block p-4">
+                <span className="block text-xs text-slate-400">{item.category}</span>
+                <span className="mt-1 block font-semibold">{item.name}</span>
+                <span className="mt-2 block text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.duration} min</span>
+              </span>
             </button>
           ))}
           {catalog.products.map((item) => (

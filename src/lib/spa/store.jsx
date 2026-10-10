@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { datePart, featuresFor, stockStatus, todayISO, uid } from "@/lib/spa/format";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { datePart, resolveSpaFeatures, stockStatus, todayISO, uid } from "@/lib/spa/format";
+import { importRemoteServicePhoto, isPublicImageUrl, servicePhoto } from "@/lib/spa/image";
 import { SPA_STORAGE_KEY, createSeed } from "@/lib/spa/seed";
 
 const SpaContext = createContext(null);
@@ -21,6 +22,7 @@ function loadState() {
 export function SpaProvider({ children }) {
   const [state, setState] = useState(createSeed);
   const [ready, setReady] = useState(false);
+  const photoAttempts = useRef(new Set());
 
   useEffect(() => {
     setState(loadState());
@@ -29,8 +31,45 @@ export function SpaProvider({ children }) {
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem(SPA_STORAGE_KEY, JSON.stringify(state));
+    try {
+      window.localStorage.setItem(SPA_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      /* A photo that does not fit stays in this session only. */
+    }
   }, [ready, state]);
+
+  useEffect(() => {
+    if (!ready) return undefined;
+    const pending = state.services.filter((item) => {
+      const url = String(item.imageUrl || "").trim();
+      return isPublicImageUrl(url) && item.imageFromUrl !== url && !photoAttempts.current.has(`${item.id}:${url}`);
+    });
+    if (pending.length === 0) return undefined;
+    let cancelled = false;
+    pending.forEach((service) => {
+      const url = String(service.imageUrl).trim();
+      photoAttempts.current.add(`${service.id}:${url}`);
+      importRemoteServicePhoto(url)
+        .then((image) => {
+          if (cancelled) return;
+          setState((current) => ({
+            ...current,
+            services: current.services.map((row) =>
+              row.id === service.id && String(row.imageUrl || "").trim() === url
+                ? { ...row, image, imageFromUrl: url }
+                : row,
+            ),
+          }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+      pending.forEach((service) => {
+        photoAttempts.current.delete(`${service.id}:${String(service.imageUrl).trim()}`);
+      });
+    };
+  }, [ready, state.services]);
 
   const api = useMemo(() => {
     function patch(partial) {
@@ -40,14 +79,17 @@ export function SpaProvider({ children }) {
     return {
       ...state,
       ready,
-      features: featuresFor(state.businessType),
+      features: resolveSpaFeatures(state.businessType, state.featureOverrides),
       resetDemo() {
         const next = createSeed();
         next.businessType = state.businessType || "combined";
         setState(next);
       },
       setBusinessType(businessType) {
-        patch({ businessType });
+        patch({ businessType, featureOverrides: {} });
+      },
+      saveFeatures(featureOverrides) {
+        patch({ featureOverrides });
       },
       setBranch(branch) {
         patch({ branch });
@@ -104,6 +146,9 @@ export function SpaProvider({ children }) {
       saveService(service) {
         if (!service.name?.trim()) return "Enter a service name.";
         if (Number(service.price) < 0 || Number(service.duration) <= 0) return "Price and duration need valid numbers.";
+        const imageUrl = isPublicImageUrl(service.imageUrl) ? String(service.imageUrl).trim() : "";
+        const previous = service.id ? state.services.find((item) => item.id === service.id) : null;
+        const keptDownload = imageUrl && previous?.imageFromUrl === imageUrl ? servicePhoto(previous.image) : "";
         const row = {
           ...service,
           price: Number(service.price) || 0,
@@ -112,6 +157,9 @@ export function SpaProvider({ children }) {
           staffIds: service.staffIds || [],
           active: service.active !== false,
           combo: Boolean(service.combo),
+          imageUrl,
+          imageFromUrl: keptDownload ? imageUrl : "",
+          image: imageUrl ? keptDownload : servicePhoto(service.image),
         };
         patch({
           services: service.id

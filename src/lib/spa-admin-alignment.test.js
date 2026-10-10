@@ -73,6 +73,34 @@ describe("SPA & Kinyozi administration", () => {
     expect(hrefs).not.toContain("/admin/spa-settings");
   });
 
+  it("keeps driving school setup in Administration and hides unused shop tools", () => {
+    const drivingCaps = {
+      industry: "driving",
+      deployment_profile: "driving_school",
+      modules: { driving: true, admin: true, sales: true, inventory: true },
+      module_settings: { driving: { features: { vehicles: false, assessments: true, fees: true, expenses: true } } },
+    };
+    const ctx = navContext(drivingCaps);
+    for (const tabId of ["sales", "external-pos", "inventory", "procurement"]) {
+      expect(isOrgSettingsTabVisible(tabId, drivingCaps, { tenantSelfService: true })).toBe(false);
+    }
+    const drivingSettings = navSections.flatMap((section) => section.items).find((item) => item.href === "/admin/driving-settings");
+    expect(isNavItemVisible(drivingSettings, ctx)).toBe(true);
+    expect(isNavItemVisible(drivingSettings, navContext())).toBe(false);
+    const schoolNav = buildWorkspaceNavSections({
+      capabilities: drivingCaps,
+      navContext: ctx,
+      workspaceId: "driving",
+      isSuperAdmin: () => false,
+    });
+    const hrefs = schoolNav.flatMap((section) => section.items.map((item) => item.href));
+    expect(hrefs).toContain("/driving-school/reports");
+    expect(hrefs).not.toContain("/driving-school/settings");
+    expect(hrefs).not.toContain("/driving-school/branches");
+    expect(hrefs).not.toContain("/driving-school/vehicles");
+    expect(hrefs).toContain("/driving-school/assessments");
+  });
+
   it("does not put hotel operations in a salon admin menu", () => {
     const ctx = navContext();
     const ops = navSections.find((section) => section.id === "hospitality_ops");

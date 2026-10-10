@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "@/lib/toast";
-import { businessLabel } from "@/lib/spa/format";
+import { businessLabel, featuresFor } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
 import { Button, Card, Field, PageHeader, SpaSelect, inputClass, pillClass, textAreaClass } from "@/components/spa/ui";
 
-const TABS = ["Profile", "Branches", "Business type", "Hours", "Receipt", "Tax", "Payments", "Users"];
+const TABS = ["Profile", "Branches", "Business type", "Features", "Hours", "Receipt", "Tax", "Payments", "Users"];
+const FEATURES = [
+  ["rooms", "Treatment rooms", "Room assignment on appointments."],
+  ["packages", "Packages", "Multi-session packages."],
+  ["sessions", "Session tracking", "Therapist session notes on the calendar."],
+  ["chairs", "Barber chairs", "Chair assignment for kinyozi bookings."],
+  ["walkIns", "Walk-ins", "A waiting queue on the appointment day."],
+  ["combos", "Service combos", "Combined services on the menu and till."],
+];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function SettingsScreen({ embedded = false }) {
@@ -43,6 +52,7 @@ export function SettingsScreen({ embedded = false }) {
       ) : null}
       {tab === "Branches" ? (
         <Card className="max-w-xl">
+          <p className="theme-subtext mb-3 text-sm">Organisation branches, phones, and addresses are managed on <Link className="font-medium text-[var(--theme-accent-text)]" href="/admin/branches">Administration → Branches</Link>. The list below is which shop this till is using.</p>
           <ul className="space-y-2 text-sm">{spa.branches.map((branch) => <li key={branch} className="flex justify-between"><span>{branch}</span>{branch === spa.branch ? <span className="text-[var(--theme-accent-text)]">Current</span> : <button type="button" className="text-[var(--theme-accent-text)]" onClick={() => spa.setBranch(branch)}>Use</button>}</li>)}</ul>
           <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); const error = spa.addBranch(branchName); if (error) toast.error(error); else { toast.success("Branch added."); setBranchName(""); } }}>
             <input className={inputClass} aria-label="New branch" value={branchName} onChange={(event) => setBranchName(event.target.value)} placeholder="Branch name" />
@@ -64,6 +74,25 @@ export function SettingsScreen({ embedded = false }) {
             </Card>
           ))}
         </div>
+      ) : null}
+      {tab === "Features" ? (
+        <Card className="max-w-xl space-y-3">
+          <p className="theme-subtext text-sm">The business type sets the starting tools. Turn individual tools on or off for this shop.</p>
+          {FEATURES.map(([key, label, detail]) => (
+            <label key={key} className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={Boolean(spa.features[key])}
+                onChange={(event) => spa.saveFeatures({ ...(spa.featureOverrides || {}), [key]: event.target.checked })}
+              />
+              <span>
+                <span className="theme-heading font-medium">{label}</span>
+                <span className="theme-subtext mt-0.5 block text-xs">{detail}{featuresFor(spa.businessType)[key] ? "" : " Off for this business type until you enable it."}</span>
+              </span>
+            </label>
+          ))}
+        </Card>
       ) : null}
       {tab === "Hours" ? (
         <Card className="max-w-xl space-y-3">

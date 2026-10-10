@@ -71,6 +71,11 @@ export function isDrivingIndustry(capabilities) {
   return capabilities?.industry === "driving" || capabilities?.deployment_profile === "driving_school";
 }
 
+export function isDrivingFeatureEnabled(capabilities, key) {
+  const value = capabilities?.module_settings?.driving?.features?.[key];
+  return value !== false;
+}
+
 /** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   const hospitality = isHospitalityIndustry(capabilities);
@@ -82,7 +87,7 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
   ) {
     return false;
   }
-  if (isSpaIndustry(capabilities)) {
+  if (isSpaIndustry(capabilities) || isDrivingIndustry(capabilities)) {
     if (
       ["sales", "external-pos", "mobile", "distribution", "whatsapp", "inventory", "procurement"].includes(
         tabId,

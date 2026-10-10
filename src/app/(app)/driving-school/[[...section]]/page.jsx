@@ -1,18 +1,22 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useEffect } from "react";
+import { useParams, usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { useAppRouter } from "@/lib/use-app-router";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { openAppPathAcrossWorkspaces } from "@/lib/workspace-navigation";
 import {
   AssessmentsScreen,
   AttendanceScreen,
   CoursesScreen,
   DrivingDashboard,
-  ExistingListScreen,
   ExpensesScreen,
   InstructorsScreen,
   PaymentsScreen,
   ReportsScreen,
   ScheduleScreen,
-  SettingsScreen,
   StudentsScreen,
   VehiclesScreen,
 } from "@/components/driving/screens";
@@ -43,14 +47,45 @@ export default function DrivingSchoolPage() {
     case "reports":
       return <ReportsScreen />;
     case "branches":
-      return <ExistingListScreen title="Branches" subtitle="Branches already belong to the organisation. A branch-limited user only sees their own branch in school records." path="/branches" label={(row) => row.branch_name || row.name || row.branch_code} />;
+      return <AdminRedirect href="/admin/branches" label="Opening branches in Administration…" />;
     case "users":
-      return <ExistingListScreen title="Users & permissions" subtitle="Staff accounts and roles stay in Administration. Instructors only see their own lessons when their user is linked." path="/users" label={(row) => row.full_name || row.username || row.email} />;
+      return <AdminRedirect href="/admin/users" label="Opening users in Administration…" />;
     case "settings":
-      return <SettingsScreen />;
+      return <AdminRedirect href="/admin/driving-settings" label="Opening Driving School settings in Administration…" />;
     case "audit":
-      return <ExistingListScreen title="Audit logs" subtitle="Student, booking, payment, and settings changes are recorded with the person, the record, and the time." path="/audit-logs" label={(row) => `${row.action} · ${row.table_name} · ${row.record_id}`} />;
+      return <AdminRedirect href="/admin/audit" label="Opening the audit trail in Administration…" />;
     default:
       return <DrivingDashboard />;
   }
+}
+
+function AdminRedirect({ href, label }) {
+  const pathname = usePathname();
+  const router = useAppRouter();
+  const { user, organization, capabilities, isSuperAdmin, switchWorkspace } = useAuth();
+
+  useEffect(() => {
+    const ctx = buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat: resolveTillFloatNavFlag(capabilities),
+      isSuperAdmin,
+    });
+    openAppPathAcrossWorkspaces({
+      href,
+      currentPathname: pathname,
+      userId: user?.id,
+      organizationId: organization?.id,
+      capabilities,
+      ctx,
+      currentWorkspaceId: getStoredWorkspace(),
+      switchWorkspace,
+      router,
+    }).catch(() => {
+      router.replace("/admin");
+    });
+  }, [capabilities, href, isSuperAdmin, organization, pathname, router, switchWorkspace, user]);
+
+  return <p className="theme-subtext text-sm">{label}</p>;
 }

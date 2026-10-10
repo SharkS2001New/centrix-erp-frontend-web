@@ -23,7 +23,7 @@ import {
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
-import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingFeatureEnabled, isDrivingIndustry, isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
@@ -1209,7 +1209,7 @@ const NAV_SECTION_DEFINITIONS = [
       { href: "/driving-school/courses", label: "Courses & packages", module: "driving" },
       { href: "/driving-school/schedule", label: "Lesson scheduling", module: "driving" },
       { href: "/driving-school/attendance", label: "Attendance", module: "driving" },
-      { href: "/driving-school/assessments", label: "Assessments & exams", module: "driving" },
+      { href: "/driving-school/assessments", label: "Assessments & exams", module: "driving", requireDrivingFeature: "assessments" },
     ],
   },
   {
@@ -1219,7 +1219,7 @@ const NAV_SECTION_DEFINITIONS = [
     collapsible: true,
     items: [
       { href: "/driving-school/instructors", label: "Instructors", module: "driving" },
-      { href: "/driving-school/vehicles", label: "Vehicles", module: "driving" },
+      { href: "/driving-school/vehicles", label: "Vehicles", module: "driving", requireDrivingFeature: "vehicles" },
     ],
   },
   {
@@ -1228,13 +1228,9 @@ const NAV_SECTION_DEFINITIONS = [
     icon: "💳",
     collapsible: true,
     items: [
-      { href: "/driving-school/payments", label: "Payments & fees", module: "driving" },
-      { href: "/driving-school/expenses", label: "Expenses", module: "driving" },
+      { href: "/driving-school/payments", label: "Payments & fees", module: "driving", requireDrivingFeature: "fees" },
+      { href: "/driving-school/expenses", label: "Expenses", module: "driving", requireDrivingFeature: "expenses" },
       { href: "/driving-school/reports", label: "Reports", module: "driving" },
-      { href: "/driving-school/settings", label: "School settings", module: "driving" },
-      { href: "/driving-school/branches", label: "Branches", module: "driving" },
-      { href: "/driving-school/users", label: "Users & permissions", module: "driving" },
-      { href: "/driving-school/audit", label: "Audit logs", module: "driving" },
     ],
   },
   {
@@ -1361,12 +1357,21 @@ const NAV_SECTION_DEFINITIONS = [
         requireSpaIndustry: true,
       },
       {
+        href: "/admin/driving-settings",
+        label: "Driving School",
+        module: "admin",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        orgAdminOnly: true,
+        requireDrivingIndustry: true,
+      },
+      {
         href: "/admin/hotel-settings",
         label: "Hotel food & drink settings",
         module: "hospitality.backend",
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,
         hideWhenSpaIndustry: true,
+        hideWhenDrivingIndustry: true,
       },
       {
         href: "/admin/till-printing",
@@ -1375,6 +1380,7 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.admin.till_printing.view,
         orgAdminOnly: true,
         hideWhenSpaIndustry: true,
+        hideWhenDrivingIndustry: true,
       },
       {
         href: "/admin/branches",
@@ -1576,6 +1582,9 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
   if (item.hideWhenSpaIndustry && isSpaIndustry(capabilities)) return false;
   if (item.requireSpaIndustry && !isSpaIndustry(capabilities)) return false;
+  if (item.hideWhenDrivingIndustry && isDrivingIndustry(capabilities)) return false;
+  if (item.requireDrivingIndustry && !isDrivingIndustry(capabilities)) return false;
+  if (item.requireDrivingFeature && !isDrivingFeatureEnabled(capabilities, item.requireDrivingFeature)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;

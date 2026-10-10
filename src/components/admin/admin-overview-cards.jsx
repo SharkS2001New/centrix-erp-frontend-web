@@ -7,14 +7,21 @@ import { canAccessOrgAdminSettings } from "@/lib/admin-scope";
 import { resolveTillFloatNavFlag } from "@/lib/access-control";
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { P } from "@/lib/permission-codes";
-import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingIndustry, isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 
 const CARDS = [
   {
     href: "/admin/spa-settings",
     title: "SPA & Kinyozi",
-    description: "Business type, hours, receipt, tax, payments, and salon users.",
+    description: "Business type, shop tools, hours, receipt, tax, payments, and salon users.",
     icon: "✂️",
+    permission: P.admin.settings.view,
+  },
+  {
+    href: "/admin/driving-settings",
+    title: "Driving School",
+    description: "School name, lesson reminders, and which tools the school uses.",
+    icon: "🚗",
     permission: P.admin.settings.view,
   },
   {
@@ -24,6 +31,7 @@ const CARDS = [
     descriptionHospitality:
       "Hotel inventory, procurement, printouts, HR, notifications, and security preferences.",
     descriptionSpa: "Company preferences for this salon or barbershop.",
+    descriptionDriving: "Company preferences for this driving school.",
     icon: "⚙️",
     permission: P.admin.settings.view,
   },
@@ -33,6 +41,7 @@ const CARDS = [
     description: "ERP sidebar colors, primary buttons, and Classic External POS palette.",
     descriptionHospitality: "ERP sidebar colors and primary buttons for Hotel Backoffice and Admin.",
     descriptionSpa: "Colors for Administration and SPA & Kinyozi.",
+    descriptionDriving: "Colors for Administration and Driving School.",
     icon: "🎨",
     permission: P.admin.settings.view,
   },
@@ -47,6 +56,8 @@ const CARDS = [
     href: "/admin/branches",
     title: "Branches",
     description: "Manage branch locations, contacts, and status.",
+    descriptionSpa: "Shop branches for this salon or barbershop.",
+    descriptionDriving: "School branches, contacts, and who manages each yard.",
     icon: "🏬",
     permission: P.admin.branches.view,
   },
@@ -98,6 +109,7 @@ export function AdminOverviewCards() {
   });
   const isHospitality = isHospitalityIndustry(capabilities);
   const isSpa = isSpaIndustry(capabilities);
+  const isDriving = isDrivingIndustry(capabilities);
   const navContext = {
     hasPermission,
     isModuleEnabled,
@@ -143,9 +155,11 @@ export function AdminOverviewCards() {
               <p className="theme-subtext mt-1 text-sm">
                 {isSpa && card.descriptionSpa
                   ? card.descriptionSpa
-                  : isHospitality && card.descriptionHospitality
-                    ? card.descriptionHospitality
-                    : card.description}
+                  : isDriving && card.descriptionDriving
+                    ? card.descriptionDriving
+                    : isHospitality && card.descriptionHospitality
+                      ? card.descriptionHospitality
+                      : card.description}
               </p>
             </div>
           </div>

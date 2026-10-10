@@ -4,10 +4,18 @@ import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, stockStatus, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Card, Field, PageHeader, toolbarControlClass } from "@/components/spa/ui";
+import { Button, Card, Field, PageHeader, pillClass, toolbarControlClass } from "@/components/spa/ui";
+
+const SPA_REPORTS = [
+  ["sales", "Sales"],
+  ["appointments", "Appointments"],
+  ["staff", "Staff"],
+  ["stock", "Stock"],
+];
 
 export function ReportsScreen() {
   const spa = useSpa();
+  const [report, setReport] = useState("sales");
   const [from, setFrom] = useState(todayISO(daysAgo(6)));
   const [to, setTo] = useState(todayISO());
   const inRange = (value) => {
@@ -59,11 +67,57 @@ export function ReportsScreen() {
 
   return (
     <div>
-      <PageHeader title="Reports" detail="Sales, costs and the till for the dates you choose.">
+      <PageHeader title="Reports" detail="Sales, appointments, staff, and stock for the dates you choose.">
         <Field label="From"><input className={toolbarControlClass} type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
         <Field label="To"><input className={toolbarControlClass} type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
         <Button variant="ghost" onClick={exportCsv}>Export CSV</Button>
       </PageHeader>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {SPA_REPORTS.map(([id, label]) => (
+          <button key={id} type="button" className={pillClass(report === id)} onClick={() => setReport(id)}>{label}</button>
+        ))}
+      </div>
+      {report === "appointments" ? (
+        <Card>
+          <h2 className="text-sm font-semibold">Appointments</h2>
+          <ReportTable
+            columns={["When", "Client", "Service", "Status"]}
+            rows={appointments.map((item) => [
+              `${datePart(item.start)} ${item.start?.slice(11, 16) || ""}`,
+              spa.clients.find((row) => row.id === item.clientId)?.name || "—",
+              spa.services.find((row) => row.id === item.serviceId)?.name || "—",
+              String(item.status || "").replace("_", " "),
+            ])}
+            empty="No appointments in this range."
+          />
+        </Card>
+      ) : null}
+      {report === "staff" ? (
+        <Card>
+          <h2 className="text-sm font-semibold">Staff</h2>
+          <ReportTable
+            columns={["Staff", "Service sales", "Commission %", "Earned"]}
+            rows={spa.staff.map((person) => {
+              const total = sales.reduce((sum, sale) => sum + sale.lines.filter((line) => line.staffId === person.id && line.kind === "service").reduce((lineSum, line) => lineSum + line.price * line.qty, 0), 0);
+              return [person.name, ksh(total), `${person.commission}%`, ksh(Math.round(total * (Number(person.commission) || 0) / 100))];
+            })}
+            empty="No staff on this branch."
+          />
+        </Card>
+      ) : null}
+      {report === "stock" ? (
+        <Card>
+          <h2 className="text-sm font-semibold">Stock</h2>
+          <ReportTable
+            columns={["Product", "Qty", "Status", "Value at cost"]}
+            rows={spa.products.map((item) => [item.name, String(item.qty), stockStatus(item), ksh(item.cost * item.qty)])}
+            empty="No products yet."
+          />
+          <p className="theme-subtext mt-3 text-sm">Approved expenses in this range: {ksh(expenseTotal)}. Stock value is current quantity at cost, not limited to the dates above.</p>
+        </Card>
+      ) : null}
+      {report === "sales" ? (
+      <>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Revenue" value={ksh(revenue)} />
         <Metric label="Expenses" value={ksh(expenseTotal)} />
@@ -99,6 +153,28 @@ export function ReportsScreen() {
           </ul>
         </Card>
       </section>
+      </>
+      ) : null}
+    </div>
+  );
+}
+
+function ReportTable({ columns, rows, empty }) {
+  if (rows.length === 0) return <p className="theme-subtext mt-3 text-sm">{empty}</p>;
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="theme-subtext">
+          <tr>{columns.map((label) => <th key={label} className="py-2 pr-3 font-medium">{label}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index} className="border-t border-[var(--theme-border)]">
+              {row.map((cell, cellIndex) => <td key={cellIndex} className="py-2 pr-3">{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

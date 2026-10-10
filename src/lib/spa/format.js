@@ -73,6 +73,15 @@ export function featuresFor(type) {
   };
 }
 
+export function resolveSpaFeatures(type, overrides = {}) {
+  const base = featuresFor(type);
+  const next = { ...base };
+  for (const key of Object.keys(base)) {
+    if (typeof overrides?.[key] === "boolean") next[key] = overrides[key];
+  }
+  return next;
+}
+
 export function stockStatus(product) {
   const qty = Number(product.qty) || 0;
   if (qty <= 0) return "Out of stock";

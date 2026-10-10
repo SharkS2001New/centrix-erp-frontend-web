@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
+import { isPublicImageUrl, readServicePhoto, serviceImageSrc } from "@/lib/spa/image";
 import { useSpa } from "@/lib/spa/store";
 import { Badge, Button, Field, Modal, PageHeader, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
 
@@ -18,11 +19,16 @@ export function ServicesScreen() {
     <div>
       <PageHeader title="Services" detail="Prices, duration, who can perform them, and commission.">
         <SpaSelect toolbar aria-label="Service category" value={category} onChange={(event) => setCategory(event.target.value)} options={toOptions(["All", ...CATEGORIES])} />
-        <Button onClick={() => setEditing({ name: "", category: "Haircut", price: 500, duration: 30, staffIds: [], commission: 10, active: true, combo: false })}>Add service</Button>
+        <Button onClick={() => setEditing(blankService())}>Add service</Button>
       </PageHeader>
-      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} onCreate={() => setEditing({ name: "", category: "Haircut", price: 500, duration: 30, staffIds: [], commission: 10, active: true, combo: false })} createLabel="Add service" render={(service) => (
+      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} onCreate={() => setEditing(blankService())} createLabel="Add service" render={(service) => (
         <tr key={service.id} className="border-b border-slate-50">
-          <td className="px-4 py-3 font-medium">{service.name}{service.combo ? " · combo" : ""}</td>
+          <td className="px-4 py-3 font-medium">
+            <span className="flex items-center gap-3">
+              <ServiceThumb src={serviceImageSrc(service)} />
+              <span>{service.name}{service.combo ? " · combo" : ""}</span>
+            </span>
+          </td>
           <td className="px-4 py-3">{service.category}</td>
           <td className="px-4 py-3">{ksh(service.price)}</td>
           <td className="px-4 py-3">{service.duration} min</td>
@@ -40,11 +46,70 @@ export function ServicesScreen() {
   );
 }
 
+function blankService() {
+  return { name: "", category: "Haircut", price: 500, duration: 30, staffIds: [], commission: 10, active: true, combo: false, image: "", imageUrl: "" };
+}
+
+function ServiceThumb({ src }) {
+  if (!src) {
+    return <span className="theme-subtext grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--theme-surface-muted)] text-[10px]">Photo</span>;
+  }
+  return <img src={src} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />;
+}
+
 function ServiceForm({ spa, service, onClose, onSave }) {
   const [form, setForm] = useState(service);
+  const [source, setSource] = useState(service.imageUrl ? "url" : "upload");
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
+  async function onPhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const image = await readServicePhoto(file);
+      setForm((current) => ({ ...current, image, imageUrl: "" }));
+      setSource("upload");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not use that photo.");
+    }
+  }
+  function save() {
+    if (source === "url") {
+      if (!isPublicImageUrl(form.imageUrl)) {
+        toast.error("Enter a public http or https image URL.");
+        return;
+      }
+      onSave({ ...form, imageUrl: String(form.imageUrl).trim(), image: "" });
+      return;
+    }
+    onSave({ ...form, imageUrl: "" });
+  }
+  const preview = source === "url" ? serviceImageSrc({ imageUrl: form.imageUrl }) : serviceImageSrc(form);
   return (
     <Modal title={service.id ? "Edit service" : "Add service"} onClose={onClose}>
+      <div className="mb-4 flex items-start gap-4">
+        <ServiceThumb src={preview} />
+        <div className="min-w-0 flex-1">
+          <div className="inline-flex rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-0.5">
+            <button type="button" className={`rounded-md px-2.5 py-1 text-xs font-medium ${source === "upload" ? "theme-primary-btn" : "theme-subtext"}`} onClick={() => setSource("upload")}>Upload file</button>
+            <button type="button" className={`rounded-md px-2.5 py-1 text-xs font-medium ${source === "url" ? "theme-primary-btn" : "theme-subtext"}`} onClick={() => setSource("url")}>Image URL</button>
+          </div>
+          {source === "upload" ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <label className="theme-secondary-btn cursor-pointer rounded-lg px-3 py-2 text-sm font-medium">
+                {form.image ? "Change photo" : "Add photo"}
+                <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} />
+              </label>
+              {form.image ? <Button variant="ghost" onClick={() => setForm((current) => ({ ...current, image: "" }))}>Remove photo</Button> : null}
+            </div>
+          ) : (
+            <div className="mt-2">
+              <input className={inputClass} type="url" value={form.imageUrl || ""} placeholder="https://example.com/haircut.jpg" onChange={set("imageUrl")} />
+              <p className="theme-subtext mt-1 text-xs">Paste a direct image link. Centrix downloads and stores a copy when this salon loads.</p>
+            </div>
+          )}
+        </div>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
         <Field label="Category"><SpaSelect value={form.category} onChange={set("category")} options={toOptions(CATEGORIES)} /></Field>
@@ -70,7 +135,7 @@ function ServiceForm({ spa, service, onClose, onSave }) {
       </fieldset>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button onClick={() => onSave(form)}>Save</Button>
+        <Button onClick={save}>Save</Button>
       </div>
     </Modal>
   );

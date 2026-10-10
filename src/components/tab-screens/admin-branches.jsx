@@ -26,7 +26,7 @@ import { BRANCH_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
-import { isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import {
@@ -276,7 +276,13 @@ export function AdminBranchesScreen() {
   return (
     <CatalogPageShell
       title="Branches"
-      subtitle="Manage branch locations and contacts."
+      subtitle={
+        isSpaIndustry(capabilities)
+          ? "Salon and kinyozi branches: name, phone, address, and who manages the shop."
+          : isDrivingIndustry(capabilities)
+            ? "Driving school branches: name, phone, address, and the branch manager."
+            : "Manage branch locations and contacts."
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -434,7 +440,7 @@ export function AdminBranchesScreen() {
           Active
         </label>
 
-        {isSpaIndustry(capabilities) ? null : (
+        {isSpaIndustry(capabilities) || isDrivingIndustry(capabilities) ? null : (
         <div className="mt-4 border-t border-slate-200 pt-4">
           <p className="text-sm font-medium text-slate-900">M-Pesa overrides (optional)</p>
           <p className="mt-1 text-xs text-slate-500">
