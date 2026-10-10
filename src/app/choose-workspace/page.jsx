@@ -32,8 +32,11 @@ function ChooseWorkspaceContent() {
   const onlyWorkspaceId = workspaces.length === 1 ? workspaces[0].id : null;
   const ctxRef = useRef(ctx);
   const capabilitiesRef = useRef(capabilities);
-  ctxRef.current = ctx;
-  capabilitiesRef.current = capabilities;
+
+  useEffect(() => {
+    ctxRef.current = ctx;
+    capabilitiesRef.current = capabilities;
+  });
 
   useEffect(() => {
     if (loading || !onlyWorkspaceId || autoOpenAttemptedRef.current) return;

@@ -8,7 +8,9 @@ import { Card, Empty, Field, PageTitle, Stat, inputClass, money, primaryButtonCl
 
 function useLoad(loader, key) {
   const loaderRef = useRef(loader);
-  loaderRef.current = loader;
+  useEffect(() => {
+    loaderRef.current = loader;
+  });
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
