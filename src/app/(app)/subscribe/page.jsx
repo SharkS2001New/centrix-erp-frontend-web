@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
@@ -27,6 +27,7 @@ function quoteMonths(unit, months, minMonths, percent) {
 
 export default function SubscribePage() {
   const router = useRouter();
+  const forPos = useSearchParams().get("for") === "pos";
   const { organization, organizationLicense, capabilities, user, isSuperAdmin, refreshCapabilities } = useAuth();
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : [];
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
@@ -82,6 +83,10 @@ export default function SubscribePage() {
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
     const workspaceId = getStoredWorkspace();
+    if (forPos || (workspaceId === "pos" && licenseAccessMode(organizationLicense) === "token")) {
+      router.replace("/choose-workspace");
+      return;
+    }
     if (isTerminalWorkspace(workspaceId)) {
       router.replace(workspaceHomePath(workspaceId, capabilities) || "/pos");
       return;
@@ -105,7 +110,7 @@ export default function SubscribePage() {
       return;
     }
     router.replace("/dashboard");
-  }, [capabilities, organization?.id, organizationLicense, router]);
+  }, [capabilities, forPos, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
     function onKey(event) {
@@ -122,7 +127,7 @@ export default function SubscribePage() {
 
   async function leaveIfPaid(license) {
     const nextMode = licenseAccessMode(license);
-    if (nextMode === "full" || nextMode === "token") {
+    if (nextMode === "full" || nextMode === "trial" || (nextMode === "token" && !forPos)) {
       const home = resolveHomePath({ user, organization, capabilities, isSuperAdmin });
       router.replace(home || "/dashboard");
       return true;
@@ -131,6 +136,10 @@ export default function SubscribePage() {
   }
 
   async function payNow() {
+    if (forPos && billing === "token") {
+      setNotice("External POS needs a monthly or yearly subscription.");
+      return;
+    }
     if (billing !== "token" && !selected) {
       setNotice(billing === "yearly" ? "Choose a yearly plan." : "Choose a monthly plan.");
       return;
@@ -153,6 +162,7 @@ export default function SubscribePage() {
   }
 
   async function notifyAdmin() {
+    if (forPos && billing === "token") return;
     if (billing !== "token" && !selected) return;
     setBusy("manual");
     setNotice("");
@@ -211,7 +221,7 @@ export default function SubscribePage() {
         Close
       </button>
       <div className="mx-auto min-h-full max-w-6xl px-4 pb-16 pt-16 sm:px-8">
-        {step === "checkout" && (billing === "token" || selected) ? (
+        {step === "checkout" && ((billing === "token" && !forPos) || selected) ? (
           <CheckoutStep
             selected={selected}
             billing={billing}
@@ -234,6 +244,7 @@ export default function SubscribePage() {
         ) : (
           <PlansStep
             plans={visiblePlans}
+            forPos={forPos}
             billing={billing}
             setBilling={(next) => {
               setBilling(next);
@@ -260,7 +271,7 @@ function listedPrice(plan, billing) {
   return { amount: Number(plan.monthly_price) || 0, suffix: "/ month", currency };
 }
 
-function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, currentName, recommendedIndex, onPay }) {
+function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, currentName, recommendedIndex, onPay, forPos = false }) {
   const emptyCopy = billing === "yearly"
     ? "No yearly plans are published yet. A platform administrator sets those under Self-serve plans."
     : billing === "monthly"
@@ -270,7 +281,7 @@ function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, 
     <div>
       <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
       <div className="mx-auto mt-6 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
-        {["token", "monthly", "yearly"].map((option) => (
+        {(forPos ? ["monthly", "yearly"] : ["token", "monthly", "yearly"]).map((option) => (
           <button
             key={option}
             type="button"
@@ -285,6 +296,11 @@ function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, 
           </button>
         ))}
       </div>
+      {forPos ? (
+        <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
+          External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.
+        </p>
+      ) : null}
       <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
         {billing === "token"
           ? "Buy a token pack. Each completed sale uses tokens when the order is saved online."

@@ -20,6 +20,7 @@ import {
 } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { notifyError } from "@/lib/notify";
+import { externalPosRequiresDatedSubscription, rememberLicenceReturn } from "@/lib/organization-license";
 
 function ChevronDownIcon({ className }) {
   return (
@@ -35,7 +36,7 @@ export function WorkspaceSwitcher({
 } = {}) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, organization, capabilities, isSuperAdmin, switchWorkspace } = useAuth();
+  const { user, organization, capabilities, organizationLicense, isSuperAdmin, switchWorkspace } = useAuth();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [pendingTarget, setPendingTarget] = useState(null);
@@ -94,6 +95,12 @@ export function WorkspaceSwitcher({
 
     const target = workspaces.find((w) => w.id === id);
     if (!target) return;
+    if (id === "pos" && externalPosRequiresDatedSubscription(organizationLicense)) {
+      setOpen(false);
+      rememberLicenceReturn("/pos");
+      router.replace("/subscribe?for=pos");
+      return;
+    }
 
     // Close the picker immediately so the opening splash is the only UI.
     setOpen(false);

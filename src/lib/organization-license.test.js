@@ -7,6 +7,7 @@ import {
   licencePlanPath,
   licenseAccessMode,
   licenceNeedsPayment,
+  externalPosRequiresDatedSubscription,
   resolveOrganizationLicense,
   canExtendPlatformLicence,
   canStartPlatformTrial,
@@ -169,5 +170,11 @@ describe("organization license", () => {
 
     const cancelledSub = { status: "cancelled", current_period_end: "2026-01-01" };
     expect(canStartPlatformTrial(cancelledSub, expiredLicense, { expired: false })).toBe(true);
+  });
+
+  it("keeps External POS off token billing", () => {
+    expect(externalPosRequiresDatedSubscription({ access: "token" })).toBe(true);
+    expect(externalPosRequiresDatedSubscription({ access: "full" })).toBe(false);
+    expect(externalPosRequiresDatedSubscription({ access: "trial" })).toBe(false);
   });
 });

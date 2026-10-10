@@ -40,6 +40,7 @@ export const TAB_WORKSPACE_EXCLUDED_PREFIXES = [
   "/login",
   "/platform",
   "/subscribe",
+  "/spa",
 ];
 
 export function isTabWorkspaceEnabled(capabilities) {

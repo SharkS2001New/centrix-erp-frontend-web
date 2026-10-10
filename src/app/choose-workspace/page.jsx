@@ -11,10 +11,11 @@ import { persistWorkspaceRouteBeforeSwitch, recallWorkspaceLandingPath, resolveA
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";
+import { externalPosRequiresDatedSubscription, rememberLicenceReturn } from "@/lib/organization-license";
 
 function ChooseWorkspaceContent() {
   const router = useRouter();
-  const { user, organization, capabilities, loading, isSuperAdmin, switchWorkspace, logout } = useAuth();
+  const { user, organization, capabilities, organizationLicense, loading, isSuperAdmin, switchWorkspace, logout } = useAuth();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState(null);
   const autoOpenAttemptedRef = useRef(false);
@@ -47,6 +48,13 @@ function ChooseWorkspaceContent() {
         if (isTabWorkspaceEnabled(capabilities)) {
           seedWorkspaceTabLanding(organization?.id, workspaces[0].id, resumePath);
         }
+        if (workspaces[0].id === "pos" && externalPosRequiresDatedSubscription(organizationLicense)) {
+          if (!cancelled) {
+            rememberLicenceReturn("/pos");
+            router.replace("/subscribe?for=pos");
+          }
+          return;
+        }
         await switchWorkspace(workspaces[0].id);
         if (!cancelled) router.replace(resumePath);
       } catch (err) {
@@ -69,12 +77,18 @@ function ChooseWorkspaceContent() {
     capabilities,
     ctx,
     organization?.id,
+    organizationLicense,
     user?.id,
   ]);
 
   async function selectWorkspace(id) {
     const target = workspaces.find((w) => w.id === id);
     if (!target || switching) return;
+    if (id === "pos" && externalPosRequiresDatedSubscription(organizationLicense)) {
+      rememberLicenceReturn("/pos");
+      router.replace("/subscribe?for=pos");
+      return;
+    }
     setSwitching(true);
     setSwitchError(null);
     try {

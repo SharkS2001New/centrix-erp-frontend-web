@@ -189,6 +189,14 @@ export function licenceNeedsPayment(license) {
   return mode === "free" || mode === "expired";
 }
 
+/** External POS cannot run on tokens. Offline sales upload later, so the till needs a monthly or yearly period. */
+export const EXTERNAL_POS_SUBSCRIPTION_MESSAGE =
+  "External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.";
+
+export function externalPosRequiresDatedSubscription(license) {
+  return licenseAccessMode(license) === "token";
+}
+
 const LIMITED_SALES_REPORTS = new Set([
   "daily-sales",
   "sales-by-product",

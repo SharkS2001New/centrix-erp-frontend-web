@@ -5630,8 +5630,12 @@ export function isHealableOutboxSyncError(err) {
   if (/network|connection|timeout|timed out|offline|fetch failed|failed to fetch/.test(message)) {
     return true;
   }
+  if (/external pos needs a monthly or yearly subscription/.test(message)) {
+    return true;
+  }
   if (err instanceof ApiError) {
     if (err.body?.code === "organization_tokens_depleted") return true;
+    if (err.body?.code === "external_pos_subscription_required") return true;
     if (!err.status || err.status === 408 || err.status === 429) return true;
     if (err.status >= 502 && err.status <= 504) return true;
     if (err.status >= 500 && /deadlock|1213|serialization failure/.test(message)) {

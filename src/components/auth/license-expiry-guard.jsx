@@ -9,6 +9,7 @@ import {
   isLimitedLicencePath,
   licenceNeedsPayment,
   licencePlanPath,
+  externalPosRequiresDatedSubscription,
   parseLicenceInstant,
   rememberLicenceReturn,
   licenseWarningMessage,
@@ -28,6 +29,12 @@ export function LicenseExpiryGuard({ children }) {
   const router = useRouter();
   const { organizationLicense, loading, isSuperAdmin, refreshCapabilities } = useAuth();
   const [promptOpen, setPromptOpen] = useState(false);
+  const posNeedsSubscription =
+    !loading &&
+    hasAuthSession() &&
+    !isSuperAdmin() &&
+    externalPosRequiresDatedSubscription(organizationLicense) &&
+    (pathname === "/pos" || pathname.startsWith("/pos/"));
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
   const allowed = isLimitedLicencePath(pathname);
@@ -56,6 +63,13 @@ export function LicenseExpiryGuard({ children }) {
   }, [isSuperAdmin, loading, organizationLicense, refreshCapabilities]);
 
   useEffect(() => {
+    if (!posNeedsSubscription) return;
+    if (pathname === "/subscribe" || pathname.startsWith("/subscribe/")) return;
+    rememberLicenceReturn(pathname);
+    router.replace("/subscribe?for=pos");
+  }, [pathname, posNeedsSubscription, router]);
+
+  useEffect(() => {
     if (!limited || allowed) return;
     if (pathname === planPath || pathname.startsWith(`${planPath}/`)) return;
     rememberLicenceReturn(pathname);
@@ -78,7 +92,7 @@ export function LicenseExpiryGuard({ children }) {
     setPromptOpen(true);
   }, [choosingPlan, organizationLicense, isSuperAdmin, limited, loading]);
 
-  if (limited && !allowed) {
+  if (posNeedsSubscription || (limited && !allowed)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
         <p className="max-w-md text-center text-sm text-slate-600">Opening the Centrix payment page…</p>
