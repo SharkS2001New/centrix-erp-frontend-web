@@ -70,7 +70,8 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { useConfirm } from "@/lib/use-confirm";
-import { notifyError, notifySuccess } from "@/lib/notify";
+import { notifyError, notifySuccess, notifyWarning } from "@/lib/notify";
+import { SEARCH_TOO_LONG_MESSAGE } from "@/lib/search-length";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { productExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 import { ProductNameCell } from "@/components/products/product-name-cell";
@@ -661,6 +662,10 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       }
     } catch (e) {
       if (requestId !== loadSeqRef.current) return;
+      if (e instanceof ApiError && e.body?.code === "search_too_long") {
+        notifyWarning(e.message || SEARCH_TOO_LONG_MESSAGE);
+        return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load products");
     } finally {
       if (requestId === loadSeqRef.current) {

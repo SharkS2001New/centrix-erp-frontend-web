@@ -32,6 +32,29 @@ describe("organization license", () => {
     expect(isLicenseExpiringSoon(license)).toBe(true);
   });
 
+  it("closes at the saved hour and stays open before that hour", () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const closed = resolveOrganizationLicense({ status: "active", expires_at: past });
+    const open = resolveOrganizationLicense({ status: "active", expires_at: future });
+    expect(isLicenseExpired(closed)).toBe(true);
+    expect(licenceNeedsPayment(closed)).toBe(true);
+    expect(isLicenseExpired(open)).toBe(false);
+    expect(licenceNeedsPayment(open)).toBe(false);
+  });
+
+  it("stays closed until the start hour", () => {
+    const start = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const end = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const license = resolveOrganizationLicense({
+      status: "active",
+      starts_at: start,
+      expires_at: end,
+    });
+    expect(license?.status).toBe("scheduled");
+    expect(licenceNeedsPayment(license)).toBe(true);
+  });
+
   it("marks past period end as expired even if status is still active", () => {
     const license = resolveOrganizationLicense({
       status: "active",

@@ -12,7 +12,9 @@ import {
   SUBSCRIPTION_STATUSES,
   SUBSCRIPTION_STATUS_STYLES,
   formatBillingDate,
+  formatBillingDateTime,
   formatBillingMoney,
+  toLicenceDateTimeLocal,
   isSubscriptionOverdue,
   licenseBasisLabel,
   platformInvoiceLabel,
@@ -41,7 +43,7 @@ const TRIAL_PRESETS = [7, 14, 30];
 const EXTEND_PRESETS = [7, 14, 30, 90];
 
 function emptyAssignForm() {
-  const start = new Date().toISOString().slice(0, 10);
+  const start = toLicenceDateTimeLocal(new Date().toISOString());
   return {
     organization_id: "",
     plan_id: "",
@@ -167,7 +169,7 @@ export default function PlatformSubscriptionsPage() {
       ...f,
       status: "trialing",
       trial_days: String(n),
-      current_period_end: addCalendarDays(start || undefined, n),
+      current_period_end: toLicenceDateTimeLocal(addCalendarDays(start || undefined, n), { end: true }),
     }));
   }
 
@@ -186,7 +188,7 @@ export default function PlatformSubscriptionsPage() {
           seat_count:
             plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
           current_period_start: start,
-          current_period_end: addCalendarDays(start, Number(f.trial_days) || 14),
+          current_period_end: toLicenceDateTimeLocal(addCalendarDays(start, Number(f.trial_days) || 14), { end: true }),
         };
       }
       return {
@@ -195,7 +197,7 @@ export default function PlatformSubscriptionsPage() {
         seat_count:
           plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
         current_period_start: start,
-        current_period_end: periodEndForPlanInterval(start, plan?.interval),
+        current_period_end: toLicenceDateTimeLocal(periodEndForPlanInterval(start, plan?.interval), { end: true }),
       };
     });
   }
@@ -359,7 +361,7 @@ export default function PlatformSubscriptionsPage() {
     const orgLabel = sub.organization?.org_name || "this organization";
     const ok = await confirm({
       title: "Revoke licence?",
-      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately and locked out until you extend or re-assign a plan.`,
+      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately. You can restore this licence later.`,
       confirmLabel: "Revoke licence",
       destructive: true,
     });
@@ -375,6 +377,30 @@ export default function PlatformSubscriptionsPage() {
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not revoke licence.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unrevokeLicence(sub) {
+    const orgLabel = sub.organization?.org_name || "this organization";
+    const ok = await confirm({
+      title: "Restore licence?",
+      message: `Restore the Centrix licence for ${orgLabel}? It follows the saved start and end date and hour.`,
+      confirmLabel: "Restore licence",
+    });
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const res = await apiRequest(`/admin/platform-subscriptions/${sub.id}/unrevoke`, {
+        method: "POST",
+        body: {},
+      });
+      notifySuccess(res.message ?? "Licence restored.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not restore licence.");
     } finally {
       setSaving(false);
     }
@@ -512,7 +538,7 @@ export default function PlatformSubscriptionsPage() {
                           title="Edit start and end dates"
                           onClick={() => setPeriodTarget(sub)}
                         >
-                        {formatBillingDate(sub.current_period_start)} → {formatBillingDate(sub.current_period_end)}
+                        {formatBillingDateTime(sub.current_period_start)} → {formatBillingDateTime(sub.current_period_end)}
                         {license?.days_remaining != null ? (
                           <span
                             className={`mt-1 block text-xs ${
@@ -623,7 +649,16 @@ export default function PlatformSubscriptionsPage() {
                               License info
                             </button>
                           ) : null}
-                          {sub.status !== "cancelled" && sub.status !== "expired" ? (
+                          {sub.status === "cancelled" ? (
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                              disabled={saving}
+                              onClick={() => void unrevokeLicence(sub)}
+                            >
+                              Restore licence
+                            </button>
+                          ) : sub.status !== "expired" ? (
                             <button
                               type="button"
                               className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
@@ -826,7 +861,7 @@ export default function PlatformSubscriptionsPage() {
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Period start</span>
                   <input
-                    type="date"
+                    type="datetime-local"
                     className={inputClass}
                     value={form.current_period_start}
                     onChange={(e) => {
@@ -857,7 +892,7 @@ export default function PlatformSubscriptionsPage() {
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Period end / expiry</span>
                   <input
-                    type="date"
+                    type="datetime-local"
                     className={inputClass}
                     value={form.current_period_end}
                     onChange={(e) => setForm((f) => ({ ...f, current_period_end: e.target.value }))}
@@ -886,7 +921,7 @@ export default function PlatformSubscriptionsPage() {
             <h2 className="text-base font-semibold text-slate-900">Extend licence</h2>
             <p className="mt-1 text-sm text-slate-500">
               {extendTarget.organization?.org_name ?? "Organization"} · current end{" "}
-              {formatBillingDate(extendTarget.current_period_end)}
+              {formatBillingDateTime(extendTarget.current_period_end)}
             </p>
             <div className="mt-4 space-y-3">
               <div>
@@ -904,7 +939,10 @@ export default function PlatformSubscriptionsPage() {
                       onClick={() => {
                         setExtendDays(String(days));
                         setExtendUntil(
-                          addCalendarDays(extendTarget.current_period_end || undefined, days),
+                          toLicenceDateTimeLocal(
+                            addCalendarDays(extendTarget.current_period_end || undefined, days),
+                            { end: true },
+                          ),
                         );
                       }}
                     >
@@ -916,7 +954,7 @@ export default function PlatformSubscriptionsPage() {
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">New expiry date</span>
                 <input
-                  type="date"
+                  type="datetime-local"
                   className={inputClass}
                   value={extendUntil}
                   onChange={(e) => setExtendUntil(e.target.value)}

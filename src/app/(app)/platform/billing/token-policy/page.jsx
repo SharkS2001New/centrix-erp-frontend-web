@@ -94,6 +94,9 @@ export default function TokenPolicyPage() {
             <Field label="Second low-balance %">
               <input className={inputClass} type="number" min="0" max="100" value={policy.low_balance_second_percent} onChange={(e) => patch({ low_balance_second_percent: Number(e.target.value) })} />
             </Field>
+            <p className="col-span-2 text-xs leading-5 text-slate-500">
+              These are percentages of the token pack. When a balance falls to the first line, Centrix emails the organisation address and each active admin, and sends an SMS to the organisation phone. The second line sends one more notice. A notice is not sent again until the balance rises above that line and falls again.
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={Boolean(policy.grace_enabled)} onChange={(e) => patch({ grace_enabled: e.target.checked })} />

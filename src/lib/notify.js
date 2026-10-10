@@ -20,6 +20,11 @@ export function notifyError(message) {
   if (message) toast.error(message);
 }
 
+/** Transient warning — the action was blocked, not a system failure. */
+export function notifyWarning(message) {
+  if (message) toast.warning(message);
+}
+
 /**
  * Drop-in replacement for `setMessage` / `setError` state setters.
  * Pass to child panels that still call setMessage("Saved.").

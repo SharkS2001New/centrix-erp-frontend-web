@@ -15,6 +15,7 @@ import { productMatchesPosSearch } from "@/lib/pos-product-search-rank";
 import { shouldSyncParentSearchQuery } from "@/lib/pos-search-draft-sync";
 import { posProductSearchColumnDefs } from "@/lib/pos-product-search-columns";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
+import { limitSearchValue } from "@/lib/search-length";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
@@ -118,7 +119,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const idleQuery = !String(draftQuery ?? "").trim();
 
   function writeDraft(next, { notifyParent = true, touchDom = true } = {}) {
-    const value = String(next ?? "");
+    const value = limitSearchValue(next);
     draftQueryRef.current = value;
     lastEmittedRef.current = value;
     if (persistedDraftRef) {

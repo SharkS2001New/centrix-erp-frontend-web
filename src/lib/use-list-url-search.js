@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { clipSearchValue, limitSearchValue, MAX_SEARCH_LENGTH } from "@/lib/search-length";
 import { normalizeTabHref } from "@/lib/tab-workspace";
 
 function pathOnly(href) {
@@ -23,7 +24,7 @@ export function useListUrlSearch({ param = "q", debounceMs = 350 } = {}) {
   const searchParams = useSearchParams();
   const { isActive, paneHref } = useTabPaneActive();
   const urlQ = searchParams.get(param) ?? "";
-  const [search, setSearchState] = useState(urlQ);
+  const [search, setSearchState] = useState(() => clipSearchValue(urlQ));
   const debouncedSearch = useDebouncedValue(search, debounceMs);
 
   const routeMatchesPane =
@@ -32,11 +33,14 @@ export function useListUrlSearch({ param = "q", debounceMs = 350 } = {}) {
 
   useEffect(() => {
     if (!canSyncUrl) return;
-    setSearchState(urlQ);
+    if (urlQ.length > MAX_SEARCH_LENGTH) {
+      limitSearchValue(urlQ);
+    }
+    setSearchState(clipSearchValue(urlQ));
   }, [urlQ, canSyncUrl]);
 
   const setSearch = useCallback((value) => {
-    setSearchState(value);
+    setSearchState(limitSearchValue(value));
   }, []);
 
   useEffect(() => {

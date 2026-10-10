@@ -411,6 +411,37 @@ export function formatBillingDate(value) {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** Licence period: date, and the hour when one was saved. */
+export function formatBillingDateTime(value) {
+  if (!value) return "—";
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return formatBillingDate(raw);
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return formatBillingDate(value);
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Value for an input type="datetime-local". Date-only ends at 23:59. */
+export function toLicenceDateTimeLocal(value, { end = false } = {}) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return `${raw}T${end ? "23:59" : "00:00"}`;
+  }
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function planModuleLabels(moduleKeys = []) {
   const byKey = new Map(PLATFORM_BILLING_MODULES.map((m) => [m.key, m.label]));
   return (moduleKeys ?? []).map((key) => byKey.get(key) ?? key);
@@ -471,8 +502,11 @@ export function isSubscriptionOverdue(sub) {
   if (sub.status === "past_due") return true;
   if (sub.status === "cancelled" || sub.status === "paused") return false;
   if (!sub.current_period_end) return false;
-  const end = new Date(`${String(sub.current_period_end).slice(0, 10)}T23:59:59`);
-  return end.getTime() < Date.now() && sub.status === "active";
+  const raw = String(sub.current_period_end).trim();
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T23:59:59`)
+    : new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
+  return !Number.isNaN(end.getTime()) && end.getTime() <= Date.now() && sub.status === "active";
 }
 
 function nestedPlatformInvoice(sub, relationKey, idKey) {

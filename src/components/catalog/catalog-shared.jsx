@@ -9,6 +9,7 @@ import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { activeGeneralSettings } from "@/lib/general-settings";
 import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/use-list-page-controls";
+import { clipSearchValue, limitSearchValue } from "@/lib/search-length";
 
 export function formatShortDate(value, settings = activeGeneralSettings()) {
   return formatOrgDate(value, settings);
@@ -175,6 +176,15 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
 
 export function SearchInput({ value, onChange, placeholder, className = "" }) {
   const fillsWidth = /\bw-full\b/.test(className) || /\bmin-w-0\b/.test(className);
+
+  function handleChange(event) {
+    const next = limitSearchValue(event.target.value);
+    if (next !== event.target.value) {
+      event.target.value = next;
+    }
+    onChange({ ...event, target: { ...event.target, value: next } });
+  }
+
   return (
     <div
       className={[
@@ -189,8 +199,8 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
       <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
       <input
         type="search"
-        value={value}
-        onChange={onChange}
+        value={clipSearchValue(value)}
+        onChange={handleChange}
         placeholder={placeholder}
         className="theme-input theme-input-focus h-[38px] w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
       />

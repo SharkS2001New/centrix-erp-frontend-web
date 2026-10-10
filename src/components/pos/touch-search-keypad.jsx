@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { limitSearchValue, warnSearchTooLong } from "@/lib/search-length";
 
 const ROW_1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const ROW_2 = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"];
@@ -55,7 +56,9 @@ export function TouchSearchKeypad({
   if (!open) return null;
 
   function emit(next) {
-    const clipped = String(next ?? "").slice(0, maxLength);
+    const text = String(next ?? "");
+    if (text.length > maxLength) warnSearchTooLong();
+    const clipped = text.slice(0, maxLength);
     setDraft(clipped);
     onChange?.(clipped);
   }
@@ -182,7 +185,11 @@ export function TouchSearchField({
     if (enabled && autoOpen && !disabled) setOpen(true);
   }, [enabled, autoOpen, disabled]);
 
-  const inputChangeHandler = (e) => onChange?.(e.target.value);
+  const inputChangeHandler = (e) => {
+    const next = limitSearchValue(e.target.value);
+    if (e.target.value !== next) e.target.value = next;
+    onChange?.(next);
+  };
 
   return (
     <>

@@ -183,8 +183,8 @@ export default function SelfServePlansPage() {
 
   async function handleCompose(event) {
     event.preventDefault();
-    if (words.trim().length < 8) {
-      notifyError("Describe the plan in a sentence: the name, the price, and what it includes.");
+    if (words.trim().length < 2) {
+      notifyError("Write a short description, for example “Small shop, 2000 a month”.");
       return;
     }
     setDrafting(true);
@@ -224,20 +224,20 @@ export default function SelfServePlansPage() {
   return (
     <CatalogPageShell
       title="Self-serve plans"
-      subtitle="Describe a plan in words and Centrix AI publishes it, or fill the form yourself. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
+      subtitle="A short description is enough. Centrix AI knows the product and fills in what the plan includes. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
 
       <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Say the name, whether it is monthly or yearly, the price in KES, and what the organisation gets.
+          Write a short description. Include the price in KES. Centrix AI fills in the applications and sections.
         </p>
         <textarea
-          className={`${inputClass} mt-3 min-h-24`}
+          className={`${inputClass} mt-3 min-h-16`}
           value={words}
           onChange={(e) => setWords(e.target.value)}
-          placeholder="Basic sales, 2000 a month. Backoffice with sales, customers, and reports."
+          placeholder="Small shop, 2000 a month"
         />
         <div className="mt-3 flex justify-end">
           <PrimaryButton type="submit" showIcon={false} disabled={drafting}>

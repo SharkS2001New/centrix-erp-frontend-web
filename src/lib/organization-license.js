@@ -24,11 +24,34 @@ export const LICENSE_EXPIRED_API_CODES = [
 
 const LICENSE_DISMISS_KEY = "centrix_license_warning_dismissed";
 
-function parseDateEnd(value) {
+/**
+ * Date-only values cover that whole calendar day.
+ * A value with an hour is the exact minute the licence opens or closes.
+ */
+export function parseLicenceInstant(value, { dateOnly = "end" } = {}) {
   if (!value) return null;
-  const raw = String(value);
-  const d = new Date(raw.includes("T") ? raw : `${raw.slice(0, 10)}T23:59:59`);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T${dateOnly === "start" ? "00:00:00" : "23:59:59"}`);
+  }
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseDateEnd(value) {
+  return parseLicenceInstant(value, { dateOnly: "end" });
+}
+
+/** Where the clock sits against the licence window. */
+export function licenceBoundary(license, now = Date.now()) {
+  if (!license) return "inside";
+  const start = parseLicenceInstant(license.starts_at, { dateOnly: "start" });
+  const end = parseLicenceInstant(license.expires_at_raw || license.expires_at, { dateOnly: "end" });
+  if (start && start.getTime() > now) return "before";
+  if (end && end.getTime() <= now) return "after";
+  return "inside";
 }
 
 function startOfLocalDay(date = new Date()) {
@@ -73,7 +96,10 @@ export function resolveOrganizationLicense(source = null) {
     raw.trial_ends_at ??
     raw.current_period_end ??
     null;
+  const startsAt = raw.starts_at ?? raw.current_period_start ?? null;
   const end = parseDateEnd(expiresAt);
+  const start = parseLicenceInstant(startsAt, { dateOnly: "start" });
+  const nowMs = Date.now();
   const statusRaw = String(raw.status ?? "").toLowerCase() || null;
   const computedDays = end != null ? daysUntilDate(end) : null;
   const daysRemaining =
@@ -92,17 +118,25 @@ export function resolveOrganizationLicense(source = null) {
   if (
     status &&
     ["active", "trialing", "past_due"].includes(status) &&
-    daysRemaining != null &&
-    daysRemaining < 0
+    ((end && end.getTime() <= nowMs) || (daysRemaining != null && daysRemaining < 0))
   ) {
     status = "expired";
+  }
+  if (
+    status &&
+    ["active", "trialing", "past_due"].includes(status) &&
+    start &&
+    start.getTime() > nowMs
+  ) {
+    status = "scheduled";
   }
 
   const isTrial = Boolean(raw.is_trial || status === "trialing");
 
   return {
     status: status || (end ? "active" : "missing"),
-    expires_at: expiresAt ? String(expiresAt).slice(0, 10) : null,
+    starts_at: startsAt ? String(startsAt) : null,
+    expires_at: expiresAt ? String(expiresAt) : null,
     expires_at_raw: expiresAt,
     is_trial: isTrial,
     days_remaining: daysRemaining,
@@ -137,6 +171,9 @@ export function licenseFromAuthState({ capabilities = null, organization = null 
 
 /** Paid licence, active free trial, unpaid, or an expired licence that can still sign in. */
 export function licenseAccessMode(license) {
+  const boundary = licenceBoundary(license);
+  if (boundary === "before") return "expired";
+  if (boundary === "after" && license?.access !== "token") return "expired";
   if (["full", "free", "expired", "token", "trial"].includes(license?.access)) {
     return license.access;
   }
@@ -264,7 +301,17 @@ export function canStartPlatformTrial(sub, license, { expired = false } = {}) {
 
 export function licenseExpiryLabel(license) {
   if (!license?.expires_at) return "—";
-  return formatBillingDate(license.expires_at);
+  return formatLicenceWhen(license.expires_at);
+}
+
+function formatLicenceWhen(value) {
+  const raw = String(value);
+  const instant = parseLicenceInstant(raw, { dateOnly: "end" });
+  if (!instant) return formatBillingDate(value);
+  const date = formatBillingDate(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) return date;
+  const time = instant.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${date}, ${time}`;
 }
 
 export function licenseWarningMessage(license) {
@@ -275,6 +322,9 @@ export function licenseWarningMessage(license) {
   if (days === 0) {
     return `Your Centrix ${trial}licence expires today (${when}). Renew or contact your administrator to avoid losing access.`;
   }
+  if (license.status === "scheduled" && license.starts_at) {
+    return `Your Centrix ${trial}licence opens at ${formatLicenceWhen(license.starts_at)}.`;
+  }
   if (days === 1) {
     return `Your Centrix ${trial}licence expires tomorrow (${when}). Renew soon to keep using the system.`;
   }
@@ -282,6 +332,9 @@ export function licenseWarningMessage(license) {
 }
 
 export function licenseExpiredMessage(license) {
+  if (license?.status === "scheduled" && license.starts_at) {
+    return `This Centrix licence opens at ${formatLicenceWhen(license.starts_at)}. The rest of the system stays closed until then.`;
+  }
   if (license?.status === "missing") {
     return "This organization does not have an active Centrix subscription. The system is locked until a plan is activated.";
   }

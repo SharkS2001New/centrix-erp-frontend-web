@@ -14,6 +14,7 @@ import {
   contractKindLabel,
   contractStatusLabel,
   formatBillingDate,
+  formatBillingDateTime,
   formatBillingMoney,
   isSubscriptionOverdue,
   licenseBasisLabel,
@@ -287,7 +288,7 @@ export function OrganizationBillingPanel({
     const orgLabel = organization?.org_name || "this organization";
     const ok = await confirm({
       title: "Revoke licence?",
-      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately and locked out until you extend or re-assign a plan.`,
+      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately. You can restore this licence later.`,
       confirmLabel: "Revoke licence",
       destructive: true,
     });
@@ -303,6 +304,31 @@ export function OrganizationBillingPanel({
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not revoke licence.");
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function handleUnrevoke() {
+    if (!subscription?.id) return;
+    const orgLabel = organization?.org_name || "this organization";
+    const ok = await confirm({
+      title: "Restore licence?",
+      message: `Restore the Centrix licence for ${orgLabel}? It follows the saved start and end date and hour.`,
+      confirmLabel: "Restore licence",
+    });
+    if (!ok) return;
+
+    setActing(true);
+    try {
+      const res = await apiRequest(`/admin/platform-subscriptions/${subscription.id}/unrevoke`, {
+        method: "POST",
+        body: {},
+      });
+      notifySuccess(res.message ?? "Licence restored.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not restore licence.");
     } finally {
       setActing(false);
     }
@@ -328,6 +354,12 @@ export function OrganizationBillingPanel({
     subscription?.id &&
     subscription.status !== "cancelled" &&
     subscription.status !== "expired";
+  const canRestore =
+    !readOnly &&
+    showRevoke &&
+    !isTenant &&
+    subscription?.id &&
+    subscription.status === "cancelled";
   const canChangePlan = !readOnly && !isTenant && subscription?.id;
   const showPlatformActions = !readOnly && !isTenant;
 
@@ -382,8 +414,8 @@ export function OrganizationBillingPanel({
                   {subscription.seat_count != null ? ` · ${subscription.seat_count} seats` : ""}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Period {formatBillingDate(subscription.current_period_start)} →{" "}
-                  {formatBillingDate(subscription.current_period_end)}
+                  Period {formatBillingDateTime(subscription.current_period_start)} →{" "}
+                  {formatBillingDateTime(subscription.current_period_end)}
                   {showPlatformActions ? (
                     <>
                       {" · "}
@@ -392,7 +424,7 @@ export function OrganizationBillingPanel({
                         className="font-medium text-[#185FA5] hover:underline"
                         onClick={() => setEditPeriodOpen(true)}
                       >
-                        Edit dates
+                        Edit date and hour
                       </button>
                     </>
                   ) : null}
@@ -465,6 +497,16 @@ export function OrganizationBillingPanel({
                     onClick={() => void handleRevoke()}
                   >
                     {acting ? "Revoking…" : "Revoke licence"}
+                  </button>
+                ) : null}
+                {canRestore ? (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    className="font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                    onClick={() => void handleUnrevoke()}
+                  >
+                    {acting ? "Restoring…" : "Restore licence"}
                   </button>
                 ) : null}
               </div>

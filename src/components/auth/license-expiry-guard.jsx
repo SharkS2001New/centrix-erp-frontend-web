@@ -9,6 +9,7 @@ import {
   isLimitedLicencePath,
   licenceNeedsPayment,
   licencePlanPath,
+  parseLicenceInstant,
   rememberLicenceReturn,
   licenseWarningMessage,
   wasLicenseWarningDismissed,
@@ -25,7 +26,7 @@ import { PrimaryButton } from "@/components/catalog/catalog-shared";
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { organizationLicense, loading, isSuperAdmin } = useAuth();
+  const { organizationLicense, loading, isSuperAdmin, refreshCapabilities } = useAuth();
   const [promptOpen, setPromptOpen] = useState(false);
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
@@ -36,6 +37,23 @@ export function LicenseExpiryGuard({ children }) {
     pathname.startsWith("/subscribe/") ||
     pathname === "/billing" ||
     pathname.startsWith("/billing/");
+
+  useEffect(() => {
+    if (loading || !organizationLicense || isSuperAdmin()) return undefined;
+    const start = parseLicenceInstant(organizationLicense.starts_at, { dateOnly: "start" });
+    const end = parseLicenceInstant(organizationLicense.expires_at, { dateOnly: "end" });
+    const next = [start, end]
+      .filter(Boolean)
+      .map((instant) => instant.getTime())
+      .filter((time) => time > Date.now())
+      .sort((a, b) => a - b)[0];
+    if (!next) return undefined;
+    const delay = Math.min(Math.max(next - Date.now() + 1000, 1000), 60 * 60 * 1000);
+    const timer = window.setTimeout(() => {
+      void refreshCapabilities?.({ force: true });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [isSuperAdmin, loading, organizationLicense, refreshCapabilities]);
 
   useEffect(() => {
     if (!limited || allowed) return;

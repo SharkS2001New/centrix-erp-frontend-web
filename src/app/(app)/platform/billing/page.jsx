@@ -5,8 +5,31 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, StatCard } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney } from "@/lib/platform-billing";
+
+const ACTIONS = [
+  {
+    href: "/platform/self-serve-plans",
+    title: "Self-serve plans",
+    detail: "Prices an organisation can choose and pay",
+  },
+  {
+    href: "/platform/billing/token-policy",
+    title: "Token & usage policies",
+    detail: "Pack size, sale cost, and low-balance notices",
+  },
+  {
+    href: "/platform/licence-payments",
+    title: "Licence payments",
+    detail: "Centrix Paybill receipts and how each one applied",
+  },
+  {
+    href: "/platform/subscriptions",
+    title: "Subscriptions",
+    detail: "Who is on which plan, and when it ends",
+  },
+];
 
 export default function PlatformBillingPage() {
   const [overview, setOverview] = useState(null);
@@ -33,55 +56,73 @@ export default function PlatformBillingPage() {
   return (
     <CatalogPageShell
       title="Billing & plans"
-      subtitle="Live subscription, plan, and Paybill counts. Prices stay on the plan records a platform administrator publishes."
+      subtitle="Subscription, plan, and Paybill counts. Prices stay on the plan a platform administrator publishes."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Billing & plans" }]} />
 
-      <div className="mb-4 flex flex-wrap gap-3 text-sm">
-        <Link className="font-medium text-[#185FA5] underline" href="/platform/self-serve-plans">Self-serve plans</Link>
-        <Link className="font-medium text-[#185FA5] underline" href="/platform/billing/token-policy">Token & usage policies</Link>
-        <Link className="font-medium text-[#185FA5] underline" href="/platform/licence-payments">Licence payments</Link>
-        <Link className="font-medium text-[#185FA5] underline" href="/platform/subscriptions">Subscriptions</Link>
-      </div>
+      <nav className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Billing tools">
+        {ACTIONS.map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className="theme-secondary-btn flex min-h-[4.5rem] flex-col items-start rounded-xl px-4 py-3 text-left shadow-sm"
+          >
+            <span className="text-sm font-semibold">{action.title}</span>
+            <span className="theme-subtext mt-1 text-xs font-normal leading-5">{action.detail}</span>
+          </Link>
+        ))}
+      </nav>
 
-      {loading ? <p className="text-sm text-slate-500">Loading billing…</p> : null}
+      {loading ? <p className="theme-subtext text-sm">Loading billing…</p> : null}
 
       {overview ? (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat label="Active subscriptions" value={overview.active_subscriptions} />
-            <Stat label="Plans" value={overview.plans} />
-            <Stat label="Organisations with tokens" value={overview.token_organisations} />
-            <Stat label="Unmatched payments" value={overview.unmatched_payments} />
+            <StatCard label="Active subscriptions" value={overview.active_subscriptions ?? 0} hint="Active and trial" />
+            <StatCard label="Plans" value={overview.plans ?? 0} hint="Published in the catalogue" />
+            <StatCard label="Organisations with tokens" value={overview.token_organisations ?? 0} hint="Balance above zero" />
+            <StatCard label="Unmatched payments" value={overview.unmatched_payments ?? 0} hint="Paybill receipts still open" />
           </section>
 
-          <section className="theme-panel mt-6 overflow-x-auto rounded-xl border shadow-sm">
-            <h2 className="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-900">Catalogue</h2>
+          <section className="theme-panel mt-6 overflow-hidden rounded-xl border shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-border)] px-5 py-4">
+              <div>
+                <h2 className="theme-heading text-sm font-semibold">Catalogue</h2>
+                <p className="theme-subtext mt-0.5 text-xs">Monthly and yearly prices organisations see when they subscribe.</p>
+              </div>
+              <Link href="/platform/self-serve-plans" className="theme-primary-btn rounded-lg px-3 py-1.5 text-sm font-medium">
+                Edit plans
+              </Link>
+            </div>
             {catalogue.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-slate-500">No plans yet. Publish them on Self-serve plans.</p>
+              <p className="theme-subtext px-5 py-10 text-center text-sm">No plans yet. Publish them on Self-serve plans.</p>
             ) : (
-              <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-5 py-3">Plan</th>
-                    <th className="px-5 py-3">Monthly</th>
-                    <th className="px-5 py-3">Yearly</th>
-                    <th className="px-5 py-3">Organisations</th>
-                    <th className="px-5 py-3">Published</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalogue.map((plan) => (
-                    <tr key={plan.id} className="border-b border-slate-50">
-                      <td className="px-5 py-3 font-medium text-slate-900">{plan.name}</td>
-                      <td className="px-5 py-3">{plan.monthly_price != null ? formatBillingMoney(plan.monthly_price) : "—"}</td>
-                      <td className="px-5 py-3">{plan.yearly_price != null ? formatBillingMoney(plan.yearly_price) : "—"}</td>
-                      <td className="px-5 py-3">{plan.organisations}</td>
-                      <td className="px-5 py-3">{plan.self_serve && plan.is_active ? "Self-serve" : plan.is_active ? "Active" : "Hidden"}</td>
+              <div className="overflow-x-auto">
+                <table className="theme-table min-w-full text-sm">
+                  <thead>
+                    <tr className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide">
+                      <th className="px-5 py-3">Plan</th>
+                      <th className="px-5 py-3">Monthly</th>
+                      <th className="px-5 py-3">Yearly</th>
+                      <th className="px-5 py-3">Organisations</th>
+                      <th className="px-5 py-3">Published</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {catalogue.map((plan) => (
+                      <tr key={plan.id} className="theme-table-body-row">
+                        <td className="theme-heading px-5 py-3 font-medium">{plan.name}</td>
+                        <td className="px-5 py-3">{plan.monthly_price != null ? formatBillingMoney(plan.monthly_price) : "—"}</td>
+                        <td className="px-5 py-3">{plan.yearly_price != null ? formatBillingMoney(plan.yearly_price) : "—"}</td>
+                        <td className="px-5 py-3 tabular-nums">{plan.organisations}</td>
+                        <td className="px-5 py-3">
+                          <PublishPill plan={plan} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         </>
@@ -90,11 +131,19 @@ export default function PlatformBillingPage() {
   );
 }
 
-function Stat({ label, value }) {
+function PublishPill({ plan }) {
+  const selfServe = Boolean(plan.self_serve && plan.is_active);
+  const active = Boolean(plan.is_active);
+  const label = selfServe ? "Self-serve" : active ? "Active" : "Hidden";
+  const tone = selfServe
+    ? "bg-[var(--theme-primary-subtle)] text-[var(--theme-primary)]"
+    : active
+      ? "bg-[var(--theme-surface-subtle)] text-[var(--theme-text)]"
+      : "bg-[var(--theme-surface-subtle)] text-[var(--theme-text-subtle)]";
+
   return (
-    <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value ?? 0}</p>
-    </div>
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${tone}`}>
+      {label}
+    </span>
   );
 }
