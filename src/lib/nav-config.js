@@ -1199,6 +1199,112 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
+    id: "driving_front",
+    label: "School",
+    icon: "🚗",
+    collapsible: true,
+    items: [
+      { href: "/driving-school", label: "Dashboard", module: "driving", exact: true },
+      { href: "/driving-school/students", label: "Students", module: "driving" },
+      { href: "/driving-school/courses", label: "Courses & packages", module: "driving" },
+      { href: "/driving-school/schedule", label: "Lesson scheduling", module: "driving" },
+      { href: "/driving-school/attendance", label: "Attendance", module: "driving" },
+      { href: "/driving-school/assessments", label: "Assessments & exams", module: "driving" },
+    ],
+  },
+  {
+    id: "driving_fleet",
+    label: "People & vehicles",
+    icon: "🎓",
+    collapsible: true,
+    items: [
+      { href: "/driving-school/instructors", label: "Instructors", module: "driving" },
+      { href: "/driving-school/vehicles", label: "Vehicles", module: "driving" },
+    ],
+  },
+  {
+    id: "driving_money",
+    label: "Fees & reports",
+    icon: "💳",
+    collapsible: true,
+    items: [
+      { href: "/driving-school/payments", label: "Payments & fees", module: "driving" },
+      { href: "/driving-school/expenses", label: "Expenses", module: "driving" },
+      { href: "/driving-school/reports", label: "Reports", module: "driving" },
+      { href: "/driving-school/settings", label: "School settings", module: "driving" },
+      { href: "/driving-school/branches", label: "Branches", module: "driving" },
+      { href: "/driving-school/users", label: "Users & permissions", module: "driving" },
+      { href: "/driving-school/audit", label: "Audit logs", module: "driving" },
+    ],
+  },
+  {
+    id: "spa_front",
+    label: "Front desk",
+    icon: "📅",
+    collapsible: true,
+    items: [
+      {
+        href: "/spa",
+        label: "Dashboard",
+        module: "spa",
+        exact: true,
+      },
+      {
+        href: "/spa/appointments",
+        label: "Appointments",
+        module: "spa",
+      },
+      {
+        href: "/spa/pos",
+        label: "POS / Sales",
+        module: "spa",
+      },
+      {
+        href: "/spa/clients",
+        label: "Clients",
+        module: "spa",
+      },
+    ],
+  },
+  {
+    id: "spa_records",
+    label: "Salon records",
+    icon: "✂️",
+    collapsible: true,
+    items: [
+      {
+        href: "/spa/services",
+        label: "Services",
+        module: "spa",
+      },
+      {
+        href: "/spa/staff",
+        label: "Staff & commissions",
+        module: "spa",
+      },
+      {
+        href: "/spa/inventory",
+        label: "Inventory",
+        module: "spa",
+      },
+      {
+        href: "/spa/expenses",
+        label: "Expenses",
+        module: "spa",
+      },
+      {
+        href: "/spa/suppliers",
+        label: "Suppliers",
+        module: "spa",
+      },
+      {
+        href: "/spa/reports",
+        label: "Reports",
+        module: "spa",
+      },
+    ],
+  },
+  {
     id: "admin_dashboard",
     label: "Dashboard",
     icon: "📊",
@@ -1254,6 +1360,14 @@ const NAV_SECTION_DEFINITIONS = [
         requireOperationalModule: true,
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         orgAdminOnly: true,
+      },
+      {
+        href: "/admin/spa-settings",
+        label: "SPA & Kinyozi",
+        module: "admin",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        orgAdminOnly: true,
+        requireSpaIndustry: true,
       },
       {
         href: "/admin/hotel-settings",
@@ -1470,6 +1584,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
   if (item.hideWhenSpaIndustry && isSpaIndustry(capabilities)) return false;
+  if (item.requireSpaIndustry && !isSpaIndustry(capabilities)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;

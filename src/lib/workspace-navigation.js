@@ -147,7 +147,7 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
 export function resolveAccessibleWorkspaces(ctx, capabilities) {
   return resolveAvailableWorkspaces(ctx, capabilities, (workspaceId) => {
     // Tills and SPA & Kinyozi are full-screen shells. They have no ERP sidebar, so the home path is enough.
-    if (isTerminalWorkspace(workspaceId) || workspaceId === "spa") {
+    if (isTerminalWorkspace(workspaceId) || workspaceId === "spa" || workspaceId === "driving") {
       const home = workspaceHomePath(workspaceId, capabilities);
       return Boolean(ctx && home && canAccessRoute(home, ctx, { workspaceId }));
     }

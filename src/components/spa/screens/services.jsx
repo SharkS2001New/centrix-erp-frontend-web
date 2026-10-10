@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, Table, inputClass } from "@/components/spa/ui";
+import { Badge, Button, Field, Modal, PageHeader, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
 
 const CATEGORIES = ["Haircut", "Beard Trim", "Hair Coloring", "Facial Treatment", "Massage", "Manicure", "Pedicure"];
 
@@ -17,13 +17,10 @@ export function ServicesScreen() {
   return (
     <div>
       <PageHeader title="Services" detail="Prices, duration, who can perform them, and commission.">
-        <select className={inputClass} aria-label="Service category" value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option>All</option>
-          {CATEGORIES.map((item) => <option key={item}>{item}</option>)}
-        </select>
+        <SpaSelect toolbar aria-label="Service category" value={category} onChange={(event) => setCategory(event.target.value)} options={toOptions(["All", ...CATEGORIES])} />
         <Button onClick={() => setEditing({ name: "", category: "Haircut", price: 500, duration: 30, staffIds: [], commission: 10, active: true, combo: false })}>Add service</Button>
       </PageHeader>
-      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} render={(service) => (
+      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} onCreate={() => setEditing({ name: "", category: "Haircut", price: 500, duration: 30, staffIds: [], commission: 10, active: true, combo: false })} createLabel="Add service" render={(service) => (
         <tr key={service.id} className="border-b border-slate-50">
           <td className="px-4 py-3 font-medium">{service.name}{service.combo ? " · combo" : ""}</td>
           <td className="px-4 py-3">{service.category}</td>
@@ -31,7 +28,7 @@ export function ServicesScreen() {
           <td className="px-4 py-3">{service.duration} min</td>
           <td className="px-4 py-3">{service.commission}%</td>
           <td className="px-4 py-3"><Badge tone={service.active ? "green" : "slate"}>{service.active ? "Active" : "Inactive"}</Badge></td>
-          <td className="px-4 py-3 text-right"><button type="button" className="text-sm font-medium text-[#1677F2]" onClick={() => setEditing(service)}>Edit</button></td>
+          <td className="px-4 py-3 text-right"><button type="button" className="text-sm font-medium text-[var(--theme-accent-text)]" onClick={() => setEditing(service)}>Edit</button></td>
         </tr>
       )} />
       {editing ? <ServiceForm spa={spa} service={editing} onClose={() => setEditing(null)} onSave={(service) => {
@@ -50,7 +47,7 @@ function ServiceForm({ spa, service, onClose, onSave }) {
     <Modal title={service.id ? "Edit service" : "Add service"} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
-        <Field label="Category"><select className={inputClass} value={form.category} onChange={set("category")}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></Field>
+        <Field label="Category"><SpaSelect value={form.category} onChange={set("category")} options={toOptions(CATEGORIES)} /></Field>
         <Field label="Price (KSh)"><input className={inputClass} type="number" min="0" value={form.price} onChange={set("price")} /></Field>
         <Field label="Duration (minutes)"><input className={inputClass} type="number" min="5" value={form.duration} onChange={set("duration")} /></Field>
         <Field label="Commission %"><input className={inputClass} type="number" min="0" max="100" value={form.commission} onChange={set("commission")} /></Field>

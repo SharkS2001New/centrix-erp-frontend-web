@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, inputClass } from "@/components/spa/ui";
+import { Button, Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
 
 export function PosScreen() {
   const spa = useSpa();
@@ -89,30 +89,30 @@ export function PosScreen() {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <section>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <input className={`${inputClass} max-w-xs`} placeholder="Search services or products" aria-label="Search catalog" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <SpaSearch placeholder="Search services or products" value={query} onChange={(event) => setQuery(event.target.value)} />
           {["All", ...categories.filter((item) => item !== "All"), "Products"].filter((item, index, list) => list.indexOf(item) === index).map((item) => (
-            <button key={item} type="button" className={`rounded-full px-3 py-1.5 text-sm ${category === item ? "bg-[#14263D] text-white" : "bg-white text-slate-600"}`} onClick={() => setCategory(item)}>{item}</button>
+            <button key={item} type="button" className={`rounded-full px-3 py-1.5 text-sm ${category === item ? "bg-[var(--theme-primary)] text-white" : "theme-secondary-btn"}`} onClick={() => setCategory(item)}>{item}</button>
           ))}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {catalog.services.filter((item) => !item.combo || spa.features.combos).map((item) => (
-            <button key={item.id} type="button" className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-[#1677F2]" onClick={() => addLine(item, "service")}>
+            <button key={item.id} type="button" className="theme-panel rounded-xl border p-4 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "service")}>
               <p className="text-xs text-slate-400">{item.category}</p>
               <p className="mt-1 font-semibold">{item.name}</p>
-              <p className="mt-2 text-sm text-[#1677F2]">{ksh(item.price)} · {item.duration} min</p>
+              <p className="mt-2 text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.duration} min</p>
             </button>
           ))}
           {catalog.products.map((item) => (
-            <button key={item.id} type="button" className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-[#1677F2]" onClick={() => addLine(item, "product")}>
+            <button key={item.id} type="button" className="theme-panel rounded-xl border p-4 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "product")}>
               <p className="text-xs text-slate-400">{item.sku}</p>
               <p className="mt-1 font-semibold">{item.name}</p>
-              <p className="mt-2 text-sm text-[#1677F2]">{ksh(item.price)} · {item.qty} in stock</p>
+              <p className="mt-2 text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.qty} in stock</p>
             </button>
           ))}
         </div>
         {spa.holds.length > 0 ? (
-          <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="theme-panel mt-4 rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold">Held sales</h2>
             <ul className="mt-2 space-y-2 text-sm">
               {spa.holds.map((sale) => (
@@ -125,7 +125,7 @@ export function PosScreen() {
           </div>
         ) : null}
       </section>
-      <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <aside className="theme-panel rounded-xl border p-4 shadow-sm">
         <h2 className="text-sm font-semibold">Cart</h2>
         {lines.length === 0 ? <p className="mt-4 text-sm text-slate-500">Tap a service or product to start.</p> : (
           <ul className="mt-3 space-y-3">
@@ -145,20 +145,15 @@ export function PosScreen() {
           </ul>
         )}
         <div className="mt-4 grid gap-3">
-          <label className="text-xs text-slate-500">Client
-            <select className={`${inputClass} mt-1`} value={clientId} onChange={(event) => setClientId(event.target.value)}>
-              <option value="">Walk-in, no client</option>
-              {spa.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-slate-500">Staff
-            <select className={`${inputClass} mt-1`} value={staffId} onChange={(event) => setStaffId(event.target.value)}>
-              {spa.staff.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-slate-500">Discount (KSh)
-            <input className={`${inputClass} mt-1`} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
-          </label>
+          <Field label="Client">
+            <SpaSelect value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Walk-in, no client" options={[{ value: "", label: "Walk-in, no client" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} />
+          </Field>
+          <Field label="Staff">
+            <SpaSelect value={staffId} onChange={(event) => setStaffId(event.target.value)} options={spa.staff.map((item) => ({ value: item.id, label: item.name }))} />
+          </Field>
+          <Field label="Discount (KSh)">
+            <input className={inputClass} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+          </Field>
         </div>
         <dl className="mt-4 space-y-1 text-sm">
           <div className="flex justify-between"><dt>Subtotal</dt><dd>{ksh(subtotal)}</dd></div>
@@ -174,15 +169,15 @@ export function PosScreen() {
         {method === "split" ? (
           <div className="mt-3 grid grid-cols-3 gap-2">
             {["cash", "mpesa", "card"].map((item) => (
-              <label key={item} className="text-[11px] capitalize text-slate-500">{item}
-                <input className={`${inputClass} mt-1`} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
-              </label>
+              <Field key={item} label={item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}>
+                <input className={inputClass} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
+              </Field>
             ))}
           </div>
         ) : (
-          <label className="mt-3 block text-xs text-slate-500">Reference
-            <input className={`${inputClass} mt-1`} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Optional receipt or code" />
-          </label>
+          <Field label="Reference">
+            <input className={inputClass} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Optional receipt or code" />
+          </Field>
         )}
         <p className="mt-3 text-xs text-slate-500">Completing a sale saves it on this till. It does not send an M-Pesa prompt or charge a card.</p>
         <div className="mt-3 grid gap-2">
@@ -202,7 +197,7 @@ function Receipt({ sale, spa, paper, setPaper, onClose }) {
   const client = spa.clients.find((item) => item.id === sale.clientId);
   const width = paper === "80mm" ? "80mm" : "210mm";
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#14263D]/40 p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
       <div className="mx-auto max-w-3xl rounded-2xl bg-white p-5 shadow-xl" role="dialog" aria-label="Receipt preview">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Receipt {sale.number}</h2>

@@ -40,7 +40,6 @@ export const TAB_WORKSPACE_EXCLUDED_PREFIXES = [
   "/login",
   "/platform",
   "/subscribe",
-  "/spa",
 ];
 
 export function isTabWorkspaceEnabled(capabilities) {
@@ -132,6 +131,7 @@ export function titleFromPathname(pathname) {
   const path = normalizeTabHref(pathname);
   const segments = path.split("/").filter(Boolean);
   if (segments.length === 0) return "Home";
+  if (path === "/spa") return "Dashboard";
 
   if (segments[0] === "reports" && segments[1] && segments[1] !== "custom" && segments[1] !== "builder") {
     return lookupReportLabel(segments[1]);

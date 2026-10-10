@@ -52,6 +52,27 @@ describe("SPA & Kinyozi administration", () => {
     expect(isNavItemVisible(org.items.find((item) => item.href === "/admin/company"), ctx)).toBe(true);
   });
 
+  it("puts salon setup in Administration and salon work in the SPA menu", () => {
+    const ctx = navContext();
+    const retail = navContext({ industry: "commerce", deployment_profile: "small_shop", modules: { admin: true, sales: true } });
+    const spaSettings = navSections
+      .flatMap((section) => section.items)
+      .find((item) => item.href === "/admin/spa-settings");
+    expect(isNavItemVisible(spaSettings, ctx)).toBe(true);
+    expect(isNavItemVisible(spaSettings, retail)).toBe(false);
+
+    const spaNav = buildWorkspaceNavSections({
+      capabilities: ctx.capabilities,
+      navContext: ctx,
+      workspaceId: "spa",
+      isSuperAdmin: () => false,
+    });
+    const hrefs = spaNav.flatMap((section) => section.items.map((item) => item.href));
+    expect(hrefs).toContain("/spa/appointments");
+    expect(hrefs).not.toContain("/spa/settings");
+    expect(hrefs).not.toContain("/admin/spa-settings");
+  });
+
   it("does not put hotel operations in a salon admin menu", () => {
     const ctx = navContext();
     const ops = navSections.find((section) => section.id === "hospitality_ops");

@@ -61,6 +61,12 @@ export const PROVISIONABLE_WORKSPACES = [
     icon: "spa",
   },
   {
+    id: "driving",
+    label: "Driving School",
+    description: "Students, courses, lesson scheduling, instructors, training vehicles, and fees.",
+    icon: "truck",
+  },
+  {
     id: "admin",
     label: "Administration",
     description:
@@ -128,6 +134,8 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
       return Boolean(enabledModules.admin);
     case "spa":
       return Boolean(enabledModules.spa);
+    case "driving":
+      return Boolean(enabledModules.driving);
     default:
       return false;
   }
@@ -194,6 +202,8 @@ function enableWorkspacePatch(workspaceId) {
       return { admin: true };
     case "spa":
       return { spa: true };
+    case "driving":
+      return { driving: true };
     default:
       return {};
   }
@@ -230,6 +240,8 @@ function disableWorkspacePatch(workspaceId) {
       return { admin: false };
     case "spa":
       return { spa: false };
+    case "driving":
+      return { driving: false };
     default:
       return {};
   }
@@ -330,10 +342,14 @@ export const HOSPITALITY_APP_IDS = [
 /** Application IDs allowed for SPA & Kinyozi tenants. */
 export const SPA_APP_IDS = ["spa", "accounting", "hr", "admin"];
 
-/** @param {"commerce" | "hospitality" | "spa" | string | null | undefined} industryId */
+/** Application IDs allowed for Driving School tenants. */
+export const DRIVING_APP_IDS = ["driving", "admin"];
+
+/** @param {"commerce" | "hospitality" | "spa" | "driving" | string | null | undefined} industryId */
 export function appIdsForIndustry(industryId) {
   if (industryId === "hospitality") return HOSPITALITY_APP_IDS;
   if (industryId === "spa") return SPA_APP_IDS;
+  if (industryId === "driving") return DRIVING_APP_IDS;
   return COMMERCE_APP_IDS;
 }
 
@@ -346,10 +362,10 @@ export function filterWorkspacesByIndustry(workspaces, industryId) {
   if (!Array.isArray(workspaces) || workspaces.length === 0) return [];
   const allowed = new Set(appIdsForIndustry(industryId));
   // Mobile is commerce-only; Manager (approvals / reports) is shared with hospitality.
-  if (industryId !== "hospitality" && industryId !== "spa") {
+  if (industryId !== "hospitality" && industryId !== "spa" && industryId !== "driving") {
     allowed.add("mobile");
   }
-  if (industryId !== "spa") {
+  if (industryId !== "spa" && industryId !== "driving") {
     allowed.add("manager");
   }
   return workspaces.filter((ws) => allowed.has(ws.id));
@@ -362,10 +378,11 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
   const isHospitality =
     profile?.industry === "hospitality" || profileKey === "hotel_bar";
   const isSpa = profile?.industry === "spa" || profileKey === "spa_kinyozi";
+  const isDriving = profile?.industry === "driving" || profileKey === "driving_school";
 
   // Client fallbacks when API has not yet returned application_ids.
   if (ids === undefined || ids === null) {
-    ids = isHospitality ? HOSPITALITY_APP_IDS : isSpa ? SPA_APP_IDS : COMMERCE_APP_IDS;
+    ids = isHospitality ? HOSPITALITY_APP_IDS : isSpa ? SPA_APP_IDS : isDriving ? DRIVING_APP_IDS : COMMERCE_APP_IDS;
   }
 
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -373,10 +390,12 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
   }
 
   const blocked = isHospitality
-    ? ["pos", "backoffice", "distribution", "spa"]
+    ? ["pos", "backoffice", "distribution", "spa", "driving"]
     : isSpa
-      ? ["pos", "backoffice", "distribution", "hotel_bar_pos", "hospitality_backoffice"]
-      : ["hotel_bar_pos", "hospitality_backoffice", "spa"];
+      ? ["pos", "backoffice", "distribution", "hotel_bar_pos", "hospitality_backoffice", "driving"]
+      : isDriving
+        ? ["pos", "backoffice", "distribution", "hotel_bar_pos", "hospitality_backoffice", "spa"]
+        : ["hotel_bar_pos", "hospitality_backoffice", "spa", "driving"];
 
   // Belt-and-suspenders: never mix industries even if a preset is misconfigured.
   const allowed = new Set(ids.filter((id) => !blocked.includes(id)));

@@ -11,6 +11,13 @@ import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 
 const CARDS = [
   {
+    href: "/admin/spa-settings",
+    title: "SPA & Kinyozi",
+    description: "Business type, hours, receipt, tax, payments, and salon users.",
+    icon: "✂️",
+    permission: P.admin.settings.view,
+  },
+  {
     href: "/admin/settings",
     title: "Organization settings",
     description: "Inventory, finance, HR, notifications, security, and AI preferences.",

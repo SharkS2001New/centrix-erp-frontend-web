@@ -35,8 +35,8 @@ export function DashboardScreen() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold">Good morning, Stephen</h1>
-        <p className="text-sm text-slate-500">Here is {spa.branch} for today.</p>
+        <h1 className="theme-heading text-xl font-medium">Good morning, Stephen</h1>
+        <p className="theme-subtext text-sm">Here is {spa.branch} for today.</p>
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi label="Today's sales" value={ksh(salesTotal)} />
@@ -95,7 +95,7 @@ export function DashboardScreen() {
               <li key={item.id} className="flex justify-between"><span>{item.name}</span><span className="text-amber-700">{item.qty} left</span></li>
             ))}
           </ul>
-          <Link href="/spa/inventory" className="mt-3 inline-block text-sm font-medium text-[#1677F2]">View inventory</Link>
+          <Link href="/spa/inventory" className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">View inventory</Link>
         </Card>
         <Card>
           <h2 className="text-sm font-semibold">Top services</h2>
@@ -121,8 +121,8 @@ function Kpi({ label, value }) {
 
 function Action({ href, icon: Icon, label }) {
   return (
-    <Link href={href} className="flex flex-col items-start gap-2 rounded-xl bg-[#F5F7FB] p-3 text-sm font-medium hover:bg-blue-50">
-      <Icon size={18} className="text-[#1677F2]" />
+    <Link href={href} className="theme-panel flex flex-col items-start gap-2 rounded-xl border p-3 text-sm font-medium">
+      <Icon size={18} className="text-[var(--theme-accent-text)]" />
       {label}
     </Link>
   );

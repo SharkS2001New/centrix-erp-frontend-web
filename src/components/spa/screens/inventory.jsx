@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { formatTime, ksh, stockStatus } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, Table, inputClass } from "@/components/spa/ui";
+import { Badge, Button, Field, Modal, PageHeader, SpaSearch, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
 
 export function InventoryScreen() {
   const spa = useSpa();
@@ -22,13 +22,11 @@ export function InventoryScreen() {
   return (
     <div>
       <PageHeader title="Inventory" detail="Retail stock, reorder alerts and movements for this branch.">
-        <input className={inputClass} placeholder="Search SKU or name" aria-label="Search products" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <select className={inputClass} aria-label="Stock status" value={filter} onChange={(event) => setFilter(event.target.value)}>
-          {["All", "In stock", "Low stock", "Out of stock"].map((item) => <option key={item}>{item}</option>)}
-        </select>
+        <SpaSearch placeholder="Search SKU or name" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <SpaSelect toolbar aria-label="Stock status" value={filter} onChange={(event) => setFilter(event.target.value)} options={toOptions(["All", "In stock", "Low stock", "Out of stock"])} />
         <Button onClick={() => setEditing({ sku: "", name: "", category: "Hair care", supplierId: spa.suppliers[0]?.id || "", cost: 0, price: 0, qty: 0, reorder: 5 })}>Add product</Button>
       </PageHeader>
-      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} render={(product) => {
+      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} onCreate={() => setEditing({ sku: "", name: "", category: "Hair care", supplierId: spa.suppliers[0]?.id || "", cost: 0, price: 0, qty: 0, reorder: 5 })} createLabel="Add product" render={(product) => {
         const status = stockStatus(product);
         return (
           <tr key={product.id} className="border-b border-slate-50">
@@ -41,13 +39,13 @@ export function InventoryScreen() {
             <td className="px-4 py-3">{product.reorder}</td>
             <td className="px-4 py-3"><Badge tone={status === "In stock" ? "green" : status === "Low stock" ? "amber" : "red"}>{status}</Badge></td>
             <td className="px-4 py-3 text-right">
-              <button type="button" className="mr-3 text-sm text-[#1677F2]" onClick={() => setEditing(product)}>Edit</button>
-              <button type="button" className="text-sm text-[#1677F2]" onClick={() => setMovement({ productId: product.id, mode: "in", qty: 1, note: "" })}>Stock</button>
+              <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(product)}>Edit</button>
+              <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setMovement({ productId: product.id, mode: "in", qty: 1, note: "" })}>Stock</button>
             </td>
           </tr>
         );
       }} />
-      <section className="mt-5 rounded-2xl bg-white p-4 shadow-sm">
+      <section className="theme-panel mt-5 rounded-xl border p-4 shadow-sm">
         <h2 className="text-sm font-semibold">Recent movements</h2>
         <ul className="mt-3 space-y-2 text-sm">
           {spa.movements.slice(0, 8).map((item) => {
@@ -75,7 +73,7 @@ function ProductForm({ spa, product, onClose, onSave }) {
         <Field label="SKU"><input className={inputClass} value={form.sku} onChange={set("sku")} /></Field>
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
         <Field label="Category"><input className={inputClass} value={form.category} onChange={set("category")} /></Field>
-        <Field label="Supplier"><select className={inputClass} value={form.supplierId} onChange={set("supplierId")}>{spa.suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+        <Field label="Supplier"><SpaSelect value={form.supplierId} onChange={set("supplierId")} options={spa.suppliers.map((item) => ({ value: item.id, label: item.name }))} /></Field>
         <Field label="Cost (KSh)"><input className={inputClass} type="number" min="0" value={form.cost} onChange={set("cost")} /></Field>
         <Field label="Selling price (KSh)"><input className={inputClass} type="number" min="0" value={form.price} onChange={set("price")} /></Field>
         <Field label="Quantity"><input className={inputClass} type="number" min="0" value={form.qty} onChange={set("qty")} /></Field>
@@ -99,23 +97,18 @@ function MovementForm({ spa, draft, onClose }) {
     <Modal title="Stock movement" onClose={onClose}>
       <div className="grid gap-3">
         <Field label="Type">
-          <select className={inputClass} value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })}>
-            <option value="in">Stock in / supplier purchase</option>
-            <option value="adjust">Adjustment (+ or −)</option>
-            <option value="out">Remove stock</option>
-          </select>
+          <SpaSelect value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })} options={toOptions([
+            { value: "in", label: "Stock in / supplier purchase" },
+            { value: "adjust", label: "Adjustment (+ or −)" },
+            { value: "out", label: "Remove stock" },
+          ])} />
         </Field>
         <Field label="Product">
-          <select className={inputClass} value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })}>
-            {spa.products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
+          <SpaSelect value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} options={spa.products.map((item) => ({ value: item.id, label: item.name }))} />
         </Field>
         {form.mode === "in" ? (
           <Field label="Supplier">
-            <select className={inputClass} value={form.supplierId || ""} onChange={(event) => setForm({ ...form, supplierId: event.target.value })}>
-              <option value="">None</option>
-              {spa.suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            <SpaSelect value={form.supplierId || ""} onChange={(event) => setForm({ ...form, supplierId: event.target.value })} options={[{ value: "", label: "None" }, ...spa.suppliers.map((item) => ({ value: item.id, label: item.name }))]} />
           </Field>
         ) : null}
         <Field label="Quantity"><input className={inputClass} type="number" value={form.qty} onChange={(event) => setForm({ ...form, qty: event.target.value })} /></Field>

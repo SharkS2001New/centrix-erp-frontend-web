@@ -26,6 +26,13 @@ export const INDUSTRIES = [
     defaultProfile: "spa_kinyozi",
     profileKeys: ["spa_kinyozi"],
   },
+  {
+    id: "driving",
+    label: "Driving School",
+    description: "Student enrolment, lessons, instructors, vehicles, fees, and school reports.",
+    defaultProfile: "driving_school",
+    profileKeys: ["driving_school"],
+  },
 ];
 
 export function industryById(industryId) {

@@ -23,6 +23,7 @@ export const WORKSPACE_DISPLAY_ORDER = [
   "accounting",
   "hr",
   "spa",
+  "driving",
   "admin",
 ];
 

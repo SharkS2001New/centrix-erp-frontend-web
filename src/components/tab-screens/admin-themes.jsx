@@ -7,7 +7,7 @@ import { ExternalPosSettingsPanel } from "@/components/admin/external-pos-settin
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { SettingsApiProvider } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
-import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingIndustry, isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 
 export function AdminThemesScreen() {
@@ -17,6 +17,7 @@ export function AdminThemesScreen() {
   const setError = toastErrorSetter;
   const isHospitality = isHospitalityIndustry(capabilities);
   const isSpa = isSpaIndustry(capabilities);
+  const isDriving = isDrivingIndustry(capabilities);
 
   return (
     <AdminGuard settingsOnly>
@@ -25,7 +26,9 @@ export function AdminThemesScreen() {
           title="Centrix ERP Themes"
           subtitle={
             isSpa
-              ? "Colors for Administration. Salon appointments, services, and walk-in sales stay in SPA & Kinyozi."
+              ? "Sidebar, search, buttons, and form fields for SPA & Kinyozi and Administration."
+              : isDriving
+                ? "Sidebar, search, buttons, and form fields for Driving School and Administration."
               : isHospitality
                 ? "Color palette for the ERP sidebar and primary buttons across Hotel Backoffice and Admin."
                 : "Color palette for the ERP sidebar and primary buttons. Classic External POS can use the full theme palette."

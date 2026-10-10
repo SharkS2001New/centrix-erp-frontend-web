@@ -155,6 +155,7 @@ export function OrganizationTenantProfile({
         { id: "commerce", label: "Retail & Distribution", description: "Shops, wholesale, and logistics." },
         { id: "hospitality", label: "Hotel & Hospitality", description: "Hotels, bars, and restaurants." },
         { id: "spa", label: "SPA & Kinyozi", description: "Salons, spas, and barbershops." },
+        { id: "driving", label: "Driving School", description: "Students, lessons, instructors, and vehicles." },
       ];
 
   const setupProfiles = profilePresets.filter((profile) => {
@@ -289,6 +290,8 @@ export function OrganizationTenantProfile({
                 ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
                 : industry === "spa"
                 ? "SPA & Kinyozi setup. Retail and hotel tills stay off."
+                : industry === "driving"
+                ? "Driving School setup. Retail, hotel, and salon tills stay off."
                 : deploymentProfile === "custom"
                 ? "Start from a blank setup and enable only the applications you need on the Applications tab."
                   : "Preset within this industry. Changing it updates the default application toggles."}
@@ -1782,11 +1785,12 @@ export function OrganizationConfigTabs({
   const [activeTab, setActiveTab] = useState("profile");
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
   const isSpa = industry === "spa" || deploymentProfile === "spa_kinyozi";
+  const isDriving = industry === "driving" || deploymentProfile === "driving_school";
   const resolvedOrgId = organizationId ?? organization?.id;
   const visibleTabs = tabs
     .filter((tab) => {
       if (tab.id === "hotel") return isHospitality;
-      if (isSpa && (tab.id === "sales" || tab.id === "workflow" || tab.id === "orders_list")) {
+      if ((isSpa || isDriving) && (tab.id === "sales" || tab.id === "workflow" || tab.id === "orders_list")) {
         return false;
       }
       if (isHospitality && (tab.id === "sales" || tab.id === "workflow")) {
@@ -1812,7 +1816,7 @@ export function OrganizationConfigTabs({
       setActiveTab("hotel");
       return;
     }
-    if (isSpa && (activeTab === "sales" || activeTab === "workflow" || activeTab === "orders_list" || activeTab === "hotel")) {
+    if ((isSpa || isDriving) && (activeTab === "sales" || activeTab === "workflow" || activeTab === "orders_list" || activeTab === "hotel")) {
       setActiveTab("profile");
       return;
     }
@@ -1822,7 +1826,7 @@ export function OrganizationConfigTabs({
     ) {
       setActiveTab("profile");
     }
-  }, [isHospitality, isSpa, activeTab, enabledModules.hr_payroll, onPayrollChange]);
+  }, [isHospitality, isSpa, isDriving, activeTab, enabledModules.hr_payroll, onPayrollChange]);
 
   return (
     <div className="w-full min-w-0 space-y-4">

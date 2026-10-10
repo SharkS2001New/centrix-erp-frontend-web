@@ -214,6 +214,7 @@ export function PlatformSetupTypesPanel() {
             <option value="commerce">Retail & Distribution</option>
             <option value="hospitality">Hotel & Hospitality</option>
             <option value="spa">SPA & Kinyozi</option>
+            <option value="driving">Driving School</option>
           </select>
         </label>
         <PrimaryButton type="submit" showIcon={false} disabled={creating || name.trim() === ""}>
@@ -237,7 +238,9 @@ export function PlatformSetupTypesPanel() {
                   ? "Hotel & Hospitality"
                   : profile.industry === "spa"
                     ? "SPA & Kinyozi"
-                    : "Retail & Distribution"}
+                    : profile.industry === "driving"
+                      ? "Driving School"
+                      : "Retail & Distribution"}
               </span>
             ) : null}
           </summary>

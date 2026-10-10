@@ -219,6 +219,17 @@ export const NAV_HREF_ICONS = {
   "/reports/hr-dashboard-kpi": "dashboard",
 
   // Administration
+  "/spa": "dashboard",
+  "/spa/appointments": "calendar",
+  "/spa/pos": "sales",
+  "/spa/clients": "users",
+  "/spa/services": "tag",
+  "/spa/staff": "hr",
+  "/spa/inventory": "inventory",
+  "/spa/expenses": "wallet",
+  "/spa/suppliers": "truck",
+  "/spa/reports": "reports",
+  "/admin/spa-settings": "settings",
   "/admin": "dashboard",
   "/admin/company": "building",
   "/admin/license": "shield",

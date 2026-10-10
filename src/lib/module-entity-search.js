@@ -1,6 +1,7 @@
 import { buildPageParams } from "@/lib/paginated-api";
 import { P } from "@/lib/permission-codes";
 import { lpoRowDisplayNumber } from "@/lib/lpo-display";
+import { searchSpaRecords } from "@/lib/spa/search";
 
 /**
  * Workspace-scoped record search for the topbar (each module searches its own data).
@@ -204,6 +205,32 @@ export const WORKSPACE_ENTITY_SEARCH = {
       }),
     },
   ],
+  spa: [
+    {
+      id: "clients",
+      label: "Clients",
+      apiPath: "",
+      listHref: "/spa/clients",
+      spaKind: "clients",
+      mapItem: (row) => row,
+    },
+    {
+      id: "services",
+      label: "Services",
+      apiPath: "",
+      listHref: "/spa/services",
+      spaKind: "services",
+      mapItem: (row) => row,
+    },
+    {
+      id: "products",
+      label: "Products",
+      apiPath: "",
+      listHref: "/spa/inventory",
+      spaKind: "products",
+      mapItem: (row) => row,
+    },
+  ],
 };
 
 export function entitySearchConfigsForWorkspace(workspaceId) {
@@ -216,6 +243,12 @@ export function filterEntityConfigsByAccess(configs, hasPermission) {
 }
 
 export function workspaceSearchPlaceholder(workspaceId, workspaceLabel) {
+  if (workspaceId === "spa") {
+    return "Search clients, services or products";
+  }
+  if (workspaceId === "driving") {
+    return "Search students, lessons, vehicles…";
+  }
   if (workspaceId === "admin") {
     return "Search settings, users, pages… e.g. KRA, SMS, till float";
   }
@@ -253,6 +286,14 @@ export async function searchWorkspaceEntities(apiRequest, configs, query, option
       const listHref = `${config.listHref}?q=${encodeURIComponent(q)}`;
 
       try {
+        if (config.spaKind) {
+          return {
+            type: config.id,
+            label: config.label,
+            listHref,
+            items: searchSpaRecords(config.spaKind, q, limitPerType),
+          };
+        }
         let items;
         const path =
           config.useAdminApi && workspaceId === "admin"

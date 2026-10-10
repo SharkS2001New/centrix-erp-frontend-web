@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Card, Field, Modal, PageHeader, Table, inputClass } from "@/components/spa/ui";
+import { Badge, Button, Card, Field, Modal, PageHeader, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
 
 const CATEGORIES = ["Rent", "Utilities", "Supplies", "Salaries", "Marketing", "Other"];
 
@@ -26,7 +26,7 @@ export function ExpensesScreen() {
         <Card><p className="text-xs uppercase text-slate-400">Approved today</p><p className="mt-2 text-2xl font-semibold">{ksh(daily)}</p></Card>
         <Card><p className="text-xs uppercase text-slate-400">Approved this month</p><p className="mt-2 text-2xl font-semibold">{ksh(monthly)}</p></Card>
       </section>
-      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} render={(expense) => (
+      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} onCreate={() => setEditing({ category: "Supplies", amount: "", method: "M-Pesa", date: today, reference: "", notes: "", status: "pending" })} createLabel="Add expense" render={(expense) => (
         <tr key={expense.id} className="border-b border-slate-50">
           <td className="px-4 py-3">{expense.date}</td>
           <td className="px-4 py-3 font-medium">{expense.category}</td>
@@ -37,10 +37,10 @@ export function ExpensesScreen() {
           <td className="px-4 py-3 text-right">
             {expense.status === "pending" ? (
               <>
-                <button type="button" className="mr-3 text-sm text-[#1677F2]" onClick={() => { spa.setExpenseStatus(expense.id, "approved"); toast.success("Expense approved."); }}>Approve</button>
+                <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => { spa.setExpenseStatus(expense.id, "approved"); toast.success("Expense approved."); }}>Approve</button>
                 <button type="button" className="text-sm text-red-600" onClick={() => { spa.setExpenseStatus(expense.id, "rejected"); toast.success("Expense rejected."); }}>Reject</button>
               </>
-            ) : <button type="button" className="text-sm text-[#1677F2]" onClick={() => setEditing(expense)}>Edit</button>}
+            ) : <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(expense)}>Edit</button>}
           </td>
         </tr>
       )} />
@@ -59,9 +59,9 @@ function ExpenseForm({ expense, onClose, onSave }) {
   return (
     <Modal title={expense.id ? "Edit expense" : "Add expense"} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Category"><select className={inputClass} value={form.category} onChange={set("category")}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></Field>
+        <Field label="Category"><SpaSelect value={form.category} onChange={set("category")} options={toOptions(CATEGORIES)} /></Field>
         <Field label="Amount (KSh)"><input className={inputClass} type="number" min="1" value={form.amount} onChange={set("amount")} /></Field>
-        <Field label="Payment method"><select className={inputClass} value={form.method} onChange={set("method")}><option>Cash</option><option>M-Pesa</option><option>Card</option><option>Bank</option></select></Field>
+        <Field label="Payment method"><SpaSelect value={form.method} onChange={set("method")} options={toOptions(["Cash", "M-Pesa", "Card", "Bank"])} /></Field>
         <Field label="Date"><input className={inputClass} type="date" value={form.date} onChange={set("date")} /></Field>
         <Field label="Reference"><input className={inputClass} value={form.reference} onChange={set("reference")} /></Field>
         <Field label="Notes"><input className={inputClass} value={form.notes} onChange={set("notes")} /></Field>

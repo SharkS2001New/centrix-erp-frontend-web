@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { datePart, formatDay, formatTime, minutesOf, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, inputClass } from "@/components/spa/ui";
+import { Badge, Button, Field, Modal, PageHeader, SpaContextMenu, SpaSelect, inputClass, textAreaClass, toolbarControlClass } from "@/components/spa/ui";
 
 const START = 8 * 60;
 const END = 19 * 60;
@@ -19,6 +19,8 @@ export function AppointmentsScreen() {
   const [skipNew, setSkipNew] = useState(false);
   const [walkIn, setWalkIn] = useState(false);
   const [queueStaff, setQueueStaff] = useState({});
+  const [menu, setMenu] = useState(null);
+  const dayClick = useRef(null);
 
   const active = editing || (!skipNew && params.get("new") === "1" ? blank(date) : null);
   const visible = spa.appointments.filter((item) => item.status !== "cancelled");
@@ -61,11 +63,13 @@ export function AppointmentsScreen() {
 
   return (
     <div>
-      <PageHeader title="Appointments" detail={`${spa.branch} calendar, grouped by who is working.`}>
-        <input type="date" className={inputClass} value={date} aria-label="Calendar date" onChange={(event) => setDate(event.target.value)} />
-        <div className="flex rounded-lg bg-white p-1 shadow-sm">
+      <PageHeader title="Appointments" detail={`${spa.branch} calendar. Double-click or right-click a time to book.`}>
+        <Field label="Date">
+          <input type="date" className={toolbarControlClass} value={date} aria-label="Calendar date" onChange={(event) => setDate(event.target.value)} />
+        </Field>
+        <div className="theme-panel flex rounded-lg p-1 shadow-sm">
           {["day", "week", "month"].map((option) => (
-            <button key={option} type="button" className={`rounded-md px-3 py-1.5 text-sm capitalize ${view === option ? "bg-[#14263D] text-white" : "text-slate-500"}`} onClick={() => setView(option)}>{option}</button>
+            <button key={option} type="button" className={`rounded-md px-3 py-1.5 text-sm capitalize ${view === option ? "bg-[var(--theme-primary)] text-white" : "theme-subtext"}`} onClick={() => setView(option)}>{option}</button>
           ))}
         </div>
         <Button onClick={() => setEditing(blank(date))}>New appointment</Button>
@@ -76,15 +80,36 @@ export function AppointmentsScreen() {
           {days.map((iso) => {
             const count = visible.filter((item) => datePart(item.start) === iso).length;
             return (
-              <button key={iso} type="button" className={`min-h-20 rounded-xl border bg-white p-2 text-left text-xs ${iso === date ? "border-[#1677F2]" : "border-slate-200"}`} onClick={() => { setDate(iso); setView("day"); }}>
+              <button
+                key={iso}
+                type="button"
+                className={`theme-panel min-h-20 rounded-xl border p-2 text-left text-xs ${iso === date ? "border-[var(--theme-primary)]" : ""}`}
+                onClick={() => {
+                  window.clearTimeout(dayClick.current);
+                  dayClick.current = window.setTimeout(() => {
+                    setDate(iso);
+                    setView("day");
+                  }, 220);
+                }}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  window.clearTimeout(dayClick.current);
+                  setEditing(blank(iso));
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({ x: event.clientX, y: event.clientY, items: [{ label: "New appointment", onSelect: () => setEditing(blank(iso)) }] });
+                }}
+              >
                 <span className="font-medium">{formatDay(iso)}</span>
-                {count > 0 ? <p className="mt-2 text-[#1677F2]">{count} booked</p> : null}
+                {count > 0 ? <p className="mt-2 text-[var(--theme-accent-text)]">{count} booked</p> : null}
               </button>
             );
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel overflow-x-auto rounded-xl border shadow-sm">
           <div className="grid min-w-[720px]" style={{ gridTemplateColumns: `4.5rem repeat(${view === "week" ? 7 : spa.staff.length}, minmax(8rem, 1fr))` }}>
             <div />
             {(view === "week" ? days : spa.staff).map((item) => (
@@ -98,7 +123,38 @@ export function AppointmentsScreen() {
               ))}
             </div>
             {(view === "week" ? days : spa.staff).map((column) => (
-              <div key={typeof column === "string" ? column : column.id} className="relative border-l border-slate-100" style={{ height: ((END - START) / 60) * 48 }}>
+              <div
+                key={typeof column === "string" ? column : column.id}
+                className="relative border-l border-[var(--theme-border)]"
+                style={{ height: ((END - START) / 60) * 48 }}
+                onDoubleClick={(event) => {
+                  if (event.target.closest("[data-appointment]")) return;
+                  setEditing(slotFromClick(event, column, view, date));
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  const booking = event.target.closest("[data-appointment]");
+                  if (booking) {
+                    const item = visible.find((row) => row.id === booking.getAttribute("data-appointment"));
+                    if (!item) return;
+                    setMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      items: [
+                        { label: "Edit appointment", onSelect: () => setEditing(item) },
+                        { label: "Cancel booking", onSelect: () => { spa.setAppointmentStatus(item.id, "cancelled"); toast.success("Appointment cancelled."); } },
+                      ],
+                    });
+                    return;
+                  }
+                  const draft = slotFromClick(event, column, view, date);
+                  setMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    items: [{ label: "New appointment", onSelect: () => setEditing(draft) }],
+                  });
+                }}
+              >
                 {visible.filter((item) => view === "week" ? datePart(item.start) === column : item.staffId === column.id && datePart(item.start) === date).map((item) => {
                   const top = ((minutesOf(item.start) - START) / 60) * 48;
                   const height = Math.max(28, (item.duration / 60) * 48);
@@ -106,7 +162,7 @@ export function AppointmentsScreen() {
                   const service = spa.services.find((row) => row.id === item.serviceId);
                   const color = spa.staff.find((row) => row.id === item.staffId)?.color || "#DBEAFE";
                   return (
-                    <button key={item.id} type="button" className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-left text-xs" style={{ top, height, background: color }} onClick={() => setEditing(item)}>
+                    <button key={item.id} type="button" data-appointment={item.id} className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-left text-xs" style={{ top, height, background: color }} onClick={() => setEditing(item)} onDoubleClick={(event) => { event.stopPropagation(); setEditing(item); }}>
                       <p className="font-semibold">{client?.name}</p>
                       <p>{service?.name}</p>
                       <p>{formatTime(item.start)}</p>
@@ -120,7 +176,7 @@ export function AppointmentsScreen() {
       )}
 
       <section className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="theme-panel rounded-xl border p-4">
           <h2 className="text-sm font-semibold">Walk-in queue</h2>
           {spa.walkIns.filter((item) => item.status === "waiting").length === 0 ? <p className="mt-3 text-sm text-slate-500">No one is waiting.</p> : (
             <ul className="mt-3 space-y-3">
@@ -131,15 +187,9 @@ export function AppointmentsScreen() {
                     <p className="text-xs text-slate-500">{spa.services.find((item) => item.id === guest.serviceId)?.name || "Any service"}</p>
                   </div>
                   <div className="flex gap-2">
-                    <select className={inputClass} aria-label={`Staff for ${guest.name}`} value={queueStaff[guest.id]?.staffId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], staffId: event.target.value } }))}>
-                      <option value="">Assign</option>
-                      {spa.staff.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                    </select>
+                    <SpaSelect toolbar aria-label={`Staff for ${guest.name}`} placeholder="Assign" value={queueStaff[guest.id]?.staffId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], staffId: event.target.value } }))} options={[{ value: "", label: "Assign" }, ...spa.staff.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name }))]} />
                     {spa.features.chairs ? (
-                      <select className={inputClass} aria-label={`Chair for ${guest.name}`} value={queueStaff[guest.id]?.chairId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], chairId: event.target.value } }))}>
-                        <option value="">Chair</option>
-                        {spa.chairs.map((chair) => <option key={chair.id} value={chair.id}>{chair.name}</option>)}
-                      </select>
+                      <SpaSelect toolbar aria-label={`Chair for ${guest.name}`} placeholder="Chair" value={queueStaff[guest.id]?.chairId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], chairId: event.target.value } }))} options={[{ value: "", label: "Chair" }, ...spa.chairs.map((chair) => ({ value: chair.id, label: chair.name }))]} />
                     ) : null}
                     <Button onClick={() => {
                       const error = spa.seatWalkIn(guest.id, queueStaff[guest.id]?.staffId, queueStaff[guest.id]?.chairId);
@@ -152,7 +202,7 @@ export function AppointmentsScreen() {
             </ul>
           )}
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="theme-panel rounded-xl border p-4">
           <h2 className="text-sm font-semibold">Add a walk-in</h2>
           <Button className="mt-3" variant="ghost" onClick={() => setWalkIn(true)}>Quick booking</Button>
           {spa.features.rooms ? <p className="mt-4 text-xs text-slate-500">Treatment rooms: {spa.rooms.map((room) => room.name).join(", ")}</p> : null}
@@ -160,6 +210,7 @@ export function AppointmentsScreen() {
         </div>
       </section>
 
+      <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={menu?.items ?? []} />
       {active ? <BookingModal spa={spa} draft={active} onClose={() => { setEditing(null); setSkipNew(true); }} onSave={save} /> : null}
       {walkIn ? <WalkInModal onClose={() => setWalkIn(false)} onSave={(draft) => {
         const error = spa.addWalkIn(draft);
@@ -174,25 +225,39 @@ function blank(date) {
   return { clientId: "", staffId: "", serviceId: "", roomId: "", chairId: "", start: `${date}T09:00`, duration: 30, status: "booked", notes: "" };
 }
 
+function slotFromClick(event, column, view, date) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const minutes = START + Math.max(0, Math.floor((event.clientY - rect.top) / 48)) * 60;
+  const clamped = Math.min(END - 30, Math.max(START, minutes));
+  const hours = String(Math.floor(clamped / 60)).padStart(2, "0");
+  const mins = String(clamped % 60).padStart(2, "0");
+  const day = view === "week" ? column : date;
+  return {
+    ...blank(day),
+    staffId: view === "week" ? "" : column.id,
+    start: `${day}T${hours}:${mins}`,
+  };
+}
+
 function BookingModal({ spa, draft, onClose, onSave }) {
   const [form, setForm] = useState(draft);
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   return (
     <Modal title={form.id ? "Edit appointment" : "New appointment"} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Client"><select className={inputClass} value={form.clientId} onChange={set("clientId")}><option value="">Select</option>{spa.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-        <Field label="Service"><select className={inputClass} value={form.serviceId} onChange={(event) => {
+        <Field label="Client"><SpaSelect value={form.clientId} onChange={set("clientId")} placeholder="Select" options={[{ value: "", label: "Select" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
+        <Field label="Service"><SpaSelect value={form.serviceId} placeholder="Select" onChange={(event) => {
           const service = spa.services.find((item) => item.id === event.target.value);
           setForm((current) => ({ ...current, serviceId: event.target.value, duration: service?.duration || current.duration }));
-        }}><option value="">Select</option>{spa.services.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-        <Field label="Staff"><select className={inputClass} value={form.staffId} onChange={set("staffId")}><option value="">Select</option>{spa.staff.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+        }} options={[{ value: "", label: "Select" }, ...spa.services.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name }))]} /></Field>
+        <Field label="Staff"><SpaSelect value={form.staffId} onChange={set("staffId")} placeholder="Select" options={[{ value: "", label: "Select" }, ...spa.staff.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
         <Field label="Starts"><input className={inputClass} type="datetime-local" value={String(form.start).slice(0, 16)} onChange={(event) => setForm((current) => ({ ...current, start: event.target.value }))} /></Field>
         <Field label="Duration (minutes)"><input className={inputClass} type="number" min="10" value={form.duration} onChange={set("duration")} /></Field>
-        <Field label="Status"><select className={inputClass} value={form.status} onChange={set("status")}><option value="booked">Booked</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="no_show">No show</option></select></Field>
-        {spa.features.rooms ? <Field label="Treatment room"><select className={inputClass} value={form.roomId} onChange={set("roomId")}><option value="">None</option>{spa.rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></Field> : null}
-        {spa.features.chairs ? <Field label="Chair"><select className={inputClass} value={form.chairId} onChange={set("chairId")}><option value="">None</option>{spa.chairs.map((chair) => <option key={chair.id} value={chair.id}>{chair.name}</option>)}</select></Field> : null}
+        <Field label="Status"><SpaSelect value={form.status} onChange={set("status")} options={[{ value: "booked", label: "Booked" }, { value: "in_progress", label: "In progress" }, { value: "completed", label: "Completed" }, { value: "no_show", label: "No show" }]} /></Field>
+        {spa.features.rooms ? <Field label="Treatment room"><SpaSelect value={form.roomId} onChange={set("roomId")} placeholder="None" options={[{ value: "", label: "None" }, ...spa.rooms.map((room) => ({ value: room.id, label: room.name }))]} /></Field> : null}
+        {spa.features.chairs ? <Field label="Chair"><SpaSelect value={form.chairId} onChange={set("chairId")} placeholder="None" options={[{ value: "", label: "None" }, ...spa.chairs.map((chair) => ({ value: chair.id, label: chair.name }))]} /></Field> : null}
       </div>
-      <Field label="Notes"><textarea className={`${inputClass} mt-3`} rows={2} value={form.notes} onChange={set("notes")} /></Field>
+      <Field label="Notes"><textarea className={`${textAreaClass} mt-3`} rows={2} value={form.notes} onChange={set("notes")} /></Field>
       <div className="mt-4 flex flex-wrap justify-between gap-2">
         {form.id ? <Button variant="danger" onClick={() => { spa.setAppointmentStatus(form.id, "cancelled"); toast.success("Appointment cancelled."); onClose(); }}>Cancel booking</Button> : <span />}
         <div className="flex gap-2">
@@ -212,7 +277,7 @@ function WalkInModal({ services, onClose, onSave }) {
       <div className="grid gap-3">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
-        <Field label="Service"><select className={inputClass} value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })}>{services.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+        <Field label="Service"><SpaSelect value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })} options={services.map((item) => ({ value: item.id, label: item.name }))} /></Field>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>Close</Button>

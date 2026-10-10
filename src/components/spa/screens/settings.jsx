@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 import { businessLabel } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Card, Field, PageHeader, inputClass } from "@/components/spa/ui";
+import { Button, Card, Field, PageHeader, SpaSelect, inputClass, pillClass, textAreaClass } from "@/components/spa/ui";
 
 const TABS = ["Profile", "Branches", "Business type", "Hours", "Receipt", "Tax", "Payments", "Users"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function SettingsScreen() {
+export function SettingsScreen({ embedded = false }) {
   const spa = useSpa();
   const [tab, setTab] = useState("Profile");
   const [profile, setProfile] = useState(spa.profile);
@@ -17,12 +17,18 @@ export function SettingsScreen() {
   const [hours, setHours] = useState(spa.hours);
   const [user, setUser] = useState({ name: "", email: "", role: "Cashier" });
 
+  useEffect(() => {
+    if (!spa.ready) return;
+    setProfile(spa.profile);
+    setHours(spa.hours);
+  }, [spa.ready, spa.profile, spa.hours]);
+
   return (
     <div>
-      <PageHeader title="Settings" detail={`${businessLabel(spa.businessType)} · ${spa.branch}`} />
+      {embedded ? null : <PageHeader title="SPA & Kinyozi" detail={`${businessLabel(spa.businessType)} · ${spa.branch}`} />}
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((item) => (
-          <button key={item} type="button" className={`rounded-full px-3 py-1.5 text-sm ${tab === item ? "bg-[#14263D] text-white" : "bg-white"}`} onClick={() => setTab(item)}>{item}</button>
+          <button key={item} type="button" className={pillClass(tab === item)} onClick={() => setTab(item)}>{item}</button>
         ))}
       </div>
       {tab === "Profile" ? (
@@ -37,7 +43,7 @@ export function SettingsScreen() {
       ) : null}
       {tab === "Branches" ? (
         <Card className="max-w-xl">
-          <ul className="space-y-2 text-sm">{spa.branches.map((branch) => <li key={branch} className="flex justify-between"><span>{branch}</span>{branch === spa.branch ? <span className="text-[#1677F2]">Current</span> : <button type="button" className="text-[#1677F2]" onClick={() => spa.setBranch(branch)}>Use</button>}</li>)}</ul>
+          <ul className="space-y-2 text-sm">{spa.branches.map((branch) => <li key={branch} className="flex justify-between"><span>{branch}</span>{branch === spa.branch ? <span className="text-[var(--theme-accent-text)]">Current</span> : <button type="button" className="text-[var(--theme-accent-text)]" onClick={() => spa.setBranch(branch)}>Use</button>}</li>)}</ul>
           <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); const error = spa.addBranch(branchName); if (error) toast.error(error); else { toast.success("Branch added."); setBranchName(""); } }}>
             <input className={inputClass} aria-label="New branch" value={branchName} onChange={(event) => setBranchName(event.target.value)} placeholder="Branch name" />
             <Button type="submit">Add</Button>
@@ -75,7 +81,7 @@ export function SettingsScreen() {
       ) : null}
       {tab === "Receipt" ? (
         <Card className="max-w-xl space-y-3">
-          <Field label="Footer"><textarea className={inputClass} rows={3} value={spa.receipt.footer} onChange={(event) => spa.saveReceipt({ footer: event.target.value })} /></Field>
+          <Field label="Footer"><textarea className={textAreaClass} rows={3} value={spa.receipt.footer} onChange={(event) => spa.saveReceipt({ footer: event.target.value })} /></Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={spa.receipt.showPin} onChange={(event) => spa.saveReceipt({ showPin: event.target.checked })} /> Show KRA PIN on receipts</label>
         </Card>
       ) : null}
@@ -102,7 +108,7 @@ export function SettingsScreen() {
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <input className={inputClass} placeholder="Name" aria-label="User name" value={user.name} onChange={(event) => setUser({ ...user, name: event.target.value })} />
             <input className={inputClass} placeholder="Email" aria-label="User email" value={user.email} onChange={(event) => setUser({ ...user, email: event.target.value })} />
-            <select className={inputClass} aria-label="Role" value={user.role} onChange={(event) => setUser({ ...user, role: event.target.value })}>{spa.roles.map((role) => <option key={role.id}>{role.name}</option>)}</select>
+            <SpaSelect aria-label="Role" value={user.role} onChange={(event) => setUser({ ...user, role: event.target.value })} options={spa.roles.map((role) => ({ value: role.name, label: role.name }))} />
           </div>
           <Button className="mt-3" onClick={() => { const error = spa.saveUser(user); if (error) toast.error(error); else { toast.success("User added."); setUser({ name: "", email: "", role: "Cashier" }); } }}>Add user</Button>
           <div className="mt-4 text-xs text-slate-500">{spa.roles.map((role) => <p key={role.id}>{role.name}: {role.permissions.join(", ")}</p>)}</div>

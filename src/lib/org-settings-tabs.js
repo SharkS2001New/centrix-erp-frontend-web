@@ -67,6 +67,10 @@ export function isSpaIndustry(capabilities) {
   return capabilities?.industry === "spa" || capabilities?.deployment_profile === "spa_kinyozi";
 }
 
+export function isDrivingIndustry(capabilities) {
+  return capabilities?.industry === "driving" || capabilities?.deployment_profile === "driving_school";
+}
+
 /** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   const hospitality = isHospitalityIndustry(capabilities);

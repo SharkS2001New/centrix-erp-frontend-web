@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { datePart, formatTime, ksh } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Empty, Field, Modal, PageHeader, Table, inputClass } from "@/components/spa/ui";
+import { Badge, Button, Empty, Field, Modal, PageHeader, SpaSearch, SpaSelect, Table, accentLinkClass, inputClass, pillClass, toOptions } from "@/components/spa/ui";
 
 export function ClientsScreen() {
   const spa = useSpa();
@@ -23,14 +23,12 @@ export function ClientsScreen() {
   return (
     <div>
       <PageHeader title="Clients" detail="Directory, spending and loyalty for this branch.">
-        <input className={inputClass} placeholder="Search name or phone" aria-label="Search clients" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <select className={inputClass} aria-label="Client status" value={status} onChange={(event) => setStatus(event.target.value)}>
-          {["All", "VIP", "Active", "New"].map((item) => <option key={item}>{item}</option>)}
-        </select>
+        <SpaSearch placeholder="Search name or phone" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <SpaSelect toolbar aria-label="Client status" value={status} onChange={(event) => setStatus(event.target.value)} options={toOptions(["All", "VIP", "Active", "New"])} />
         <Button onClick={() => setEditing(blank())}>Add client</Button>
       </PageHeader>
       {rows.length === 0 ? <Empty title="No clients match" detail="Try another name, or add a client." /> : (
-        <Table columns={["Client", "Phone", "Visits", "Spent", "Loyalty", "Status", ""]} rows={rows} render={(client) => (
+        <Table columns={["Client", "Phone", "Visits", "Spent", "Loyalty", "Status", ""]} rows={rows} onCreate={() => setEditing(blank())} createLabel="Add client" render={(client) => (
           <tr key={client.id} className="border-b border-slate-50">
             <td className="px-4 py-3 font-medium">{client.name}</td>
             <td className="px-4 py-3">{client.phone}</td>
@@ -38,7 +36,7 @@ export function ClientsScreen() {
             <td className="px-4 py-3">{ksh(client.spent)}</td>
             <td className="px-4 py-3">{client.loyalty}</td>
             <td className="px-4 py-3"><Badge tone={client.status === "VIP" ? "blue" : "green"}>{client.status}</Badge></td>
-            <td className="px-4 py-3 text-right"><Link className="text-sm font-medium text-[#1677F2]" href={`/spa/clients/${client.id}`}>Open</Link></td>
+            <td className="px-4 py-3 text-right"><Link className={accentLinkClass} href={`/spa/clients/${client.id}`}>Open</Link></td>
           </tr>
         )} />
       )}
@@ -72,7 +70,7 @@ export function ClientDetailScreen({ id }) {
       </PageHeader>
       <div className="mb-4 flex flex-wrap gap-2">
         {["appointments", "purchases", "notes", "memberships", "packages"].map((item) => (
-          <button key={item} type="button" className={`rounded-full px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-[#14263D] text-white" : "bg-white"}`} onClick={() => setTab(item)}>{item}</button>
+          <button key={item} type="button" className={`${pillClass(tab === item)} capitalize`} onClick={() => setTab(item)}>{item}</button>
         ))}
       </div>
       {tab === "appointments" ? <SimpleList rows={appointments} empty="No appointments yet." render={(item) => {
@@ -81,7 +79,7 @@ export function ClientDetailScreen({ id }) {
       }} /> : null}
       {tab === "purchases" ? <SimpleList rows={purchases} empty="No purchases yet." render={(item) => <p key={item.id}>{item.number} · {ksh(item.total)} · {item.payment.method}</p>} /> : null}
       {tab === "notes" ? (
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
+        <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <form className="flex gap-2" onSubmit={(event) => {
             event.preventDefault();
             const error = spa.addClientNote(id, note);
@@ -107,7 +105,7 @@ export function ClientDetailScreen({ id }) {
 
 function SimpleList({ rows, empty, render }) {
   if (rows.length === 0) return <Empty title={empty} />;
-  return <div className="space-y-2 rounded-2xl bg-white p-4 text-sm shadow-sm">{rows.map(render)}</div>;
+  return <div className="theme-panel space-y-2 rounded-xl border p-4 text-sm shadow-sm">{rows.map(render)}</div>;
 }
 
 function blank() {
@@ -123,7 +121,7 @@ function ClientForm({ client, onClose, onSave }) {
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone} onChange={set("phone")} /></Field>
         <Field label="Email"><input className={inputClass} value={form.email || ""} onChange={set("email")} /></Field>
-        <Field label="Status"><select className={inputClass} value={form.status} onChange={set("status")}><option>New</option><option>Active</option><option>VIP</option></select></Field>
+        <Field label="Status"><SpaSelect value={form.status} onChange={set("status")} options={toOptions(["New", "Active", "VIP"])} /></Field>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>Close</Button>

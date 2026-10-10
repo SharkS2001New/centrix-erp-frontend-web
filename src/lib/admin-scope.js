@@ -40,6 +40,8 @@ const OPERATIONAL_MODULE_KEYS = [
   "payments",
   "hr_payroll",
   "distribution",
+  "spa",
+  "driving",
 ];
 
 /** Whether the tenant has any operational ERP module (can print documents, run sales, etc.). */

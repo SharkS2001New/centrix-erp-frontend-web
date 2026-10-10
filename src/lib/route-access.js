@@ -271,6 +271,12 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     return true;
   }
 
+  const drivingPath = pathname === "/driving-school" || pathname.startsWith("/driving-school/");
+  const drivingOrg = ctx.capabilities?.industry === "driving" || workspaceId === "driving";
+  if (drivingPath && drivingOrg) {
+    return true;
+  }
+
   if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
     return false;
   }

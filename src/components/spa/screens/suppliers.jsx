@@ -18,19 +18,19 @@ export function SuppliersScreen() {
         <PageHeader title="Suppliers" detail="Who you buy from, and the stock they have delivered.">
           <Button onClick={() => setEditing({ name: "", phone: "", email: "", category: "" })}>Add supplier</Button>
         </PageHeader>
-        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} render={(item) => (
+        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} onCreate={() => setEditing({ name: "", phone: "", email: "", category: "" })} createLabel="Add supplier" render={(item) => (
           <tr key={item.id} className="border-b border-slate-50">
             <td className="px-4 py-3 font-medium">{item.name}</td>
             <td className="px-4 py-3">{item.phone}</td>
             <td className="px-4 py-3">{item.category}</td>
             <td className="px-4 py-3 text-right">
-              <button type="button" className="mr-3 text-sm text-[#1677F2]" onClick={() => setOpenId(item.id)}>Purchases</button>
-              <button type="button" className="text-sm text-[#1677F2]" onClick={() => setEditing(item)}>Edit</button>
+              <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => setOpenId(item.id)}>Purchases</button>
+              <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(item)}>Edit</button>
             </td>
           </tr>
         )} />
       </div>
-      <aside className="rounded-2xl bg-white p-4 shadow-sm">
+      <aside className="theme-panel rounded-xl border p-4 shadow-sm">
         <h2 className="text-sm font-semibold">{supplier?.name || "Purchases"}</h2>
         <p className="mt-1 text-xs text-slate-500">{supplier?.email}</p>
         <ul className="mt-3 space-y-2 text-sm">

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, stockStatus, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Card, PageHeader, inputClass } from "@/components/spa/ui";
+import { Button, Card, Field, PageHeader, toolbarControlClass } from "@/components/spa/ui";
 
 export function ReportsScreen() {
   const spa = useSpa();
@@ -60,8 +60,8 @@ export function ReportsScreen() {
   return (
     <div>
       <PageHeader title="Reports" detail="Sales, costs and the till for the dates you choose.">
-        <label className="text-xs text-slate-500">From<input className={`${inputClass} mt-1`} type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-        <label className="text-xs text-slate-500">To<input className={`${inputClass} mt-1`} type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+        <Field label="From"><input className={toolbarControlClass} type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
+        <Field label="To"><input className={toolbarControlClass} type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
         <Button variant="ghost" onClick={exportCsv}>Export CSV</Button>
       </PageHeader>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

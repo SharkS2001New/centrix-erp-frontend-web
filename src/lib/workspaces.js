@@ -66,6 +66,8 @@ export const WORKSPACE_SECTION_IDS = {
   accounting: ["accounting", "expenses", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
+  spa: ["spa_front", "spa_records"],
+  driving: ["driving_front", "driving_fleet", "driving_money"],
 };
 
 /** Sidebar zone headers for workspaces that still use grouped sections. */
@@ -145,6 +147,7 @@ export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 export const WORKSPACE_PATH_PREFIXES = {
   pos: ["/pos"],
   spa: ["/spa"],
+  driving: ["/driving-school"],
   hotel_bar_pos: ["/hotel-bar-pos"],
   hospitality_backoffice: [
     "/hospitality",
@@ -204,7 +207,9 @@ export function workspacesFromCapabilities(capabilities) {
       ? "hospitality"
       : capabilities?.deployment_profile === "spa_kinyozi"
         ? "spa"
-        : "commerce");
+        : capabilities?.deployment_profile === "driving_school"
+          ? "driving"
+          : "commerce");
   return sortWorkspaces(
     filterWorkspacesByIndustry(capabilities?.workspaces ?? [], industry).filter(
       (ws) => ws.id !== "centrix_payments",
@@ -319,6 +324,14 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
       return true;
     }
     return pathBelongsToWorkspace(item.href, "hospitality_backoffice");
+  }
+
+  if (workspaceId === "spa") {
+    return item.href === "/spa" || Boolean(item.href?.startsWith("/spa/"));
+  }
+
+  if (workspaceId === "driving") {
+    return item.href === "/driving-school" || Boolean(item.href?.startsWith("/driving-school/"));
   }
 
   if (workspaceId === "backoffice") {

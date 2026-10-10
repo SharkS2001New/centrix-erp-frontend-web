@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useLockScreen } from "@/contexts/lock-screen-context";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -129,13 +130,14 @@ export function UserAccountMenu({
               <button
                 type="button"
                 role="menuitem"
-                className="velzon-user-dropdown-item flex w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400"
+                className="velzon-user-dropdown-item flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 dark:text-red-400"
                 onClick={() => {
                   setMenuOpen(false);
                   void logout();
                 }}
               >
-                Sign out
+                <LogOut className="h-4 w-4" aria-hidden />
+                Logout
               </button>
               {mobileThemeToggle ? (
                 <div className="my-1 border-t sm:hidden">
