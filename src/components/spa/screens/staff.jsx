@@ -7,14 +7,13 @@ import { toast } from "@/lib/toast";
 import { ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
-import { Badge, Empty, Field, PageHeader, SpaContextMenu, SpaSelect, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
+import { Badge, Empty, Field, MobileFields, PageHeader, SpaContextMenu, SpaSelect, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function StaffScreen() {
   const spa = useSpa();
   const router = useAppRouter();
-  const [tab, setTab] = useState("directory");
   const [menu, setMenu] = useState(null);
   const today = todayISO();
 
@@ -28,16 +27,10 @@ export function StaffScreen() {
 
   return (
     <div>
-      <PageHeader title="Staff & commissions" detail="Who is in today, what they earn, and whether it is ready to pay.">
+      <PageHeader title="Staff & commissions" detail="Add a person and set their commission on the same form. Earnings below use that rate.">
         <AppNavLink href="/spa/staff/new" className={primaryLinkClass}>Add staff</AppNavLink>
       </PageHeader>
-      <div className="mb-4 flex gap-2">
-        {["directory", "commissions"].map((item) => (
-          <button key={item} type="button" className={`${tab === item ? "bg-[var(--theme-primary)] text-white" : "theme-secondary-btn"} rounded-full px-3 py-1.5 text-sm capitalize`} onClick={() => setTab(item)}>{item}</button>
-        ))}
-      </div>
-      {tab === "directory" ? (
-        <div
+      <div
           className="grid gap-3 md:grid-cols-2"
           onDoubleClick={(event) => {
             if (event.target.closest("article, button, select, input")) return;
@@ -66,22 +59,29 @@ export function StaffScreen() {
                     <SpaSelect aria-label={`Attendance for ${person.name}`} value={attendance?.status || "present"} onChange={(event) => spa.setAttendance(person.id, event.target.value)} options={[{ value: "present", label: "Present" }, { value: "late", label: "Late" }, { value: "off", label: "Off" }]} />
                   </Field>
                 </div>
-                <AppNavLink href={`/spa/staff/${person.id}/edit`} className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">Edit profile</AppNavLink>
+                <AppNavLink href={`/spa/staff/${person.id}/edit`} className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">Edit</AppNavLink>
               </article>
             );
           })}
         </div>
-      ) : (
-        <Table columns={["Staff", "Service revenue", "Commission", "Earned", "Payout"]} rows={rows} onCreate={() => router.push("/spa/staff/new")} createLabel="Add staff" render={({ person, revenue, earned, paid }) => (
-          <tr key={person.id} className="border-b border-slate-50">
-            <td className="px-4 py-3 font-medium">{person.name}</td>
-            <td className="px-4 py-3">{ksh(revenue)}</td>
-            <td className="px-4 py-3">{person.commission}%</td>
-            <td className="px-4 py-3">{ksh(earned)}</td>
-            <td className="px-4 py-3"><Badge tone={paid ? "green" : "amber"}>{paid ? "Ready" : "Nothing due"}</Badge></td>
-          </tr>
-        )} />
-      )}
+      <h2 className="theme-heading mb-3 mt-6 text-sm font-semibold">Commission earnings</h2>
+      <Table columns={["Staff", "Service revenue", "Commission", "Earned", "Payout"]} rows={rows} rowKey={(row) => row.person.id} onCreate={() => router.push("/spa/staff/new")} createLabel="Add staff" card={({ person, revenue, earned, paid }) => (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold">{person.name}</p>
+            <Badge tone={paid ? "green" : "amber"}>{paid ? "Ready" : "Nothing due"}</Badge>
+          </div>
+          <MobileFields rows={[{ label: "Service revenue", value: ksh(revenue) }, { label: "Commission", value: `${person.commission}%` }, { label: "Earned", value: ksh(earned) }]} />
+        </>
+      )} render={({ person, revenue, earned, paid }) => (
+        <tr key={person.id} className="border-b border-slate-50">
+          <td className="px-4 py-3 font-medium">{person.name}</td>
+          <td className="px-4 py-3">{ksh(revenue)}</td>
+          <td className="px-4 py-3">{person.commission}%</td>
+          <td className="px-4 py-3">{ksh(earned)}</td>
+          <td className="px-4 py-3"><Badge tone={paid ? "green" : "amber"}>{paid ? "Ready" : "Nothing due"}</Badge></td>
+        </tr>
+      )} />
       <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={[{ label: "Add staff", onSelect: () => router.push("/spa/staff/new") }]} />
     </div>
   );
@@ -107,11 +107,14 @@ export function StaffFormScreen({ id }) {
     <RecordFormPage title={title} backHref="/spa/staff">
       <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Name"><input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
+        <Field label="Name"><input className={inputClass} required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
         <Field label="Role"><input className={inputClass} value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
-        <Field label="Commission %"><input className={inputClass} type="number" min="0" value={form.commission} onChange={(event) => setForm({ ...form, commission: event.target.value })} /></Field>
+        <Field label="Commission %">
+          <input className={inputClass} type="number" min="0" max="100" required value={form.commission} onChange={(event) => setForm({ ...form, commission: event.target.value })} />
+        </Field>
       </div>
+      <p className="theme-subtext mt-2 text-sm">Commission is part of this staff record. Service sales use this rate.</p>
       <fieldset className="mt-3">
         <legend className="text-xs font-medium text-slate-500">Availability</legend>
         <div className="mt-2 flex flex-wrap gap-2">

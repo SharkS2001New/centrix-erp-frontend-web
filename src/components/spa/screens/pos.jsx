@@ -8,7 +8,7 @@ import { useSpa } from "@/lib/spa/store";
 import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
 import { buildSpaSaleReceipt } from "@/lib/service-receipt";
 import { useAuth } from "@/contexts/auth-context";
-import { Button, Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
+import { Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
 
 export function PosScreen() {
   const spa = useSpa();
@@ -24,6 +24,7 @@ export function PosScreen() {
   const [reference, setReference] = useState("");
   const [receipt, setReceipt] = useState(null);
   const [paper, setPaper] = useState("a4");
+  const [cartOpen, setCartOpen] = useState(false);
 
   const categories = ["All", ...new Set(spa.services.map((item) => item.category))];
   const catalog = useMemo(() => {
@@ -72,13 +73,14 @@ export function PosScreen() {
     const result = spa.completeSale(buildSale("completed"));
     if (typeof result === "string") {
       toast.error(result);
-      return;
+      return false;
     }
     toast.success(`Sale ${result.number} recorded. No payment was sent to M-Pesa or a card machine.`);
     setReceipt(result);
     setLines([]);
     setDiscount(0);
     setReference("");
+    return true;
   }
 
   function hold() {
@@ -91,108 +93,164 @@ export function PosScreen() {
     setLines([]);
   }
 
+  const chips = ["All", ...categories.filter((item) => item !== "All"), "Products"].filter((item, index, list) => list.indexOf(item) === index);
+  const serviceCards = catalog.services.filter((item) => !item.combo || spa.features.combos);
+  const emptyCatalog = serviceCards.length === 0 && catalog.products.length === 0;
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <section>
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <SpaSearch placeholder="Search services or products" value={query} onChange={(event) => setQuery(event.target.value)} />
-          {["All", ...categories.filter((item) => item !== "All"), "Products"].filter((item, index, list) => list.indexOf(item) === index).map((item) => (
-            <button key={item} type="button" className={`rounded-full px-3 py-1.5 text-sm ${category === item ? "bg-[var(--theme-primary)] text-white" : "theme-secondary-btn"}`} onClick={() => setCategory(item)}>{item}</button>
-          ))}
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] lg:h-[calc(100dvh-8rem)] lg:flex-row">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="shrink-0 space-y-3 border-b border-[var(--theme-border)]/80 px-3 py-3 sm:px-4">
+          <div className="hotel-pos-chip-scroll flex items-center gap-2 overflow-x-auto pb-1" role="toolbar" aria-label="Service categories">
+            {chips.map((item) => (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={category === item}
+                className={`hotel-pos-chip shrink-0${category === item ? " hotel-pos-chip-active" : ""}`}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <SpaSearch className="w-full min-w-0" placeholder="Search services or products" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {catalog.services.filter((item) => !item.combo || spa.features.combos).map((item) => (
-            <button key={item.id} type="button" className="theme-panel overflow-hidden rounded-xl border p-0 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "service")}>
-              {serviceImageSrc(item) ? <img src={serviceImageSrc(item)} alt="" className="h-28 w-full object-cover" /> : null}
-              <span className="block p-4">
-                <span className="block text-xs text-slate-400">{item.category}</span>
-                <span className="mt-1 block font-semibold">{item.name}</span>
-                <span className="mt-2 block text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.duration} min</span>
-              </span>
-            </button>
-          ))}
-          {catalog.products.map((item) => (
-            <button key={item.id} type="button" className="theme-panel rounded-xl border p-4 text-left shadow-sm hover:border-[var(--theme-primary)]" onClick={() => addLine(item, "product")}>
-              <p className="text-xs text-slate-400">{item.sku}</p>
-              <p className="mt-1 font-semibold">{item.name}</p>
-              <p className="mt-2 text-sm text-[var(--theme-accent-text)]">{ksh(item.price)} · {item.qty} in stock</p>
-            </button>
-          ))}
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 sm:pb-24 lg:pb-4">
+          {spa.holds.length > 0 ? (
+            <div className="mb-3 rounded-2xl border border-[var(--theme-border)] p-3">
+              <h2 className="text-sm font-semibold">Held sales</h2>
+              <ul className="mt-2 space-y-2 text-sm">
+                {spa.holds.map((sale) => (
+                  <li key={sale.id} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0">{sale.lines.map((line) => line.name).join(", ")} · {ksh(sale.total)}</span>
+                    <button type="button" className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm" onClick={() => { setLines(sale.lines); setClientId(sale.clientId || ""); setStaffId(sale.staffId || staffId); spa.removeHold(sale.id); }}>Resume</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {emptyCatalog ? (
+            <p className="hotel-pos-empty-ticket theme-subtext rounded-2xl px-4 py-10 text-center text-sm">Nothing matches this search.</p>
+          ) : (
+            <div className="hotel-pos-catalog-grid grid gap-2.5 sm:gap-3" style={{ "--hotel-pos-cols": 3 }}>
+              {serviceCards.map((item) => (
+                <CatalogTile
+                  key={item.id}
+                  name={item.name}
+                  meta={item.category}
+                  price={ksh(item.price)}
+                  detail={`${item.duration} min`}
+                  photo={serviceImageSrc(item)}
+                  onAdd={() => addLine(item, "service")}
+                />
+              ))}
+              {catalog.products.map((item) => (
+                <CatalogTile
+                  key={item.id}
+                  name={item.name}
+                  meta={item.sku}
+                  price={ksh(item.price)}
+                  detail={`${item.qty} in stock`}
+                  onAdd={() => addLine(item, "product")}
+                />
+              ))}
+            </div>
+          )}
         </div>
-        {spa.holds.length > 0 ? (
-          <div className="theme-panel mt-4 rounded-xl border p-4 shadow-sm">
-            <h2 className="text-sm font-semibold">Held sales</h2>
-            <ul className="mt-2 space-y-2 text-sm">
-              {spa.holds.map((sale) => (
-                <li key={sale.id} className="flex items-center justify-between">
-                  <span>{sale.lines.map((line) => line.name).join(", ")} · {ksh(sale.total)}</span>
-                  <Button variant="ghost" onClick={() => { setLines(sale.lines); setClientId(sale.clientId || ""); setStaffId(sale.staffId || staffId); spa.removeHold(sale.id); }}>Resume</Button>
+      </section>
+
+      {cartOpen ? <button type="button" className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-label="Close ticket" onClick={() => setCartOpen(false)} /> : null}
+      <button type="button" className="hotel-pos-primary-cta fixed inset-x-3 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-semibold md:bottom-4 lg:hidden" onClick={() => setCartOpen(true)}>
+        <span>Ticket · {lines.length}</span>
+        <span className="tabular-nums">{ksh(total)}</span>
+      </button>
+
+      <aside className={`hotel-pos-check-pane flex w-full flex-col lg:w-[24rem] lg:shrink-0 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-50 max-lg:max-h-[min(88dvh,42rem)] max-lg:rounded-t-2xl max-lg:pb-[calc(1rem+env(safe-area-inset-bottom))] ${cartOpen ? "" : "max-lg:hidden"}`}>
+        <div className="flex items-center justify-between border-b border-[var(--theme-border)] px-4 py-3">
+          <div>
+            <h2 className="theme-heading text-sm font-semibold">Ticket</h2>
+            <p className="theme-subtext text-xs">{lines.length === 0 ? "Tap a service to start" : `${lines.length} item${lines.length === 1 ? "" : "s"}`}</p>
+          </div>
+          <button type="button" className="text-sm font-medium text-[var(--theme-accent-text)] lg:hidden" onClick={() => setCartOpen(false)}>Close</button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4">
+          {lines.length === 0 ? (
+            <p className="hotel-pos-empty-ticket theme-subtext rounded-2xl px-4 py-8 text-center text-sm">The ticket is empty.</p>
+          ) : (
+            <ul className="space-y-2">
+              {lines.map((line) => (
+                <li key={`${line.kind}-${line.refId}`} className="hotel-pos-line flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="theme-heading truncate text-sm font-semibold">{line.name}</p>
+                    <p className="theme-subtext text-xs tabular-nums">{ksh(line.price)}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button type="button" className="theme-secondary-btn flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold" aria-label={`Decrease ${line.name}`} onClick={() => setLines((current) => current.flatMap((item) => item === line ? item.qty > 1 ? [{ ...item, qty: item.qty - 1 }] : [] : [item]))}>−</button>
+                    <span className="min-w-[1.5rem] text-center text-sm font-semibold tabular-nums">{line.qty}</span>
+                    <button type="button" className="theme-secondary-btn flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold" aria-label={`Increase ${line.name}`} onClick={() => setLines((current) => current.map((item) => item === line ? { ...item, qty: item.qty + 1 } : item))}>+</button>
+                  </div>
                 </li>
               ))}
             </ul>
+          )}
+          <div className="grid gap-3">
+            <Field label="Client">
+              <SpaSelect value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="No client" options={[{ value: "", label: "No client" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} />
+            </Field>
+            <Field label="Staff">
+              <SpaSelect value={staffId} onChange={(event) => setStaffId(event.target.value)} options={spa.staff.map((item) => ({ value: item.id, label: item.name }))} />
+            </Field>
+            <Field label="Discount (KSh)">
+              <input className={inputClass} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+            </Field>
           </div>
-        ) : null}
-      </section>
-      <aside className="theme-panel rounded-xl border p-4 shadow-sm">
-        <h2 className="text-sm font-semibold">Cart</h2>
-        {lines.length === 0 ? <p className="mt-4 text-sm text-slate-500">Tap a service or product to start.</p> : (
-          <ul className="mt-3 space-y-3">
-            {lines.map((line) => (
-              <li key={`${line.kind}-${line.refId}`} className="flex items-center justify-between gap-2 text-sm">
-                <div>
-                  <p className="font-medium">{line.name}</p>
-                  <p className="text-xs text-slate-500">{ksh(line.price)}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button type="button" className="h-7 w-7 rounded-md border" aria-label={`Decrease ${line.name}`} onClick={() => setLines((current) => current.flatMap((item) => item === line ? item.qty > 1 ? [{ ...item, qty: item.qty - 1 }] : [] : [item]))}>−</button>
-                  <span className="w-6 text-center">{line.qty}</span>
-                  <button type="button" className="h-7 w-7 rounded-md border" aria-label={`Increase ${line.name}`} onClick={() => setLines((current) => current.map((item) => item === line ? { ...item, qty: item.qty + 1 } : item))}>+</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="mt-4 grid gap-3">
-          <Field label="Client">
-            <SpaSelect value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Walk-in, no client" options={[{ value: "", label: "Walk-in, no client" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} />
-          </Field>
-          <Field label="Staff">
-            <SpaSelect value={staffId} onChange={(event) => setStaffId(event.target.value)} options={spa.staff.map((item) => ({ value: item.id, label: item.name }))} />
-          </Field>
-          <Field label="Discount (KSh)">
-            <input className={inputClass} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
-          </Field>
-        </div>
-        <dl className="mt-4 space-y-1 text-sm">
-          <div className="flex justify-between"><dt>Subtotal</dt><dd>{ksh(subtotal)}</dd></div>
-          <div className="flex justify-between"><dt>Discount</dt><dd>{ksh(discountAmount)}</dd></div>
-          <div className="flex justify-between"><dt>Tax</dt><dd>{ksh(tax)}</dd></div>
-          <div className="flex justify-between text-base font-semibold"><dt>Total</dt><dd>{ksh(total)}</dd></div>
-        </dl>
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {["cash", "mpesa", "card", "split"].map((item) => (
-            <button key={item} type="button" disabled={item !== "split" && spa.payments[item] === false} className={`rounded-lg border px-2 py-2 text-sm capitalize ${method === item ? "border-[#1677F2] bg-blue-50" : "border-slate-200"}`} onClick={() => setMethod(item)}>{item === "mpesa" ? "M-Pesa" : item}</button>
-          ))}
-        </div>
-        {method === "split" ? (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {["cash", "mpesa", "card"].map((item) => (
-              <Field key={item} label={item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}>
-                <input className={inputClass} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
-              </Field>
-            ))}
-          </div>
-        ) : (
-          <Field label="Reference">
-            <input className={inputClass} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Optional receipt or code" />
-          </Field>
-        )}
-        <p className="mt-3 text-xs text-slate-500">Completing a sale saves it on this till. It does not send an M-Pesa prompt or charge a card.</p>
-        <div className="mt-3 grid gap-2">
-          <Button variant="teal" disabled={lines.length === 0} onClick={complete}>Complete sale</Button>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="ghost" onClick={hold}>Hold sale</Button>
-            <Button variant="danger" onClick={() => { setLines([]); setDiscount(0); toast.success("Cart cleared."); }}>Cancel sale</Button>
+            {["cash", "mpesa", "card", "split"].map((item) => (
+              <button
+                key={item}
+                type="button"
+                disabled={item !== "split" && spa.payments[item] === false}
+                className={`hotel-pos-chip justify-center${method === item ? " hotel-pos-chip-active" : ""}`}
+                onClick={() => setMethod(item)}
+              >
+                {item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}
+              </button>
+            ))}
+          </div>
+          {method === "split" ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {["cash", "mpesa", "card"].map((item) => (
+                <Field key={item} label={item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}>
+                  <input className={inputClass} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
+                </Field>
+              ))}
+            </div>
+          ) : (
+            <Field label="Reference">
+              <input className={inputClass} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Optional receipt or code" />
+            </Field>
+          )}
+        </div>
+        <div className="hotel-pos-totals shrink-0 border-t border-[var(--theme-border)] px-4 py-3">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="theme-subtext text-[10px] font-semibold uppercase tracking-wide">Total</p>
+              <p className="text-2xl font-bold tabular-nums leading-tight text-[var(--theme-accent-text)]">{ksh(total)}</p>
+            </div>
+            <div className="text-right text-xs">
+              <p className="theme-subtext">Subtotal {ksh(subtotal)}</p>
+              <p className="theme-subtext">Discount {ksh(discountAmount)}</p>
+              <p className="theme-subtext">Tax {ksh(tax)}</p>
+            </div>
+          </div>
+          <p className="theme-subtext mb-3 text-xs">This records the service sale on the till. It does not send an M-Pesa prompt or charge a card.</p>
+          <div className="grid gap-2">
+            <button type="button" disabled={lines.length === 0} className="hotel-pos-primary-cta rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-40" onClick={() => { if (complete()) setCartOpen(false); }}>Complete sale</button>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="hotel-pos-secondary-cta rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide" onClick={hold}>Hold</button>
+              <button type="button" className="hotel-pos-secondary-cta rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide" onClick={() => { setLines([]); setDiscount(0); toast.success("Ticket cleared."); }}>Clear</button>
+            </div>
           </div>
         </div>
       </aside>
@@ -205,6 +263,36 @@ export function PosScreen() {
         />
       ) : null}
     </div>
+  );
+}
+
+function CatalogTile({ name, meta, price, detail, photo, onAdd }) {
+  return (
+    <button
+      type="button"
+      onClick={onAdd}
+      className="hotel-pos-tile group relative flex min-h-[7.5rem] flex-col overflow-hidden text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98]"
+    >
+      <span className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
+      {photo ? (
+        <span className="hotel-pos-tile-media relative block aspect-square w-full overflow-hidden bg-[var(--theme-surface-muted)]">
+          <img src={photo} alt="" className="h-full w-full object-cover object-center" />
+        </span>
+      ) : null}
+      <span className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3.5">
+        <span>
+          {meta ? <span className="theme-subtext block text-[11px] font-semibold uppercase tracking-wide">{meta}</span> : null}
+          <span className="theme-heading mt-0.5 line-clamp-2 block text-[15px] font-semibold leading-snug">{name}</span>
+        </span>
+        <span className="flex items-end justify-between gap-2">
+          <span>
+            <span className="block text-base font-bold tabular-nums text-[var(--theme-accent-text)]">{price}</span>
+            <span className="theme-subtext block text-[11px]">{detail}</span>
+          </span>
+          <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">Add</span>
+        </span>
+      </span>
+    </button>
   );
 }
 

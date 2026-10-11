@@ -7,7 +7,7 @@ import { toast } from "@/lib/toast";
 import { formatTime, ksh, stockStatus } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
-import { Badge, Empty, Field, PageHeader, SpaFilters, SpaSearch, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
+import { Badge, Empty, Field, MobileFields, PageHeader, SpaFilters, SpaSearch, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
 
 export function InventoryScreen() {
   const spa = useSpa();
@@ -30,7 +30,25 @@ export function InventoryScreen() {
         <SpaSearch placeholder="Search SKU or name" value={query} onChange={(event) => setQuery(event.target.value)} />
         <SpaSelect toolbar aria-label="Stock status" value={filter} onChange={(event) => setFilter(event.target.value)} options={toOptions(["All", "In stock", "Low stock", "Out of stock"])} />
       </SpaFilters>
-      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} onCreate={() => router.push("/spa/inventory/new")} createLabel="Add product" render={(product) => {
+      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} rowKey={(product) => product.id} onCreate={() => router.push("/spa/inventory/new")} createLabel="Add product" card={(product) => {
+        const status = stockStatus(product);
+        return (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold">{product.name}</p>
+                <p className="theme-subtext text-sm">{product.sku}</p>
+              </div>
+              <Badge tone={status === "In stock" ? "green" : status === "Low stock" ? "amber" : "red"}>{status}</Badge>
+            </div>
+            <MobileFields rows={[{ label: "On hand", value: product.qty }, { label: "Price", value: ksh(product.price) }, { label: "Reorder", value: product.reorder }]} />
+            <div className="mt-3 flex gap-3">
+              <AppNavLink href={`/spa/inventory/${product.id}/edit`} className="text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>
+              <AppNavLink href={`/spa/inventory/${product.id}/stock`} className="text-sm text-[var(--theme-accent-text)]">Stock</AppNavLink>
+            </div>
+          </>
+        );
+      }} render={(product) => {
         const status = stockStatus(product);
         return (
           <tr key={product.id} className="border-b border-slate-50">
@@ -54,7 +72,7 @@ export function InventoryScreen() {
         <ul className="mt-3 space-y-2 text-sm">
           {spa.movements.slice(0, 8).map((item) => {
             const product = spa.products.find((row) => row.id === item.productId);
-            return <li key={item.id} className="flex justify-between gap-3"><span>{product?.name} · {item.type} {item.qty > 0 ? `+${item.qty}` : item.qty} · {item.note}</span><span className="text-slate-400">{formatTime(item.at)}</span></li>;
+            return <li key={item.id} className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3"><span>{product?.name} · {item.type} {item.qty > 0 ? `+${item.qty}` : item.qty} · {item.note}</span><span className="text-slate-400">{formatTime(item.at)}</span></li>;
           })}
         </ul>
       </section>

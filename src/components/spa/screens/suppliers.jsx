@@ -6,7 +6,7 @@ import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/r
 import { toast } from "@/lib/toast";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
-import { Empty, Field, PageHeader, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
+import { Empty, Field, MobileFields, PageHeader, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
 
 export function SuppliersScreen() {
   const spa = useSpa();
@@ -21,7 +21,16 @@ export function SuppliersScreen() {
         <PageHeader title="Suppliers" detail="Who you buy from, and the stock they have delivered.">
           <AppNavLink href="/spa/suppliers/new" className={primaryLinkClass}>Add supplier</AppNavLink>
         </PageHeader>
-        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} onCreate={() => router.push("/spa/suppliers/new")} createLabel="Add supplier" render={(item) => (
+        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} rowKey={(item) => item.id} onCreate={() => router.push("/spa/suppliers/new")} createLabel="Add supplier" card={(item) => (
+          <>
+            <p className="font-semibold">{item.name}</p>
+            <MobileFields rows={[{ label: "Phone", value: item.phone }, { label: "Category", value: item.category }]} />
+            <div className="mt-3 flex gap-3">
+              <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setOpenId(item.id)}>Purchases</button>
+              <AppNavLink href={`/spa/suppliers/${item.id}/edit`} className="text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>
+            </div>
+          </>
+        )} render={(item) => (
           <tr key={item.id} className="border-b border-slate-50">
             <td className="px-4 py-3 font-medium">{item.name}</td>
             <td className="px-4 py-3">{item.phone}</td>

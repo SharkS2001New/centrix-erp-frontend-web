@@ -45,7 +45,7 @@ export function DashboardScreen() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#0E2340]">Good morning, {firstName}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-[#0E2340] sm:text-2xl">Good morning, {firstName}</h1>
           <p className="mt-1 text-sm text-slate-500">Here is what is happening at your spa and kinyozi today.</p>
         </div>
         <p className="text-sm text-slate-500">{formatLong(today)} · {spa.branch}</p>
@@ -83,9 +83,9 @@ export function DashboardScreen() {
               const service = spa.services.find((row) => row.id === item.serviceId);
               return (
                 <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                  <div>
-                    <p className="font-medium">{client?.name}</p>
-                    <p className="text-xs text-slate-500">{service?.name} · {formatTime(item.start)}</p>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{client?.name}</p>
+                    <p className="truncate text-xs text-slate-500">{service?.name} · {formatTime(item.start)}</p>
                   </div>
                   <Badge tone={item.status === "completed" ? "green" : item.status === "in_progress" ? "blue" : "amber"}>{item.status.replace("_", " ")}</Badge>
                 </li>
@@ -125,7 +125,7 @@ function Kpi({ label, value, icon: Icon, tint }) {
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
         <span className={`grid h-9 w-9 place-items-center rounded-xl ${tint}`}><Icon size={16} /></span>
       </div>
-      <p className="mt-3 text-2xl font-semibold text-[#0E2340]">{value}</p>
+      <p className="mt-3 break-words text-xl font-semibold text-[#0E2340] sm:text-2xl">{value}</p>
     </Card>
   );
 }

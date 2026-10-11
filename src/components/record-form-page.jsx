@@ -10,15 +10,17 @@ export function useRecordExit(title) {
 }
 
 /** Add/edit page that occupies its own workspace tab, the same way Centrix opens a form. */
-export function RecordFormPage({ title, backHref, children, wide = false }) {
+export function RecordFormPage({ title, subtitle, backHref, children, wide = false, align = "center" }) {
   useRecordExit(title);
+  const width = wide ? "max-w-4xl" : "max-w-3xl";
 
   return (
-    <div className={wide ? "mx-auto max-w-4xl" : "mx-auto max-w-3xl"}>
+    <div className={align === "start" ? width : `mx-auto ${width}`}>
       <TabFormPageHeader
         backHref={backHref}
         title={title}
-        titleClassName="theme-heading text-xl font-medium"
+        subtitle={subtitle}
+        titleClassName="theme-heading text-xl font-semibold"
         subtitleClassName="theme-subtext mt-0.5 text-sm"
       />
       {children}

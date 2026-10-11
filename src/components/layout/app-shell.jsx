@@ -94,7 +94,7 @@ export function AppShell({ children }) {
         <WorkspaceNavigationTracker />
         <WorkspaceGuard>
           <RoutePermissionGuard>
-            <div className="h-screen overflow-hidden bg-[#F3F6FB]">{children}</div>
+            <div className="h-dvh overflow-hidden bg-[#F3F6FB]">{children}</div>
           </RoutePermissionGuard>
         </WorkspaceGuard>
       </AuthGuard>

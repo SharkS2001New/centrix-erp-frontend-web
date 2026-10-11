@@ -7,7 +7,7 @@ import { toast } from "@/lib/toast";
 import { datePart, ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
-import { Badge, Card, Empty, Field, PageHeader, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
+import { Badge, Card, Empty, Field, MobileFields, PageHeader, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
 
 const CATEGORIES = ["Rent", "Utilities", "Supplies", "Salaries", "Marketing", "Other"];
 
@@ -26,10 +26,29 @@ export function ExpensesScreen() {
         <AppNavLink href="/spa/expenses/new" className={primaryLinkClass}>Add expense</AppNavLink>
       </PageHeader>
       <section className="mb-4 grid gap-3 sm:grid-cols-2">
-        <Card><p className="text-xs uppercase text-slate-400">Approved today</p><p className="mt-2 text-2xl font-semibold">{ksh(daily)}</p></Card>
-        <Card><p className="text-xs uppercase text-slate-400">Approved this month</p><p className="mt-2 text-2xl font-semibold">{ksh(monthly)}</p></Card>
+        <Card><p className="text-xs uppercase text-slate-400">Approved today</p><p className="mt-2 break-words text-xl font-semibold sm:text-2xl">{ksh(daily)}</p></Card>
+        <Card><p className="text-xs uppercase text-slate-400">Approved this month</p><p className="mt-2 break-words text-xl font-semibold sm:text-2xl">{ksh(monthly)}</p></Card>
       </section>
-      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} onCreate={() => router.push("/spa/expenses/new")} createLabel="Add expense" render={(expense) => (
+      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} rowKey={(expense) => expense.id} onCreate={() => router.push("/spa/expenses/new")} createLabel="Add expense" card={(expense) => (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold">{expense.category}</p>
+              <p className="theme-subtext text-sm">{ksh(expense.amount)}</p>
+            </div>
+            <Badge tone={expense.status === "approved" ? "green" : expense.status === "rejected" ? "red" : "amber"}>{expense.status}</Badge>
+          </div>
+          <MobileFields rows={[{ label: "Date", value: expense.date }, { label: "Method", value: expense.method }, { label: "Reference", value: expense.reference || "—" }]} />
+          <div className="mt-3 flex gap-3">
+            {expense.status === "pending" ? (
+              <>
+                <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => { spa.setExpenseStatus(expense.id, "approved"); toast.success("Expense approved."); }}>Approve</button>
+                <button type="button" className="text-sm text-red-600" onClick={() => { spa.setExpenseStatus(expense.id, "rejected"); toast.success("Expense rejected."); }}>Reject</button>
+              </>
+            ) : <AppNavLink href={`/spa/expenses/${expense.id}/edit`} className="text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>}
+          </div>
+        </>
+      )} render={(expense) => (
         <tr key={expense.id} className="border-b border-slate-50">
           <td className="px-4 py-3">{expense.date}</td>
           <td className="px-4 py-3 font-medium">{expense.category}</td>

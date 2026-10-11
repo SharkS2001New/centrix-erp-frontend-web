@@ -54,8 +54,21 @@ export function toOptions(items) {
   });
 }
 
-export function SpaSearch(props) {
-  return <SearchInput {...props} />;
+export function SpaSearch({ className = "", ...props }) {
+  return <SearchInput {...props} className={className || "w-full min-w-0 sm:w-72"} />;
+}
+
+export function MobileFields({ rows }) {
+  return (
+    <dl className="mt-2 space-y-1 text-sm">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-start justify-between gap-3">
+          <dt className="theme-subtext shrink-0">{row.label}</dt>
+          <dd className="min-w-0 text-right">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export function SpaFilters({ children }) {
@@ -141,12 +154,12 @@ export function Modal({ title, children, onClose, wide = false }) {
 
 export function PageHeader({ title, detail, children }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <div className="min-w-0">
         <h1 className="theme-heading text-xl font-medium">{title}</h1>
         {detail ? <p className="theme-subtext mt-1 text-sm">{detail}</p> : null}
       </div>
-      <div className="flex flex-wrap items-end gap-3">{children}</div>
+      {children ? <div className="flex flex-wrap items-center gap-2">{children}</div> : null}
     </div>
   );
 }
@@ -166,11 +179,13 @@ export function SpaContextMenu({ menu, onClose, items }) {
   }, [menu, onClose]);
 
   if (!menu) return null;
+  const left = typeof window === "undefined" ? menu.x : Math.max(8, Math.min(menu.x, window.innerWidth - 188));
+  const top = typeof window === "undefined" ? menu.y : Math.max(8, Math.min(menu.y, window.innerHeight - 96));
 
   return (
     <div
       className="theme-panel fixed z-[80] min-w-44 rounded-lg border py-1 text-sm shadow-lg"
-      style={{ left: menu.x, top: menu.y }}
+      style={{ left, top }}
       role="menu"
       onContextMenu={(event) => event.preventDefault()}
       onMouseDown={(event) => event.stopPropagation()}
@@ -193,13 +208,22 @@ export function SpaContextMenu({ menu, onClose, items }) {
   );
 }
 
-export function Table({ columns, rows, render, onCreate, createLabel = "New" }) {
+export function Table({ columns, rows, render, card, rowKey, onCreate, createLabel = "New" }) {
   const [menu, setMenu] = useState(null);
 
   return (
     <>
+      {card ? (
+        <div className="grid gap-3 md:hidden">
+          {rows.map((row, index) => (
+            <article key={rowKey ? rowKey(row) : index} className="theme-panel rounded-xl border p-4 shadow-sm">
+              {card(row)}
+            </article>
+          ))}
+        </div>
+      ) : null}
       <div
-        className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm"
+        className={`theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm ${card ? "hidden md:block" : ""}`}
         onDoubleClick={(event) => {
           if (!onCreate || event.target.closest("tbody tr, a, button, input, select, textarea")) return;
           onCreate();
