@@ -275,8 +275,8 @@ function ReturnsModal({
               ? "1 return approved — stock restocked. KRA credit queued until the agent is online."
               : `${count} returns approved — stock restocked. KRA credit queued until the agent is online.`
             : count === 1
-              ? "1 return approved — stock restocked."
-              : `${count} returns approved — stock restocked.`,
+            ? "1 return approved — stock restocked."
+            : `${count} returns approved — stock restocked.`,
         );
       }
       if (errs.length) {

@@ -794,7 +794,7 @@ export function FinanceSettingsPanel({
             <p className="theme-subtext text-sm">
               Set up Safaricom Daraja for paybill, till, and STK push at checkout.
             </p>
-              ) : null}
+          ) : null}
 
             {mpesaStatus ? (
                 <div className={`${mode === "all" ? "mt-3" : ""} flex flex-wrap items-center gap-2 text-xs text-slate-600`}>
@@ -883,8 +883,8 @@ export function FinanceSettingsPanel({
                 </div>
               <Field label="Environment">
                 <SearchableSelect
-  className={inputClassName()}
-  value={mpesa.env ?? "sandbox"}
+                  className={inputClassName()}
+                  value={mpesa.env ?? "sandbox"}
   nativeEvent
                   onChange={(e) => setMpesa("env", e.target.value)}
                     options={[
@@ -971,7 +971,7 @@ export function FinanceSettingsPanel({
               </ul>
               ) : null}
             </div>
-          ) : null}
+            ) : null}
 
           {renderPaybillsTab ? (
             <div>
@@ -999,8 +999,8 @@ export function FinanceSettingsPanel({
                   refreshKey={accountsRefreshKey}
                 />
               </div>
-            </div>
-            ) : null}
+          </div>
+          ) : null}
 
           {renderEquity ? (
             <div className="space-y-4">

@@ -160,8 +160,8 @@ export async function composePlatformEmailWithAi(input = {}) {
             "Start from the provided template subject/body. Apply only the requested changes and new context. " +
             "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. Kenya business English, professional and concise."
           : "You help the Centrix platform admin write outbound emails (contracts, quotes, renewals). " +
-            "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
-            "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
+      "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
+      "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
   };
 
   const paths = [`${apiBase}/compose`, `${apiBase}/compose-email`];

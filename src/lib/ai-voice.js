@@ -663,10 +663,10 @@ export async function ensureMicrophoneAccess() {
   } catch {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-      return true;
-    } catch {
-      return false;
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch {
+    return false;
     }
   }
 }
@@ -712,8 +712,8 @@ export async function createVoiceRecorder(options = {}) {
   } catch {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      return null;
+  } catch {
+    return null;
     }
   }
 

@@ -1061,19 +1061,19 @@ export function EndOfDayReportScreen({
   const expensesHref = buildExpensesHref({ fromDate: periodStart, toDate: periodEnd });
 
   const handleEodPrint = useCallback(() => {
-    if (!report) return;
+      if (!report) return;
     const periodLabel = isMonthly
       ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
       : formatReportDate(saleDate);
     void printEodReport(report, {
-      organizationName: organization?.org_name ?? organization?.name ?? "",
-      branchName,
-      cashierName: cashierName ?? "All cashiers",
+        organizationName: organization?.org_name ?? organization?.name ?? "",
+        branchName,
+        cashierName: cashierName ?? "All cashiers",
       sessionLabel: selectedSessionLabel,
       periodLabel,
       isMonthly,
       showFloat: showTillPanels,
-      showDiscounts: discountsEnabled,
+        showDiscounts: discountsEnabled,
       showCashVariance,
       actualCash: cashReconciliation?.actualCash,
       variance: cashReconciliation?.variance,
@@ -1083,31 +1083,31 @@ export function EndOfDayReportScreen({
       grossSalesExVat,
       netSalesExVat,
       cashierSalesRows,
-      userName: user?.full_name ?? user?.username,
+        userName: user?.full_name ?? user?.username,
       printedAt: formatAppDateTime(new Date()),
-    });
+      });
   }, [
-    branchName,
+      branchName,
     cashReconciliation,
-    cashierName,
+      cashierName,
     cashierSalesRows,
-    discountsEnabled,
+      discountsEnabled,
     expectedNetSales,
     grossSalesExVat,
     isMonthly,
     netSalesExVat,
-    organization?.name,
-    organization?.org_name,
+      organization?.name,
+      organization?.org_name,
     paymentLines,
     periodEnd,
     periodStart,
-    report,
+      report,
     showTillPanels,
     saleDate,
     selectedSessionLabel,
     showCashVariance,
-    user?.full_name,
-    user?.username,
+      user?.full_name,
+      user?.username,
   ]);
 
   return (

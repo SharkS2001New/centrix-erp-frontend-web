@@ -172,13 +172,13 @@ export function canAskAiFromSearch({ capabilities, hasPermission }) {
 }
 
 /**
- * Header “Talk to Centrix Assistant” — requires org AI chat access plus platform Talk switch.
- * Defaults on when the flag is absent (older API payloads).
+ * Header “Talk to Centrix Assistant”.
+ * A platform administrator must enable Talk for this organisation, and the organisation must leave it on.
  */
 export function canUseAiTalk({ capabilities, hasPermission }) {
-  if (!canAskAiFromSearch({ capabilities, hasPermission })) return false;
-  const flag = capabilities?.ai_assistant?.talk_enabled;
-  return flag !== false;
+  if (!canShowAiAssistant(hasPermission)) return false;
+  return capabilities?.ai_assistant?.talk_enabled === true
+    && capabilities?.ai_assistant?.platform_talk_enabled !== false;
 }
 
 /** Platform Talk voice presets (ERP web + Manager pick closest on-device voice). */
@@ -227,7 +227,7 @@ export function aiFormFromApi(res) {
 
   return {
     enabled: Boolean(settings.enabled),
-    talk_enabled: settings.talk_enabled !== false,
+    talk_enabled: settings.talk_enabled === true,
     talk_voice: talkVoice.id,
     talk_provider: settings.talk_provider === "openai" ? "openai" : "gemini",
     talk_api_key: "",
@@ -260,14 +260,18 @@ export function aiFormFromApi(res) {
     has_org_api_key: hasOrgKey,
     credential_source: res?.credential_source ?? null,
     available: Boolean(res?.available),
-    platform_enabled: res?.platform_enabled !== false,
+    platform_enabled: res?.platform_chat_enabled === true || res?.platform_enabled === true,
+    platform_chat_enabled: res?.platform_chat_enabled === true || res?.platform_enabled === true,
+    platform_talk_enabled: res?.platform_talk_enabled === true,
     insights: insightsFormFromApi(settings.insights),
   };
 }
 
-/** Org admin payload — cannot enable/disable AI for the organization. */
+/** Org admin payload. Chat and Talk stay inside the platform administrator’s switches. */
 export function aiOrgPayloadFromForm(form) {
   const payload = {
+    enabled: Boolean(form.enabled),
+    talk_enabled: Boolean(form.talk_enabled),
     use_platform_ai: Boolean(form.use_platform_ai),
     provider: form.provider,
     model: form.model || null,

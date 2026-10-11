@@ -160,7 +160,7 @@ function LeaveRecordsTable({
                       canRemind
                       onReminded={onApprove}
                     />
-                  </span>
+    </span>
                 ) : null}
                 {canApproveLeave && record.approval_status === "pending" ? (
                   <>
@@ -531,10 +531,10 @@ export function EmployeeLeaveHub({
                     : `No approved leave between ${formatShortDate(leaveFromDate)} and ${formatShortDate(leaveToDate)}.`
                 }
               />
-            )}
-          </div>
+                    )}
+                  </div>
         </section>
-      ) : null}
+                ) : null}
 
       {tab === "create" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">

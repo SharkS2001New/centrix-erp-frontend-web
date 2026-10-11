@@ -400,7 +400,9 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_stk: true,
     enable_equity_bank: true,
     enable_kra_integration: true,
-    enable_ai: true,
+    enable_ai: false,
+    enable_ai_chat: false,
+    enable_ai_talk: false,
     use_platform_gemini: false,
     enable_whatsapp_orders: false,
     enable_investors: false,
@@ -485,7 +487,9 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_equity_bank: apiPayload.enable_equity_bank !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
-    enable_ai: apiPayload.enable_ai !== false,
+    enable_ai: Boolean(apiPayload.enable_ai_chat ?? apiPayload.enable_ai),
+    enable_ai_chat: Boolean(apiPayload.enable_ai_chat ?? apiPayload.enable_ai),
+    enable_ai_talk: Boolean(apiPayload.enable_ai_talk),
     use_platform_gemini: Boolean(apiPayload.use_platform_gemini),
     enable_whatsapp_orders: Boolean(apiPayload.enable_whatsapp_orders ?? false),
     enable_investors: Boolean(apiPayload.enable_investors ?? false),
@@ -860,16 +864,22 @@ export function OrganizationPlatformSalesSettings({
             onChange={(v) => patch({ enable_kra_integration: v })}
           />
           <Toggle
-            label="Enable AI assistant"
-            description="When off, this organization cannot use the floating AI assistant, regardless of user permissions."
-            checked={salesPlatform?.enable_ai !== false}
+            label="Enable AI chat"
+            description="Off by default. When on, this organisation can turn on the AI chat assistant in Administration. When off, chat stays hidden."
+            checked={Boolean(salesPlatform?.enable_ai_chat)}
             onChange={(v) =>
               patch(
                 v
-                  ? { enable_ai: true }
-                  : { enable_ai: false, use_platform_gemini: false },
+                  ? { enable_ai: true, enable_ai_chat: true }
+                  : { enable_ai: false, enable_ai_chat: false, use_platform_gemini: false },
               )
             }
+          />
+          <Toggle
+            label="Enable Talk to Centrix"
+            description="Off by default. When on, this organisation can show or hide the header Talk button. Chat and Talk are separate."
+            checked={Boolean(salesPlatform?.enable_ai_talk)}
+            onChange={(v) => patch({ enable_ai_talk: v })}
           />
           <Toggle
             label="Offer free platform AI"

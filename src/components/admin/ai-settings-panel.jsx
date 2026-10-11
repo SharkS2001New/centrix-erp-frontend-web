@@ -201,7 +201,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
-      ) : !form.platform_enabled ? (
+      ) : !form.platform_chat_enabled && !form.platform_talk_enabled ? (
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-medium">AI is disabled for this organization</p>
           <p className="mt-1 text-xs text-amber-800">
@@ -210,6 +210,23 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
         </div>
       ) : (
         <div className="mt-6 space-y-4">
+          {form.platform_chat_enabled ? (
+            <Toggle
+              checked={form.enabled}
+              onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
+              label="AI chat"
+              description="Turn on the floating chat assistant for people with the Use AI assistant permission."
+            />
+          ) : null}
+          {form.platform_talk_enabled ? (
+            <Toggle
+              checked={form.talk_enabled}
+              onChange={(talk_enabled) => setForm((f) => ({ ...f, talk_enabled }))}
+              label="Talk to Centrix"
+              description="Turn off to hide the header voice button. This does not turn chat off."
+            />
+          ) : null}
+          {form.platform_chat_enabled ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <p className="font-medium text-slate-900">AI is enabled for this organization</p>
             <p className="mt-1 text-xs text-slate-500">
@@ -572,6 +589,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
             </div>
           </div>
 
+          ) : null}
           <PrimaryButton type="button" onClick={saveAiSettings} disabled={saving}>
             {saving ? "Saving…" : "Save AI settings"}
           </PrimaryButton>

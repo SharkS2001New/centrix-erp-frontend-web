@@ -789,7 +789,7 @@ export function ModernBackofficeOrderEditModal({
                           >
                             <TrashIcon />
                           </button>
-                        </td>
+                      </td>
                     </tr>
                   );
                 })}

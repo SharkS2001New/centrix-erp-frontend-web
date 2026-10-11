@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Calendar,
   LayoutDashboard,
-  Menu,
   MoreHorizontal,
   Package,
   Receipt,
@@ -17,14 +16,23 @@ import {
   Users,
   UserRound,
 } from "lucide-react";
-import { CentrixLogoMark } from "@/components/branding/centrix-logo-mark";
-import { GlobalModuleSearch } from "@/components/layout/global-module-search";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { UserAccountMenu } from "@/components/layout/user-account-menu";
+import { CentrixLogo } from "@/components/branding/centrix-logo";
+import { AppTopbar } from "@/components/layout/app-topbar";
+import { useAuth } from "@/contexts/auth-context";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
-import { formatLong, todayISO } from "@/lib/spa/format";
 import { Button } from "@/components/spa/ui";
+
+const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
+
+function readSidebarCollapsed() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 const NAV = [
   { href: "/spa", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -41,7 +49,30 @@ const NAV = [
 
 export function SpaFrame({ children }) {
   const pathname = usePathname();
+  const { organization } = useAuth();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const iconOnly = collapsed && !open;
+
+  useEffect(() => {
+    setCollapsed(readSidebarCollapsed());
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  function toggleSidebar() {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setOpen((current) => !current);
+      return;
+    }
+    setCollapsed((current) => !current);
+  }
 
   const phoneNav = [
     { href: "/spa", label: "Home", icon: LayoutDashboard, exact: true },
@@ -51,65 +82,55 @@ export function SpaFrame({ children }) {
   ];
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[#F3F6FB] text-[#0F172A]">
+    <div className="app-shell-bg flex h-dvh overflow-hidden">
       {open ? (
-        <button type="button" className="fixed inset-0 z-[35] bg-black/40 md:hidden" aria-label="Close menu" onClick={() => setOpen(false)} />
+        <button type="button" className="fixed inset-0 z-[35] bg-black/40 lg:hidden" aria-label="Close menu" onClick={() => setOpen(false)} />
       ) : null}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-[#0E2340] text-white transition-transform md:static md:w-16 md:translate-x-0 lg:w-64 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex items-center gap-3 px-5 py-5 md:justify-center md:px-2 lg:justify-start lg:px-5">
-          <CentrixLogoMark size={36} />
-          <div className="md:hidden lg:block">
-            <p className="text-lg font-semibold leading-none">Centrix</p>
-            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">Spa & Kinyozi</p>
+      <div className={`fixed inset-y-0 left-0 z-40 flex shrink-0 transition-transform duration-200 lg:static ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
+        <aside className={`app-sidebar velzon-sidebar flex h-full min-h-0 shrink-0 flex-col transition-[width] duration-200 ${iconOnly ? "w-[70px] velzon-sidebar-collapsed" : "w-[264px]"}`}>
+          <div className={`app-sidebar-brand flex h-[70px] shrink-0 items-center ${iconOnly ? "justify-center px-0" : "px-[22px]"}`}>
+            <Link href="/spa" className="flex items-center" title={organization?.org_name || "Centrix ERP"}>
+              <CentrixLogo collapsed={iconOnly} orgSubtitle={organization?.org_name} />
+            </Link>
           </div>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4 md:px-2 lg:px-3" aria-label="SPA and Kinyozi">
-          {NAV.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.label}
-                aria-label={item.label}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:justify-center md:px-2 lg:justify-start lg:px-3 ${active ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10"}`}
-              >
-                <Icon size={18} className="shrink-0" />
-                <span className="md:hidden lg:inline">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:h-16 sm:gap-3 sm:px-4">
-          <button type="button" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-200 md:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
-            <Menu size={18} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <GlobalModuleSearch />
-          </div>
-          <p className="hidden text-sm text-slate-500 lg:block">{formatLong(todayISO())}</p>
-          <ThemeToggle compact />
-          <UserAccountMenu />
-        </header>
+          <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1" aria-label="SPA and Kinyozi">
+            {NAV.map((item) => {
+              const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  aria-label={item.label}
+                  onClick={() => setOpen(false)}
+                  className={`app-sidebar-link flex items-center transition ${iconOnly ? "app-sidebar-icon-btn justify-center py-3" : "gap-3 px-[18px] py-2.5 text-[14px] leading-snug"} ${active ? (iconOnly ? "app-sidebar-icon-btn-active" : "app-sidebar-link-active") : ""}`}
+                >
+                  <Icon size={18} className="shrink-0" />
+                  {iconOnly ? <span className="sr-only">{item.label}</span> : <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
+      </div>
+      <div className="app-content-column flex min-h-0 min-w-0 flex-1 flex-col">
+        <AppTopbar onToggleSidebar={toggleSidebar} sidebarCollapsed={collapsed} mobileSidebarOpen={open} />
         <NetworkStatusBanner />
         <LicenseExpiryBanner />
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:p-6">{children}</div>
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Spa and Kinyozi">
+        <div className="app-main-bg flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:p-6 lg:pb-6">{children}</div>
+        <nav className="app-topbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Spa and Kinyozi">
           {phoneNav.map((item) => {
             const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
             return (
-              <Link key={item.href} href={item.href} onClick={() => setOpen(false)} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${active ? "text-[#1677F2]" : "text-slate-500"}`}>
+              <Link key={item.href} href={item.href} onClick={() => setOpen(false)} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${active ? "text-[var(--theme-primary)]" : ""}`}>
                 <Icon size={18} />
                 {item.label}
               </Link>
             );
           })}
-          <button type="button" className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${open ? "text-[#1677F2]" : "text-slate-500"}`} onClick={() => setOpen(true)}>
+          <button type="button" className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${open ? "text-[var(--theme-primary)]" : ""}`} onClick={() => setOpen(true)}>
             <MoreHorizontal size={18} />
             More
           </button>

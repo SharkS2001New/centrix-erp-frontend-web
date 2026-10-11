@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
@@ -8,11 +8,11 @@ import { toast } from "@/lib/toast";
 import { datePart, formatLong, formatTime, minutesOf, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
-import { Badge, Button, Empty, Field, PageHeader, SpaContextMenu, SpaFilters, SpaSelect, inputClass, primaryLinkClass, textAreaClass, toolbarControlClass } from "@/components/spa/ui";
+import { Badge, Button, Empty, Field, SpaContextMenu, SpaFilters, SpaSelect, inputClass, primaryLinkClass, textAreaClass, toolbarControlClass } from "@/components/spa/ui";
 
-const HOUR = 96;
 const START = 8 * 60;
 const END = 19 * 60;
+const DAY_HOURS = (END - START) / 60;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function bookingHref(draft) {
@@ -30,9 +30,10 @@ export function AppointmentsScreen() {
   const router = useAppRouter();
   const [view, setView] = useState("day");
   const [date, setDate] = useState(todayISO());
-  const [queueStaff, setQueueStaff] = useState({});
   const [menu, setMenu] = useState(null);
-  const [focusStaff, setFocusStaff] = useState("");
+  const [hourPx, setHourPx] = useState(40);
+  const frameRef = useRef(null);
+  const laneRef = useRef(null);
   const dayClick = useRef(null);
   const visible = spa.appointments.filter((item) => item.status !== "cancelled");
 
@@ -72,31 +73,67 @@ export function AppointmentsScreen() {
     in_progress: periodItems.filter((item) => item.status === "in_progress").length,
     completed: periodItems.filter((item) => item.status === "completed").length,
   };
-  const nowTop = nowOffset(view === "month" ? "" : view === "week" ? (days.includes(todayISO()) ? todayISO() : "") : date);
-  const boardHeight = ((END - START) / 60) * HOUR;
-  const phoneStaff = spa.staff.find((item) => item.id === focusStaff) || spa.staff[0] || null;
+  const nowTop = nowOffset(view === "month" ? "" : view === "week" ? (days.includes(todayISO()) ? todayISO() : "") : date, hourPx);
+  const columns = view === "week" ? days : spa.staff;
+  const columnCount = Math.max(columns.length, 1);
+
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    const scroller = scrollParent(node);
+    if (!node || !scroller) return undefined;
+    const fit = () => {
+      const style = window.getComputedStyle(scroller);
+      const available = scroller.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+      if (available > 160) node.style.height = `${Math.floor(available)}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    const node = laneRef.current;
+    if (!node || view === "month") return undefined;
+    const measure = () => {
+      const next = Math.round((node.clientHeight / DAY_HOURS) * 10) / 10;
+      if (next > 8) setHourPx((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [view, date, columnCount]);
 
   return (
-    <div>
-      <PageHeader title="Appointments" detail={`${periodTitle(view, date, days)} · ${spa.branch}`}>
-        <div className="theme-panel flex rounded-lg p-1 shadow-sm">
-          {["day", "week", "month"].map((option) => (
-            <button key={option} type="button" className={`rounded-md px-2.5 py-1.5 text-sm capitalize sm:px-3 ${view === option ? "bg-[var(--theme-primary)] text-white" : "theme-subtext"}`} onClick={() => setView(option)}>{option}</button>
-          ))}
+    <div ref={frameRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="theme-heading text-xl font-medium">Appointments</h1>
+          <p className="theme-subtext truncate text-sm">{periodTitle(view, date, days)} · {spa.branch}</p>
         </div>
-        <AppNavLink href="/spa/appointments/new" className={primaryLinkClass}>New appointment</AppNavLink>
-      </PageHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="theme-panel flex rounded-lg p-1 shadow-sm">
+            {["day", "week", "month"].map((option) => (
+              <button key={option} type="button" className={`rounded-md px-2.5 py-1.5 text-sm capitalize sm:px-3 ${view === option ? "bg-[var(--theme-primary)] text-white" : "theme-subtext"}`} onClick={() => setView(option)}>{option}</button>
+            ))}
+          </div>
+          <AppNavLink href="/spa/appointments/new" className={primaryLinkClass}>New appointment</AppNavLink>
+        </div>
+      </div>
+      <div className="shrink-0">
       <SpaFilters>
         <button type="button" className="theme-secondary-btn h-[38px] rounded-lg px-3 text-sm" onClick={() => setDate((current) => shiftDate(current, view, -1))}>Previous</button>
         <input type="date" className={toolbarControlClass} value={date} aria-label="Calendar date" onChange={(event) => setDate(event.target.value)} />
         <button type="button" className="theme-secondary-btn h-[38px] rounded-lg px-3 text-sm" onClick={() => setDate((current) => shiftDate(current, view, 1))}>Next</button>
         <button type="button" className="theme-secondary-btn h-[38px] rounded-lg px-3 text-sm" onClick={() => setDate(todayISO())}>Today</button>
       </SpaFilters>
-      <div className="mb-4 flex flex-wrap gap-2">
+      </div>
+      <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
         <CountChip label="Booked" value={counts.booked} />
         <CountChip label="In progress" value={counts.in_progress} />
         <CountChip label="Completed" value={counts.completed} />
-        <span className="theme-subtext self-center text-xs">Double-click or right-click an open time to book.</span>
+        <span className="theme-subtext hidden self-center text-xs sm:inline">Double-click or right-click an open time to book.</span>
       </div>
 
       {view === "month" ? (
@@ -126,63 +163,30 @@ export function AppointmentsScreen() {
           }}
         />
       ) : (
-        <>
-        <div className="md:hidden">
-          {view === "week" ? (
-            <div className="space-y-3">
-              {days.map((iso) => {
-                const items = visible.filter((item) => datePart(item.start) === iso);
-                const day = new Date(`${iso}T12:00:00`);
-                return (
-                  <section key={iso} className="theme-panel rounded-2xl border p-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className={`text-sm font-semibold ${iso === todayISO() ? "text-[var(--theme-accent-text)]" : ""}`}>{day.toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" })}</h2>
-                      <button type="button" className="text-sm font-medium text-[var(--theme-accent-text)]" onClick={() => router.push(bookingHref(blank(iso)))}>Book</button>
-                    </div>
-                    {items.length === 0 ? <p className="theme-subtext mt-2 text-sm">Open</p> : (
-                      <ul className="mt-2 space-y-2">
-                        {items.map((item) => {
-                          const client = spa.clients.find((row) => row.id === item.clientId);
-                          const service = spa.services.find((row) => row.id === item.serviceId);
-                          const color = spa.staff.find((row) => row.id === item.staffId)?.color || "#DBEAFE";
-                          return (
-                            <li key={item.id}>
-                              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-900" style={{ background: color }} onClick={() => router.push(bookingHref(item))}>
-                                <span className="w-16 shrink-0 text-xs font-medium">{formatTime(item.start)}</span>
-                                <span className="min-w-0">
-                                  <span className="block truncate font-semibold">{client?.name || "Client"}</span>
-                                  <span className="block truncate text-xs text-slate-700">{service?.name} · {statusLabel(item.status)}</span>
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          ) : phoneStaff ? (
-            <div className="theme-panel overflow-hidden rounded-2xl border shadow-sm">
-              <div className="flex gap-2 overflow-x-auto border-b border-[var(--theme-border)] p-2">
-                {spa.staff.map((person) => (
-                  <button key={person.id} type="button" className={`shrink-0 rounded-full px-3 py-1.5 text-sm ${person.id === phoneStaff.id ? "bg-[var(--theme-primary)] text-white" : "theme-secondary-btn"}`} onClick={() => setFocusStaff(person.id)}>{person.name.split(" ")[0]}</button>
+        <div className="theme-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border shadow-sm">
+          <div className="grid shrink-0" style={{ gridTemplateColumns: `2.5rem repeat(${columnCount}, minmax(0, 1fr))` }}>
+            <div className="border-b border-[var(--theme-border)]" />
+            {columns.map((item) => (
+              <BoardHead key={typeof item === "string" ? item : item.id} column={item} count={periodItems.filter((row) => view === "week" ? datePart(row.start) === item : row.staffId === item.id).length} />
+            ))}
+          </div>
+          <div ref={laneRef} className="min-h-0 flex-1 overflow-hidden">
+            <div className="grid h-full" style={{ gridTemplateColumns: `2.5rem repeat(${columnCount}, minmax(0, 1fr))` }}>
+              <div className="relative h-full bg-[var(--theme-surface-muted)]">
+                {guideMarks(hourPx).filter((mark) => mark.major && mark.top < hourPx * DAY_HOURS - 8).map((mark) => (
+                  <div key={mark.top} className="theme-subtext absolute right-1 text-[10px] tabular-nums" style={{ top: mark.top + 2 }}>{mark.label}</div>
                 ))}
+                {nowTop != null ? <div className="absolute right-1 z-10 -translate-y-1/2 rounded-full bg-rose-500 px-1 py-0.5 text-[9px] font-medium text-white" style={{ top: nowTop }}>Now</div> : null}
               </div>
-              <div className="grid" style={{ gridTemplateColumns: "3.25rem minmax(0,1fr)" }}>
-                <div className="relative bg-[var(--theme-surface-muted)]" style={{ height: boardHeight }}>
-                  {guideMarks().filter((mark) => mark.major && mark.top < boardHeight).map((mark) => (
-                    <div key={mark.top} className="theme-subtext absolute right-1 text-[10px] tabular-nums" style={{ top: mark.top + 6 }}>{mark.label}</div>
-                  ))}
-                </div>
+              {columns.map((column) => (
                 <ScheduleColumn
-                  column={phoneStaff}
-                  view="day"
+                  key={typeof column === "string" ? column : column.id}
+                  column={column}
+                  view={view}
                   date={date}
-                  items={visible.filter((item) => item.staffId === phoneStaff.id && datePart(item.start) === date)}
-                  nowTop={date === todayISO() ? nowTop : null}
-                  boardHeight={boardHeight}
+                  hour={hourPx}
+                  items={visible.filter((item) => view === "week" ? datePart(item.start) === column : item.staffId === column.id && datePart(item.start) === date)}
+                  nowTop={nowTop}
                   clients={spa.clients}
                   services={spa.services}
                   staff={spa.staff}
@@ -191,97 +195,24 @@ export function AppointmentsScreen() {
                   onCancel={(item) => { spa.setAppointmentStatus(item.id, "cancelled"); toast.success("Appointment cancelled."); }}
                   onMenu={(event, items) => setMenu({ x: event.clientX, y: event.clientY, items })}
                 />
-              </div>
-            </div>
-          ) : <p className="theme-subtext text-sm">Add staff before booking a chair or room.</p>}
-        </div>
-        <div className="theme-panel hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
-          <div className="grid w-max min-w-full" style={{ gridTemplateColumns: `4.25rem repeat(${view === "week" ? 7 : Math.max(spa.staff.length, 1)}, minmax(8rem, 1fr))` }}>
-            <div className="border-b border-[var(--theme-border)]" />
-            {(view === "week" ? days : spa.staff).map((item) => (
-              <BoardHead key={typeof item === "string" ? item : item.id} column={item} count={periodItems.filter((row) => view === "week" ? datePart(row.start) === item : row.staffId === item.id).length} />
-            ))}
-            <div className="relative bg-[var(--theme-surface-muted)]" style={{ height: boardHeight }}>
-              {guideMarks().filter((mark) => mark.major && mark.top < boardHeight).map((mark) => (
-                <div key={mark.top} className="theme-subtext absolute right-2 text-[10px] tabular-nums" style={{ top: mark.top + 6 }}>{mark.label}</div>
               ))}
-              {nowTop != null ? <div className="absolute right-2 z-10 -translate-y-1/2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-medium text-white" style={{ top: nowTop }}>Now</div> : null}
             </div>
-            {(view === "week" ? days : spa.staff).map((column) => (
-              <ScheduleColumn
-                key={typeof column === "string" ? column : column.id}
-                column={column}
-                view={view}
-                date={date}
-                items={visible.filter((item) => view === "week" ? datePart(item.start) === column : item.staffId === column.id && datePart(item.start) === date)}
-                nowTop={nowTop}
-                boardHeight={boardHeight}
-                clients={spa.clients}
-                services={spa.services}
-                staff={spa.staff}
-                onBook={(draft) => router.push(bookingHref(draft))}
-                onEdit={(item) => router.push(bookingHref(item))}
-                onCancel={(item) => { spa.setAppointmentStatus(item.id, "cancelled"); toast.success("Appointment cancelled."); }}
-                onMenu={(event, items) => setMenu({ x: event.clientX, y: event.clientY, items })}
-              />
-            ))}
           </div>
         </div>
-        </>
       )}
-
-      <section className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="theme-panel rounded-2xl border p-4 shadow-sm">
-          <h2 className="text-sm font-semibold">Walk-in queue</h2>
-          {spa.walkIns.filter((item) => item.status === "waiting").length === 0 ? <p className="theme-subtext mt-3 text-sm">No one is waiting.</p> : (
-            <ul className="mt-3 divide-y divide-[var(--theme-border)]">
-              {spa.walkIns.filter((item) => item.status === "waiting").map((guest) => (
-                <li key={guest.id} className="flex flex-col gap-3 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color-mix(in_srgb,var(--theme-primary)_12%,white)] text-sm font-semibold text-[var(--theme-accent-text)]">{initials(guest.name)}</span>
-                    <div className="min-w-0">
-                      <p className="font-medium">{guest.name}</p>
-                      <p className="theme-subtext text-xs">{spa.services.find((item) => item.id === guest.serviceId)?.name || "Any service"} · waiting</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <SpaSelect toolbar aria-label={`Staff for ${guest.name}`} placeholder="Assign" value={queueStaff[guest.id]?.staffId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], staffId: event.target.value } }))} options={[{ value: "", label: "Assign" }, ...spa.staff.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name }))]} />
-                    {spa.features.chairs ? (
-                      <SpaSelect toolbar aria-label={`Chair for ${guest.name}`} placeholder="Chair" value={queueStaff[guest.id]?.chairId || ""} onChange={(event) => setQueueStaff((current) => ({ ...current, [guest.id]: { ...current[guest.id], chairId: event.target.value } }))} options={[{ value: "", label: "Chair" }, ...spa.chairs.map((chair) => ({ value: chair.id, label: chair.name }))]} />
-                    ) : null}
-                    <Button onClick={() => {
-                      const error = spa.seatWalkIn(guest.id, queueStaff[guest.id]?.staffId, queueStaff[guest.id]?.chairId);
-                      if (error) toast.error(error);
-                      else toast.success(`${guest.name} is seated.`);
-                    }}>Seat</Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="theme-panel rounded-2xl border p-4 shadow-sm">
-          <h2 className="text-sm font-semibold">Add a walk-in</h2>
-          <p className="theme-subtext mt-1 text-sm">Someone arrived without a booking.</p>
-          <AppNavLink href="/spa/appointments/walk-in" className="theme-secondary-btn mt-3 inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium">Quick booking</AppNavLink>
-          {spa.features.rooms ? <div className="mt-4 flex flex-wrap gap-1.5">{spa.rooms.map((room) => <span key={room.id} className="theme-subtext rounded-full bg-[var(--theme-surface-muted)] px-2 py-1 text-xs">{room.name}</span>)}</div> : null}
-          {spa.features.chairs ? <p className="theme-subtext mt-3 text-xs">{spa.chairs.length} chairs open</p> : null}
-        </div>
-      </section>
 
       <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={menu?.items ?? []} />
     </div>
   );
 }
 
-function ScheduleColumn({ column, view, date, items, nowTop, boardHeight, clients, services, staff, onBook, onEdit, onCancel, onMenu }) {
+function ScheduleColumn({ column, view, date, hour, items, nowTop, clients, services, staff, onBook, onEdit, onCancel, onMenu }) {
   return (
     <div
-      className="relative border-l border-[var(--theme-border)] bg-[var(--theme-surface)]"
-      style={{ height: boardHeight }}
+      className="relative h-full min-h-0 overflow-hidden border-l border-[var(--theme-border)] bg-[var(--theme-surface)]"
       onDoubleClick={(event) => {
         if (event.target.closest("[data-appointment]")) return;
-        onBook(slotFromClick(event, column, view, date));
+        onBook(slotFromClick(event, column, view, date, hour));
       }}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -295,11 +226,11 @@ function ScheduleColumn({ column, view, date, items, nowTop, boardHeight, client
           ]);
           return;
         }
-        const draft = slotFromClick(event, column, view, date);
+        const draft = slotFromClick(event, column, view, date, hour);
         onMenu(event, [{ label: "New appointment", onSelect: () => onBook(draft) }]);
       }}
     >
-      {guideMarks().map((mark) => (
+      {guideMarks(hour).map((mark) => (
         <div key={mark.top} className={`pointer-events-none absolute inset-x-0 border-t border-[var(--theme-border)] ${mark.major ? "" : "border-dashed opacity-50"}`} style={{ top: mark.top }} />
       ))}
       {nowTop != null && (view === "week" ? column === todayISO() : true) ? <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-rose-500" style={{ top: nowTop }} /> : null}
@@ -307,6 +238,7 @@ function ScheduleColumn({ column, view, date, items, nowTop, boardHeight, client
         <AppointmentCard
           key={item.id}
           item={item}
+          hour={hour}
           client={clients.find((row) => row.id === item.clientId)}
           service={services.find((row) => row.id === item.serviceId)}
           color={staff.find((row) => row.id === item.staffId)?.color || "#DBEAFE"}
@@ -331,33 +263,32 @@ function BoardHead({ column, count }) {
     const today = column === todayISO();
     const day = new Date(`${column}T12:00:00`);
     return (
-      <div className={`border-b border-l border-[var(--theme-border)] px-2 py-3 text-center ${today ? "bg-[color-mix(in_srgb,var(--theme-primary)_8%,transparent)]" : ""}`}>
-        <p className="theme-subtext text-[11px] uppercase tracking-wide">{day.toLocaleDateString("en-KE", { weekday: "short" })}</p>
-        <p className={`mx-auto mt-1 grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${today ? "bg-[var(--theme-primary)] text-white" : ""}`}>{day.getDate()}</p>
-        <p className="theme-subtext mt-1 text-[11px]">{countLabel(count)}</p>
+      <div className={`border-b border-l border-[var(--theme-border)] px-1 py-1.5 text-center ${today ? "bg-[color-mix(in_srgb,var(--theme-primary)_8%,transparent)]" : ""}`}>
+        <p className={`truncate text-[11px] font-semibold ${today ? "text-[var(--theme-accent-text)]" : ""}`}>{day.toLocaleDateString("en-KE", { weekday: "short" })} {day.getDate()}</p>
+        <p className="theme-subtext truncate text-[10px]">{count}</p>
       </div>
     );
   }
   return (
-    <div className="border-b border-l border-[var(--theme-border)] px-3 py-3">
-      <div className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: column.color || "#93C5FD" }} />
-        <span className="truncate text-sm font-semibold">{column.name}</span>
+    <div className="border-b border-l border-[var(--theme-border)] px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: column.color || "#93C5FD" }} />
+        <span className="truncate text-xs font-semibold sm:text-sm">{column.name}</span>
       </div>
-      <p className="theme-subtext mt-1 truncate text-xs">{column.role} · {countLabel(count)}</p>
+      <p className="theme-subtext mt-0.5 truncate text-[10px] sm:text-xs">{count}</p>
     </div>
   );
 }
 
-function AppointmentCard({ item, client, service, color, onOpen }) {
-  const top = ((minutesOf(item.start) - START) / 60) * HOUR;
-  const height = Math.max(34, (item.duration / 60) * HOUR - 6);
+function AppointmentCard({ item, client, service, color, hour, onOpen }) {
+  const top = ((minutesOf(item.start) - START) / 60) * hour;
+  const height = Math.max(Math.min(16, hour * 0.45), (item.duration / 60) * hour - 2);
   const quiet = item.status === "completed" || item.status === "no_show";
   return (
     <button
       type="button"
       data-appointment={item.id}
-      className="absolute inset-x-1.5 z-[1] overflow-hidden rounded-lg px-2 py-0.5 text-left text-slate-900 shadow-sm ring-1 ring-black/5 transition hover:-translate-y-px hover:shadow-md"
+      className="absolute inset-x-0.5 z-[1] overflow-hidden rounded-md px-1 py-0.5 text-left text-slate-900 shadow-sm ring-1 ring-black/5 sm:inset-x-1"
       style={{
         top: top + 3,
         height,
@@ -381,11 +312,11 @@ function AppointmentCard({ item, client, service, color, onOpen }) {
 
 function MonthBoard({ days, month, selected, appointments, staff, clients, onOpen, onCreate, onMenu }) {
   return (
-    <div>
-      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase tracking-wide sm:mb-2 sm:gap-2 sm:text-[11px]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-1 grid shrink-0 grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase tracking-wide sm:text-[11px]">
         {WEEKDAYS.map((day) => <div key={day} className="theme-subtext">{day}</div>)}
       </div>
-      <div className="grid grid-cols-7 gap-1 sm:gap-2">
+      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1">
         {days.map((iso) => {
           const items = appointments.filter((item) => datePart(item.start) === iso);
           const outside = iso.slice(0, 7) !== month;
@@ -394,7 +325,7 @@ function MonthBoard({ days, month, selected, appointments, staff, clients, onOpe
             <button
               key={iso}
               type="button"
-              className={`theme-panel min-h-16 rounded-lg border p-1 text-left sm:min-h-28 sm:rounded-xl sm:p-2 ${iso === selected ? "border-[var(--theme-primary)]" : ""} ${outside ? "opacity-45" : ""}`}
+              className={`theme-panel h-full min-h-0 overflow-hidden rounded-lg border p-1 text-left ${iso === selected ? "border-[var(--theme-primary)]" : ""} ${outside ? "opacity-45" : ""}`}
               onClick={() => onOpen(iso)}
               onDoubleClick={(event) => onCreate(iso, event)}
               onContextMenu={(event) => onMenu(iso, event)}
@@ -421,16 +352,31 @@ function MonthBoard({ days, month, selected, appointments, staff, clients, onOpe
   );
 }
 
-function guideMarks() {
-  const hours = (END - START) / 60;
+function scrollParent(node) {
+  let current = node?.parentElement;
+  while (current) {
+    const overflow = window.getComputedStyle(current).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return current;
+    current = current.parentElement;
+  }
+  return node?.parentElement ?? null;
+}
+
+function compactHour(hour) {
+  const suffix = hour >= 12 ? "p" : "a";
+  const face = hour % 12 || 12;
+  return `${face}${suffix}`;
+}
+
+function guideMarks(hour) {
   const marks = [];
-  for (let index = 0; index <= hours; index += 1) {
+  for (let index = 0; index < DAY_HOURS; index += 1) {
     marks.push({
-      top: index * HOUR,
+      top: index * hour,
       major: true,
-      label: formatTime(`${todayISO()}T${String(8 + index).padStart(2, "0")}:00`),
+      label: compactHour(8 + index),
     });
-    if (index < hours) marks.push({ top: index * HOUR + HOUR / 2, major: false, label: "" });
+    if (hour >= 36) marks.push({ top: index * hour + hour / 2, major: false, label: "" });
   }
   return marks;
 }
@@ -450,17 +396,12 @@ function periodTitle(view, date, days) {
   return formatLong(date);
 }
 
-function countLabel(count) {
-  if (!count) return "Open";
-  return `${count} appointment${count === 1 ? "" : "s"}`;
-}
-
-function nowOffset(iso) {
+function nowOffset(iso, hour) {
   if (iso !== todayISO()) return null;
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
   if (minutes < START || minutes > END) return null;
-  return ((minutes - START) / 60) * HOUR;
+  return ((minutes - START) / 60) * hour;
 }
 
 function shiftDate(iso, view, direction) {
@@ -475,18 +416,13 @@ function statusLabel(value) {
   return String(value || "").replaceAll("_", " ");
 }
 
-function initials(name) {
-  const parts = String(name || "").trim().split(/\s+/).slice(0, 2);
-  return parts.map((part) => part.charAt(0).toUpperCase()).join("") || "?";
-}
-
 function blank(date) {
   return { clientId: "", staffId: "", serviceId: "", roomId: "", chairId: "", start: `${date}T09:00`, duration: 30, status: "booked", notes: "" };
 }
 
-function slotFromClick(event, column, view, date) {
+function slotFromClick(event, column, view, date, hour) {
   const rect = event.currentTarget.getBoundingClientRect();
-  const minutes = START + Math.max(0, Math.floor((event.clientY - rect.top) / HOUR)) * 60;
+  const minutes = START + Math.max(0, Math.floor((event.clientY - rect.top) / hour)) * 60;
   const clamped = Math.min(END - 30, Math.max(START, minutes));
   const hours = String(Math.floor(clamped / 60)).padStart(2, "0");
   const mins = String(clamped % 60).padStart(2, "0");

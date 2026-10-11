@@ -491,8 +491,8 @@ export default function PlatformSlowQueriesPage() {
             {resetting ? "Resetting…" : "Reset digests"}
           </button>
           <PrimaryButton type="button" onClick={() => void load()} disabled={busy}>
-            {loading ? "Loading…" : "Refresh"}
-          </PrimaryButton>
+          {loading ? "Loading…" : "Refresh"}
+        </PrimaryButton>
         </div>
       }
     >
@@ -682,27 +682,27 @@ export default function PlatformSlowQueriesPage() {
       ) : (
         <section className="mt-4">
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
                   <th className="px-3 py-2">Severity</th>
-                  <th className="px-3 py-2">Avg s</th>
-                  <th className="px-3 py-2">Total s</th>
-                  <th className="px-3 py-2">Runs</th>
-                  <th className="px-3 py-2">Rows examined</th>
-                  <th className="px-3 py-2">SQL</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
+              <th className="px-3 py-2">Avg s</th>
+              <th className="px-3 py-2">Total s</th>
+              <th className="px-3 py-2">Runs</th>
+              <th className="px-3 py-2">Rows examined</th>
+              <th className="px-3 py-2">SQL</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
                 {loading || capturing ? (
-                  <tr>
+              <tr>
                     <td colSpan={7} className="px-3 py-6 text-slate-500">
                       {capturing ? "Capturing digests…" : "Loading digests…"}
-                    </td>
-                  </tr>
-                ) : queries.length === 0 ? (
-                  <tr>
+                </td>
+              </tr>
+            ) : queries.length === 0 ? (
+              <tr>
                     <td colSpan={7} className="px-3 py-6">
                       <div className="space-y-3 text-sm text-slate-700">
                         <p className="font-medium text-slate-900">No Centrix digests to show yet</p>
@@ -724,11 +724,11 @@ export default function PlatformSlowQueriesPage() {
                           </button>
                         </div>
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  queries.map((row) => (
-                    <tr key={row.digest || row.sql} className="border-t border-slate-100 align-top">
+                </td>
+              </tr>
+            ) : (
+              queries.map((row) => (
+                <tr key={row.digest || row.sql} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2">
                         {row.severity === "notable" ? (
                           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
@@ -740,25 +740,25 @@ export default function PlatformSlowQueriesPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2 font-medium">{row.avg_sec}</td>
-                      <td className="px-3 py-2">{row.total_sec}</td>
-                      <td className="px-3 py-2">{row.exec_count}</td>
-                      <td className="px-3 py-2">{row.rows_examined}</td>
-                      <td className="px-3 py-2">
-                        <code className="block max-w-xl whitespace-pre-wrap break-all text-xs text-slate-700">
-                          {row.sql}
-                        </code>
-                      </td>
-                      <td className="px-3 py-2">
+                  <td className="px-3 py-2 font-medium">{row.avg_sec}</td>
+                  <td className="px-3 py-2">{row.total_sec}</td>
+                  <td className="px-3 py-2">{row.exec_count}</td>
+                  <td className="px-3 py-2">{row.rows_examined}</td>
+                  <td className="px-3 py-2">
+                    <code className="block max-w-xl whitespace-pre-wrap break-all text-xs text-slate-700">
+                      {row.sql}
+                    </code>
+                  </td>
+                  <td className="px-3 py-2">
                         <div className="flex flex-col gap-2">
-                          <button
-                            type="button"
-                            className={SECONDARY_BTN_CLASS}
-                            onClick={() => void askAi(row)}
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      onClick={() => void askAi(row)}
                             disabled={advising}
-                          >
-                            Ask Centrix AI
-                          </button>
+                    >
+                      Ask Centrix AI
+                    </button>
                           {row.cleanup_hint ? (
                             <button
                               type="button"
@@ -770,14 +770,14 @@ export default function PlatformSlowQueriesPage() {
                             </button>
                           ) : null}
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+              </section>
       )}
 
       <AdviceModal

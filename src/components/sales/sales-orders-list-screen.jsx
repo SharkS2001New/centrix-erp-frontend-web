@@ -799,12 +799,12 @@ export default function SalesOrdersListScreen({
       const statusParam = queueConfig?.fixedPaymentStatusFilter
         ? null
         : queueConfig?.lockStatusFilter
-          ? queueConfig.fixedStatusFilter
+        ? queueConfig.fixedStatusFilter
           : statusFromColumn
             ? statusFromColumn
-            : effectiveStatusFilter !== "all"
-              ? effectiveStatusFilter
-              : null;
+        : effectiveStatusFilter !== "all"
+          ? effectiveStatusFilter
+          : null;
       if (statusParam) filters.status = statusParam;
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
@@ -2043,7 +2043,7 @@ export default function SalesOrdersListScreen({
               onChange={(e) => setStatusFilter(e.target.value)}
                 options={statusOptions}
               />
-            </Field>
+          </Field>
           {showSourceFilter ? (
             <Field label="Source">
                 <FilterSelect

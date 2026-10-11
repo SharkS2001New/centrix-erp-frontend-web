@@ -21,7 +21,6 @@ export function PosScreen() {
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState("cash");
   const [parts, setParts] = useState({ cash: 0, mpesa: 0, card: 0 });
-  const [reference, setReference] = useState("");
   const [receipt, setReceipt] = useState(null);
   const [paper, setPaper] = useState("a4");
   const [cartOpen, setCartOpen] = useState(false);
@@ -48,15 +47,23 @@ export function PosScreen() {
     });
   }
 
-  function paymentParts() {
-    if (method === "split") {
+  function paymentParts(nextMethod) {
+    if (nextMethod === "split") {
       return ["cash", "mpesa", "card"].filter((key) => Number(parts[key]) > 0).map((key) => ({ method: key, amount: Number(parts[key]) || 0 }));
     }
-    return [{ method, amount: total }];
+    return [{ method: nextMethod, amount: total }];
   }
 
-  function buildSale(status) {
-    return {
+  function complete(nextMethod) {
+    if (lines.length === 0) {
+      toast.error("Add a service first.");
+      return false;
+    }
+    if (nextMethod === "split" && method !== "split") {
+      setMethod("split");
+      return false;
+    }
+    const result = spa.completeSale({
       clientId,
       staffId,
       lines,
@@ -64,13 +71,9 @@ export function PosScreen() {
       taxRate: spa.taxRate,
       tax,
       total,
-      payment: { method, parts: paymentParts(), reference },
-      status,
-    };
-  }
-
-  function complete() {
-    const result = spa.completeSale(buildSale("completed"));
+      payment: { method: nextMethod, parts: paymentParts(nextMethod), reference: "" },
+      status: "completed",
+    });
     if (typeof result === "string") {
       toast.error(result);
       return false;
@@ -79,18 +82,9 @@ export function PosScreen() {
     setReceipt(result);
     setLines([]);
     setDiscount(0);
-    setReference("");
+    setMethod("cash");
+    setParts({ cash: 0, mpesa: 0, card: 0 });
     return true;
-  }
-
-  function hold() {
-    if (lines.length === 0) {
-      toast.error("Add a service or product first.");
-      return;
-    }
-    spa.holdSale(buildSale("held"));
-    toast.success("Sale held on this till.");
-    setLines([]);
   }
 
   const chips = ["All", ...categories.filter((item) => item !== "All"), "Products"].filter((item, index, list) => list.indexOf(item) === index);
@@ -117,19 +111,6 @@ export function PosScreen() {
           <SpaSearch className="w-full min-w-0" placeholder="Search services or products" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 sm:pb-24 lg:pb-4">
-          {spa.holds.length > 0 ? (
-            <div className="mb-3 rounded-2xl border border-[var(--theme-border)] p-3">
-              <h2 className="text-sm font-semibold">Held sales</h2>
-              <ul className="mt-2 space-y-2 text-sm">
-                {spa.holds.map((sale) => (
-                  <li key={sale.id} className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="min-w-0">{sale.lines.map((line) => line.name).join(", ")} · {ksh(sale.total)}</span>
-                    <button type="button" className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm" onClick={() => { setLines(sale.lines); setClientId(sale.clientId || ""); setStaffId(sale.staffId || staffId); spa.removeHold(sale.id); }}>Resume</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
           {emptyCatalog ? (
             <p className="hotel-pos-empty-ticket theme-subtext rounded-2xl px-4 py-10 text-center text-sm">Nothing matches this search.</p>
           ) : (
@@ -174,9 +155,9 @@ export function PosScreen() {
           </div>
           <button type="button" className="text-sm font-medium text-[var(--theme-accent-text)] lg:hidden" onClick={() => setCartOpen(false)}>Close</button>
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3 sm:px-4">
           {lines.length === 0 ? (
-            <p className="hotel-pos-empty-ticket theme-subtext rounded-2xl px-4 py-8 text-center text-sm">The ticket is empty.</p>
+            <p className="hotel-pos-empty-ticket theme-subtext flex flex-1 items-center justify-center rounded-2xl px-4 py-16 text-center text-sm">The ticket is empty.</p>
           ) : (
             <ul className="space-y-2">
               {lines.map((line) => (
@@ -194,46 +175,22 @@ export function PosScreen() {
               ))}
             </ul>
           )}
-          <div className="grid gap-3">
+        </div>
+        <div className="hotel-pos-totals shrink-0 space-y-3 border-t border-[var(--theme-border)] px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
             <Field label="Client">
               <SpaSelect value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="No client" options={[{ value: "", label: "No client" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} />
             </Field>
             <Field label="Staff">
               <SpaSelect value={staffId} onChange={(event) => setStaffId(event.target.value)} options={spa.staff.map((item) => ({ value: item.id, label: item.name }))} />
             </Field>
-            <Field label="Discount (KSh)">
-              <input className={inputClass} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {["cash", "mpesa", "card", "split"].map((item) => (
-              <button
-                key={item}
-                type="button"
-                disabled={item !== "split" && spa.payments[item] === false}
-                className={`hotel-pos-chip justify-center${method === item ? " hotel-pos-chip-active" : ""}`}
-                onClick={() => setMethod(item)}
-              >
-                {item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}
-              </button>
-            ))}
-          </div>
-          {method === "split" ? (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {["cash", "mpesa", "card"].map((item) => (
-                <Field key={item} label={item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}>
-                  <input className={inputClass} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
-                </Field>
-              ))}
+            <div className="col-span-2">
+              <Field label="Discount (KSh)">
+                <input className={inputClass} type="number" min="0" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+              </Field>
             </div>
-          ) : (
-            <Field label="Reference">
-              <input className={inputClass} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Optional receipt or code" />
-            </Field>
-          )}
-        </div>
-        <div className="hotel-pos-totals shrink-0 border-t border-[var(--theme-border)] px-4 py-3">
-          <div className="mb-3 flex items-end justify-between gap-3">
+          </div>
+          <div className="flex items-end justify-between gap-3">
             <div>
               <p className="theme-subtext text-[10px] font-semibold uppercase tracking-wide">Total</p>
               <p className="text-2xl font-bold tabular-nums leading-tight text-[var(--theme-accent-text)]">{ksh(total)}</p>
@@ -244,13 +201,27 @@ export function PosScreen() {
               <p className="theme-subtext">Tax {ksh(tax)}</p>
             </div>
           </div>
-          <p className="theme-subtext mb-3 text-xs">This records the service sale on the till. It does not send an M-Pesa prompt or charge a card.</p>
-          <div className="grid gap-2">
-            <button type="button" disabled={lines.length === 0} className="hotel-pos-primary-cta rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-40" onClick={() => { if (complete()) setCartOpen(false); }}>Complete sale</button>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="hotel-pos-secondary-cta rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide" onClick={hold}>Hold</button>
-              <button type="button" className="hotel-pos-secondary-cta rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide" onClick={() => { setLines([]); setDiscount(0); toast.success("Ticket cleared."); }}>Clear</button>
+          {method === "split" ? (
+            <div className="grid grid-cols-3 gap-2">
+              {["cash", "mpesa", "card"].map((item) => (
+                <Field key={item} label={item === "mpesa" ? "M-Pesa" : item.charAt(0).toUpperCase() + item.slice(1)}>
+                  <input className={inputClass} type="number" min="0" aria-label={`${item} amount`} value={parts[item]} onChange={(event) => setParts((current) => ({ ...current, [item]: event.target.value }))} />
+                </Field>
+              ))}
             </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            {["cash", "mpesa", "card", "split"].map((item) => (
+              <button
+                key={item}
+                type="button"
+                disabled={lines.length === 0 || (item !== "split" && spa.payments[item] === false)}
+                className={`rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-40 ${item === "split" && method !== "split" ? "hotel-pos-secondary-cta" : "hotel-pos-primary-cta"}`}
+                onClick={() => { if (complete(item)) setCartOpen(false); }}
+              >
+                {item === "mpesa" ? "M-Pesa" : item === "split" && method === "split" ? "Take split" : item.charAt(0).toUpperCase() + item.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
       </aside>

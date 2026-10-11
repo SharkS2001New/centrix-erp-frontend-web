@@ -67,9 +67,9 @@ export function isPlatformKraIntegrationEnabled(capabilities) {
 }
 
 export function isPlatformAiEnabled(capabilities) {
-  if (capabilities?.platform_ai_enabled === false) return false;
-  if (capabilities?.ai_assistant?.platform_enabled === false) return false;
-  return true;
+  if (capabilities?.ai_assistant?.platform_chat_enabled === true) return true;
+  if (capabilities?.ai_assistant?.platform_chat_enabled === false) return false;
+  return capabilities?.platform_ai_enabled === true || capabilities?.ai_assistant?.platform_enabled === true;
 }
 
 export function isPlatformWhatsappEnabled(capabilities) {
