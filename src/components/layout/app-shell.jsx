@@ -46,6 +46,7 @@ export function AppShell({ children }) {
   const navigationBusy = useNavigationBusy();
   const pendingHref = usePendingNavigationHref();
   const isPos = pathname === "/sales/pos";
+  const isSpa = pathname === "/spa" || pathname.startsWith("/spa/");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -85,6 +86,19 @@ export function AppShell({ children }) {
       return;
     }
     setSidebarCollapsed((v) => !v);
+  }
+
+  if (isSpa) {
+    return (
+      <AuthGuard>
+        <WorkspaceNavigationTracker />
+        <WorkspaceGuard>
+          <RoutePermissionGuard>
+            <div className="h-screen overflow-hidden bg-[#F3F6FB]">{children}</div>
+          </RoutePermissionGuard>
+        </WorkspaceGuard>
+      </AuthGuard>
+    );
   }
 
   return (

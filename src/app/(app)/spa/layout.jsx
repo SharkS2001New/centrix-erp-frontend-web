@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { BusinessChooser } from "@/components/spa/shell";
+import { BusinessChooser, SpaFrame } from "@/components/spa/shell";
 import { SpaProvider, useSpa } from "@/lib/spa/store";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 
@@ -24,7 +24,9 @@ function SpaGate({ children }) {
 export default function SpaLayout({ children }) {
   return (
     <SpaProvider>
-      <SpaGate>{children}</SpaGate>
+      <SpaFrame>
+        <SpaGate>{children}</SpaGate>
+      </SpaFrame>
     </SpaProvider>
   );
 }

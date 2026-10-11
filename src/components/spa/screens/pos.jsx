@@ -5,10 +5,14 @@ import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { serviceImageSrc } from "@/lib/spa/image";
 import { useSpa } from "@/lib/spa/store";
+import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
+import { buildSpaSaleReceipt } from "@/lib/service-receipt";
+import { useAuth } from "@/contexts/auth-context";
 import { Button, Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
 
 export function PosScreen() {
   const spa = useSpa();
+  const { organization } = useAuth();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [lines, setLines] = useState([]);
@@ -19,7 +23,7 @@ export function PosScreen() {
   const [parts, setParts] = useState({ cash: 0, mpesa: 0, card: 0 });
   const [reference, setReference] = useState("");
   const [receipt, setReceipt] = useState(null);
-  const [paper, setPaper] = useState("80mm");
+  const [paper, setPaper] = useState("a4");
 
   const categories = ["All", ...new Set(spa.services.map((item) => item.category))];
   const catalog = useMemo(() => {
@@ -192,46 +196,15 @@ export function PosScreen() {
           </div>
         </div>
       </aside>
-      {receipt ? <Receipt sale={receipt} spa={spa} paper={paper} setPaper={setPaper} onClose={() => setReceipt(null)} /> : null}
+      {receipt ? (
+        <ServiceReceiptDialog
+          receipt={buildSpaSaleReceipt(receipt, spa, organization)}
+          paper={paper}
+          onPaper={setPaper}
+          onClose={() => setReceipt(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function Receipt({ sale, spa, paper, setPaper, onClose }) {
-  const client = spa.clients.find((item) => item.id === sale.clientId);
-  const width = paper === "80mm" ? "80mm" : "210mm";
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
-      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-5 shadow-xl" role="dialog" aria-label="Receipt preview">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Receipt {sale.number}</h2>
-          <div className="flex gap-2">
-            <Button variant={paper === "80mm" ? "navy" : "ghost"} onClick={() => setPaper("80mm")}>80mm</Button>
-            <Button variant={paper === "a4" ? "navy" : "ghost"} onClick={() => setPaper("a4")}>A4</Button>
-            <Button variant="ghost" onClick={() => window.print()}>Print</Button>
-            <Button variant="ghost" onClick={onClose}>Close</Button>
-          </div>
-        </div>
-        <article id="spa-receipt" className="mx-auto border border-slate-200 bg-white p-6 text-sm text-black" style={{ width }}>
-          <h3 className="text-center text-base font-semibold">{spa.profile.name}</h3>
-          <p className="text-center text-xs">{spa.branch} · {spa.profile.address}</p>
-          <p className="text-center text-xs">{spa.profile.phone}{spa.receipt.showPin ? ` · PIN ${spa.profile.pin}` : ""}</p>
-          <p className="mt-3 text-xs">{sale.number} · {client?.name || "Walk-in"}</p>
-          <table className="mt-3 w-full text-xs">
-            <tbody>
-              {sale.lines.map((line) => (
-                <tr key={`${line.kind}-${line.refId}`}>
-                  <td className="py-1">{line.qty} × {line.name}</td>
-                  <td className="py-1 text-right">{ksh(line.price * line.qty)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-2 text-right text-sm font-semibold">Total {ksh(sale.total)}</p>
-          <p className="mt-1 text-right text-xs capitalize">{sale.payment.method}</p>
-          <p className="mt-4 text-center text-xs">{spa.receipt.footer}</p>
-        </article>
-      </div>
-    </div>
-  );
-}

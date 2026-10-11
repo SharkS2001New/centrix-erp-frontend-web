@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
+import { buildSpaSaleReceipt } from "@/lib/service-receipt";
 import { toast } from "@/lib/toast";
 import { datePart, formatTime, ksh } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
@@ -51,10 +54,13 @@ export function ClientsScreen() {
 
 export function ClientDetailScreen({ id }) {
   const spa = useSpa();
+  const { organization } = useAuth();
   const client = spa.clients.find((item) => item.id === id);
   const [tab, setTab] = useState("appointments");
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+  const [paper, setPaper] = useState("a4");
   if (!client) return <Empty title="Client not found" detail="They may have been removed from this browser's sample data." />;
   const appointments = spa.appointments.filter((item) => item.clientId === id);
   const purchases = spa.sales.filter((item) => item.clientId === id && item.status === "completed");
@@ -77,7 +83,20 @@ export function ClientDetailScreen({ id }) {
         const service = spa.services.find((row) => row.id === item.serviceId);
         return <p key={item.id}>{formatTime(item.start)} · {datePart(item.start)} · {service?.name} · {item.status.replace("_", " ")}</p>;
       }} /> : null}
-      {tab === "purchases" ? <SimpleList rows={purchases} empty="No purchases yet." render={(item) => <p key={item.id}>{item.number} · {ksh(item.total)} · {item.payment.method}</p>} /> : null}
+      {tab === "purchases" ? <SimpleList rows={purchases} empty="No purchases yet." render={(item) => (
+        <p key={item.id} className="flex items-center justify-between gap-3">
+          <span>{item.number} · {ksh(item.total)} · {item.payment.method}</span>
+          <button type="button" className="theme-link text-sm font-medium" onClick={() => setReceipt(item)}>Receipt</button>
+        </p>
+      )} /> : null}
+      {receipt ? (
+        <ServiceReceiptDialog
+          receipt={buildSpaSaleReceipt(receipt, spa, organization)}
+          paper={paper}
+          onPaper={setPaper}
+          onClose={() => setReceipt(null)}
+        />
+      ) : null}
       {tab === "notes" ? (
         <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <form className="flex gap-2" onSubmit={(event) => {
