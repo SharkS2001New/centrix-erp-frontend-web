@@ -114,12 +114,6 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Run operational prune now — Hikvision, attendance, and related cleanup.",
       },
       {
-        href: "/platform/demo-data",
-        label: "Demo data",
-        icon: "package",
-        description: "Generate sample organisations and remove them in one step.",
-      },
-      {
         href: "/platform/health",
         label: "Infrastructure health",
         icon: "alert",

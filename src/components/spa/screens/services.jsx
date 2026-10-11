@@ -1,27 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { isPublicImageUrl, readServicePhoto, serviceImageSrc } from "@/lib/spa/image";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Badge, Button, Empty, Field, PageHeader, SpaFilters, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
 
 const CATEGORIES = ["Haircut", "Beard Trim", "Hair Coloring", "Facial Treatment", "Massage", "Manicure", "Pedicure"];
 
 export function ServicesScreen() {
   const spa = useSpa();
-  const [editing, setEditing] = useState(null);
+  const router = useAppRouter();
   const [category, setCategory] = useState("All");
   const rows = spa.services.filter((item) => category === "All" || item.category === category);
 
   return (
     <div>
       <PageHeader title="Services" detail="Prices, duration, who can perform them, and commission.">
-        <SpaSelect toolbar aria-label="Service category" value={category} onChange={(event) => setCategory(event.target.value)} options={toOptions(["All", ...CATEGORIES])} />
-        <Button onClick={() => setEditing(blankService())}>Add service</Button>
+        <AppNavLink href="/spa/services/new" className={primaryLinkClass}>Add service</AppNavLink>
       </PageHeader>
-      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} onCreate={() => setEditing(blankService())} createLabel="Add service" render={(service) => (
+      <SpaFilters>
+        <SpaSelect toolbar aria-label="Service category" value={category} onChange={(event) => setCategory(event.target.value)} options={toOptions(["All", ...CATEGORIES])} />
+      </SpaFilters>
+      <Table columns={["Service", "Category", "Price", "Duration", "Commission", "Status", ""]} rows={rows} onCreate={() => router.push("/spa/services/new")} createLabel="Add service" render={(service) => (
         <tr key={service.id} className="border-b border-slate-50">
           <td className="px-4 py-3 font-medium">
             <span className="flex items-center gap-3">
@@ -34,14 +39,9 @@ export function ServicesScreen() {
           <td className="px-4 py-3">{service.duration} min</td>
           <td className="px-4 py-3">{service.commission}%</td>
           <td className="px-4 py-3"><Badge tone={service.active ? "green" : "slate"}>{service.active ? "Active" : "Inactive"}</Badge></td>
-          <td className="px-4 py-3 text-right"><button type="button" className="text-sm font-medium text-[var(--theme-accent-text)]" onClick={() => setEditing(service)}>Edit</button></td>
+          <td className="px-4 py-3 text-right"><AppNavLink className="text-sm font-medium text-[var(--theme-accent-text)]" href={`/spa/services/${service.id}/edit`}>Edit</AppNavLink></td>
         </tr>
       )} />
-      {editing ? <ServiceForm spa={spa} service={editing} onClose={() => setEditing(null)} onSave={(service) => {
-        const error = spa.saveService(service);
-        if (error) toast.error(error);
-        else { toast.success("Service saved."); setEditing(null); }
-      }} /> : null}
     </div>
   );
 }
@@ -57,7 +57,12 @@ function ServiceThumb({ src }) {
   return <img src={src} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />;
 }
 
-function ServiceForm({ spa, service, onClose, onSave }) {
+export function ServiceFormScreen({ id }) {
+  const spa = useSpa();
+  const existing = id ? spa.services.find((item) => item.id === id) : null;
+  const title = id ? "Edit service" : "Add service";
+  const { exitTo } = useRecordExit(title);
+  const service = existing || blankService();
   const [form, setForm] = useState(service);
   const [source, setSource] = useState(service.imageUrl ? "url" : "upload");
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
@@ -73,20 +78,32 @@ function ServiceForm({ spa, service, onClose, onSave }) {
       toast.error(err instanceof Error ? err.message : "Could not use that photo.");
     }
   }
-  function save() {
+  function persist(next) {
+    const error = spa.saveService(next);
+    if (error) toast.error(error);
+    else {
+      toast.success("Service saved.");
+      exitTo("/spa/services");
+    }
+  }
+  function save(event) {
+    event.preventDefault();
+    if (id && !existing) return;
     if (source === "url") {
       if (!isPublicImageUrl(form.imageUrl)) {
         toast.error("Enter a public http or https image URL.");
         return;
       }
-      onSave({ ...form, imageUrl: String(form.imageUrl).trim(), image: "" });
+      persist({ ...form, imageUrl: String(form.imageUrl).trim(), image: "" });
       return;
     }
-    onSave({ ...form, imageUrl: "" });
+    persist({ ...form, imageUrl: "" });
   }
   const preview = source === "url" ? serviceImageSrc({ imageUrl: form.imageUrl }) : serviceImageSrc(form);
+  if (id && !existing) return <Empty title="Service not found" detail="It may have been removed from this browser's sample data." />;
   return (
-    <Modal title={service.id ? "Edit service" : "Add service"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/services">
+      <form onSubmit={save}>
       <div className="mb-4 flex items-start gap-4">
         <ServiceThumb src={preview} />
         <div className="min-w-0 flex-1">
@@ -133,10 +150,8 @@ function ServiceForm({ spa, service, onClose, onSave }) {
           ))}
         </div>
       </fieldset>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button onClick={save}>Save</Button>
-      </div>
-    </Modal>
+      <RecordFormActions backHref="/spa/services" />
+      </form>
+    </RecordFormPage>
   );
 }

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, stockStatus, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Card, Field, PageHeader, pillClass, toolbarControlClass } from "@/components/spa/ui";
+import { Button, Card, PageHeader, SpaFilters, pillClass, toolbarControlClass } from "@/components/spa/ui";
 
 const SPA_REPORTS = [
   ["sales", "Sales"],
@@ -68,10 +68,12 @@ export function ReportsScreen() {
   return (
     <div>
       <PageHeader title="Reports" detail="Sales, appointments, staff, and stock for the dates you choose.">
-        <Field label="From"><input className={toolbarControlClass} type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
-        <Field label="To"><input className={toolbarControlClass} type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
         <Button variant="ghost" onClick={exportCsv}>Export CSV</Button>
       </PageHeader>
+      <SpaFilters>
+        <input className={toolbarControlClass} type="date" aria-label="From" value={from} onChange={(event) => setFrom(event.target.value)} />
+        <input className={toolbarControlClass} type="date" aria-label="To" value={to} onChange={(event) => setTo(event.target.value)} />
+      </SpaFilters>
       <div className="mb-4 flex flex-wrap gap-2">
         {SPA_REPORTS.map(([id, label]) => (
           <button key={id} type="button" className={pillClass(report === id)} onClick={() => setReport(id)}>{label}</button>

@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Card, Field, Modal, PageHeader, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Badge, Card, Empty, Field, PageHeader, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
 
 const CATEGORIES = ["Rent", "Utilities", "Supplies", "Salaries", "Marketing", "Other"];
 
 export function ExpensesScreen() {
   const spa = useSpa();
-  const [editing, setEditing] = useState(null);
+  const router = useAppRouter();
   const today = todayISO();
   const month = today.slice(0, 7);
   const approved = spa.expenses.filter((item) => item.status === "approved");
@@ -20,13 +23,13 @@ export function ExpensesScreen() {
   return (
     <div>
       <PageHeader title="Expenses" detail="What the branch spent, and what still needs approval.">
-        <Button onClick={() => setEditing({ category: "Supplies", amount: "", method: "M-Pesa", date: today, reference: "", notes: "", status: "pending" })}>Add expense</Button>
+        <AppNavLink href="/spa/expenses/new" className={primaryLinkClass}>Add expense</AppNavLink>
       </PageHeader>
       <section className="mb-4 grid gap-3 sm:grid-cols-2">
         <Card><p className="text-xs uppercase text-slate-400">Approved today</p><p className="mt-2 text-2xl font-semibold">{ksh(daily)}</p></Card>
         <Card><p className="text-xs uppercase text-slate-400">Approved this month</p><p className="mt-2 text-2xl font-semibold">{ksh(monthly)}</p></Card>
       </section>
-      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} onCreate={() => setEditing({ category: "Supplies", amount: "", method: "M-Pesa", date: today, reference: "", notes: "", status: "pending" })} createLabel="Add expense" render={(expense) => (
+      <Table columns={["Date", "Category", "Amount", "Method", "Reference", "Status", ""]} rows={spa.expenses} onCreate={() => router.push("/spa/expenses/new")} createLabel="Add expense" render={(expense) => (
         <tr key={expense.id} className="border-b border-slate-50">
           <td className="px-4 py-3">{expense.date}</td>
           <td className="px-4 py-3 font-medium">{expense.category}</td>
@@ -40,24 +43,34 @@ export function ExpensesScreen() {
                 <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => { spa.setExpenseStatus(expense.id, "approved"); toast.success("Expense approved."); }}>Approve</button>
                 <button type="button" className="text-sm text-red-600" onClick={() => { spa.setExpenseStatus(expense.id, "rejected"); toast.success("Expense rejected."); }}>Reject</button>
               </>
-            ) : <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(expense)}>Edit</button>}
+            ) : <AppNavLink href={`/spa/expenses/${expense.id}/edit`} className="text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>}
           </td>
         </tr>
-      )} />
-      {editing ? <ExpenseForm expense={editing} onClose={() => setEditing(null)} onSave={(expense) => {
-        const error = spa.saveExpense(expense);
-        if (error) toast.error(error);
-        else { toast.success("Expense saved."); setEditing(null); }
-      }} /> : null}
+      )}       />
     </div>
   );
 }
 
-function ExpenseForm({ expense, onClose, onSave }) {
-  const [form, setForm] = useState(expense);
+export function ExpenseFormScreen({ id }) {
+  const spa = useSpa();
+  const existing = id ? spa.expenses.find((item) => item.id === id) : null;
+  const title = id ? "Edit expense" : "Add expense";
+  const { exitTo } = useRecordExit(title);
+  const [form, setForm] = useState(() => existing || { category: "Supplies", amount: "", method: "M-Pesa", date: todayISO(), reference: "", notes: "", status: "pending" });
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  if (id && !existing) return <Empty title="Expense not found" detail="It may have been removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
+    const error = spa.saveExpense(form);
+    if (error) toast.error(error);
+    else {
+      toast.success("Expense saved.");
+      exitTo("/spa/expenses");
+    }
+  }
   return (
-    <Modal title={expense.id ? "Edit expense" : "Add expense"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/expenses">
+      <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Category"><SpaSelect value={form.category} onChange={set("category")} options={toOptions(CATEGORIES)} /></Field>
         <Field label="Amount (KSh)"><input className={inputClass} type="number" min="1" value={form.amount} onChange={set("amount")} /></Field>
@@ -66,7 +79,8 @@ function ExpenseForm({ expense, onClose, onSave }) {
         <Field label="Reference"><input className={inputClass} value={form.reference} onChange={set("reference")} /></Field>
         <Field label="Notes"><input className={inputClass} value={form.notes} onChange={set("notes")} /></Field>
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={() => onSave(form)}>Save</Button></div>
-    </Modal>
+      <RecordFormActions backHref="/spa/expenses" />
+      </form>
+    </RecordFormPage>
   );
 }

@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, SpaContextMenu, SpaSelect, Table, inputClass } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Badge, Empty, Field, PageHeader, SpaContextMenu, SpaSelect, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function StaffScreen() {
   const spa = useSpa();
+  const router = useAppRouter();
   const [tab, setTab] = useState("directory");
-  const [editing, setEditing] = useState(null);
   const [menu, setMenu] = useState(null);
   const today = todayISO();
-  const blankStaff = { name: "", role: "Stylist", phone: "", commission: 10, active: true, days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] };
 
   const rows = spa.staff.map((person) => {
     const revenue = spa.sales.filter((sale) => sale.status === "completed").reduce((sum, sale) => {
@@ -27,7 +29,7 @@ export function StaffScreen() {
   return (
     <div>
       <PageHeader title="Staff & commissions" detail="Who is in today, what they earn, and whether it is ready to pay.">
-        <Button onClick={() => setEditing(blankStaff)}>Add staff</Button>
+        <AppNavLink href="/spa/staff/new" className={primaryLinkClass}>Add staff</AppNavLink>
       </PageHeader>
       <div className="mb-4 flex gap-2">
         {["directory", "commissions"].map((item) => (
@@ -39,7 +41,7 @@ export function StaffScreen() {
           className="grid gap-3 md:grid-cols-2"
           onDoubleClick={(event) => {
             if (event.target.closest("article, button, select, input")) return;
-            setEditing(blankStaff);
+            router.push("/spa/staff/new");
           }}
           onContextMenu={(event) => {
             if (event.target.closest("button, select, input")) return;
@@ -64,13 +66,13 @@ export function StaffScreen() {
                     <SpaSelect aria-label={`Attendance for ${person.name}`} value={attendance?.status || "present"} onChange={(event) => spa.setAttendance(person.id, event.target.value)} options={[{ value: "present", label: "Present" }, { value: "late", label: "Late" }, { value: "off", label: "Off" }]} />
                   </Field>
                 </div>
-                <button type="button" className="mt-3 text-sm font-medium text-[var(--theme-accent-text)]" onClick={() => setEditing(person)}>Edit profile</button>
+                <AppNavLink href={`/spa/staff/${person.id}/edit`} className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">Edit profile</AppNavLink>
               </article>
             );
           })}
         </div>
       ) : (
-        <Table columns={["Staff", "Service revenue", "Commission", "Earned", "Payout"]} rows={rows} onCreate={() => setEditing(blankStaff)} createLabel="Add staff" render={({ person, revenue, earned, paid }) => (
+        <Table columns={["Staff", "Service revenue", "Commission", "Earned", "Payout"]} rows={rows} onCreate={() => router.push("/spa/staff/new")} createLabel="Add staff" render={({ person, revenue, earned, paid }) => (
           <tr key={person.id} className="border-b border-slate-50">
             <td className="px-4 py-3 font-medium">{person.name}</td>
             <td className="px-4 py-3">{ksh(revenue)}</td>
@@ -80,20 +82,30 @@ export function StaffScreen() {
           </tr>
         )} />
       )}
-      <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={[{ label: "Add staff", onSelect: () => setEditing(blankStaff) }]} />
-      {editing ? <StaffForm person={editing} onClose={() => setEditing(null)} onSave={(person) => {
-        const error = spa.saveStaff(person);
-        if (error) toast.error(error);
-        else { toast.success("Staff saved."); setEditing(null); }
-      }} /> : null}
+      <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={[{ label: "Add staff", onSelect: () => router.push("/spa/staff/new") }]} />
     </div>
   );
 }
 
-function StaffForm({ person, onClose, onSave }) {
-  const [form, setForm] = useState(person);
+export function StaffFormScreen({ id }) {
+  const spa = useSpa();
+  const existing = id ? spa.staff.find((item) => item.id === id) : null;
+  const title = id ? "Edit staff" : "Add staff";
+  const { exitTo } = useRecordExit(title);
+  const [form, setForm] = useState(() => existing || { name: "", role: "Stylist", phone: "", commission: 10, active: true, days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] });
+  if (id && !existing) return <Empty title="Staff member not found" detail="They may have been removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
+    const error = spa.saveStaff(form);
+    if (error) toast.error(error);
+    else {
+      toast.success("Staff saved.");
+      exitTo("/spa/staff");
+    }
+  }
   return (
-    <Modal title={person.id ? "Edit staff" : "Add staff"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/staff">
+      <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
         <Field label="Role"><input className={inputClass} value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} /></Field>
@@ -114,10 +126,8 @@ function StaffForm({ person, onClose, onSave }) {
           ))}
         </div>
       </fieldset>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button onClick={() => onSave(form)}>Save</Button>
-      </div>
-    </Modal>
+      <RecordFormActions backHref="/spa/staff" />
+      </form>
+    </RecordFormPage>
   );
 }

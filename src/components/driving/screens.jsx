@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { ApiError, apiRequest } from "@/lib/api";
 import { drivingGet, drivingSend } from "@/lib/driving/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AppNavLink } from "@/components/layout/app-nav-link";
+import { FilterSelect } from "@/components/catalog/catalog-shared";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
 import { buildDrivingFeeReceipt } from "@/lib/service-receipt";
-import { Card, DataTable, DayBoard, DrivingSelect, Editor, Empty, Field, FormCard, FormSection, MarkPad, PageTitle, PersonName, ScreenHeader, SearchField, Sparkline, Stat, StatusBadge, Toolbar, inputClass, money, primaryButtonClass } from "@/components/driving/ui";
+import { Card, DataTable, DayBoard, DrivingSelect, Empty, Field, FormCard, FormSection, MarkPad, PageTitle, PersonName, ScreenHeader, SearchField, Sparkline, Stat, StatusBadge, Toolbar, inputClass, money, primaryButtonClass } from "@/components/driving/ui";
 
 function useLoad(loader, key) {
   const loaderRef = useRef(loader);
@@ -155,13 +158,16 @@ function activeEnrolment(student) {
 }
 
 export function StudentsScreen() {
+  const pathname = usePathname();
+  if (pathname.endsWith("/students/new")) return <StudentFormScreen />;
+  return <StudentListScreen />;
+}
+
+function StudentFormScreen() {
+  const { exitTo } = useRecordExit("Add student");
   const [form, setForm] = useState(EMPTY_STUDENT);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [courseFilter, setCourseFilter] = useState("");
-  const { data, error, reload } = useLoad(() => drivingGet("/students"), "students");
-  const courseLoad = useLoad(() => drivingGet("/courses"), "student-courses");
-  const instructorLoad = useLoad(() => drivingGet("/instructors"), "student-instructors");
+  const courseLoad = useLoad(() => drivingGet("/courses"), "student-form-courses");
+  const instructorLoad = useLoad(() => drivingGet("/instructors"), "student-form-instructors");
   const courses = rowsOf(courseLoad.data).filter((course) => course.is_active !== false);
   const instructors = rowsOf(instructorLoad.data);
   const packages = courses.find((course) => String(course.id) === String(form.course_id))?.packages || [];
@@ -191,14 +197,58 @@ export function StudentsScreen() {
     try {
       await drivingSend("/students", "POST", body);
       notifySuccess("Student registered and enrolled.");
-      setForm(EMPTY_STUDENT);
-      setOpen(false);
-      reload();
+      exitTo("/driving-school/students");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not register the student.");
     }
   }
 
+  return (
+    <RecordFormPage title="Add student" backHref="/driving-school/students" wide>
+      <form onSubmit={save}>
+        <p className="theme-subtext mb-4 text-sm">Name, phone, course, and package are required.</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-4">
+            <FormSection title="Student" />
+            <Field label="Full name"><input className={inputClass} required value={form.full_name} onChange={(e) => setField("full_name", e.target.value)} /></Field>
+            <Field label="Phone"><input className={inputClass} required value={form.phone} onChange={(e) => setField("phone", e.target.value)} /></Field>
+            <Field label="Email"><input className={inputClass} type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} /></Field>
+            <Field label="Identity document">
+              <DrivingSelect value={form.id_document_type} onChange={(e) => setField("id_document_type", e.target.value)} options={[{ value: "national_id", label: "National ID" }, { value: "passport", label: "Passport" }, { value: "birth_certificate", label: "Birth certificate" }]} />
+            </Field>
+            <Field label="Document number"><input className={inputClass} value={form.id_document_number} onChange={(e) => setField("id_document_number", e.target.value)} /></Field>
+            <Field label="Date of birth"><input className={inputClass} type="date" value={form.date_of_birth} onChange={(e) => setField("date_of_birth", e.target.value)} /></Field>
+            <Field label="Address"><input className={inputClass} value={form.address} onChange={(e) => setField("address", e.target.value)} /></Field>
+          </div>
+          <div className="flex flex-col gap-4">
+            <FormSection title="Emergency contact" />
+            <Field label="Name"><input className={inputClass} value={form.emergency_name} onChange={(e) => setField("emergency_name", e.target.value)} /></Field>
+            <Field label="Phone"><input className={inputClass} value={form.emergency_phone} onChange={(e) => setField("emergency_phone", e.target.value)} /></Field>
+            <FormSection title="Course and package" />
+            <Field label="Course">
+              <DrivingSelect value={form.course_id} placeholder="Choose a course" onChange={(e) => setForm((current) => ({ ...current, course_id: e.target.value, package_id: "" }))} options={[{ value: "", label: "Choose a course" }, ...courses.map((course) => ({ value: String(course.id), label: `${course.code} · ${course.name}` }))]} />
+            </Field>
+            <Field label="Package">
+              <DrivingSelect value={form.package_id} placeholder={form.course_id ? "Choose a package" : "Choose a course first"} onChange={(e) => setField("package_id", e.target.value)} options={[{ value: "", label: form.course_id ? "Choose a package" : "Choose a course first" }, ...packages.map((item) => ({ value: String(item.id), label: `${item.name} · ${money(item.price)}` }))]} />
+            </Field>
+            <Field label="Preferred instructor">
+              <DrivingSelect value={form.preferred_instructor_id} placeholder="No preference" onChange={(e) => setField("preferred_instructor_id", e.target.value)} options={[{ value: "", label: "No preference" }, ...instructors.map((row) => ({ value: String(row.id), label: row.full_name }))]} />
+            </Field>
+            <Field label="Notes"><input className={inputClass} value={form.notes} onChange={(e) => setField("notes", e.target.value)} /></Field>
+          </div>
+        </div>
+        <RecordFormActions backHref="/driving-school/students" submitLabel="Register and enrol" />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+function StudentListScreen() {
+  const [query, setQuery] = useState("");
+  const [courseFilter, setCourseFilter] = useState("");
+  const { data, error } = useLoad(() => drivingGet("/students"), "students");
+  const courseLoad = useLoad(() => drivingGet("/courses"), "student-courses");
+  const courses = rowsOf(courseLoad.data).filter((course) => course.is_active !== false);
   const students = rowsOf(data).filter((student) => {
     const enrolment = activeEnrolment(student);
     const haystack = `${student.full_name} ${student.phone} ${student.student_number}`.toLowerCase();
@@ -209,14 +259,12 @@ export function StudentsScreen() {
   return (
     <div>
       <ScreenHeader title="Students" subtitle="The register shows who is enrolled. Add a student when you are ready to set up their course and package.">
-        <button type="button" className={primaryButtonClass} onClick={() => setOpen(true)}>Add student</button>
+        <AppNavLink href="/driving-school/students/new" className={primaryButtonClass}>Add student</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Toolbar>
         <SearchField value={query} onChange={setQuery} placeholder="Search students" />
-        <div className="w-56">
-          <DrivingSelect value={courseFilter} placeholder="All courses" onChange={(event) => setCourseFilter(event.target.value)} options={[{ value: "", label: "All courses" }, ...courses.map((course) => ({ value: String(course.id), label: course.name }))]} />
-        </div>
+        <FilterSelect value={courseFilter} placeholder="All courses" onChange={(event) => setCourseFilter(event.target.value)} options={[{ value: "", label: "All courses" }, ...courses.map((course) => ({ value: String(course.id), label: course.name }))]} />
       </Toolbar>
       <Card>
         <DataTable
@@ -232,62 +280,53 @@ export function StudentsScreen() {
           ]}
         />
       </Card>
-      <Editor open={open} title="Add student" wide onClose={() => setOpen(false)}>
-        <FormCard bare title="Set up a student" hint="Name, phone, course, and package are required." submitLabel="Register and enrol" onCancel={() => setOpen(false)} onSubmit={save}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-4">
-              <FormSection title="Student" />
-              <Field label="Full name"><input className={inputClass} required value={form.full_name} onChange={(e) => setField("full_name", e.target.value)} /></Field>
-              <Field label="Phone"><input className={inputClass} required value={form.phone} onChange={(e) => setField("phone", e.target.value)} /></Field>
-              <Field label="Email"><input className={inputClass} type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} /></Field>
-              <Field label="Identity document">
-                <DrivingSelect value={form.id_document_type} onChange={(e) => setField("id_document_type", e.target.value)} options={[{ value: "national_id", label: "National ID" }, { value: "passport", label: "Passport" }, { value: "birth_certificate", label: "Birth certificate" }]} />
-              </Field>
-              <Field label="Document number"><input className={inputClass} value={form.id_document_number} onChange={(e) => setField("id_document_number", e.target.value)} /></Field>
-              <Field label="Date of birth"><input className={inputClass} type="date" value={form.date_of_birth} onChange={(e) => setField("date_of_birth", e.target.value)} /></Field>
-              <Field label="Address"><input className={inputClass} value={form.address} onChange={(e) => setField("address", e.target.value)} /></Field>
-            </div>
-            <div className="flex flex-col gap-4">
-              <FormSection title="Emergency contact" />
-              <Field label="Name"><input className={inputClass} value={form.emergency_name} onChange={(e) => setField("emergency_name", e.target.value)} /></Field>
-              <Field label="Phone"><input className={inputClass} value={form.emergency_phone} onChange={(e) => setField("emergency_phone", e.target.value)} /></Field>
-              <FormSection title="Course and package" />
-              <Field label="Course">
-                <DrivingSelect value={form.course_id} placeholder="Choose a course" onChange={(e) => setForm((current) => ({ ...current, course_id: e.target.value, package_id: "" }))} options={[{ value: "", label: "Choose a course" }, ...courses.map((course) => ({ value: String(course.id), label: `${course.code} · ${course.name}` }))]} />
-              </Field>
-              <Field label="Package">
-                <DrivingSelect value={form.package_id} placeholder={form.course_id ? "Choose a package" : "Choose a course first"} onChange={(e) => setField("package_id", e.target.value)} options={[{ value: "", label: form.course_id ? "Choose a package" : "Choose a course first" }, ...packages.map((item) => ({ value: String(item.id), label: `${item.name} · ${money(item.price)}` }))]} />
-              </Field>
-              <Field label="Preferred instructor">
-                <DrivingSelect value={form.preferred_instructor_id} placeholder="No preference" onChange={(e) => setField("preferred_instructor_id", e.target.value)} options={[{ value: "", label: "No preference" }, ...instructors.map((row) => ({ value: String(row.id), label: row.full_name }))]} />
-              </Field>
-              <Field label="Notes"><input className={inputClass} value={form.notes} onChange={(e) => setField("notes", e.target.value)} /></Field>
-            </div>
-          </div>
-        </FormCard>
-      </Editor>
     </div>
   );
 }
 
 export function CoursesScreen() {
+  const pathname = usePathname();
+  if (pathname.endsWith("/courses/new")) return <CourseFormScreen />;
+  if (pathname.endsWith("/courses/package")) return <PackageFormScreen />;
+  return <CourseListScreen />;
+}
+
+function CourseFormScreen() {
+  const { exitTo } = useRecordExit("Add course");
   const [form, setForm] = useState({ code: "", name: "", licence_category: "", price: "", practical_lessons: 10, theory_lessons: 8 });
-  const [pkg, setPkg] = useState({ course_id: "", name: "", price: "", registration_fee: "", practical_lessons: 10, theory_lessons: 8 });
-  const [courseOpen, setCourseOpen] = useState(false);
-  const [packageOpen, setPackageOpen] = useState(false);
-  const { data, error, reload } = useLoad(() => drivingGet("/courses"), "courses");
   async function save(event) {
     event.preventDefault();
     try {
       await drivingSend("/courses", "POST", { ...form, price: Number(form.price) || 0 });
       notifySuccess("Course saved with a Standard package.");
-      setForm({ code: "", name: "", licence_category: "", price: "", practical_lessons: 10, theory_lessons: 8 });
-      setCourseOpen(false);
-      reload();
+      exitTo("/driving-school/courses");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save the course.");
     }
   }
+  return (
+    <RecordFormPage title="Add course" backHref="/driving-school/courses">
+      <form onSubmit={save}>
+        <p className="theme-subtext mb-4 text-sm">Saving also creates a Standard package from the price and lesson counts.</p>
+        <div className="flex flex-col gap-4">
+          <Field label="Code"><input className={inputClass} required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
+          <Field label="Name"><input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Licence category"><input className={inputClass} placeholder="Class B — light vehicle" value={form.licence_category} onChange={(e) => setForm({ ...form, licence_category: e.target.value })} /></Field>
+          <Field label="Standard package price (KSh)"><input className={inputClass} required type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
+          <Field label="Practical lessons"><input className={inputClass} type="number" min="0" value={form.practical_lessons} onChange={(e) => setForm({ ...form, practical_lessons: Number(e.target.value) })} /></Field>
+          <Field label="Theory lessons"><input className={inputClass} type="number" min="0" value={form.theory_lessons} onChange={(e) => setForm({ ...form, theory_lessons: Number(e.target.value) })} /></Field>
+        </div>
+        <RecordFormActions backHref="/driving-school/courses" submitLabel="Save course" />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+function PackageFormScreen() {
+  const { exitTo } = useRecordExit("Add package");
+  const { data } = useLoad(() => drivingGet("/courses"), "package-courses");
+  const courses = rowsOf(data);
+  const [pkg, setPkg] = useState({ course_id: "", name: "", price: "", registration_fee: "", practical_lessons: 10, theory_lessons: 8 });
   async function savePackage(event) {
     event.preventDefault();
     if (!pkg.course_id) {
@@ -303,19 +342,39 @@ export function CoursesScreen() {
         theory_lessons: Number(pkg.theory_lessons) || 0,
       });
       notifySuccess("Package saved.");
-      setPkg({ course_id: pkg.course_id, name: "", price: "", registration_fee: "", practical_lessons: 10, theory_lessons: 8 });
-      setPackageOpen(false);
-      reload();
+      exitTo("/driving-school/courses");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save the package.");
     }
   }
+  return (
+    <RecordFormPage title="Add package" backHref="/driving-school/courses">
+      <form onSubmit={savePackage}>
+        <p className="theme-subtext mb-4 text-sm">Use this for a second price, such as weekend lessons or extra practical hours.</p>
+        <div className="flex flex-col gap-4">
+          <Field label="Course">
+            <DrivingSelect value={pkg.course_id} placeholder="Choose a course" onChange={(e) => setPkg({ ...pkg, course_id: e.target.value })} options={[{ value: "", label: "Choose a course" }, ...courses.map((course) => ({ value: String(course.id), label: `${course.code} · ${course.name}` }))]} />
+          </Field>
+          <Field label="Package name"><input className={inputClass} required value={pkg.name} onChange={(e) => setPkg({ ...pkg, name: e.target.value })} placeholder="Weekend" /></Field>
+          <Field label="Price (KSh)"><input className={inputClass} required type="number" min="0" value={pkg.price} onChange={(e) => setPkg({ ...pkg, price: e.target.value })} /></Field>
+          <Field label="Registration fee (KSh)"><input className={inputClass} type="number" min="0" value={pkg.registration_fee} onChange={(e) => setPkg({ ...pkg, registration_fee: e.target.value })} /></Field>
+          <Field label="Practical lessons"><input className={inputClass} type="number" min="0" value={pkg.practical_lessons} onChange={(e) => setPkg({ ...pkg, practical_lessons: Number(e.target.value) })} /></Field>
+          <Field label="Theory lessons"><input className={inputClass} type="number" min="0" value={pkg.theory_lessons} onChange={(e) => setPkg({ ...pkg, theory_lessons: Number(e.target.value) })} /></Field>
+        </div>
+        <RecordFormActions backHref="/driving-school/courses" submitLabel="Save package" />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+function CourseListScreen() {
+  const { data, error } = useLoad(() => drivingGet("/courses"), "courses");
   const courses = rowsOf(data);
   return (
     <div>
       <ScreenHeader title="Courses & packages" subtitle="A course is the licence class. Packages are the prices and lesson counts a student chooses when they register.">
-        <button type="button" className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-medium" onClick={() => setPackageOpen(true)}>Add package</button>
-        <button type="button" className={primaryButtonClass} onClick={() => setCourseOpen(true)}>Add course</button>
+        <AppNavLink href="/driving-school/courses/package" className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-medium">Add package</AppNavLink>
+        <AppNavLink href="/driving-school/courses/new" className={primaryButtonClass}>Add course</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Card>
@@ -333,28 +392,6 @@ export function CoursesScreen() {
           ]}
         />
       </Card>
-      <Editor open={courseOpen} title="New course" onClose={() => setCourseOpen(false)}>
-        <FormCard bare hint="Saving also creates a Standard package from the price and lesson counts." submitLabel="Save course" onCancel={() => setCourseOpen(false)} onSubmit={save}>
-          <Field label="Code"><input className={inputClass} required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
-          <Field label="Name"><input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Licence category"><input className={inputClass} placeholder="Class B — light vehicle" value={form.licence_category} onChange={(e) => setForm({ ...form, licence_category: e.target.value })} /></Field>
-          <Field label="Standard package price (KSh)"><input className={inputClass} required type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
-          <Field label="Practical lessons"><input className={inputClass} type="number" min="0" value={form.practical_lessons} onChange={(e) => setForm({ ...form, practical_lessons: Number(e.target.value) })} /></Field>
-          <Field label="Theory lessons"><input className={inputClass} type="number" min="0" value={form.theory_lessons} onChange={(e) => setForm({ ...form, theory_lessons: Number(e.target.value) })} /></Field>
-        </FormCard>
-      </Editor>
-      <Editor open={packageOpen} title="Another package" onClose={() => setPackageOpen(false)}>
-        <FormCard bare hint="Use this for a second price, such as weekend lessons or extra practical hours." submitLabel="Save package" onCancel={() => setPackageOpen(false)} onSubmit={savePackage}>
-          <Field label="Course">
-            <DrivingSelect value={pkg.course_id} placeholder="Choose a course" onChange={(e) => setPkg({ ...pkg, course_id: e.target.value })} options={[{ value: "", label: "Choose a course" }, ...courses.map((course) => ({ value: String(course.id), label: `${course.code} · ${course.name}` }))]} />
-          </Field>
-          <Field label="Package name"><input className={inputClass} required value={pkg.name} onChange={(e) => setPkg({ ...pkg, name: e.target.value })} placeholder="Weekend" /></Field>
-          <Field label="Price (KSh)"><input className={inputClass} required type="number" min="0" value={pkg.price} onChange={(e) => setPkg({ ...pkg, price: e.target.value })} /></Field>
-          <Field label="Registration fee (KSh)"><input className={inputClass} type="number" min="0" value={pkg.registration_fee} onChange={(e) => setPkg({ ...pkg, registration_fee: e.target.value })} /></Field>
-          <Field label="Practical lessons"><input className={inputClass} type="number" min="0" value={pkg.practical_lessons} onChange={(e) => setPkg({ ...pkg, practical_lessons: Number(e.target.value) })} /></Field>
-          <Field label="Theory lessons"><input className={inputClass} type="number" min="0" value={pkg.theory_lessons} onChange={(e) => setPkg({ ...pkg, theory_lessons: Number(e.target.value) })} /></Field>
-        </FormCard>
-      </Editor>
     </div>
   );
 }
@@ -365,15 +402,13 @@ function shiftDate(value, days) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function ScheduleScreen() {
-  const [date, setDate] = useState(todayDate);
-  const [open, setOpen] = useState(false);
+function LessonFormScreen() {
+  const { exitTo } = useRecordExit("Book lesson");
   const [studentQuery, setStudentQuery] = useState("");
   const [form, setForm] = useState({ student_id: "", instructor_id: "", vehicle_id: "", lesson_type: "practical", starts_at: "", duration_minutes: 60, location: "" });
-  const { data, error, reload } = useLoad(() => drivingGet("/lessons", { from: date, to: date }), `lessons:${date}`);
-  const studentLoad = useLoad(() => drivingGet("/students", { per_page: 100 }), "schedule-students");
-  const instructorLoad = useLoad(() => drivingGet("/instructors"), "schedule-instructors");
-  const vehicleLoad = useLoad(() => drivingGet("/vehicles"), "schedule-vehicles");
+  const studentLoad = useLoad(() => drivingGet("/students", { per_page: 100 }), "lesson-form-students");
+  const instructorLoad = useLoad(() => drivingGet("/instructors"), "lesson-form-instructors");
+  const vehicleLoad = useLoad(() => drivingGet("/vehicles"), "lesson-form-vehicles");
   const students = rowsOf(studentLoad.data);
   const instructors = rowsOf(instructorLoad.data);
   const vehicles = rowsOf(vehicleLoad.data);
@@ -393,12 +428,64 @@ export function ScheduleScreen() {
         starts_at: form.starts_at,
       });
       notifySuccess("Lesson booked.");
-      setOpen(false);
-      reload();
+      exitTo("/driving-school/schedule");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not book the lesson.");
     }
   }
+  return (
+    <RecordFormPage title="Book a lesson" backHref="/driving-school/schedule" wide>
+      <form onSubmit={save}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <FormSection title="Select student" />
+            <div className="mt-3">
+              <SearchField value={studentQuery} onChange={setStudentQuery} placeholder="Search students" />
+            </div>
+            <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+              {visibleStudents.length === 0 ? <Empty>No students match.</Empty> : visibleStudents.map((student) => {
+                const selected = String(form.student_id) === String(student.id);
+                return (
+                  <button key={student.id} type="button" className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${selected ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_8%,transparent)]" : "border-[var(--theme-border)]"}`} onClick={() => setForm({ ...form, student_id: String(student.id) })}>
+                    <PersonName name={student.full_name} detail={student.phone || student.student_number} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex flex-col gap-4">
+            <FormSection title="Lesson details" />
+            <Field label="Type">
+              <DrivingSelect value={form.lesson_type} onChange={(e) => setForm({ ...form, lesson_type: e.target.value })} options={[{ value: "practical", label: "Practical" }, { value: "theory", label: "Theory" }]} />
+            </Field>
+            <Field label="Instructor">
+              <DrivingSelect value={form.instructor_id} placeholder="Choose an instructor" onChange={(e) => setForm({ ...form, instructor_id: e.target.value })} options={[{ value: "", label: "Choose an instructor" }, ...instructors.map((row) => ({ value: String(row.id), label: row.full_name }))]} />
+            </Field>
+            <Field label="Vehicle">
+              <DrivingSelect value={form.vehicle_id} placeholder="No vehicle" onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })} options={[{ value: "", label: "No vehicle" }, ...vehicles.map((row) => ({ value: String(row.id), label: row.registration_number }))]} />
+            </Field>
+            <Field label="Starts"><input className={inputClass} required type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></Field>
+            <Field label="Duration (minutes)"><input className={inputClass} type="number" min="15" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></Field>
+            <Field label="Location"><input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Yard, route, or classroom" /></Field>
+          </div>
+        </div>
+        <RecordFormActions backHref="/driving-school/schedule" submitLabel="Book lesson" />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+export function ScheduleScreen() {
+  const pathname = usePathname();
+  if (pathname.endsWith("/schedule/new")) return <LessonFormScreen />;
+  return <ScheduleListScreen />;
+}
+
+function ScheduleListScreen() {
+  const [date, setDate] = useState(todayDate);
+  const { data, error } = useLoad(() => drivingGet("/lessons", { from: date, to: date }), `lessons:${date}`);
+  const instructorLoad = useLoad(() => drivingGet("/instructors"), "schedule-instructors");
+  const instructors = rowsOf(instructorLoad.data);
   const lessons = rowsOf(data);
   return (
     <div>
@@ -406,49 +493,12 @@ export function ScheduleScreen() {
         <button type="button" className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" onClick={() => setDate((current) => shiftDate(current, -1))}>Previous</button>
         <input className={`${inputClass} w-40`} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         <button type="button" className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" onClick={() => setDate((current) => shiftDate(current, 1))}>Next</button>
-        <button type="button" className={primaryButtonClass} onClick={() => setOpen(true)}>Book lesson</button>
+        <AppNavLink href="/driving-school/schedule/new" className={primaryButtonClass}>Book lesson</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Card>
         {lessons.length === 0 && instructors.length === 0 ? <Empty>No lessons booked for this day.</Empty> : <DayBoard lessons={lessons} instructors={instructors} />}
       </Card>
-      <Editor open={open} title="Book a lesson" wide onClose={() => setOpen(false)}>
-        <FormCard bare submitLabel="Book lesson" onCancel={() => setOpen(false)} onSubmit={save}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <FormSection title="Select student" />
-              <div className="mt-3">
-                <SearchField value={studentQuery} onChange={setStudentQuery} placeholder="Search students" />
-              </div>
-              <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                {visibleStudents.length === 0 ? <Empty>No students match.</Empty> : visibleStudents.map((student) => {
-                  const selected = String(form.student_id) === String(student.id);
-                  return (
-                    <button key={student.id} type="button" className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${selected ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_8%,transparent)]" : "border-[var(--theme-border)]"}`} onClick={() => setForm({ ...form, student_id: String(student.id) })}>
-                      <PersonName name={student.full_name} detail={student.phone || student.student_number} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex flex-col gap-4">
-              <FormSection title="Lesson details" />
-              <Field label="Type">
-                <DrivingSelect value={form.lesson_type} onChange={(e) => setForm({ ...form, lesson_type: e.target.value })} options={[{ value: "practical", label: "Practical" }, { value: "theory", label: "Theory" }]} />
-              </Field>
-              <Field label="Instructor">
-                <DrivingSelect value={form.instructor_id} placeholder="Choose an instructor" onChange={(e) => setForm({ ...form, instructor_id: e.target.value })} options={[{ value: "", label: "Choose an instructor" }, ...instructors.map((row) => ({ value: String(row.id), label: row.full_name }))]} />
-              </Field>
-              <Field label="Vehicle">
-                <DrivingSelect value={form.vehicle_id} placeholder="No vehicle" onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })} options={[{ value: "", label: "No vehicle" }, ...vehicles.map((row) => ({ value: String(row.id), label: row.registration_number }))]} />
-              </Field>
-              <Field label="Starts"><input className={inputClass} required type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></Field>
-              <Field label="Duration (minutes)"><input className={inputClass} type="number" min="15" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></Field>
-              <Field label="Location"><input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Yard, route, or classroom" /></Field>
-            </div>
-          </div>
-        </FormCard>
-      </Editor>
     </div>
   );
 }
@@ -458,10 +508,17 @@ function prettyLabel(name) {
 }
 
 function DirectoryScreen({ title, subtitle, path, fields, columns, person = false, addLabel }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const pathname = usePathname();
+  const createHref = `/driving-school${path}/new`;
+  if (pathname === createHref) {
+    return <DirectoryFormScreen title={addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`} path={path} fields={fields} backHref={`/driving-school${path}`} />;
+  }
+  return <DirectoryListScreen title={title} subtitle={subtitle} path={path} fields={fields} columns={columns} person={person} addLabel={addLabel} createHref={createHref} />;
+}
+
+function DirectoryFormScreen({ title, path, fields, backHref }) {
+  const { exitTo } = useRecordExit(title);
   const [form, setForm] = useState(() => Object.fromEntries(fields.map((field) => [field.name, field.default ?? ""])));
-  const { data, error, reload } = useLoad(() => drivingGet(path), path);
   async function save(event) {
     event.preventDefault();
     const body = { ...form };
@@ -471,13 +528,30 @@ function DirectoryScreen({ title, subtitle, path, fields, columns, person = fals
     try {
       await drivingSend(path, "POST", body);
       notifySuccess("Saved.");
-      setOpen(false);
-      setForm(Object.fromEntries(fields.map((field) => [field.name, field.default ?? ""])));
-      reload();
+      exitTo(backHref);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save.");
     }
   }
+  return (
+    <RecordFormPage title={title} backHref={backHref}>
+      <form onSubmit={save}>
+        <div className="flex flex-col gap-4">
+          {fields.map((field) => (
+            <Field key={field.name} label={field.label}>
+              <input className={inputClass} required={field.required} type={field.type || "text"} value={form[field.name]} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />
+            </Field>
+          ))}
+        </div>
+        <RecordFormActions backHref={backHref} />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+function DirectoryListScreen({ title, subtitle, path, columns, person = false, addLabel, createHref }) {
+  const [query, setQuery] = useState("");
+  const { data, error } = useLoad(() => drivingGet(path), path);
   const list = rowsOf(data).filter((row) => {
     const haystack = columns.map((column) => row[column]).join(" ").toLowerCase();
     return !query || haystack.includes(query.trim().toLowerCase());
@@ -498,7 +572,7 @@ function DirectoryScreen({ title, subtitle, path, fields, columns, person = fals
   return (
     <div>
       <ScreenHeader title={title} subtitle={subtitle}>
-        <button type="button" className={primaryButtonClass} onClick={() => setOpen(true)}>{addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`}</button>
+        <AppNavLink href={createHref} className={primaryButtonClass}>{addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`}</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Toolbar>
@@ -507,15 +581,6 @@ function DirectoryScreen({ title, subtitle, path, fields, columns, person = fals
       <Card>
         <DataTable columns={tableColumns} rows={list} empty="Nothing saved yet." />
       </Card>
-      <Editor open={open} title={addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`} onClose={() => setOpen(false)}>
-        <FormCard bare submitLabel="Save" onCancel={() => setOpen(false)} onSubmit={save}>
-          {fields.map((field) => (
-            <Field key={field.name} label={field.label}>
-              <input className={inputClass} required={field.required} type={field.type || "text"} value={form[field.name]} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />
-            </Field>
-          ))}
-        </FormCard>
-      </Editor>
     </div>
   );
 }
@@ -674,27 +739,54 @@ export function AttendanceScreen() {
   );
 }
 
-export function AssessmentsScreen() {
-  const students = useLoad(() => drivingGet("/students"), "assessment-students").data;
-  const { data, error, reload } = useLoad(() => drivingGet("/assessments"), "assessments");
-  const [open, setOpen] = useState(false);
+function AssessmentFormScreen() {
+  const { exitTo } = useRecordExit("Record assessment");
+  const students = useLoad(() => drivingGet("/students"), "assessment-form-students").data;
   const [form, setForm] = useState({ student_id: "", kind: "practical", title: "School practical check", score: "", assessed_on: "" });
   async function save(event) {
     event.preventDefault();
     try {
       const res = await drivingSend("/assessments", "POST", { ...form, student_id: Number(form.student_id), score: Number(form.score) });
       notifySuccess(res.message || "Assessment saved.");
-      setOpen(false);
-      reload();
+      exitTo("/driving-school/assessments");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save the assessment.");
     }
   }
+  return (
+    <RecordFormPage title="Record an assessment" backHref="/driving-school/assessments">
+      <form onSubmit={save}>
+        <p className="theme-subtext mb-4 text-sm">This is an internal school check. It is not an official licensing result.</p>
+        <div className="flex flex-col gap-4">
+          <Field label="Student">
+            <DrivingSelect required value={form.student_id} placeholder="Choose a student" onChange={(e) => setForm({ ...form, student_id: e.target.value })} options={[{ value: "", label: "Choose a student" }, ...rowsOf(students).map((row) => ({ value: String(row.id), label: row.full_name }))]} />
+          </Field>
+          <Field label="Kind">
+            <DrivingSelect value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} options={[{ value: "practical", label: "Practical" }, { value: "theory", label: "Theory" }]} />
+          </Field>
+          <Field label="Title"><input className={inputClass} required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Score"><input className={inputClass} required type="number" min="0" value={form.score} onChange={(e) => setForm({ ...form, score: e.target.value })} /></Field>
+          <Field label="Date"><input className={inputClass} required type="date" value={form.assessed_on} onChange={(e) => setForm({ ...form, assessed_on: e.target.value })} /></Field>
+        </div>
+        <RecordFormActions backHref="/driving-school/assessments" submitLabel="Save assessment" />
+      </form>
+    </RecordFormPage>
+  );
+}
+
+export function AssessmentsScreen() {
+  const pathname = usePathname();
+  if (pathname.endsWith("/assessments/new")) return <AssessmentFormScreen />;
+  return <AssessmentListScreen />;
+}
+
+function AssessmentListScreen() {
+  const { data, error } = useLoad(() => drivingGet("/assessments"), "assessments");
   const assessments = rowsOf(data);
   return (
     <div>
       <ScreenHeader title="Assessments" subtitle="Internal school checks. They are not official government licensing results.">
-        <button type="button" className={primaryButtonClass} onClick={() => setOpen(true)}>Record assessment</button>
+        <AppNavLink href="/driving-school/assessments/new" className={primaryButtonClass}>Record assessment</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Card>
@@ -710,60 +802,86 @@ export function AssessmentsScreen() {
           ]}
         />
       </Card>
-      <Editor open={open} title="Record an assessment" onClose={() => setOpen(false)}>
-        <FormCard bare hint="This is an internal school check. It is not an official licensing result." submitLabel="Save assessment" onCancel={() => setOpen(false)} onSubmit={save}>
-          <Field label="Student">
-            <DrivingSelect required value={form.student_id} placeholder="Choose a student" onChange={(e) => setForm({ ...form, student_id: e.target.value })} options={[{ value: "", label: "Choose a student" }, ...rowsOf(students).map((row) => ({ value: String(row.id), label: row.full_name }))]} />
-          </Field>
-          <Field label="Kind">
-            <DrivingSelect value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} options={[{ value: "practical", label: "Practical" }, { value: "theory", label: "Theory" }]} />
-          </Field>
-          <Field label="Title"><input className={inputClass} required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Score"><input className={inputClass} required type="number" min="0" value={form.score} onChange={(e) => setForm({ ...form, score: e.target.value })} /></Field>
-          <Field label="Date"><input className={inputClass} required type="date" value={form.assessed_on} onChange={(e) => setForm({ ...form, assessed_on: e.target.value })} /></Field>
-        </FormCard>
-      </Editor>
     </div>
   );
 }
 
-export function PaymentsScreen() {
+function PaymentFormScreen() {
+  const { exitTo } = useRecordExit("Record payment");
   const { organization } = useAuth();
-  const { data, error, reload } = useLoad(() => drivingGet("/invoices"), "invoices");
-  const [open, setOpen] = useState(false);
+  const { data } = useLoad(() => drivingGet("/invoices"), "payment-form-invoices");
   const [paper, setPaper] = useState("a4");
   const [slip, setSlip] = useState(null);
   const [payment, setPayment] = useState({ invoice_id: "", amount: "", method: "cash", reference: "" });
   const invoices = rowsOf(data);
-  function openReceipt(row, recorded = null) {
-    const paymentRow = recorded || row.latest_payment;
-    if (!paymentRow) return;
-    setSlip(buildDrivingFeeReceipt({
-      payment: { ...paymentRow, outstanding: recorded?.outstanding ?? row.outstanding },
-      invoice: recorded?.invoice || row,
-      student: recorded?.student || row.student,
-      organization,
-    }));
-  }
   async function save(event) {
     event.preventDefault();
     try {
       const res = await drivingSend("/payments", "POST", { ...payment, invoice_id: Number(payment.invoice_id), amount: Number(payment.amount) });
       notifySuccess(res.message || "Payment recorded.");
       const recorded = res.data || {};
-      const invoice = invoices.find((row) => String(row.id) === String(payment.invoice_id));
-      openReceipt(invoice || {}, recorded);
-      setOpen(false);
-      setPayment({ invoice_id: "", amount: "", method: "cash", reference: "" });
-      reload();
+      const invoice = invoices.find((row) => String(row.id) === String(payment.invoice_id)) || {};
+      const paymentRow = recorded.id ? recorded : null;
+      if (paymentRow) {
+        setSlip(buildDrivingFeeReceipt({
+          payment: { ...paymentRow, outstanding: recorded.outstanding ?? invoice.outstanding },
+          invoice: recorded.invoice || invoice,
+          student: recorded.student || invoice.student,
+          organization,
+        }));
+      } else {
+        exitTo("/driving-school/payments");
+      }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not record the payment.");
     }
   }
   return (
+    <RecordFormPage title="Record a receipt" backHref="/driving-school/payments">
+      <form onSubmit={save}>
+        <div className="flex flex-col gap-4">
+          <Field label="Invoice">
+            <DrivingSelect required value={payment.invoice_id} placeholder="Choose an invoice" onChange={(e) => setPayment({ ...payment, invoice_id: e.target.value })} options={[{ value: "", label: "Choose an invoice" }, ...invoices.map((row) => ({ value: String(row.id), label: `${row.invoice_number} · due ${money(row.outstanding)}` }))]} />
+          </Field>
+          <Field label="Amount (KSh)"><input className={inputClass} required type="number" min="0" step="0.01" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
+          <Field label="Method">
+            <DrivingSelect value={payment.method} onChange={(e) => setPayment({ ...payment, method: e.target.value })} options={[{ value: "cash", label: "Cash" }, { value: "bank", label: "Bank" }, { value: "card", label: "Card" }, { value: "mpesa", label: "M-Pesa reference" }]} />
+          </Field>
+          <Field label="Reference"><input className={inputClass} value={payment.reference} onChange={(e) => setPayment({ ...payment, reference: e.target.value })} placeholder="Receipt or transaction code" /></Field>
+        </div>
+        <RecordFormActions backHref="/driving-school/payments" submitLabel="Record receipt" />
+      </form>
+      {slip ? <ServiceReceiptDialog receipt={slip} paper={paper} onPaper={setPaper} onClose={() => exitTo("/driving-school/payments")} /> : null}
+    </RecordFormPage>
+  );
+}
+
+export function PaymentsScreen() {
+  const pathname = usePathname();
+  if (pathname.endsWith("/payments/new")) return <PaymentFormScreen />;
+  return <PaymentListScreen />;
+}
+
+function PaymentListScreen() {
+  const { organization } = useAuth();
+  const { data, error } = useLoad(() => drivingGet("/invoices"), "invoices");
+  const [paper, setPaper] = useState("a4");
+  const [slip, setSlip] = useState(null);
+  const invoices = rowsOf(data);
+  function openReceipt(row) {
+    const paymentRow = row.latest_payment;
+    if (!paymentRow) return;
+    setSlip(buildDrivingFeeReceipt({
+      payment: { ...paymentRow, outstanding: row.outstanding },
+      invoice: row,
+      student: row.student,
+      organization,
+    }));
+  }
+  return (
     <div>
       <ScreenHeader title="Payments" subtitle="An M-Pesa reference recorded here is a staff receipt. It is not confirmed by Safaricom unless a configured callback matches it.">
-        <button type="button" className={primaryButtonClass} onClick={() => setOpen(true)}>Record payment</button>
+        <AppNavLink href="/driving-school/payments/new" className={primaryButtonClass}>Record payment</AppNavLink>
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Card>
@@ -781,18 +899,6 @@ export function PaymentsScreen() {
         />
       </Card>
       {slip ? <ServiceReceiptDialog receipt={slip} paper={paper} onPaper={setPaper} onClose={() => setSlip(null)} /> : null}
-      <Editor open={open} title="Record a receipt" onClose={() => setOpen(false)}>
-        <FormCard bare submitLabel="Record receipt" onCancel={() => setOpen(false)} onSubmit={save}>
-          <Field label="Invoice">
-            <DrivingSelect required value={payment.invoice_id} placeholder="Choose an invoice" onChange={(e) => setPayment({ ...payment, invoice_id: e.target.value })} options={[{ value: "", label: "Choose an invoice" }, ...invoices.map((row) => ({ value: String(row.id), label: `${row.invoice_number} · due ${money(row.outstanding)}` }))]} />
-          </Field>
-          <Field label="Amount (KSh)"><input className={inputClass} required type="number" min="0" step="0.01" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></Field>
-          <Field label="Method">
-            <DrivingSelect value={payment.method} onChange={(e) => setPayment({ ...payment, method: e.target.value })} options={[{ value: "cash", label: "Cash" }, { value: "bank", label: "Bank" }, { value: "card", label: "Card" }, { value: "mpesa", label: "M-Pesa reference" }]} />
-          </Field>
-          <Field label="Reference"><input className={inputClass} value={payment.reference} onChange={(e) => setPayment({ ...payment, reference: e.target.value })} placeholder="Receipt or transaction code" /></Field>
-        </FormCard>
-      </Editor>
     </div>
   );
 }
@@ -864,10 +970,11 @@ export function ReportsScreen() {
   const totals = moneyKeys.map((key) => rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0));
   return (
     <div>
-      <ScreenHeader title="Reports" subtitle={data?.note || "Receipts, enrolments, outstanding fees, lessons, vehicles, and expenses."}>
-        <input className={`${inputClass} w-40`} type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} aria-label="From" />
-        <input className={`${inputClass} w-40`} type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} aria-label="To" />
-      </ScreenHeader>
+      <ScreenHeader title="Reports" subtitle={data?.note || "Receipts, enrolments, outstanding fees, lessons, vehicles, and expenses."} />
+      <Toolbar>
+        <input className="theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none" type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} aria-label="From" />
+        <input className="theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none" type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} aria-label="To" />
+      </Toolbar>
       <div className="mb-4 flex flex-wrap gap-2">
         {Object.entries(DRIVING_REPORTS).map(([key, item]) => (
           <button key={key} type="button" className={`rounded-full px-3 py-1.5 text-sm ${report === key ? "theme-primary-btn" : "theme-secondary-btn"}`} onClick={() => setReport(key)}>{item.label}</button>

@@ -1,29 +1,41 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { datePart, formatDay, formatTime, minutesOf, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, SpaContextMenu, SpaSelect, inputClass, textAreaClass, toolbarControlClass } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Badge, Button, Empty, Field, PageHeader, SpaContextMenu, SpaFilters, SpaSelect, inputClass, primaryLinkClass, textAreaClass, toolbarControlClass } from "@/components/spa/ui";
 
 const START = 8 * 60;
 const END = 19 * 60;
 
+function bookingHref(draft) {
+  if (draft.id) return `/spa/appointments/${encodeURIComponent(draft.id)}/edit`;
+  const query = new URLSearchParams();
+  if (draft.start) query.set("start", draft.start);
+  if (draft.staffId) query.set("staff", draft.staffId);
+  const suffix = query.toString();
+  return suffix ? `/spa/appointments/new?${suffix}` : "/spa/appointments/new";
+}
+
 export function AppointmentsScreen() {
   const spa = useSpa();
   const params = useSearchParams();
+  const router = useAppRouter();
   const [view, setView] = useState("day");
   const [date, setDate] = useState(todayISO());
-  const [editing, setEditing] = useState(null);
-  const [skipNew, setSkipNew] = useState(false);
-  const [walkIn, setWalkIn] = useState(false);
   const [queueStaff, setQueueStaff] = useState({});
   const [menu, setMenu] = useState(null);
   const dayClick = useRef(null);
-
-  const active = editing || (!skipNew && params.get("new") === "1" ? blank(date) : null);
   const visible = spa.appointments.filter((item) => item.status !== "cancelled");
+
+  useEffect(() => {
+    if (params.get("new") === "1") router.replace("/spa/appointments/new");
+  }, [params, router]);
 
   const days = useMemo(() => {
     const start = new Date(`${date}T12:00:00`);
@@ -50,30 +62,19 @@ export function AppointmentsScreen() {
     return [date];
   }, [date, view]);
 
-  function save(draft) {
-    const error = spa.saveAppointment(draft);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-    toast.success(draft.id ? "Appointment updated." : "Appointment booked.");
-    setEditing(null);
-    setSkipNew(true);
-  }
-
   return (
     <div>
       <PageHeader title="Appointments" detail={`${spa.branch} calendar. Double-click or right-click a time to book.`}>
-        <Field label="Date">
-          <input type="date" className={toolbarControlClass} value={date} aria-label="Calendar date" onChange={(event) => setDate(event.target.value)} />
-        </Field>
         <div className="theme-panel flex rounded-lg p-1 shadow-sm">
           {["day", "week", "month"].map((option) => (
             <button key={option} type="button" className={`rounded-md px-3 py-1.5 text-sm capitalize ${view === option ? "bg-[var(--theme-primary)] text-white" : "theme-subtext"}`} onClick={() => setView(option)}>{option}</button>
           ))}
         </div>
-        <Button onClick={() => setEditing(blank(date))}>New appointment</Button>
+        <AppNavLink href="/spa/appointments/new" className={primaryLinkClass}>New appointment</AppNavLink>
       </PageHeader>
+      <SpaFilters>
+        <input type="date" className={toolbarControlClass} value={date} aria-label="Calendar date" onChange={(event) => setDate(event.target.value)} />
+      </SpaFilters>
 
       {view === "month" ? (
         <div className="grid grid-cols-7 gap-2">
@@ -95,11 +96,11 @@ export function AppointmentsScreen() {
                   event.preventDefault();
                   event.stopPropagation();
                   window.clearTimeout(dayClick.current);
-                  setEditing(blank(iso));
+                  router.push(bookingHref(blank(iso)));
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  setMenu({ x: event.clientX, y: event.clientY, items: [{ label: "New appointment", onSelect: () => setEditing(blank(iso)) }] });
+                  setMenu({ x: event.clientX, y: event.clientY, items: [{ label: "New appointment", onSelect: () => router.push(bookingHref(blank(iso))) }] });
                 }}
               >
                 <span className="font-medium">{formatDay(iso)}</span>
@@ -129,7 +130,7 @@ export function AppointmentsScreen() {
                 style={{ height: ((END - START) / 60) * 48 }}
                 onDoubleClick={(event) => {
                   if (event.target.closest("[data-appointment]")) return;
-                  setEditing(slotFromClick(event, column, view, date));
+                  router.push(bookingHref(slotFromClick(event, column, view, date)));
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -141,7 +142,7 @@ export function AppointmentsScreen() {
                       x: event.clientX,
                       y: event.clientY,
                       items: [
-                        { label: "Edit appointment", onSelect: () => setEditing(item) },
+                        { label: "Edit appointment", onSelect: () => router.push(bookingHref(item)) },
                         { label: "Cancel booking", onSelect: () => { spa.setAppointmentStatus(item.id, "cancelled"); toast.success("Appointment cancelled."); } },
                       ],
                     });
@@ -151,7 +152,7 @@ export function AppointmentsScreen() {
                   setMenu({
                     x: event.clientX,
                     y: event.clientY,
-                    items: [{ label: "New appointment", onSelect: () => setEditing(draft) }],
+                    items: [{ label: "New appointment", onSelect: () => router.push(bookingHref(draft)) }],
                   });
                 }}
               >
@@ -162,7 +163,7 @@ export function AppointmentsScreen() {
                   const service = spa.services.find((row) => row.id === item.serviceId);
                   const color = spa.staff.find((row) => row.id === item.staffId)?.color || "#DBEAFE";
                   return (
-                    <button key={item.id} type="button" data-appointment={item.id} className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-left text-xs" style={{ top, height, background: color }} onClick={() => setEditing(item)} onDoubleClick={(event) => { event.stopPropagation(); setEditing(item); }}>
+                    <button key={item.id} type="button" data-appointment={item.id} className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-left text-xs" style={{ top, height, background: color }} onClick={() => router.push(bookingHref(item))} onDoubleClick={(event) => { event.stopPropagation(); router.push(bookingHref(item)); }}>
                       <p className="font-semibold">{client?.name}</p>
                       <p>{service?.name}</p>
                       <p>{formatTime(item.start)}</p>
@@ -204,19 +205,13 @@ export function AppointmentsScreen() {
         </div>
         <div className="theme-panel rounded-xl border p-4">
           <h2 className="text-sm font-semibold">Add a walk-in</h2>
-          <Button className="mt-3" variant="ghost" onClick={() => setWalkIn(true)}>Quick booking</Button>
+          <AppNavLink href="/spa/appointments/walk-in" className="theme-secondary-btn mt-3 inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium">Quick booking</AppNavLink>
           {spa.features.rooms ? <p className="mt-4 text-xs text-slate-500">Treatment rooms: {spa.rooms.map((room) => room.name).join(", ")}</p> : null}
           {spa.features.chairs ? <p className="mt-2 text-xs text-slate-500">Chairs open: {spa.chairs.length}</p> : null}
         </div>
       </section>
 
       <SpaContextMenu menu={menu} onClose={() => setMenu(null)} items={menu?.items ?? []} />
-      {active ? <BookingModal spa={spa} draft={active} onClose={() => { setEditing(null); setSkipNew(true); }} onSave={save} /> : null}
-      {walkIn ? <WalkInModal onClose={() => setWalkIn(false)} onSave={(draft) => {
-        const error = spa.addWalkIn(draft);
-        if (error) toast.error(error);
-        else { toast.success("Added to the walk-in queue."); setWalkIn(false); }
-      }} services={spa.services} /> : null}
     </div>
   );
 }
@@ -239,11 +234,45 @@ function slotFromClick(event, column, view, date) {
   };
 }
 
-function BookingModal({ spa, draft, onClose, onSave }) {
-  const [form, setForm] = useState(draft);
+export function AppointmentFormScreen({ id }) {
+  const spa = useSpa();
+  const params = useSearchParams();
+  const existing = id ? spa.appointments.find((item) => item.id === id) : null;
+  const title = id ? "Edit appointment" : "New appointment";
+  const { exitTo } = useRecordExit(title);
+  const [form, setForm] = useState(() => existing || {
+    ...blank((params.get("start") || "").slice(0, 10) || todayISO()),
+    start: params.get("start") || `${todayISO()}T09:00`,
+    staffId: params.get("staff") || "",
+  });
+  useEffect(() => {
+    if (id || existing) return;
+    const start = params.get("start");
+    const staff = params.get("staff");
+    if (!start && !staff) return;
+    setForm((current) => {
+      if ((!start || current.start === start) && (!staff || current.staffId === staff)) return current;
+      return {
+        ...current,
+        ...(start ? { start } : {}),
+        ...(staff ? { staffId: staff } : {}),
+      };
+    });
+  }, [existing, id, params]);
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  if (id && !existing) return <Empty title="Appointment not found" detail="It may have been cancelled or removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
+    const error = spa.saveAppointment(form);
+    if (error) toast.error(error);
+    else {
+      toast.success(form.id ? "Appointment updated." : "Appointment booked.");
+      exitTo("/spa/appointments");
+    }
+  }
   return (
-    <Modal title={form.id ? "Edit appointment" : "New appointment"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/appointments" wide>
+      <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Client"><SpaSelect value={form.clientId} onChange={set("clientId")} placeholder="Select" options={[{ value: "", label: "Select" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
         <Field label="Service"><SpaSelect value={form.serviceId} placeholder="Select" onChange={(event) => {
@@ -258,31 +287,39 @@ function BookingModal({ spa, draft, onClose, onSave }) {
         {spa.features.chairs ? <Field label="Chair"><SpaSelect value={form.chairId} onChange={set("chairId")} placeholder="None" options={[{ value: "", label: "None" }, ...spa.chairs.map((chair) => ({ value: chair.id, label: chair.name }))]} /></Field> : null}
       </div>
       <Field label="Notes"><textarea className={`${textAreaClass} mt-3`} rows={2} value={form.notes} onChange={set("notes")} /></Field>
-      <div className="mt-4 flex flex-wrap justify-between gap-2">
-        {form.id ? <Button variant="danger" onClick={() => { spa.setAppointmentStatus(form.id, "cancelled"); toast.success("Appointment cancelled."); onClose(); }}>Cancel booking</Button> : <span />}
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={onClose}>Close</Button>
-          <Button onClick={() => onSave(form)}>Save</Button>
-        </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        {form.id ? <Button variant="danger" onClick={() => { spa.setAppointmentStatus(form.id, "cancelled"); toast.success("Appointment cancelled."); exitTo("/spa/appointments"); }}>Cancel booking</Button> : <span />}
+        <RecordFormActions backHref="/spa/appointments" />
       </div>
-      {form.id ? <p className="mt-3 text-xs text-slate-500"><Badge tone="blue">{form.status.replace("_", " ")}</Badge> Change the time above to reschedule.</p> : null}
-    </Modal>
+      {form.id ? <p className="mt-3 text-xs text-slate-500"><Badge tone="blue">{String(form.status).replace("_", " ")}</Badge> Change the time above to reschedule.</p> : null}
+      </form>
+    </RecordFormPage>
   );
 }
 
-function WalkInModal({ services, onClose, onSave }) {
-  const [form, setForm] = useState({ name: "", phone: "", serviceId: services[0]?.id || "" });
+export function WalkInFormScreen() {
+  const spa = useSpa();
+  const { exitTo } = useRecordExit("Walk-in");
+  const [form, setForm] = useState({ name: "", phone: "", serviceId: spa.services[0]?.id || "" });
+  function save(event) {
+    event.preventDefault();
+    const error = spa.addWalkIn(form);
+    if (error) toast.error(error);
+    else {
+      toast.success("Added to the walk-in queue.");
+      exitTo("/spa/appointments");
+    }
+  }
   return (
-    <Modal title="Walk-in" onClose={onClose}>
+    <RecordFormPage title="Walk-in" backHref="/spa/appointments">
+      <form onSubmit={save}>
       <div className="grid gap-3">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
-        <Field label="Service"><SpaSelect value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })} options={services.map((item) => ({ value: item.id, label: item.name }))} /></Field>
+        <Field label="Service"><SpaSelect value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })} options={spa.services.map((item) => ({ value: item.id, label: item.name }))} /></Field>
       </div>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button onClick={() => onSave(form)}>Add to queue</Button>
-      </div>
-    </Modal>
+      <RecordFormActions backHref="/spa/appointments" submitLabel="Add to queue" />
+      </form>
+    </RecordFormPage>
   );
 }

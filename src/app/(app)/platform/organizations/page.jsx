@@ -118,12 +118,6 @@ export default function PlatformOrganizationsPage() {
                         >
                           Manage organization
                         </Link>
-                        <Link
-                          href={`/platform/organizations/${org.id}/settings`}
-                          className="text-xs font-medium text-slate-600 hover:underline"
-                        >
-                          Organization settings
-                        </Link>
                       </div>
                     </td>
                   </tr>

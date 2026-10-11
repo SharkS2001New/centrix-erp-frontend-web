@@ -69,9 +69,9 @@ export function DashboardScreen() {
             {trend.map((item) => <span key={item.label}>{item.label}</span>)}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Action href="/spa/appointments?new=1" icon={CalendarPlus} label="New appointment" tint="bg-blue-50 text-blue-600" />
+            <Action href="/spa/appointments/new" icon={CalendarPlus} label="New appointment" tint="bg-blue-50 text-blue-600" />
             <Action href="/spa/pos" icon={ShoppingBag} label="Quick sale" tint="bg-emerald-50 text-emerald-600" />
-            <Action href="/spa/clients?new=1" icon={UserPlus} label="Add client" tint="bg-violet-50 text-violet-600" />
+            <Action href="/spa/clients/new" icon={UserPlus} label="Add client" tint="bg-violet-50 text-violet-600" />
             <Action href="/spa/inventory" icon={Package} label="Check inventory" tint="bg-amber-50 text-amber-600" />
           </div>
         </Card>

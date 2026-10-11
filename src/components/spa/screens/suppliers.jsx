@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Field, Modal, PageHeader, Table, inputClass } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Empty, Field, PageHeader, Table, inputClass, primaryLinkClass } from "@/components/spa/ui";
 
 export function SuppliersScreen() {
   const spa = useSpa();
-  const [editing, setEditing] = useState(null);
+  const router = useAppRouter();
   const [openId, setOpenId] = useState(spa.suppliers[0]?.id || "");
   const supplier = spa.suppliers.find((item) => item.id === openId);
   const purchases = spa.movements.filter((item) => item.type === "in" && item.supplierId === openId);
@@ -16,16 +19,16 @@ export function SuppliersScreen() {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div>
         <PageHeader title="Suppliers" detail="Who you buy from, and the stock they have delivered.">
-          <Button onClick={() => setEditing({ name: "", phone: "", email: "", category: "" })}>Add supplier</Button>
+          <AppNavLink href="/spa/suppliers/new" className={primaryLinkClass}>Add supplier</AppNavLink>
         </PageHeader>
-        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} onCreate={() => setEditing({ name: "", phone: "", email: "", category: "" })} createLabel="Add supplier" render={(item) => (
+        <Table columns={["Supplier", "Phone", "Category", ""]} rows={spa.suppliers} onCreate={() => router.push("/spa/suppliers/new")} createLabel="Add supplier" render={(item) => (
           <tr key={item.id} className="border-b border-slate-50">
             <td className="px-4 py-3 font-medium">{item.name}</td>
             <td className="px-4 py-3">{item.phone}</td>
             <td className="px-4 py-3">{item.category}</td>
             <td className="px-4 py-3 text-right">
               <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => setOpenId(item.id)}>Purchases</button>
-              <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(item)}>Edit</button>
+              <AppNavLink href={`/spa/suppliers/${item.id}/edit`} className="text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>
             </td>
           </tr>
         )} />
@@ -40,27 +43,38 @@ export function SuppliersScreen() {
           })}
         </ul>
       </aside>
-      {editing ? <SupplierForm supplier={editing} onClose={() => setEditing(null)} onSave={(supplierRow) => {
-        const error = spa.saveSupplier(supplierRow);
-        if (error) toast.error(error);
-        else { toast.success("Supplier saved."); setEditing(null); }
-      }} /> : null}
     </div>
   );
 }
 
-function SupplierForm({ supplier, onClose, onSave }) {
-  const [form, setForm] = useState(supplier);
+export function SupplierFormScreen({ id }) {
+  const spa = useSpa();
+  const existing = id ? spa.suppliers.find((item) => item.id === id) : null;
+  const title = id ? "Edit supplier" : "Add supplier";
+  const { exitTo } = useRecordExit(title);
+  const [form, setForm] = useState(() => existing || { name: "", phone: "", email: "", category: "" });
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  if (id && !existing) return <Empty title="Supplier not found" detail="They may have been removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
+    const error = spa.saveSupplier(form);
+    if (error) toast.error(error);
+    else {
+      toast.success("Supplier saved.");
+      exitTo("/spa/suppliers");
+    }
+  }
   return (
-    <Modal title={supplier.id ? "Edit supplier" : "Add supplier"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/suppliers">
+      <form onSubmit={save}>
       <div className="grid gap-3">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone || ""} onChange={set("phone")} /></Field>
         <Field label="Email"><input className={inputClass} value={form.email || ""} onChange={set("email")} /></Field>
         <Field label="Category"><input className={inputClass} value={form.category || ""} onChange={set("category")} /></Field>
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={() => onSave(form)}>Save</Button></div>
-    </Modal>
+      <RecordFormActions backHref="/spa/suppliers" />
+      </form>
+    </RecordFormPage>
   );
 }

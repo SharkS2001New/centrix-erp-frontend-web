@@ -29,7 +29,6 @@ export const NAV_HREF_ICONS = {
   "/platform/database-backups": "database",
   "/platform/slow-queries": "chart",
   "/platform/data-retention": "database",
-  "/platform/demo-data": "package",
   "/platform/health": "alert",
   "/platform/whats-new": "star",
   "/platform/organizations": "building",

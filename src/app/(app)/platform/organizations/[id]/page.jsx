@@ -27,11 +27,15 @@ import {
 import { menuGroupStateFromProfile } from "@/lib/menu-groups";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
+import { useConfirm } from "@/contexts/confirm-context";
 
 export default function ManageOrganizationPage() {
   const params = useParams();
   const orgId = params?.id;
   const { refreshCapabilities, organization: sessionOrganization } = useAuth();
+  const confirm = useConfirm();
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoGeneratedAt, setDemoGeneratedAt] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,6 +114,7 @@ export default function ManageOrganizationPage() {
       setOrgAddress(org.org_address ?? "");
       setOrgPin(org.org_pin ?? "");
       setVatRegno(org.vat_regno ?? "");
+      setDemoGeneratedAt(orgRes.organization?.module_settings?.platform_demo?.generated_at ?? null);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
@@ -227,6 +232,47 @@ export default function ManageOrganizationPage() {
     }
   }
 
+  async function generateDemoData() {
+    if (!orgId || demoBusy) return;
+    const ok = await confirm({
+      title: "Generate demo data?",
+      message: "Sample records are added to this organisation only. The organisation, its users, and its settings stay as they are. Generating again replaces the previous sample.",
+      confirmLabel: "Generate demo data",
+    });
+    if (!ok) return;
+    setDemoBusy(true);
+    try {
+      const res = await apiRequest(`/admin/organizations/${orgId}/demo-data`, { method: "POST" });
+      setDemoGeneratedAt(res?.generated_at ?? null);
+      notifySuccess(res?.message ?? "Demo data is ready for this organisation.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not generate demo data.");
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
+  async function removeDemoData() {
+    if (!orgId || demoBusy) return;
+    const ok = await confirm({
+      title: "Remove demo data?",
+      message: "This removes the sample records added for this organisation. The organisation and its real records stay.",
+      confirmLabel: "Remove demo data",
+      destructive: true,
+    });
+    if (!ok) return;
+    setDemoBusy(true);
+    try {
+      const res = await apiRequest(`/admin/organizations/${orgId}/demo-data`, { method: "DELETE" });
+      setDemoGeneratedAt(null);
+      notifySuccess(res?.message ?? "Demo data was removed.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not remove demo data.");
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title={organization ? organization.org_name : "Organization"}
@@ -244,10 +290,39 @@ export default function ManageOrganizationPage() {
       ) : (
         <div className="mt-6 w-full min-w-0 space-y-6">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
+            <p className="font-medium">Demo data</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Platform admin only. This fills the organisation you are managing. It does not create another company.
+              Day-to-day settings stay in that organisation&apos;s Administration module.
+            </p>
+            {demoGeneratedAt ? (
+              <p className="mt-2 text-xs text-slate-500">Last generated {demoGeneratedAt}</p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void generateDemoData()}
+                disabled={demoBusy}
+                className="inline-flex items-center rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-medium text-white hover:bg-[#134d88] disabled:opacity-50"
+              >
+                {demoBusy ? "Working…" : "Generate demo data"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeDemoData()}
+                disabled={demoBusy}
+                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Remove demo data
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Organization settings</p>
             <p className="mt-1 text-xs text-slate-600">
-              Configure checkout, finance, distribution, notifications, security, and other operational
-              preferences for this tenant from the platform.
+              Checkout, finance, notifications, security, and the rest of the operational settings live in the
+              tenant Administration module. This link is the platform copy of those same settings for this organisation.
             </p>
             <Link
               href={`/platform/organizations/${orgId}/settings`}

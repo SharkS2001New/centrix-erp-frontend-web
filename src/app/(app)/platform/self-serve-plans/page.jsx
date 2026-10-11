@@ -7,39 +7,17 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platform-billing";
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
+import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
 
-const WORKSPACE_GROUPS = [
-  {
-    key: "commerce",
-    label: "Retail & Distribution",
-    workspaces: licensableWorkspacesForIndustry("commerce").filter(
-      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
-    ),
-  },
-  {
-    key: "hospitality",
-    label: "Hotel & Hospitality",
-    workspaces: licensableWorkspacesForIndustry("hospitality").filter(
-      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
-    ),
-  },
-  {
-    key: "shared",
-    label: "Shared",
-    workspaces: licensableWorkspacesForIndustry("commerce").filter((ws) =>
-      ["accounting", "hr", "admin"].includes(ws.id),
-    ),
-  },
-];
-
 function emptyForm() {
   return {
     name: "",
     description: "",
+    industry: "commerce",
     interval: "monthly",
     price: "",
     feature_details: [{ label: "", detail: "" }],
@@ -57,6 +35,7 @@ function recordToForm(plan) {
   return {
     name: plan.name ?? "",
     description: plan.description ?? "",
+    industry: plan.industry || "commerce",
     interval: yearly ? "yearly" : "monthly",
     price: yearly
       ? (plan.yearly_price != null ? String(plan.yearly_price) : "")
@@ -92,6 +71,7 @@ function formToPayload(form) {
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
+    industry: form.industry || "commerce",
     interval: yearly ? "annual" : "monthly",
     license_basis: "org",
     currency: "KES",
@@ -100,8 +80,10 @@ function formToPayload(form) {
     renewal_price: amount,
     monthly_price: yearly ? null : amount,
     yearly_price: yearly ? amount : null,
-    workspace_keys: form.workspace_keys ?? [],
-    section_keys: form.section_keys ?? [],
+    workspace_keys: (form.workspace_keys ?? []).filter((id) =>
+      licensableWorkspacesForIndustry(form.industry || "commerce").some((ws) => ws.id === id),
+    ),
+    section_keys: form.industry === "commerce" ? (form.section_keys ?? []) : [],
     feature_details: (form.feature_details ?? [])
       .map((row) => ({
         label: String(row?.label ?? "").trim(),
@@ -124,6 +106,7 @@ export default function SelfServePlansPage() {
   const [words, setWords] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [created, setCreated] = useState(null);
+  const [industryFilter, setIndustryFilter] = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -254,6 +237,8 @@ export default function SelfServePlansPage() {
             <p className="mt-1 text-sm text-slate-600">{created.summary.description}</p>
           ) : null}
           <p className="mt-2 text-sm font-medium text-slate-900">
+            {industryById(created.summary.industry || created.plan?.industry || "commerce")?.label ?? "Retail & Distribution"}
+            {" · "}
             {created.summary.interval} · {formatBillingMoney(created.summary.price, created.summary.currency || "KES")}
           </p>
           <PlanContents title="On the card" items={created.summary.features} />
@@ -275,13 +260,32 @@ export default function SelfServePlansPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-medium ${industryFilter === "all" ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
+            onClick={() => setIndustryFilter("all")}
+          >
+            All industries
+          </button>
+          {INDUSTRIES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`rounded-full px-3 py-1 text-xs font-medium ${industryFilter === item.id ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
+              onClick={() => setIndustryFilter(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <PrimaryButton
           type="button"
           showIcon={false}
           onClick={() => {
             setEditingId(null);
-            setForm(emptyForm());
+            setForm({ ...emptyForm(), industry: industryFilter === "all" ? "commerce" : industryFilter });
             setFormOpen(true);
           }}
         >
@@ -292,9 +296,11 @@ export default function SelfServePlansPage() {
       <div className="theme-panel rounded-xl border shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-sm text-slate-500">Loading plans…</p>
-        ) : plans.length === 0 ? (
+        ) : plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).length === 0 ? (
           <p className="px-5 py-8 text-sm text-slate-500">
-            No self-serve plans yet. Create one, for example a 2,000 plan with a few sections and a 3,000 plan with more.
+            {plans.length === 0
+              ? "No self-serve plans yet. Create one, for example a 2,000 plan with a few sections and a 3,000 plan with more."
+              : "No packages for this industry yet. Set a price and publish one."}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -302,6 +308,7 @@ export default function SelfServePlansPage() {
               <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3">Plan</th>
+                  <th className="px-5 py-3">Industry</th>
                   <th className="px-5 py-3">Billing</th>
                   <th className="px-5 py-3">Price</th>
                   <th className="px-5 py-3">Features</th>
@@ -310,12 +317,13 @@ export default function SelfServePlansPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {plans.map((plan) => (
+                {plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).map((plan) => (
                   <tr key={plan.id}>
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-900">{plan.name}</p>
                       {plan.description ? <p className="text-xs text-slate-500">{plan.description}</p> : null}
                     </td>
+                    <td className="px-5 py-3">{industryById(plan.industry || "commerce")?.label ?? "Retail & Distribution"}</td>
                     <td className="px-5 py-3">{plan.interval === "annual" || plan.interval === "yearly" ? "Yearly" : "Monthly"}</td>
                     <td className="px-5 py-3 tabular-nums">
                       {formatBillingMoney(
@@ -367,6 +375,28 @@ export default function SelfServePlansPage() {
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Short description</span>
                 <input className={inputClass} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Sales, customers, and the reports that belong to them" />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+                <select
+                  className={inputClass}
+                  value={form.industry}
+                  onChange={(e) => {
+                    const industry = e.target.value;
+                    const allowed = new Set(licensableWorkspacesForIndustry(industry).map((ws) => ws.id));
+                    setForm((f) => ({
+                      ...f,
+                      industry,
+                      workspace_keys: (f.workspace_keys ?? []).filter((id) => allowed.has(id)),
+                      section_keys: industry === "commerce" ? f.section_keys : [],
+                    }));
+                  }}
+                >
+                  {INDUSTRIES.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-slate-500">This package and its price are only offered to organisations in this industry.</span>
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm">
@@ -437,32 +467,27 @@ export default function SelfServePlansPage() {
 
               <div className="space-y-3">
                 <p className="text-xs font-medium text-slate-600">Applications this plan opens</p>
-                {WORKSPACE_GROUPS.map((group) => (
-                  <div key={group.key}>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.label}</p>
-                    <ul className="space-y-1 rounded-lg border border-slate-200 p-2">
-                      {group.workspaces.map((ws) => (
-                        <li key={ws.id}>
-                          <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={form.workspace_keys.includes(ws.id)}
-                              onChange={() => toggleKey("workspace_keys", ws.id)}
-                            />
-                            <span>
-                              <span className="font-medium">{ws.label}</span>
-                              <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
-                            </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                <ul className="space-y-1 rounded-lg border border-slate-200 p-2">
+                  {licensableWorkspacesForIndustry(form.industry).map((ws) => (
+                    <li key={ws.id}>
+                      <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={form.workspace_keys.includes(ws.id)}
+                          onChange={() => toggleKey("workspace_keys", ws.id)}
+                        />
+                        <span>
+                          <span className="font-medium">{ws.label}</span>
+                          <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              <div>
+              {form.industry === "commerce" ? <div>
                 <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this plan turns on</p>
                 <p className="mb-2 text-xs text-slate-500">
                   Checked sections are the only Backoffice areas this plan opens, including their reports.
@@ -481,7 +506,7 @@ export default function SelfServePlansPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </div> : null}
 
               <label className="flex items-center gap-2 text-sm">
                 <input

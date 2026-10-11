@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { SearchInput } from "@/components/catalog/catalog-shared";
+import { FilterToolbar, SearchInput } from "@/components/catalog/catalog-shared";
+import { SearchableFilterSelect } from "@/components/catalog/searchable-filter-select";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 
 export function Button({ children, variant = "primary", className = "", type = "button", ...props }) {
@@ -40,6 +41,9 @@ export const inputClass =
 export const textAreaClass =
   "theme-input theme-input-focus w-full rounded-lg border px-3 py-2 text-sm outline-none";
 
+export const primaryLinkClass =
+  "theme-primary-btn inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium";
+
 export const toolbarControlClass =
   "theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] shrink-0 rounded-lg border px-3 py-2 text-sm outline-none";
 
@@ -54,13 +58,20 @@ export function SpaSearch(props) {
   return <SearchInput {...props} />;
 }
 
+export function SpaFilters({ children }) {
+  return <FilterToolbar>{children}</FilterToolbar>;
+}
+
 export function SpaSelect({ options, toolbar = false, className = "", ...props }) {
+  if (toolbar) {
+    return <SearchableFilterSelect {...props} options={options} className={className} />;
+  }
   return (
     <SearchableSelect
       {...props}
       nativeEvent
       options={options}
-      className={className || (toolbar ? toolbarControlClass : inputClass)}
+      className={className || inputClass}
     />
   );
 }

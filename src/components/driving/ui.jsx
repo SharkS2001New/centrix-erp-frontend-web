@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { FilterToolbar, SearchInput } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 
 export function ScreenHeader({ title, subtitle, children }) {
@@ -38,13 +39,12 @@ export function Stat({ label, value, hint }) {
 }
 
 export function Toolbar({ children }) {
-  return <div className="mb-3 flex flex-wrap items-center gap-2">{children}</div>;
+  return <FilterToolbar>{children}</FilterToolbar>;
 }
 
 export function SearchField({ value, onChange, placeholder = "Search" }) {
   return (
-    <input
-      className={`${inputClass} w-full max-w-xs`}
+    <SearchInput
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}

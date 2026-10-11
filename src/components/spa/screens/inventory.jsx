@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { AppNavLink } from "@/components/layout/app-nav-link";
+import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { formatTime, ksh, stockStatus } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Badge, Button, Field, Modal, PageHeader, SpaSearch, SpaSelect, Table, inputClass, toOptions } from "@/components/spa/ui";
+import { useAppRouter } from "@/lib/use-app-router";
+import { Badge, Empty, Field, PageHeader, SpaFilters, SpaSearch, SpaSelect, Table, inputClass, primaryLinkClass, toOptions } from "@/components/spa/ui";
 
 export function InventoryScreen() {
   const spa = useSpa();
+  const router = useAppRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
-  const [editing, setEditing] = useState(null);
-  const [movement, setMovement] = useState(null);
   const rows = spa.products.filter((item) => {
     const q = query.trim().toLowerCase();
     const matches = !q || item.name.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q);
@@ -22,11 +24,13 @@ export function InventoryScreen() {
   return (
     <div>
       <PageHeader title="Inventory" detail="Retail stock, reorder alerts and movements for this branch.">
+        <AppNavLink href="/spa/inventory/new" className={primaryLinkClass}>Add product</AppNavLink>
+      </PageHeader>
+      <SpaFilters>
         <SpaSearch placeholder="Search SKU or name" value={query} onChange={(event) => setQuery(event.target.value)} />
         <SpaSelect toolbar aria-label="Stock status" value={filter} onChange={(event) => setFilter(event.target.value)} options={toOptions(["All", "In stock", "Low stock", "Out of stock"])} />
-        <Button onClick={() => setEditing({ sku: "", name: "", category: "Hair care", supplierId: spa.suppliers[0]?.id || "", cost: 0, price: 0, qty: 0, reorder: 5 })}>Add product</Button>
-      </PageHeader>
-      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} onCreate={() => setEditing({ sku: "", name: "", category: "Hair care", supplierId: spa.suppliers[0]?.id || "", cost: 0, price: 0, qty: 0, reorder: 5 })} createLabel="Add product" render={(product) => {
+      </SpaFilters>
+      <Table columns={["SKU", "Product", "Supplier", "Cost", "Price", "Qty", "Reorder", "Status", ""]} rows={rows} onCreate={() => router.push("/spa/inventory/new")} createLabel="Add product" render={(product) => {
         const status = stockStatus(product);
         return (
           <tr key={product.id} className="border-b border-slate-50">
@@ -39,8 +43,8 @@ export function InventoryScreen() {
             <td className="px-4 py-3">{product.reorder}</td>
             <td className="px-4 py-3"><Badge tone={status === "In stock" ? "green" : status === "Low stock" ? "amber" : "red"}>{status}</Badge></td>
             <td className="px-4 py-3 text-right">
-              <button type="button" className="mr-3 text-sm text-[var(--theme-accent-text)]" onClick={() => setEditing(product)}>Edit</button>
-              <button type="button" className="text-sm text-[var(--theme-accent-text)]" onClick={() => setMovement({ productId: product.id, mode: "in", qty: 1, note: "" })}>Stock</button>
+              <AppNavLink href={`/spa/inventory/${product.id}/edit`} className="mr-3 text-sm text-[var(--theme-accent-text)]">Edit</AppNavLink>
+              <AppNavLink href={`/spa/inventory/${product.id}/stock`} className="text-sm text-[var(--theme-accent-text)]">Stock</AppNavLink>
             </td>
           </tr>
         );
@@ -54,21 +58,30 @@ export function InventoryScreen() {
           })}
         </ul>
       </section>
-      {editing ? <ProductForm spa={spa} product={editing} onClose={() => setEditing(null)} onSave={(product) => {
-        const error = spa.saveProduct(product);
-        if (error) toast.error(error);
-        else { toast.success("Product saved."); setEditing(null); }
-      }} /> : null}
-      {movement ? <MovementForm spa={spa} draft={movement} onClose={() => setMovement(null)} /> : null}
     </div>
   );
 }
 
-function ProductForm({ spa, product, onClose, onSave }) {
-  const [form, setForm] = useState(product);
+export function ProductFormScreen({ id }) {
+  const spa = useSpa();
+  const existing = id ? spa.products.find((item) => item.id === id) : null;
+  const title = id ? "Edit product" : "Add product";
+  const { exitTo } = useRecordExit(title);
+  const [form, setForm] = useState(() => existing || { sku: "", name: "", category: "Hair care", supplierId: spa.suppliers[0]?.id || "", cost: 0, price: 0, qty: 0, reorder: 5 });
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  if (id && !existing) return <Empty title="Product not found" detail="It may have been removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
+    const error = spa.saveProduct(form);
+    if (error) toast.error(error);
+    else {
+      toast.success("Product saved.");
+      exitTo("/spa/inventory");
+    }
+  }
   return (
-    <Modal title={product.id ? "Edit product" : "Add product"} onClose={onClose}>
+    <RecordFormPage title={title} backHref="/spa/inventory">
+      <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="SKU"><input className={inputClass} value={form.sku} onChange={set("sku")} /></Field>
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
@@ -79,22 +92,32 @@ function ProductForm({ spa, product, onClose, onSave }) {
         <Field label="Quantity"><input className={inputClass} type="number" min="0" value={form.qty} onChange={set("qty")} /></Field>
         <Field label="Reorder level"><input className={inputClass} type="number" min="0" value={form.reorder} onChange={set("reorder")} /></Field>
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={() => onSave(form)}>Save</Button></div>
-    </Modal>
+      <RecordFormActions backHref="/spa/inventory" />
+      </form>
+    </RecordFormPage>
   );
 }
 
-function MovementForm({ spa, draft, onClose }) {
-  const [form, setForm] = useState(draft);
-  function save() {
+export function StockMovementScreen({ id }) {
+  const spa = useSpa();
+  const product = spa.products.find((item) => item.id === id);
+  const { exitTo } = useRecordExit("Stock movement");
+  const [form, setForm] = useState({ productId: id || "", mode: "in", qty: 1, note: "", supplierId: "" });
+  if (!product) return <Empty title="Product not found" detail="It may have been removed from this browser's sample data." />;
+  function save(event) {
+    event.preventDefault();
     const error = form.mode === "in"
       ? spa.stockIn(form.productId, form.qty, form.supplierId, form.note)
       : spa.adjustStock(form.productId, form.mode === "out" ? -Math.abs(Number(form.qty)) : Number(form.qty), form.note);
     if (error) toast.error(error);
-    else { toast.success(form.mode === "in" ? "Stock received." : "Stock adjusted."); onClose(); }
+    else {
+      toast.success(form.mode === "in" ? "Stock received." : "Stock adjusted.");
+      exitTo("/spa/inventory");
+    }
   }
   return (
-    <Modal title="Stock movement" onClose={onClose}>
+    <RecordFormPage title="Stock movement" backHref="/spa/inventory">
+      <form onSubmit={save}>
       <div className="grid gap-3">
         <Field label="Type">
           <SpaSelect value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })} options={toOptions([
@@ -114,7 +137,8 @@ function MovementForm({ spa, draft, onClose }) {
         <Field label="Quantity"><input className={inputClass} type="number" value={form.qty} onChange={(event) => setForm({ ...form, qty: event.target.value })} /></Field>
         <Field label="Note"><input className={inputClass} value={form.note || ""} onChange={(event) => setForm({ ...form, note: event.target.value })} /></Field>
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={save}>Save movement</Button></div>
-    </Modal>
+      <RecordFormActions backHref="/spa/inventory" submitLabel="Save movement" />
+      </form>
+    </RecordFormPage>
   );
 }
