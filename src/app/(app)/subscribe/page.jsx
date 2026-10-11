@@ -273,9 +273,9 @@ function listedPrice(plan, billing) {
 
 function PlansStep({ plans, billing, setBilling, mode, tokenPack, tokenBalance, currentName, recommendedIndex, onPay, forPos = false }) {
   const emptyCopy = billing === "yearly"
-    ? "No yearly plans are published yet. A platform administrator sets those under Self-serve plans."
+    ? "No yearly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."
     : billing === "monthly"
-      ? "No monthly plans are published yet. A platform administrator sets those under Self-serve plans."
+      ? "No monthly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."
       : "A platform administrator has not published a token pack yet.";
   return (
     <div>

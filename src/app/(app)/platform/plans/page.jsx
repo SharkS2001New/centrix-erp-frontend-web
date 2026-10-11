@@ -21,6 +21,7 @@ import {
 } from "@/lib/platform-billing";
 import { useConfirm } from "@/lib/use-confirm";
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
+import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100";
@@ -140,7 +141,7 @@ export default function PlatformPlansPage() {
   return (
     <CatalogPageShell
       title="Subscription plans"
-      subtitle="Create the payment plans customers auto-subscribe with. Set monthly, yearly, and token prices, then assign a plan on the organisation Licence tab. A matching Centrix Paybill payment applies that plan."
+      subtitle="Each industry has its own packages. Set the monthly and yearly prices here. An organisation only sees the packages for its industry."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>
@@ -170,6 +171,7 @@ export default function PlatformPlansPage() {
               <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3">Plan</th>
+                  <th className="px-5 py-3">Industry</th>
                   <th className="px-5 py-3">Licence</th>
                   <th className="px-5 py-3">First / renewal</th>
                   <th className="px-5 py-3">Apps</th>
@@ -187,6 +189,9 @@ export default function PlatformPlansPage() {
                         <p className="font-medium text-slate-900">{plan.name}</p>
                         {plan.code ? <p className="font-mono text-xs text-slate-500">{plan.code}</p> : null}
                         <p className="text-xs capitalize text-slate-500">{plan.interval ?? "—"}</p>
+                      </td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {industryById(plan.industry || "commerce")?.label ?? "Retail & Distribution"}
                       </td>
                       <td className="px-5 py-3 text-slate-600">
                         {licenseBasisLabel(plan.license_basis)}
@@ -404,6 +409,26 @@ export default function PlatformPlansPage() {
                 </label>
               ) : null}
               <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+                <SearchableSelect
+                  className={inputClass}
+                  value={form.industry || "commerce"}
+                  nativeEvent
+                  onChange={(e) => {
+                    const industry = e.target.value;
+                    const allowed = new Set(licensableWorkspacesForIndustry(industry).map((ws) => ws.id));
+                    setForm((f) => ({
+                      ...f,
+                      industry,
+                      workspace_keys: (f.workspace_keys ?? []).filter((id) => allowed.has(id)),
+                      section_keys: industry === "commerce" ? f.section_keys : [],
+                    }));
+                  }}
+                  options={INDUSTRIES.map((item) => ({ value: item.id, label: item.label }))}
+                />
+                <span className="mt-1 block text-xs text-slate-500">This package and its prices are only offered to organisations in this industry.</span>
+              </label>
+              <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Description</span>
                 <textarea className={inputClass} rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
               </label>
@@ -417,58 +442,31 @@ export default function PlatformPlansPage() {
   options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
 />
               </label>
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-slate-600">Licensed Centrix applications</p>
-                {[
-                  {
-                    key: "commerce",
-                    label: "Retail & Distribution",
-                    workspaces: licensableWorkspacesForIndustry("commerce").filter(
-                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
-                    ),
-                  },
-                  {
-                    key: "hospitality",
-                    label: "Hotel & Hospitality",
-                    workspaces: licensableWorkspacesForIndustry("hospitality").filter(
-                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
-                    ),
-                  },
-                  {
-                    key: "shared",
-                    label: "Shared",
-                    workspaces: licensableWorkspacesForIndustry("commerce").filter((ws) =>
-                      ["accounting", "hr", "admin"].includes(ws.id),
-                    ),
-                  },
-                ].map((group) => (
-                  <div key={group.key}>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      {group.label}
-                    </p>
-                    <ul className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                      {group.workspaces.map((ws) => (
-                        <li key={ws.id}>
-                          <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={(form.workspace_keys ?? []).includes(ws.id)}
-                              onChange={() => toggleWorkspace(ws.id)}
-                            />
-                            <span>
-                              <span className="font-medium">{ws.label}</span>
-                              {ws.id === "admin" ? (
-                                <span className="ml-1 text-xs text-emerald-700">(included free)</span>
-                              ) : null}
-                              <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
-                            </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-600">
+                  Applications for {industryById(form.industry || "commerce")?.label ?? "this industry"}
+                </p>
+                <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                  {licensableWorkspacesForIndustry(form.industry || "commerce").map((ws) => (
+                    <li key={ws.id}>
+                      <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={(form.workspace_keys ?? []).includes(ws.id)}
+                          onChange={() => toggleWorkspace(ws.id)}
+                        />
+                        <span>
+                          <span className="font-medium">{ws.label}</span>
+                          {ws.id === "admin" ? (
+                            <span className="ml-1 text-xs text-emerald-700">(included free)</span>
+                          ) : null}
+                          <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
               </div>
               <div>
                 <p className="mb-2 text-xs font-medium text-slate-600">Invoice billing modules (optional detail)</p>
@@ -547,7 +545,7 @@ export default function PlatformPlansPage() {
                   Add a feature
                 </button>
               </div>
-              <div>
+              {(form.industry || "commerce") === "commerce" ? <div>
                 <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this plan turns on</p>
                 <p className="mb-2 text-xs text-slate-500">
                   Leave all of these off to keep the organisation&apos;s current sections. Checked sections are the only Backoffice areas this plan opens, including their reports.
@@ -566,7 +564,7 @@ export default function PlatformPlansPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </div> : null}
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"

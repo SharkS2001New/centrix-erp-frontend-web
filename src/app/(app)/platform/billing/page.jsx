@@ -7,6 +7,7 @@ import { notifyError } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, StatCard } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney } from "@/lib/platform-billing";
+import { industryById } from "@/lib/erp-industries";
 
 const ACTIONS = [
   {
@@ -102,6 +103,7 @@ export default function PlatformBillingPage() {
                   <thead>
                     <tr className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide">
                       <th className="px-5 py-3">Plan</th>
+                      <th className="px-5 py-3">Industry</th>
                       <th className="px-5 py-3">Monthly</th>
                       <th className="px-5 py-3">Yearly</th>
                       <th className="px-5 py-3">Organisations</th>
@@ -112,6 +114,7 @@ export default function PlatformBillingPage() {
                     {catalogue.map((plan) => (
                       <tr key={plan.id} className="theme-table-body-row">
                         <td className="theme-heading px-5 py-3 font-medium">{plan.name}</td>
+                        <td className="px-5 py-3">{industryById(plan.industry || "commerce")?.label ?? "Retail & Distribution"}</td>
                         <td className="px-5 py-3">{plan.monthly_price != null ? formatBillingMoney(plan.monthly_price) : "—"}</td>
                         <td className="px-5 py-3">{plan.yearly_price != null ? formatBillingMoney(plan.yearly_price) : "—"}</td>
                         <td className="px-5 py-3 tabular-nums">{plan.organisations}</td>

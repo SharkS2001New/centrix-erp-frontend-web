@@ -187,6 +187,7 @@ export function emptyPlanForm(overrides = {}) {
   return {
     name: "",
     code: "",
+    industry: "commerce",
     description: "",
     interval: "monthly",
     license_basis: "org",
@@ -218,6 +219,7 @@ export function planRecordToForm(record) {
   return {
     name: record.name ?? "",
     code: record.code ?? "",
+    industry: record.industry || "commerce",
     description: record.description ?? "",
     interval: record.interval ?? "monthly",
     license_basis: record.license_basis === "user" ? "user" : "org",
@@ -260,6 +262,7 @@ export function planFormToPayload(form) {
   return {
     name: form.name.trim(),
     code: form.code.trim() || null,
+    industry: form.industry || "commerce",
     description: form.description.trim() || null,
     interval: form.interval || "monthly",
     license_basis: form.license_basis === "user" ? "user" : "org",
@@ -281,9 +284,11 @@ export function planFormToPayload(form) {
         : form.seat_limit === ""
           ? null
           : Number(form.seat_limit),
-    workspace_keys: form.workspace_keys ?? [],
+    workspace_keys: (form.workspace_keys ?? []).filter((id) =>
+      licensableWorkspacesForIndustry(form.industry || "commerce").some((ws) => ws.id === id),
+    ),
     module_keys: form.module_keys ?? [],
-    section_keys: form.section_keys ?? [],
+    section_keys: (form.industry || "commerce") === "commerce" ? (form.section_keys ?? []) : [],
     feature_details: (form.feature_details ?? [])
       .map((row) => ({
         label: String(row?.label ?? "").trim(),
