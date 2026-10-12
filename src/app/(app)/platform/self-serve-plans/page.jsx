@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platform-billing";
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
@@ -12,6 +12,8 @@ import { useConfirm } from "@/lib/use-confirm";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
+
+const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
 
 function emptyForm() {
   return {
@@ -104,6 +106,7 @@ export default function SelfServePlansPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [words, setWords] = useState("");
+  const [composeIndustry, setComposeIndustry] = useState("commerce");
   const [drafting, setDrafting] = useState(false);
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
@@ -174,7 +177,7 @@ export default function SelfServePlansPage() {
     try {
       const res = await apiRequest("/admin/platform-plans/compose", {
         method: "POST",
-        body: { description: words.trim() },
+        body: { description: words.trim(), industry: composeIndustry || "commerce" },
       });
       setCreated({ summary: res.summary ?? null, plan: res.data ?? null });
       notifySuccess(res.message || "Centrix AI created this plan.");
@@ -209,15 +212,29 @@ export default function SelfServePlansPage() {
       title="Self-serve plans"
       subtitle="A short description is enough. Centrix AI knows the product and fills in what the plan includes. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
     >
+      <div className="flex min-h-[calc(100dvh-11rem)] flex-col md:min-h-[calc(100dvh-12rem)] lg:min-h-[calc(100dvh-13rem)]">
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
 
-      <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 rounded-xl border p-5 shadow-sm">
+      <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Write a short description. Include the price in KES. Centrix AI fills in the applications and sections.
+          Choose the industry, then write a short description. Include the price in KES. Centrix AI fills in the applications and sections for that industry only.
         </p>
+        <label className="mt-3 block max-w-sm text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+          <SearchableSelect
+            value={composeIndustry}
+            onChange={(industry) => {
+              if (!industry) return;
+              setComposeIndustry(industry);
+              setIndustryFilter(industry);
+            }}
+            options={industryOptions}
+            placeholder="Select industry"
+          />
+        </label>
         <textarea
-          className={`${inputClass} mt-3 min-h-16`}
+          className={`${inputClass} mt-3 min-h-28`}
           value={words}
           onChange={(e) => setWords(e.target.value)}
           placeholder="Small shop, 2000 a month"
@@ -230,7 +247,7 @@ export default function SelfServePlansPage() {
       </form>
 
       {created?.summary ? (
-        <div className="theme-panel mb-4 rounded-xl border p-5 shadow-sm">
+        <div className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">This plan includes</p>
           <h2 className="mt-1 text-lg font-semibold text-slate-900">{created.summary.name}</h2>
           {created.summary.description ? (
@@ -260,7 +277,7 @@ export default function SelfServePlansPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -274,7 +291,10 @@ export default function SelfServePlansPage() {
               key={item.id}
               type="button"
               className={`rounded-full px-3 py-1 text-xs font-medium ${industryFilter === item.id ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
-              onClick={() => setIndustryFilter(item.id)}
+              onClick={() => {
+              setIndustryFilter(item.id);
+              setComposeIndustry(item.id);
+            }}
             >
               {item.label}
             </button>
@@ -285,7 +305,7 @@ export default function SelfServePlansPage() {
           showIcon={false}
           onClick={() => {
             setEditingId(null);
-            setForm({ ...emptyForm(), industry: industryFilter === "all" ? "commerce" : industryFilter });
+            setForm({ ...emptyForm(), industry: industryFilter === "all" ? composeIndustry : industryFilter });
             setFormOpen(true);
           }}
         >
@@ -293,7 +313,7 @@ export default function SelfServePlansPage() {
         </PrimaryButton>
       </div>
 
-      <div className="theme-panel rounded-xl border shadow-sm">
+      <div className="theme-panel flex min-h-80 flex-1 flex-col rounded-xl border shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-sm text-slate-500">Loading plans…</p>
         ) : plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).length === 0 ? (
@@ -362,6 +382,7 @@ export default function SelfServePlansPage() {
           </div>
         )}
       </div>
+      </div>
 
       {formOpen ? (
         <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/40 p-4">
@@ -378,11 +399,10 @@ export default function SelfServePlansPage() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
-                <select
-                  className={inputClass}
+                <SearchableSelect
                   value={form.industry}
-                  onChange={(e) => {
-                    const industry = e.target.value;
+                  onChange={(industry) => {
+                    if (!industry) return;
                     const allowed = new Set(licensableWorkspacesForIndustry(industry).map((ws) => ws.id));
                     setForm((f) => ({
                       ...f,
@@ -391,20 +411,24 @@ export default function SelfServePlansPage() {
                       section_keys: industry === "commerce" ? f.section_keys : [],
                     }));
                   }}
-                >
-                  {INDUSTRIES.map((item) => (
-                    <option key={item.id} value={item.id}>{item.label}</option>
-                  ))}
-                </select>
+                  options={industryOptions}
+                  placeholder="Select industry"
+                />
                 <span className="mt-1 block text-xs text-slate-500">This package and its price are only offered to organisations in this industry.</span>
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Shows on</span>
-                  <select className={inputClass} value={form.interval} onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}>
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
+                  <SearchableSelect
+                    value={form.interval}
+                    nativeEvent
+                    onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
+                    options={[
+                      { value: "monthly", label: "Monthly" },
+                      { value: "yearly", label: "Yearly" },
+                    ]}
+                    placeholder="Monthly or yearly"
+                  />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">{form.interval === "yearly" ? "Yearly price (KES)" : "Monthly price (KES)"}</span>
