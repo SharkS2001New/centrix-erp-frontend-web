@@ -23,8 +23,80 @@ import { MpesaPaybillAccountsPanel } from "@/components/admin/mpesa-paybill-acco
 import { EquityBankAccountsPanel } from "@/components/admin/equity-bank-accounts-panel";
 import { resolveMpesaSettingsHref } from "@/lib/centrix-payments-routes";
 import { fetchBranchesCached, fetchRoutesCached } from "@/lib/reference-data-cache";
+import { kraReceiptQrDataUrl, sanitizeKraSignatureLink } from "@/lib/kra-receipt-qr";
 
 /** @typedef {"all" | "kra" | "mpesa" | "paybills" | "equity"} FinanceSettingsMode */
+
+function KraQrDrawCheck() {
+  const [sample, setSample] = useState("");
+  const [imageUrl, setImageUrl] = useState(null);
+  const [note, setNote] = useState("");
+  const [drawing, setDrawing] = useState(false);
+
+  async function draw() {
+    const raw = sample.trim();
+    if (!raw) {
+      setImageUrl(null);
+      setNote("Paste the verification link, or the full line from the receipt.");
+      return;
+    }
+    setDrawing(true);
+    try {
+      const cleaned = sanitizeKraSignatureLink(raw);
+      const dataUrl = cleaned ? await kraReceiptQrDataUrl(cleaned, { size: 180 }) : null;
+      if (!dataUrl) {
+        setImageUrl(null);
+        setNote("This text could not be drawn as a QR code.");
+        return;
+      }
+      const normalized = raw.replace(/[\u0000-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim();
+      setImageUrl(dataUrl);
+      setNote(
+        cleaned !== normalized
+          ? "The pasted line was repaired, then drawn the same way a receipt prints it."
+          : "This is the same QR image a receipt would print.",
+      );
+    } finally {
+      setDrawing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+      <p className="theme-heading text-sm font-medium">Check receipt QR</p>
+      <p className="theme-subtext mt-0.5 text-xs">
+        Paste a KRA verification link or the full eTIMS line. This draws the same image External POS receipts and invoices print.
+      </p>
+      <textarea
+        className={`${inputClassName()} mt-3 min-h-20 w-full`}
+        value={sample}
+        onChange={(e) => setSample(e.target.value)}
+        placeholder="https://etims.kra.go.ke/…"
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        disabled={drawing}
+        onClick={() => void draw()}
+        className={`${SECONDARY_BTN_CLASS} mt-3 px-3.5 py-2 disabled:opacity-50`}
+      >
+        {drawing ? "Drawing…" : "Draw QR"}
+      </button>
+      {imageUrl ? (
+        <div className="mt-4 flex justify-start">
+          <img
+            src={imageUrl}
+            alt="KRA verification QR code"
+            width={180}
+            height={180}
+            style={{ display: "block", width: 180, height: 180, background: "#fff" }}
+          />
+        </div>
+      ) : null}
+      {note ? <p className="theme-subtext mt-2 text-xs">{note}</p> : null}
+    </div>
+  );
+}
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -784,6 +856,7 @@ export function FinanceSettingsPanel({
                   </Field>
                 </>
               ) : null}
+              <KraQrDrawCheck />
             </div>
           </div>
           ) : null}

@@ -69,9 +69,10 @@ describe("kra receipt QR", () => {
       { allowNetwork: false },
     );
     expect(kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
-    const html = buildKraThermalQrHtml(kraData, null);
-    expect(html).toContain("<svg");
-    expect(html).toContain('class="kra-etims-qr"');
+    const html = buildKraThermalQrHtml(kraData, kraQrDataUrl);
+    expect(html).toContain("<img");
+    expect(html).toContain(kraQrDataUrl);
+    expect(html).toContain("max-width:100%");
     expect(html).not.toContain("úb26-10-08");
     expect(html).not.toContain("indexEtimsReceiptData");
   });
@@ -135,9 +136,10 @@ describe("kra receipt QR", () => {
     const html = buildKraThermalQrHtml(kraData, "data:image/png;base64,abc", {
       buyerPin: "P051234567X",
     });
-    expect(html).toContain("<svg");
+    expect(html).toContain("<img");
+    expect(html).toContain("data:image/png;base64,abc");
     expect(html).toContain("Customer KRA PIN: P051234567X");
-    expect(html.indexOf("<svg")).toBeLessThan(html.indexOf("Customer KRA PIN"));
+    expect(html.indexOf("<img")).toBeLessThan(html.indexOf("Customer KRA PIN"));
     expect(html).not.toContain("https://etims.example/verify/3");
   });
 
@@ -149,8 +151,9 @@ describe("kra receipt QR", () => {
     expect(html).toContain("CU Invoice: CU-4");
     expect(html).not.toContain("Customer KRA PIN");
     expect(html).toContain("overflow:visible");
-    expect(html).toContain("width:100px;height:100px;max-width:none");
-    expect(html).toContain("<svg");
+    expect(html).toContain('width="100"');
+    expect(html).toContain("max-width:100%");
+    expect(html).toContain("<img");
     expect(html).not.toContain("https://etims.example/verify/4");
     expect(html).not.toMatch(/kra-etims-block[^>]*overflow:hidden/);
   });
@@ -181,7 +184,8 @@ describe("kra receipt QR", () => {
 
     expect(kraData?.signatureLink).toContain("etims.example");
     expect(kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
-    expect(buildKraThermalQrHtml(kraData, null)).toContain("<svg");
+    expect(buildKraThermalQrHtml(kraData, kraQrDataUrl)).toContain("<img");
+    expect(buildKraThermalQrHtml(kraData, kraQrDataUrl)).toContain(kraQrDataUrl);
   });
 
   it("prints without QR when KRA is enabled but the sale was not fiscalized", async () => {
