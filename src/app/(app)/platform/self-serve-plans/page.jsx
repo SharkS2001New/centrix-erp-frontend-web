@@ -14,6 +14,9 @@ const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
 
 const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
+const MIN_PLAN_POINTS = 8;
+const MAX_PLAN_POINTS = 20;
+const MIN_PLAN_BRIEF = 80;
 
 function emptyForm() {
   return {
@@ -107,6 +110,7 @@ export default function SelfServePlansPage() {
   const [form, setForm] = useState(emptyForm);
   const [words, setWords] = useState("");
   const [composeIndustry, setComposeIndustry] = useState("commerce");
+  const [points, setPoints] = useState(String(MIN_PLAN_POINTS));
   const [drafting, setDrafting] = useState(false);
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
@@ -169,15 +173,20 @@ export default function SelfServePlansPage() {
 
   async function handleCompose(event) {
     event.preventDefault();
-    if (words.trim().length < 2) {
-      notifyError("Write a short description, for example “Small shop, 2000 a month”.");
+    const count = Number(points);
+    if (!Number.isInteger(count) || count < MIN_PLAN_POINTS || count > MAX_PLAN_POINTS) {
+      notifyError(`Card points start at ${MIN_PLAN_POINTS} and cannot be more than ${MAX_PLAN_POINTS}.`);
+      return;
+    }
+    if (words.trim().length < MIN_PLAN_BRIEF) {
+      notifyError("Write a full description of what this plan includes. A short line is not enough.");
       return;
     }
     setDrafting(true);
     try {
       const res = await apiRequest("/admin/platform-plans/compose", {
         method: "POST",
-        body: { description: words.trim(), industry: composeIndustry || "commerce" },
+        body: { description: words.trim(), industry: composeIndustry || "commerce", points: count },
       });
       setCreated({ summary: res.summary ?? null, plan: res.data ?? null });
       notifySuccess(res.message || "Centrix AI created this plan.");
@@ -210,7 +219,7 @@ export default function SelfServePlansPage() {
   return (
     <CatalogPageShell
       title="Self-serve plans"
-      subtitle="A short description is enough. Centrix AI knows the product and fills in what the plan includes. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
+      subtitle="Write a full description and choose how many card points Centrix AI should create. The minimum is 8. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
     >
       <div className="flex min-h-[calc(100dvh-11rem)] flex-col md:min-h-[calc(100dvh-12rem)] lg:min-h-[calc(100dvh-13rem)]">
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
@@ -218,26 +227,41 @@ export default function SelfServePlansPage() {
       <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Choose the industry, then write a short description. Include the price in KES. Centrix AI fills in the applications and sections for that industry only.
+          Choose the industry and how many card points to create. Then write what the plan includes and the price in KES. A short line is not enough. Centrix AI writes that many points and fills in the applications and sections.
         </p>
-        <label className="mt-3 block max-w-sm text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
-          <SearchableSelect
-            value={composeIndustry}
-            onChange={(industry) => {
-              if (!industry) return;
-              setComposeIndustry(industry);
-              setIndustryFilter(industry);
-            }}
-            options={industryOptions}
-            placeholder="Select industry"
-          />
-        </label>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+            <SearchableSelect
+              value={composeIndustry}
+              onChange={(industry) => {
+                if (!industry) return;
+                setComposeIndustry(industry);
+                setIndustryFilter(industry);
+              }}
+              options={industryOptions}
+              placeholder="Select industry"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Card points</span>
+            <input
+              className={inputClass}
+              type="number"
+              min={MIN_PLAN_POINTS}
+              max={MAX_PLAN_POINTS}
+              step={1}
+              value={points}
+              onChange={(e) => setPoints(e.target.value)}
+            />
+            <span className="mt-1 block text-xs text-slate-500">Minimum {MIN_PLAN_POINTS}. Centrix AI creates this many lines on the plan card.</span>
+          </label>
+        </div>
         <textarea
           className={`${inputClass} mt-3 min-h-28`}
           value={words}
           onChange={(e) => setWords(e.target.value)}
-          placeholder="Small shop, 2000 a month"
+          placeholder={"Shop\n\nTill and products — Sell at the counter, with prices, tax, and a receipt.\nStock on hand — See what is left and receive goods from suppliers.\nDaily sales — Customers, today's takings, and a simple sales report.\n\nat 2000 Ksh"}
         />
         <div className="mt-3 flex justify-end">
           <PrimaryButton type="submit" showIcon={false} disabled={drafting}>
