@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
@@ -104,7 +104,9 @@ export function StaffFormScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref="/spa/staff">
+    <>
+    <StaffScreen />
+    <RecordFormDialog title={title} backHref="/spa/staff">
       <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
@@ -131,6 +133,7 @@ export function StaffFormScreen({ id }) {
       </fieldset>
       <RecordFormActions backHref="/spa/staff" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

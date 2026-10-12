@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { datePart, ksh, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
@@ -88,7 +88,9 @@ export function ExpenseFormScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref="/spa/expenses">
+    <>
+    <ExpensesScreen />
+    <RecordFormDialog title={title} backHref="/spa/expenses">
       <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Category"><SpaSelect value={form.category} onChange={set("category")} options={toOptions(CATEGORIES)} /></Field>
@@ -100,6 +102,7 @@ export function ExpenseFormScreen({ id }) {
       </div>
       <RecordFormActions backHref="/spa/expenses" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

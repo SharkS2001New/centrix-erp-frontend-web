@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { useSpa } from "@/lib/spa/store";
 import { useAppRouter } from "@/lib/use-app-router";
@@ -74,9 +74,11 @@ export function SupplierFormScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref="/spa/suppliers">
+    <>
+    <SuppliersScreen />
+    <RecordFormDialog title={title} backHref="/spa/suppliers">
       <form onSubmit={save}>
-      <div className="grid gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone || ""} onChange={set("phone")} /></Field>
         <Field label="Email"><input className={inputClass} value={form.email || ""} onChange={set("email")} /></Field>
@@ -84,6 +86,7 @@ export function SupplierFormScreen({ id }) {
       </div>
       <RecordFormActions backHref="/spa/suppliers" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

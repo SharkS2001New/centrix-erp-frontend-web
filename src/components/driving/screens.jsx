@@ -8,7 +8,7 @@ import { drivingGet, drivingSend } from "@/lib/driving/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { FilterSelect } from "@/components/catalog/catalog-shared";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
 import { buildDrivingFeeReceipt } from "@/lib/service-receipt";
 import { Card, DataTable, DayBoard, DrivingSelect, Empty, Field, FormCard, FormSection, MarkPad, PageTitle, PersonName, ScreenHeader, SearchField, Sparkline, Stat, StatusBadge, Toolbar, inputClass, money, primaryButtonClass } from "@/components/driving/ui";
@@ -159,8 +159,12 @@ function activeEnrolment(student) {
 
 export function StudentsScreen() {
   const pathname = usePathname();
-  if (pathname.endsWith("/students/new")) return <StudentFormScreen />;
-  return <StudentListScreen />;
+  return (
+    <>
+      <StudentListScreen />
+      {pathname.endsWith("/students/new") ? <StudentFormScreen /> : null}
+    </>
+  );
 }
 
 function StudentFormScreen() {
@@ -204,7 +208,7 @@ function StudentFormScreen() {
   }
 
   return (
-    <RecordFormPage title="Add student" backHref="/driving-school/students" wide>
+    <RecordFormDialog title="Add student" backHref="/driving-school/students">
       <form onSubmit={save}>
         <p className="theme-subtext mb-4 text-sm">Name, phone, course, and package are required.</p>
         <div className="grid gap-4 md:grid-cols-2">
@@ -239,7 +243,7 @@ function StudentFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/students" submitLabel="Register and enrol" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
@@ -286,9 +290,13 @@ function StudentListScreen() {
 
 export function CoursesScreen() {
   const pathname = usePathname();
-  if (pathname.endsWith("/courses/new")) return <CourseFormScreen />;
-  if (pathname.endsWith("/courses/package")) return <PackageFormScreen />;
-  return <CourseListScreen />;
+  return (
+    <>
+      <CourseListScreen />
+      {pathname.endsWith("/courses/new") ? <CourseFormScreen /> : null}
+      {pathname.endsWith("/courses/package") ? <PackageFormScreen /> : null}
+    </>
+  );
 }
 
 function CourseFormScreen() {
@@ -305,10 +313,10 @@ function CourseFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Add course" backHref="/driving-school/courses">
+    <RecordFormDialog title="Add course" backHref="/driving-school/courses">
       <form onSubmit={save}>
         <p className="theme-subtext mb-4 text-sm">Saving also creates a Standard package from the price and lesson counts.</p>
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Code"><input className={inputClass} required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
           <Field label="Name"><input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Licence category"><input className={inputClass} placeholder="Class B — light vehicle" value={form.licence_category} onChange={(e) => setForm({ ...form, licence_category: e.target.value })} /></Field>
@@ -318,7 +326,7 @@ function CourseFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/courses" submitLabel="Save course" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
@@ -348,10 +356,10 @@ function PackageFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Add package" backHref="/driving-school/courses">
+    <RecordFormDialog title="Add package" backHref="/driving-school/courses">
       <form onSubmit={savePackage}>
         <p className="theme-subtext mb-4 text-sm">Use this for a second price, such as weekend lessons or extra practical hours.</p>
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Course">
             <DrivingSelect value={pkg.course_id} placeholder="Choose a course" onChange={(e) => setPkg({ ...pkg, course_id: e.target.value })} options={[{ value: "", label: "Choose a course" }, ...courses.map((course) => ({ value: String(course.id), label: `${course.code} · ${course.name}` }))]} />
           </Field>
@@ -363,7 +371,7 @@ function PackageFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/courses" submitLabel="Save package" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
@@ -434,7 +442,7 @@ function LessonFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Book a lesson" backHref="/driving-school/schedule" wide>
+    <RecordFormDialog title="Book a lesson" backHref="/driving-school/schedule">
       <form onSubmit={save}>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
@@ -471,14 +479,18 @@ function LessonFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/schedule" submitLabel="Book lesson" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
 export function ScheduleScreen() {
   const pathname = usePathname();
-  if (pathname.endsWith("/schedule/new")) return <LessonFormScreen />;
-  return <ScheduleListScreen />;
+  return (
+    <>
+      <ScheduleListScreen />
+      {pathname.endsWith("/schedule/new") ? <LessonFormScreen /> : null}
+    </>
+  );
 }
 
 function ScheduleListScreen() {
@@ -510,10 +522,12 @@ function prettyLabel(name) {
 function DirectoryScreen({ title, subtitle, path, fields, columns, person = false, addLabel }) {
   const pathname = usePathname();
   const createHref = `/driving-school${path}/new`;
-  if (pathname === createHref) {
-    return <DirectoryFormScreen title={addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`} path={path} fields={fields} backHref={`/driving-school${path}`} />;
-  }
-  return <DirectoryListScreen title={title} subtitle={subtitle} path={path} fields={fields} columns={columns} person={person} addLabel={addLabel} createHref={createHref} />;
+  return (
+    <>
+      <DirectoryListScreen title={title} subtitle={subtitle} path={path} fields={fields} columns={columns} person={person} addLabel={addLabel} createHref={createHref} />
+      {pathname === createHref ? <DirectoryFormScreen title={addLabel || `Add ${title.replace(/s$/, "").toLowerCase()}`} path={path} fields={fields} backHref={`/driving-school${path}`} /> : null}
+    </>
+  );
 }
 
 function DirectoryFormScreen({ title, path, fields, backHref }) {
@@ -534,9 +548,9 @@ function DirectoryFormScreen({ title, path, fields, backHref }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref={backHref}>
+    <RecordFormDialog title={title} backHref={backHref}>
       <form onSubmit={save}>
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           {fields.map((field) => (
             <Field key={field.name} label={field.label}>
               <input className={inputClass} required={field.required} type={field.type || "text"} value={form[field.name]} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />
@@ -545,7 +559,7 @@ function DirectoryFormScreen({ title, path, fields, backHref }) {
         </div>
         <RecordFormActions backHref={backHref} />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
@@ -754,10 +768,10 @@ function AssessmentFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Record an assessment" backHref="/driving-school/assessments">
+    <RecordFormDialog title="Record an assessment" backHref="/driving-school/assessments">
       <form onSubmit={save}>
         <p className="theme-subtext mb-4 text-sm">This is an internal school check. It is not an official licensing result.</p>
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Student">
             <DrivingSelect required value={form.student_id} placeholder="Choose a student" onChange={(e) => setForm({ ...form, student_id: e.target.value })} options={[{ value: "", label: "Choose a student" }, ...rowsOf(students).map((row) => ({ value: String(row.id), label: row.full_name }))]} />
           </Field>
@@ -770,14 +784,18 @@ function AssessmentFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/assessments" submitLabel="Save assessment" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
   );
 }
 
 export function AssessmentsScreen() {
   const pathname = usePathname();
-  if (pathname.endsWith("/assessments/new")) return <AssessmentFormScreen />;
-  return <AssessmentListScreen />;
+  return (
+    <>
+      <AssessmentListScreen />
+      {pathname.endsWith("/assessments/new") ? <AssessmentFormScreen /> : null}
+    </>
+  );
 }
 
 function AssessmentListScreen() {
@@ -837,9 +855,10 @@ function PaymentFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Record a receipt" backHref="/driving-school/payments">
+    <>
+    <RecordFormDialog title="Record a receipt" backHref="/driving-school/payments">
       <form onSubmit={save}>
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Invoice">
             <DrivingSelect required value={payment.invoice_id} placeholder="Choose an invoice" onChange={(e) => setPayment({ ...payment, invoice_id: e.target.value })} options={[{ value: "", label: "Choose an invoice" }, ...invoices.map((row) => ({ value: String(row.id), label: `${row.invoice_number} · due ${money(row.outstanding)}` }))]} />
           </Field>
@@ -851,15 +870,20 @@ function PaymentFormScreen() {
         </div>
         <RecordFormActions backHref="/driving-school/payments" submitLabel="Record receipt" />
       </form>
-      {slip ? <ServiceReceiptDialog receipt={slip} paper={paper} onPaper={setPaper} onClose={() => exitTo("/driving-school/payments")} /> : null}
-    </RecordFormPage>
+    </RecordFormDialog>
+    {slip ? <ServiceReceiptDialog receipt={slip} paper={paper} onPaper={setPaper} onClose={() => exitTo("/driving-school/payments")} /> : null}
+    </>
   );
 }
 
 export function PaymentsScreen() {
   const pathname = usePathname();
-  if (pathname.endsWith("/payments/new")) return <PaymentFormScreen />;
-  return <PaymentListScreen />;
+  return (
+    <>
+      <PaymentListScreen />
+      {pathname.endsWith("/payments/new") ? <PaymentFormScreen /> : null}
+    </>
+  );
 }
 
 function PaymentListScreen() {

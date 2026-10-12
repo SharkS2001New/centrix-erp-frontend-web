@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { isPublicImageUrl, readServicePhoto, serviceImageSrc } from "@/lib/spa/image";
@@ -140,11 +140,12 @@ export function ServiceFormScreen({ id }) {
   const preview = source === "url" ? serviceImageSrc({ imageUrl: form.imageUrl }) : serviceImageSrc(form);
   if (id && !existing) return <Empty title="Service not found" detail="It may have been removed from this browser's sample data." />;
   return (
-    <RecordFormPage
+    <>
+    <ServicesScreen />
+    <RecordFormDialog
       title={title}
       subtitle="Price, duration, photo, and who can perform this service."
       backHref="/spa/services"
-      align="start"
     >
       <form onSubmit={save} className="space-y-4">
         <FormBlock title="Photo" detail="Shown on the service list and on the till.">
@@ -164,7 +165,7 @@ export function ServiceFormScreen({ id }) {
                   {form.image ? <Button variant="ghost" onClick={() => setForm((current) => ({ ...current, image: "" }))}>Remove photo</Button> : null}
                 </div>
               ) : (
-                <div className="mt-3 max-w-xl">
+                <div className="mt-3 w-full">
                   <input className={inputClass} type="url" value={form.imageUrl || ""} placeholder="https://example.com/haircut.jpg" onChange={set("imageUrl")} />
                   <p className="theme-subtext mt-1 text-xs">Paste a direct image link. Centrix downloads and stores a copy when this salon loads.</p>
                 </div>
@@ -211,6 +212,7 @@ export function ServiceFormScreen({ id }) {
 
         <RecordFormActions backHref="/spa/services" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

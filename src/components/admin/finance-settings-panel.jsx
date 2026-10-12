@@ -28,6 +28,7 @@ import { kraReceiptQrDataUrl, sanitizeKraSignatureLink } from "@/lib/kra-receipt
 /** @typedef {"all" | "kra" | "mpesa" | "paybills" | "equity"} FinanceSettingsMode */
 
 function KraQrDrawCheck() {
+  const [open, setOpen] = useState(false);
   const [sample, setSample] = useState("");
   const [imageUrl, setImageUrl] = useState(null);
   const [note, setNote] = useState("");
@@ -62,39 +63,76 @@ function KraQrDrawCheck() {
   }
 
   return (
-    <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
-      <p className="theme-heading text-sm font-medium">Check receipt QR</p>
-      <p className="theme-subtext mt-0.5 text-xs">
-        Paste a KRA verification link or the full eTIMS line. This draws the same image External POS receipts and invoices print.
-      </p>
-      <textarea
-        className={`${inputClassName()} mt-3 min-h-20 w-full`}
-        value={sample}
-        onChange={(e) => setSample(e.target.value)}
-        placeholder="https://etims.kra.go.ke/…"
-        spellCheck={false}
-      />
+    <>
       <button
         type="button"
-        disabled={drawing}
-        onClick={() => void draw()}
-        className={`${SECONDARY_BTN_CLASS} mt-3 px-3.5 py-2 disabled:opacity-50`}
+        onClick={() => setOpen(true)}
+        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2`}
       >
-        {drawing ? "Drawing…" : "Draw QR"}
+        Check receipt QR
       </button>
-      {imageUrl ? (
-        <div className="mt-4 flex justify-start">
-          <img
-            src={imageUrl}
-            alt="KRA verification QR code"
-            width={180}
-            height={180}
-            style={{ display: "block", width: 180, height: 180, background: "#fff" }}
-          />
+      {open ? (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
+        >
+          <div
+            className="theme-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kra-qr-check-title"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="kra-qr-check-title" className="theme-heading text-base font-medium">
+                  Check receipt QR
+                </h2>
+                <p className="theme-subtext mt-1 text-sm">
+                  Paste a KRA verification link or the full eTIMS line. This draws the same image External POS receipts and invoices print.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="theme-subtext rounded-md px-2 py-1 text-sm hover:bg-[var(--theme-surface-muted)]"
+                aria-label="Close"
+              >
+                Close
+              </button>
+            </div>
+            <textarea
+              className={`${inputClassName()} mt-4 min-h-24 w-full`}
+              value={sample}
+              onChange={(e) => setSample(e.target.value)}
+              placeholder="https://etims.kra.go.ke/…"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              disabled={drawing}
+              onClick={() => void draw()}
+              className={`${SECONDARY_BTN_CLASS} mt-3 px-3.5 py-2 disabled:opacity-50`}
+            >
+              {drawing ? "Drawing…" : "Draw QR"}
+            </button>
+            {imageUrl ? (
+              <div className="mt-4">
+                <img
+                  src={imageUrl}
+                  alt="KRA verification QR code"
+                  width={180}
+                  height={180}
+                  style={{ display: "block", width: 180, height: 180, background: "#fff" }}
+                />
+              </div>
+            ) : null}
+            {note ? <p className="theme-subtext mt-2 text-xs">{note}</p> : null}
+          </div>
         </div>
       ) : null}
-      {note ? <p className="theme-subtext mt-2 text-xs">{note}</p> : null}
-    </div>
+    </>
   );
 }
 
@@ -745,6 +783,7 @@ export function FinanceSettingsPanel({
                       >
                         {kraRestartTesting ? "Restarting…" : "Restart device"}
                       </button>
+                      <KraQrDrawCheck />
                     </div>
                     {kraHealthResult ? (
                       <div
@@ -856,7 +895,6 @@ export function FinanceSettingsPanel({
                   </Field>
                 </>
               ) : null}
-              <KraQrDrawCheck />
             </div>
           </div>
           ) : null}

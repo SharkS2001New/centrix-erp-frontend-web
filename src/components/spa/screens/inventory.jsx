@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { formatTime, ksh, stockStatus } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
@@ -98,7 +98,9 @@ export function ProductFormScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref="/spa/inventory">
+    <>
+    <InventoryScreen />
+    <RecordFormDialog title={title} backHref="/spa/inventory">
       <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="SKU"><input className={inputClass} value={form.sku} onChange={set("sku")} /></Field>
@@ -112,7 +114,8 @@ export function ProductFormScreen({ id }) {
       </div>
       <RecordFormActions backHref="/spa/inventory" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }
 
@@ -134,9 +137,11 @@ export function StockMovementScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title="Stock movement" backHref="/spa/inventory">
+    <>
+    <InventoryScreen />
+    <RecordFormDialog title="Stock movement" backHref="/spa/inventory">
       <form onSubmit={save}>
-      <div className="grid gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Type">
           <SpaSelect value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })} options={toOptions([
             { value: "in", label: "Stock in / supplier purchase" },
@@ -157,6 +162,7 @@ export function StockMovementScreen({ id }) {
       </div>
       <RecordFormActions backHref="/spa/inventory" submitLabel="Save movement" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
 import { buildSpaSaleReceipt } from "@/lib/service-receipt";
 import { toast } from "@/lib/toast";
@@ -245,17 +245,21 @@ export function ClientFormScreen({ id }) {
       exitTo(id ? `/spa/clients/${id}` : "/spa/clients");
     }
   }
+  const backHref = id ? `/spa/clients/${id}` : "/spa/clients";
   return (
-    <RecordFormPage title={title} backHref={id ? `/spa/clients/${id}` : "/spa/clients"}>
+    <>
+    {id ? <ClientDetailScreen id={id} /> : <ClientsScreen />}
+    <RecordFormDialog title={title} backHref={backHref}>
       <form onSubmit={save}>
-        <div className="grid gap-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name"><input className={inputClass} value={form.name} onChange={set("name")} /></Field>
           <Field label="Phone"><input className={inputClass} value={form.phone} onChange={set("phone")} /></Field>
           <Field label="Email"><input className={inputClass} value={form.email || ""} onChange={set("email")} /></Field>
           <Field label="Status"><SpaSelect value={form.status} onChange={set("status")} options={toOptions(["New", "Active", "VIP"])} /></Field>
         </div>
-        <RecordFormActions backHref={id ? `/spa/clients/${id}` : "/spa/clients"} />
+        <RecordFormActions backHref={backHref} />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }

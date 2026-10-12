@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { RecordFormActions, RecordFormPage, useRecordExit } from "@/components/record-form-page";
+import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { toast } from "@/lib/toast";
 import { datePart, formatLong, formatTime, minutesOf, todayISO } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
@@ -471,7 +471,9 @@ export function AppointmentFormScreen({ id }) {
     }
   }
   return (
-    <RecordFormPage title={title} backHref="/spa/appointments" wide>
+    <>
+    <AppointmentsScreen />
+    <RecordFormDialog title={title} backHref="/spa/appointments">
       <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Client"><SpaSelect value={form.clientId} onChange={set("clientId")} placeholder="Select" options={[{ value: "", label: "Select" }, ...spa.clients.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
@@ -487,13 +489,14 @@ export function AppointmentFormScreen({ id }) {
         {spa.features.chairs ? <Field label="Chair"><SpaSelect value={form.chairId} onChange={set("chairId")} placeholder="None" options={[{ value: "", label: "None" }, ...spa.chairs.map((chair) => ({ value: chair.id, label: chair.name }))]} /></Field> : null}
       </div>
       <Field label="Notes"><textarea className={`${textAreaClass} mt-3`} rows={2} value={form.notes} onChange={set("notes")} /></Field>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        {form.id ? <Button variant="danger" onClick={() => { spa.setAppointmentStatus(form.id, "cancelled"); toast.success("Appointment cancelled."); exitTo("/spa/appointments"); }}>Cancel booking</Button> : <span />}
-        <RecordFormActions backHref="/spa/appointments" />
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <RecordFormActions backHref="/spa/appointments" className="flex flex-wrap gap-2" />
+        {form.id ? <Button variant="danger" onClick={() => { spa.setAppointmentStatus(form.id, "cancelled"); toast.success("Appointment cancelled."); exitTo("/spa/appointments"); }}>Cancel booking</Button> : null}
       </div>
       {form.id ? <p className="mt-3 text-xs text-slate-500"><Badge tone="blue">{String(form.status).replace("_", " ")}</Badge> Change the time above to reschedule.</p> : null}
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }
 
@@ -511,16 +514,19 @@ export function WalkInFormScreen() {
     }
   }
   return (
-    <RecordFormPage title="Walk-in" backHref="/spa/appointments">
+    <>
+    <AppointmentsScreen />
+    <RecordFormDialog title="Walk-in" backHref="/spa/appointments">
       <form onSubmit={save}>
-      <div className="grid gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name"><input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
         <Field label="Phone"><input className={inputClass} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
         <Field label="Service"><SpaSelect value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })} options={spa.services.map((item) => ({ value: item.id, label: item.name }))} /></Field>
       </div>
       <RecordFormActions backHref="/spa/appointments" submitLabel="Add to queue" />
       </form>
-    </RecordFormPage>
+    </RecordFormDialog>
+    </>
   );
 }
 
