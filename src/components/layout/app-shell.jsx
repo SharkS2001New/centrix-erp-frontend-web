@@ -94,7 +94,10 @@ export function AppShell({ children }) {
         <WorkspaceNavigationTracker />
         <WorkspaceGuard>
           <RoutePermissionGuard>
-            <div className="app-shell-bg h-dvh overflow-hidden">{children}</div>
+            <div className="app-shell-bg h-dvh overflow-hidden">
+              {children}
+              <AiAssistPanel />
+            </div>
           </RoutePermissionGuard>
         </WorkspaceGuard>
       </AuthGuard>

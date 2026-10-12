@@ -254,7 +254,9 @@ describe("kra fiscal receipt print", () => {
     expect(html).toContain("Served by: Jane Wanjiku");
     expect(html).toContain("74");
     expect(html).toContain("KRA eTIMS FISCAL RECEIPT");
-    expect(html).toContain("data:image/png;base64,abc");
+    expect(html).toContain("<svg");
+    expect(html).toContain('class="kra-etims-qr"');
+    expect(html).not.toContain("https://etims.example");
   });
 
   it("builds credit note print title and original CU", () => {

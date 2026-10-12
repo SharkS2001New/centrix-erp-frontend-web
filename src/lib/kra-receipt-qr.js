@@ -27,12 +27,12 @@ export function sanitizeKraSignatureLink(raw) {
   const url = urlMatch ? urlMatch[0].replace(/[),.;]+$/, "") : null;
 
   const full = text.match(
-    /(20\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+\S+\s+\S+\s+https:\/\/\S+)/i,
+    /(20\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?\s+\S+\s+\S+\s+https:\/\/\S+)/i,
   );
   if (full) return full[1].replace(/[),.;]+$/, "");
 
   const shortYear = text.match(
-    /(\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+\S+\s+\S+\s+https:\/\/\S+)/i,
+    /(\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?\s+\S+\s+\S+\s+https:\/\/\S+)/i,
   );
   if (shortYear) return `20${shortYear[1].replace(/[),.;]+$/, "")}`;
 
@@ -189,6 +189,53 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
   };
 }
 
+function qrMatrixSvg(text, size) {
+  let qr = null;
+  for (const errorCorrectionLevel of ["M", "L"]) {
+    try {
+      qr = QRCode.create(text, { errorCorrectionLevel });
+      break;
+    } catch {
+      qr = null;
+    }
+  }
+  if (!qr?.modules) return "";
+
+  const n = qr.modules.size;
+  const rects = [];
+  for (let y = 0; y < n; y += 1) {
+    for (let x = 0; x < n; x += 1) {
+      if (qr.modules.get(x, y)) rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+    }
+  }
+  const px = Math.max(72, Number(size) || 100);
+  return `<svg class="kra-etims-qr" xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" role="img" aria-label="KRA verification QR code" style="${kraQrImageStyle(px)}"><rect width="${n}" height="${n}" fill="#ffffff"/><g fill="#000000">${rects.join("")}</g></svg>`;
+}
+
+/**
+ * Inline SVG QR. Print Agent drops data-URL images, which left the verification
+ * URL on the receipt as text. SVG paints on thermal receipts and A4 invoices.
+ */
+export function kraQrSvgMarkup(link, size = 100) {
+  const cleaned = sanitizeKraSignatureLink(link);
+  if (!cleaned) return "";
+  const urlOnly = cleaned.match(/https:\/\/\S+/i)?.[0]?.replace(/[),.;]+$/, "") ?? null;
+  const candidates = urlOnly && urlOnly !== cleaned ? [cleaned, urlOnly] : [cleaned];
+  for (const value of candidates) {
+    const svg = qrMatrixSvg(value, size);
+    if (svg) return svg;
+  }
+  return "";
+}
+
+function kraQrGraphic(link, qrDataUrl, size) {
+  const svg = kraQrSvgMarkup(link, size);
+  if (svg) return svg;
+  if (!qrDataUrl) return "";
+  const px = Math.max(72, Number(size) || 100);
+  return `<img class="kra-etims-qr" src="${qrDataUrl}" alt="KRA verification QR code" width="${px}" height="${px}" style="${kraQrImageStyle(px)}" />`;
+}
+
 /** Build a data-URL QR image for the KRA ERA verification link. */
 export async function kraReceiptQrDataUrl(link, { size = 120 } = {}) {
   const cleaned = sanitizeKraSignatureLink(link);
@@ -262,15 +309,13 @@ export function buildKraFiscalBlockHtml(
     html += `<div style="font-size:${isThermal ? "9px" : "10px"};">SCU: ${escapeKraHtml(kra.serialNumber)}</div>`;
   }
 
-  if (qrDataUrl && kra.signatureLink) {
+  const qrGraphic = kra.signatureLink ? kraQrGraphic(kra.signatureLink, qrDataUrl, qrSize) : "";
+  if (qrGraphic) {
     html += `<div style="margin:10px 0 6px;">
-      <img class="kra-etims-qr" src="${qrDataUrl}" alt="KRA verification QR code" width="${qrSize}" height="${qrSize}" style="${kraQrImageStyle(qrSize)}" />
+      ${qrGraphic}
       <div style="font-size:${isThermal ? "9px" : "9px"};margin-top:4px;color:#000;font-weight:700;line-height:1.35;">Scan to verify on KRA eTIMS</div>
       ${buyerDetailHtml}
     </div>`;
-  } else if (kra.signatureLink) {
-    html += `<div style="font-size:8px;word-break:break-all;margin-top:6px;">${escapeKraHtml(kra.signatureLink)}</div>`;
-    html += buyerDetailHtml;
   } else {
     html += buyerDetailHtml;
   }
@@ -293,7 +338,7 @@ export function buildKraFiscalBlockHtml(
  */
 function kraQrImageStyle(size) {
   const px = Math.max(72, Number(size) || 100);
-  return `display:block;margin:0 auto;width:${px}px;height:${px}px;max-width:none;max-height:none;`;
+  return `display:block;margin:0 auto;width:${px}px;height:${px}px;max-width:none;max-height:none;overflow:visible;`;
 }
 
 /** Centered KRA eTIMS QR for printed sale documents. */
@@ -302,11 +347,12 @@ export function buildKraDocumentQrHtml(
   qrDataUrl,
   { size = 100, layout = "thermal", buyerPin = null } = {},
 ) {
-  if (!kra?.signatureLink || !qrDataUrl) return "";
+  if (!kra?.signatureLink) return "";
+  const qrGraphic = kraQrGraphic(kra.signatureLink, qrDataUrl, Math.max(72, Number(size) || 100));
+  if (!qrGraphic) return "";
 
   const isThermal = layout === "thermal";
   const fontSize = isThermal ? "9px" : "10px";
-  const qrPx = Math.max(72, Number(size) || 100);
   // A4 keeps QR compact so it fits above the fixed print edge footer on page 1.
   const padding = isThermal ? "4px 0" : "6px 0";
   const margin = isThermal ? "4px 0 0" : "8px 0";
@@ -322,7 +368,7 @@ export function buildKraDocumentQrHtml(
   });
 
   return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;break-inside:avoid;overflow:visible;box-sizing:border-box;">
-      <img class="kra-etims-qr" src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${qrPx}" height="${qrPx}" style="${kraQrImageStyle(qrPx)}" />
+      ${qrGraphic}
       <div class="${captionClass}" style="${captionStyle}${isThermal ? "max-width:100%;padding:0 1px;overflow-wrap:anywhere;word-break:break-word;" : ""}">
         Scan to verify this invoice on KRA eTIMS platform
       </div>

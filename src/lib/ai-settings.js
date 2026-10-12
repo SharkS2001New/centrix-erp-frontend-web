@@ -178,7 +178,7 @@ export function canAskAiFromSearch({ capabilities, hasPermission }) {
 export function canUseAiTalk({ capabilities, hasPermission }) {
   if (!canShowAiAssistant(hasPermission)) return false;
   return capabilities?.ai_assistant?.talk_enabled === true
-    && capabilities?.ai_assistant?.platform_talk_enabled !== false;
+    && capabilities?.ai_assistant?.platform_talk_enabled === true;
 }
 
 /** Platform Talk voice presets (ERP web + Manager pick closest on-device voice). */

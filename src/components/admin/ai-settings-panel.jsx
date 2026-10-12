@@ -227,6 +227,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
             />
           ) : null}
           {form.platform_chat_enabled ? (
+          <>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <p className="font-medium text-slate-900">AI is enabled for this organization</p>
             <p className="mt-1 text-xs text-slate-500">

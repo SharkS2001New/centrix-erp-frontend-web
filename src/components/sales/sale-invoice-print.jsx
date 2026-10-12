@@ -361,6 +361,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     .footer-notes { margin: 0 0 4px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
     .footer-notes p { margin: 4px 0; }
     .footer-notes .kra-etims-block { margin-bottom: 4px; }
+    .footer-notes .kra-etims-qr { display: block; margin: 0 auto; width: 100px; height: 100px; max-width: none; max-height: none; }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; break-inside: avoid; page-break-inside: avoid; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
     .pay-instructions .pay-block { margin: 0 0 8px; }
