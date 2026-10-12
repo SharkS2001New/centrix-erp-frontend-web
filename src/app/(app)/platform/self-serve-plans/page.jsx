@@ -18,6 +18,32 @@ const MIN_PLAN_POINTS = 8;
 const MAX_PLAN_POINTS = 20;
 const MIN_PLAN_BRIEF = 80;
 
+function planPointCount(plan) {
+  const written = Array.isArray(plan?.feature_details) ? plan.feature_details.filter((row) => String(row?.label ?? "").trim()).length : 0;
+  return String(Math.min(MAX_PLAN_POINTS, Math.max(MIN_PLAN_POINTS, written || MIN_PLAN_POINTS)));
+}
+
+function planToBrief(plan) {
+  const yearly = plan?.interval === "annual" || plan?.interval === "yearly";
+  const raw = yearly ? plan?.yearly_price : plan?.monthly_price;
+  const amount = raw == null || raw === "" ? "" : String(raw).replace(/\.00$/, "");
+  const lines = [];
+  const industry = industryById(plan?.industry || "commerce")?.label;
+  if (industry) lines.push(industry);
+  if (plan?.name) lines.push(plan.name);
+  if (plan?.description) lines.push(plan.description);
+  lines.push("");
+  for (const row of plan?.feature_details ?? []) {
+    const label = String(row?.label ?? "").trim();
+    if (!label) continue;
+    const detail = String(row?.detail ?? "").trim();
+    lines.push(detail ? `${label} — ${detail}` : label);
+  }
+  lines.push("");
+  if (amount) lines.push(`at ${amount} Ksh${yearly ? " a year" : ""}`);
+  return lines.join("\n").trim();
+}
+
 function emptyForm() {
   return {
     name: "",
@@ -112,6 +138,8 @@ export default function SelfServePlansPage() {
   const [composeIndustry, setComposeIndustry] = useState("commerce");
   const [points, setPoints] = useState(String(MIN_PLAN_POINTS));
   const [drafting, setDrafting] = useState(false);
+  const [aiEdit, setAiEdit] = useState(null);
+  const [revising, setRevising] = useState(false);
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
 
@@ -196,6 +224,56 @@ export default function SelfServePlansPage() {
       notifyError(err instanceof ApiError ? err.message : "Centrix AI could not create this plan.");
     } finally {
       setDrafting(false);
+    }
+  }
+
+  function openAiEdit(plan) {
+    setAiEdit({
+      id: plan.id,
+      plan,
+      industry: plan.industry || "commerce",
+      points: planPointCount(plan),
+      text: planToBrief(plan),
+    });
+    if (plan.industry) setIndustryFilter(plan.industry);
+  }
+
+  function openFieldEdit(plan) {
+    setEditingId(plan.id);
+    setForm(recordToForm(plan));
+    setFormOpen(true);
+  }
+
+  async function handleRevise(event) {
+    event.preventDefault();
+    if (!aiEdit) return;
+    const count = Number(aiEdit.points);
+    if (!Number.isInteger(count) || count < MIN_PLAN_POINTS || count > MAX_PLAN_POINTS) {
+      notifyError(`Card points start at ${MIN_PLAN_POINTS} and cannot be more than ${MAX_PLAN_POINTS}.`);
+      return;
+    }
+    if (aiEdit.text.trim().length < 8) {
+      notifyError("Say what should change, or edit the plan text.");
+      return;
+    }
+    setRevising(true);
+    try {
+      const res = await apiRequest(`/admin/platform-plans/${aiEdit.id}/compose`, {
+        method: "POST",
+        body: {
+          description: aiEdit.text.trim(),
+          industry: aiEdit.industry || "commerce",
+          points: count,
+        },
+      });
+      setCreated({ summary: res.summary ?? null, plan: res.data ?? null });
+      notifySuccess(res.message || "Centrix AI updated this plan.");
+      setAiEdit(null);
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Centrix AI could not update this plan.");
+    } finally {
+      setRevising(false);
     }
   }
 
@@ -289,16 +367,69 @@ export default function SelfServePlansPage() {
             <button
               type="button"
               className="mt-4 text-sm font-medium text-[#185FA5]"
-              onClick={() => {
-                setEditingId(created.plan.id);
-                setForm(recordToForm(created.plan));
-                setFormOpen(true);
-              }}
+              onClick={() => openAiEdit(created.plan)}
             >
               Edit this plan
             </button>
           ) : null}
         </div>
+      ) : null}
+
+      {aiEdit ? (
+        <form onSubmit={(event) => void handleRevise(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Edit {aiEdit.plan?.name || "plan"}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Change the plan text, or write what should change. Centrix AI updates this package and writes the number of card points you set.
+              </p>
+            </div>
+            <button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={() => setAiEdit(null)}>
+              Close
+            </button>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+              <SearchableSelect
+                value={aiEdit.industry}
+                onChange={(industry) => {
+                  if (!industry) return;
+                  setAiEdit((current) => (current ? { ...current, industry } : current));
+                  setIndustryFilter(industry);
+                }}
+                options={industryOptions}
+                placeholder="Select industry"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Card points</span>
+              <input
+                className={inputClass}
+                type="number"
+                min={MIN_PLAN_POINTS}
+                max={MAX_PLAN_POINTS}
+                step={1}
+                value={aiEdit.points}
+                onChange={(e) => setAiEdit((current) => (current ? { ...current, points: e.target.value } : current))}
+              />
+              <span className="mt-1 block text-xs text-slate-500">Minimum {MIN_PLAN_POINTS}.</span>
+            </label>
+          </div>
+          <textarea
+            className={`${inputClass} mt-3 min-h-40`}
+            value={aiEdit.text}
+            onChange={(e) => setAiEdit((current) => (current ? { ...current, text: e.target.value } : current))}
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <button type="button" className="text-sm font-medium text-[#185FA5]" onClick={() => openFieldEdit(aiEdit.plan)}>
+              Edit fields
+            </button>
+            <PrimaryButton type="submit" showIcon={false} disabled={revising}>
+              {revising ? "Updating…" : "Update with Centrix AI"}
+            </PrimaryButton>
+          </div>
+        </form>
       ) : null}
 
       <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
@@ -387,11 +518,7 @@ export default function SelfServePlansPage() {
                       <button
                         type="button"
                         className="mr-3 text-sm font-medium text-[#185FA5]"
-                        onClick={() => {
-                          setEditingId(plan.id);
-                          setForm(recordToForm(plan));
-                          setFormOpen(true);
-                        }}
+                        onClick={() => openAiEdit(plan)}
                       >
                         Edit
                       </button>
