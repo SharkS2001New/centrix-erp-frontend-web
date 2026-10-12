@@ -589,7 +589,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
               ) : null}
             </div>
           </div>
-
+          </>
           ) : null}
           <PrimaryButton type="button" onClick={saveAiSettings} disabled={saving}>
             {saving ? "Saving…" : "Save AI settings"}
