@@ -71,10 +71,25 @@ describe("ai insights settings helpers", () => {
       platform_ai_enabled: true,
       ai_assistant: { available: true, enabled: true },
     };
-    expect(canUseAiTalk({ capabilities: base, hasPermission: allow })).toBe(true);
+    expect(canUseAiTalk({ capabilities: base, hasPermission: allow })).toBe(false);
     expect(
       canUseAiTalk({
-        capabilities: { ...base, ai_assistant: { ...base.ai_assistant, talk_enabled: false } },
+        capabilities: {
+          ...base,
+          ai_assistant: { ...base.ai_assistant, talk_enabled: true, platform_talk_enabled: true },
+        },
+        hasPermission: allow,
+      }),
+    ).toBe(true);
+    expect(
+      canUseAiTalk({
+        capabilities: { ...base, ai_assistant: { ...base.ai_assistant, talk_enabled: false, platform_talk_enabled: true } },
+        hasPermission: allow,
+      }),
+    ).toBe(false);
+    expect(
+      canUseAiTalk({
+        capabilities: { ...base, ai_assistant: { ...base.ai_assistant, talk_enabled: true, platform_talk_enabled: false } },
         hasPermission: allow,
       }),
     ).toBe(false);
