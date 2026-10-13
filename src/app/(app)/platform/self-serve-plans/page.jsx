@@ -9,6 +9,7 @@ import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platf
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
+import { monthOffer, onceOffer, PlanGroup, prepaidOffer } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -16,6 +17,32 @@ const inputClass =
 const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
 const MIN_PLAN_POINTS = 8;
 const MAX_PLAN_POINTS = 20;
+
+function byCardOrder(rows) {
+  return [...rows].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.name ?? "").localeCompare(String(b.name ?? "")));
+}
+
+function previewPlan(plan, discount) {
+  const yearly = plan.interval === "annual" || plan.interval === "yearly";
+  const features = (Array.isArray(plan.feature_details) ? plan.feature_details : []).map((row) => {
+    const label = String(row?.label ?? "").trim();
+    if (!label) return "";
+    const detail = String(row?.detail ?? "").trim();
+    return detail ? `${label}: ${detail}` : label;
+  }).filter(Boolean);
+  return {
+    id: plan.id,
+    name: plan.name,
+    description: plan.description,
+    interval: yearly ? "yearly" : "monthly",
+    currency: plan.currency || "KES",
+    monthly_price: plan.monthly_price,
+    yearly_price: plan.yearly_price,
+    features,
+    discount_percent: discount.percent,
+    discount_min_months: discount.minMonths,
+  };
+}
 
 function planPointCount(plan) {
   const written = Array.isArray(plan?.feature_details) ? plan.feature_details.filter((row) => String(row?.label ?? "").trim()).length : 0;
@@ -125,6 +152,90 @@ function formToPayload(form) {
   };
 }
 
+function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove }) {
+  if (industryFilter === "all") {
+    return (
+      <p className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
+        Choose an industry to see the cards an organisation sees, and to change their order.
+      </p>
+    );
+  }
+
+  const published = byCardOrder(
+    plans.filter((plan) => plan.is_active !== false && (plan.industry || "commerce") === industryFilter),
+  ).map((plan) => previewPlan(plan, discount));
+  const monthlyPlans = published.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
+  const yearlyPlans = published.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
+  const monthly = monthlyPlans.map(monthOffer);
+  const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
+  const once = yearlyPlans.map(onceOffer);
+  const saving = prepaid.some((offer) => offer.percent > 0);
+  const tabs = ["monthly", "yearly"];
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
+      <h2 className="text-sm font-semibold text-slate-900">How organisations see these cards</h2>
+      <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        Published plans only. The third card is marked Recommended. Move a card and the organisation screen uses that order. The 12-month cards are the monthly plans, so moving one there also moves it on Monthly. Hidden plans stay in the list below. The token pack is set with Centrix Paybill.
+      </p>
+      <div className="mx-auto mt-5 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
+        {tabs.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => setBilling(option)}
+            className={`rounded-full px-5 py-1.5 font-medium ${
+              billing === option
+                ? "bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-sm"
+                : "text-[var(--theme-text-muted)]"
+            }`}
+          >
+            {option === "yearly" ? "Yearly" : "Monthly"}
+          </button>
+        ))}
+      </div>
+      {billing === "yearly" ? (
+        prepaid.length + once.length === 0 ? (
+          <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
+            No yearly prices are published for this industry yet.
+          </p>
+        ) : (
+          <div className="mt-8 space-y-10">
+            {prepaid.length > 0 ? (
+              <PlanGroup
+                title="12 months of a monthly plan"
+                hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
+                offers={prepaid}
+                preview
+                moving={ordering}
+                onMove={onMove}
+              />
+            ) : null}
+            {once.length > 0 ? (
+              <PlanGroup
+                title="Pay once for the year"
+                hint="A yearly price set for the plan. One payment, not twelve monthly charges."
+                offers={once}
+                preview
+                moving={ordering}
+                onMove={onMove}
+              />
+            ) : null}
+          </div>
+        )
+      ) : monthly.length === 0 ? (
+        <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
+          No monthly plans are published for this industry yet.
+        </p>
+      ) : (
+        <div className="mt-8">
+          <PlanGroup offers={monthly} preview moving={ordering} onMove={onMove} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SelfServePlansPage() {
   const confirm = useConfirm();
   const [plans, setPlans] = useState([]);
@@ -141,6 +252,9 @@ export default function SelfServePlansPage() {
   const [revising, setRevising] = useState(false);
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
+  const [discount, setDiscount] = useState({ percent: 0, minMonths: 3 });
+  const [previewBilling, setPreviewBilling] = useState("monthly");
+  const [ordering, setOrdering] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,11 +267,42 @@ export default function SelfServePlansPage() {
     } finally {
       setLoading(false);
     }
+    try {
+      const settings = await apiRequest("/admin/platform-paybill");
+      setDiscount({
+        percent: Number(settings.data?.duration_discount_percent) || 0,
+        minMonths: Number(settings.data?.duration_discount_min_months ?? 3),
+      });
+    } catch {
+      setDiscount({ percent: 0, minMonths: 3 });
+    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function moveOffers(offers, index, direction) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= offers.length || ordering) return;
+    const next = [...offers];
+    const [moved] = next.splice(index, 1);
+    next.splice(nextIndex, 0, moved);
+    const order = new Map(next.map((offer, position) => [offer.plan.id, position + 1]));
+    setPlans((current) => current.map((plan) => (order.has(plan.id) ? { ...plan, sort_order: order.get(plan.id) } : plan)));
+    setOrdering(true);
+    try {
+      await apiRequest("/admin/platform-plans/reorder", {
+        method: "POST",
+        body: { ids: next.map((offer) => offer.plan.id) },
+      });
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save the card order.");
+      await load();
+    } finally {
+      setOrdering(false);
+    }
+  }
 
   function toggleKey(field, key) {
     setForm((prev) => {
@@ -467,7 +612,17 @@ export default function SelfServePlansPage() {
         </PrimaryButton>
       </div>
 
-      <div className="theme-panel flex min-h-80 flex-1 flex-col rounded-xl border shadow-sm">
+      <PlanPreview
+        industryFilter={industryFilter}
+        plans={plans}
+        discount={discount}
+        billing={previewBilling}
+        setBilling={setPreviewBilling}
+        ordering={ordering}
+        onMove={moveOffers}
+      />
+
+      <div className="theme-panel mt-4 flex min-h-80 flex-1 flex-col rounded-xl border shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-sm text-slate-500">Loading plans…</p>
         ) : plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).length === 0 ? (
@@ -491,7 +646,7 @@ export default function SelfServePlansPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).map((plan) => (
+                {byCardOrder(plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter)).map((plan) => (
                   <tr key={plan.id}>
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-900">{plan.name}</p>

@@ -39,6 +39,8 @@ export default function SubscribePage() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [checkoutId, setCheckoutId] = useState(null);
+  const [watching, setWatching] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +137,44 @@ export default function SubscribePage() {
     return false;
   }
 
+  useEffect(() => {
+    if (!watching || !checkoutId) return undefined;
+    let stopped = false;
+
+    async function poll() {
+      try {
+        const res = await apiRequest(`/erp/organization/licence/status?checkout_id=${checkoutId}`);
+        if (stopped) return;
+        if (res.status === "paid") {
+          setWatching(false);
+          if (await leaveIfPaid(res.license)) return;
+          const next = await refreshCapabilities({ force: true });
+          if (stopped) return;
+          if (await leaveIfPaid(next?.license ?? next?.subscription)) return;
+          setNotice(res.message || "M-Pesa payment confirmed.");
+          return;
+        }
+        if (res.stk_failed) {
+          setWatching(false);
+          setNotice(res.message || "M-Pesa did not complete this payment.");
+          return;
+        }
+        setNotice(res.message || "Waiting for M-Pesa to confirm this payment.");
+      } catch {
+        if (!stopped) setNotice("Still waiting for the M-Pesa confirmation.");
+      }
+    }
+
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
+    }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [checkoutId, watching]);
+
   async function payNow() {
     if (forPos && billing === "token") {
       setNotice("External POS needs a monthly or yearly subscription.");
@@ -153,6 +193,8 @@ export default function SubscribePage() {
           ? { billing: "token", phone }
           : { plan_id: selected.id, months: billing === "yearly" ? 12 : quote.months, phone, billing },
       });
+      if (res.checkout?.id) setCheckoutId(res.checkout.id);
+      setWatching(Boolean(res.stk && res.checkout?.id));
       setNotice(res.message || "Check your phone for the M-Pesa prompt.");
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not start M-Pesa.");
@@ -173,6 +215,7 @@ export default function SubscribePage() {
           ? { billing: "token" }
           : { plan_id: selected.id, months: billing === "yearly" ? 12 : quote.months, billing },
       });
+      if (res.checkout?.id) setCheckoutId(res.checkout.id);
       setNotice(res.message || "Centrix has been notified on WhatsApp.");
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not notify Centrix.");
@@ -185,6 +228,16 @@ export default function SubscribePage() {
     setBusy("check");
     setNotice("");
     try {
+      if (!code.trim() && checkoutId) {
+        const status = await apiRequest(`/erp/organization/licence/status?checkout_id=${checkoutId}`);
+        if (status.status === "paid") {
+          if (await leaveIfPaid(status.license)) return;
+          const next = await refreshCapabilities({ force: true });
+          if (await leaveIfPaid(next?.license ?? next?.subscription)) return;
+        }
+        setNotice(status.message || "M-Pesa has not confirmed this payment yet.");
+        return;
+      }
       const res = await apiRequest("/erp/organization/licence/verify", {
         method: "POST",
         body: billing === "token"
@@ -236,6 +289,7 @@ export default function SubscribePage() {
             setCode={setCode}
             busy={busy}
             notice={notice}
+            watching={watching}
             onBack={() => setStep("plans")}
             onPay={() => void payNow()}
             onNotify={() => void notifyAdmin()}
@@ -403,6 +457,7 @@ function CheckoutStep({
   setCode,
   busy,
   notice,
+  watching = false,
   onBack,
   onPay,
   onNotify,
@@ -453,7 +508,11 @@ function CheckoutStep({
               {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
             </button>
           </div>
-          {notice ? <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm">{notice}</p> : null}
+          {notice ? (
+            <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${watching ? "theme-panel border" : "theme-alert-error"}`}>
+              {notice}
+            </p>
+          ) : null}
         </section>
         <aside className="theme-panel rounded-3xl border p-6">
           <h2 className="theme-heading text-2xl font-semibold">{billing === "token" ? "Token pack" : selected?.name}</h2>
