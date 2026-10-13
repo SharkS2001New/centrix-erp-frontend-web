@@ -12,6 +12,12 @@ export const TABLE_LABELS = {
   supplier_return_documents: "Supplier returns",
   journal_entries: "Journal entries",
   system_settings: "System settings",
+  employees: "Employees",
+  organizations: "Organizations",
+  categories: "Categories",
+  stock_movements: "Stock movements",
+  payment_methods: "Payment methods",
+  tills: "Tills",
 };
 
 /** @param {string} tableName */

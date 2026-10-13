@@ -9,6 +9,7 @@ import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { filterByOrganization, formatAuditValues, orgListParams } from "@/lib/admin";
 import {
+  TABLE_LABELS,
   actionBadgeClass,
   actionLabel,
   defaultAuditDateRange,
@@ -138,13 +139,17 @@ export function AdminAuditScreen() {
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
 
   const modules = useMemo(() => {
-    const set = new Set(logs.map((l) => l.table_name).filter(Boolean));
-    return [...set].sort();
+    const set = new Set([
+      ...Object.keys(TABLE_LABELS),
+      ...logs.map((l) => l.table_name).filter(Boolean),
+    ]);
+    return [...set].sort((a, b) => tableLabel(a).localeCompare(tableLabel(b)));
   }, [logs]);
 
   const actionOptions = useMemo(() => {
-    const set = new Set(logs.map((l) => l.action).filter(Boolean));
-    return [...set].sort();
+    const known = ["create", "update", "delete", "login", "logout", "checkout", "payment"];
+    const set = new Set([...known, ...logs.map((l) => l.action).filter(Boolean)]);
+    return [...set];
   }, [logs]);
 
   function resetFilters() {
@@ -163,7 +168,7 @@ export function AdminAuditScreen() {
   return (
     <CatalogPageShell
       title="Audit trail"
-      subtitle="System-generated log of creates, updates, and deletes across modules."
+      subtitle="Who signed in, and who created, changed, or removed records in this organization. Entries are kept for the audit retention period (10 days by default, up to 90)."
       action={
         <CatalogListExport
           title="Audit trail"
@@ -247,10 +252,7 @@ export function AdminAuditScreen() {
             onChange={(e) => setActionFilter(e.target.value)}
             options={[
               { value: "all", label: "All actions" },
-              ...["create", "update", "delete"].map((a) => ({ value: a, label: actionLabel(a) })),
-              ...actionOptions
-                .filter((a) => !["create", "update", "delete"].includes(a))
-                .map((a) => ({ value: a, label: actionLabel(a) })),
+              ...actionOptions.map((a) => ({ value: a, label: actionLabel(a) })),
             ]}
           />
         </label>

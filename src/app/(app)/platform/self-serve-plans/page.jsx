@@ -16,7 +16,6 @@ const inputClass =
 const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
 const MIN_PLAN_POINTS = 8;
 const MAX_PLAN_POINTS = 20;
-const MIN_PLAN_BRIEF = 80;
 
 function planPointCount(plan) {
   const written = Array.isArray(plan?.feature_details) ? plan.feature_details.filter((row) => String(row?.label ?? "").trim()).length : 0;
@@ -206,8 +205,8 @@ export default function SelfServePlansPage() {
       notifyError(`Card points start at ${MIN_PLAN_POINTS} and cannot be more than ${MAX_PLAN_POINTS}.`);
       return;
     }
-    if (words.trim().length < MIN_PLAN_BRIEF) {
-      notifyError("Write a full description of what this plan includes. A short line is not enough.");
+    if (!words.trim()) {
+      notifyError("Write what this plan includes, and include the price in KES.");
       return;
     }
     setDrafting(true);
@@ -297,7 +296,7 @@ export default function SelfServePlansPage() {
   return (
     <CatalogPageShell
       title="Self-serve plans"
-      subtitle="Write a full description and choose how many card points Centrix AI should create. The minimum is 8. Monthly plans appear on the Monthly tab and yearly plans on the Yearly tab."
+      subtitle="Write what the plan includes and the price in KES. A short line is enough. Choose how many card points to create, at least 8."
     >
       <div className="flex min-h-[calc(100dvh-11rem)] flex-col md:min-h-[calc(100dvh-12rem)] lg:min-h-[calc(100dvh-13rem)]">
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
@@ -305,7 +304,7 @@ export default function SelfServePlansPage() {
       <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Choose the industry and how many card points to create. Then write what the plan includes and the price in KES. A short line is not enough. Centrix AI writes that many points and fills in the applications and sections.
+          Choose the industry and how many card points to create. Then write what the plan includes and the price in KES. A short line such as “Small shop, 2000 a month” is enough. Centrix AI writes the card points and fills in the applications.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
