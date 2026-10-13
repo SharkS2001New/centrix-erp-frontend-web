@@ -143,6 +143,7 @@ export function resolveOrganizationLicense(source = null) {
     warning_days: warningDays,
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
     access: ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null,
+    tokens_enabled: raw.tokens_enabled !== false,
     token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
     sale_tokens: raw.sale_tokens != null ? Number(raw.sale_tokens) : Number(raw.write_costs?.create ?? 1),
     write_costs: {

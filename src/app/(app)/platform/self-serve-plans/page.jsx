@@ -9,7 +9,7 @@ import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platf
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { monthOffer, onceOffer, PlanGroup, prepaidOffer } from "@/components/platform/upgrade-plan-cards";
+import { monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanGroup, prepaidOffer } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -39,6 +39,8 @@ function previewPlan(plan, discount) {
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
     features,
+    feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
+    is_active: plan.is_active !== false,
     discount_percent: discount.percent,
     discount_min_months: discount.minMonths,
   };
@@ -152,17 +154,9 @@ function formToPayload(form) {
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove }) {
-  if (industryFilter === "all") {
-    return (
-      <p className="rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
-        Choose an industry to see the cards an organisation sees, and to change their order.
-      </p>
-    );
-  }
-
+function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading }) {
   const published = byCardOrder(
-    plans.filter((plan) => plan.is_active !== false && (plan.industry || "commerce") === industryFilter),
+    plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
   const monthlyPlans = published.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = published.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
@@ -170,13 +164,14 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
   const once = yearlyPlans.map(onceOffer);
   const saving = prepaid.some((offer) => offer.percent > 0);
+  const quoteCard = <OneTimeQuoteCard preview />;
   const tabs = ["monthly", "yearly"];
 
   return (
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
-      <h2 className="text-sm font-semibold text-slate-900">How organisations see these cards</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Plan cards</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-600">
-        Published plans only. The third card is marked Recommended. Move a card and the organisation screen uses that order. The 12-month cards are the monthly plans, so moving one there also moves it on Monthly. Hidden plans stay in the list below. The token pack is set with Centrix Paybill.
+        These are the cards an organisation sees. Change the name, price, and points here, add or remove a point, then save the card. The third card is marked Recommended. Move a card and the organisation screen uses that order. A hidden card stays here until you publish it again.
       </p>
       <div className="mx-auto mt-5 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
         {tabs.map((option) => (
@@ -194,42 +189,56 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
           </button>
         ))}
       </div>
-      {billing === "yearly" ? (
-        prepaid.length + once.length === 0 ? (
-          <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
-            No yearly prices are published for this industry yet.
-          </p>
-        ) : (
-          <div className="mt-8 space-y-10">
-            {prepaid.length > 0 ? (
-              <PlanGroup
-                title="12 months of a monthly plan"
-                hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
-                offers={prepaid}
-                preview
-                moving={ordering}
-                onMove={onMove}
-              />
-            ) : null}
-            {once.length > 0 ? (
-              <PlanGroup
-                title="Pay once for the year"
-                hint="A yearly price set for the plan. One payment, not twelve monthly charges."
-                offers={once}
-                preview
-                moving={ordering}
-                onMove={onMove}
-              />
-            ) : null}
-          </div>
-        )
+      {loading && plans.length === 0 ? (
+        <p className="mt-8 text-sm text-slate-500">Loading plans…</p>
+      ) : billing === "yearly" ? (
+        <div className="mt-8 space-y-10">
+          {prepaid.length > 0 ? (
+            <PlanGroup
+              title="12 months of a monthly plan"
+              hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
+              offers={prepaid}
+              preview
+              moving={ordering}
+              onMove={industryFilter === "all" ? undefined : onMove}
+              manage={manage}
+              trailing={once.length === 0 ? quoteCard : null}
+            />
+          ) : null}
+          {once.length > 0 ? (
+            <PlanGroup
+              title="Pay once for the year"
+              hint="A yearly price set for the plan. One payment, not twelve monthly charges."
+              offers={once}
+              preview
+              moving={ordering}
+              onMove={industryFilter === "all" ? undefined : onMove}
+              manage={manage}
+              trailing={quoteCard}
+            />
+          ) : null}
+          {prepaid.length + once.length === 0 ? (
+            <>
+              <p className="mx-auto max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
+                No yearly prices are published for this industry yet.
+              </p>
+              <div className="mx-auto max-w-sm">{quoteCard}</div>
+            </>
+          ) : null}
+        </div>
       ) : monthly.length === 0 ? (
         <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
           No monthly plans are published for this industry yet.
         </p>
       ) : (
         <div className="mt-8">
-          <PlanGroup offers={monthly} preview moving={ordering} onMove={onMove} />
+          <PlanGroup
+            offers={monthly}
+            preview
+            moving={ordering}
+            onMove={industryFilter === "all" ? undefined : onMove}
+            manage={manage}
+          />
         </div>
       )}
     </section>
@@ -255,6 +264,11 @@ export default function SelfServePlansPage() {
   const [discount, setDiscount] = useState({ percent: 0, minMonths: 3 });
   const [previewBilling, setPreviewBilling] = useState("monthly");
   const [ordering, setOrdering] = useState(false);
+  const [savingCardId, setSavingCardId] = useState(null);
+  const [policy, setPolicy] = useState(null);
+  const [shortCode, setShortCode] = useState("");
+  const [simulation, setSimulation] = useState(null);
+  const [tokenBusy, setTokenBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -268,11 +282,16 @@ export default function SelfServePlansPage() {
       setLoading(false);
     }
     try {
-      const settings = await apiRequest("/admin/platform-paybill");
+      const [settings, policyRes] = await Promise.all([
+        apiRequest("/admin/platform-paybill"),
+        apiRequest("/admin/billing-policy"),
+      ]);
       setDiscount({
         percent: Number(settings.data?.duration_discount_percent) || 0,
         minMonths: Number(settings.data?.duration_discount_min_months ?? 3),
       });
+      setShortCode(String(settings.data?.short_code ?? ""));
+      setPolicy(policyRes.data ?? null);
     } catch {
       setDiscount({ percent: 0, minMonths: 3 });
     }
@@ -419,6 +438,76 @@ export default function SelfServePlansPage() {
     } finally {
       setRevising(false);
     }
+  }
+
+  async function saveCard(preview, draft) {
+    const source = plans.find((plan) => plan.id === preview.id);
+    const amount = Number(draft.price);
+    if (!source) return;
+    if (!String(draft.name ?? "").trim()) {
+      notifyError("Enter a plan name.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notifyError("Enter a price greater than 0.");
+      return;
+    }
+    setSavingCardId(source.id);
+    try {
+      const payload = formToPayload({
+        ...recordToForm(source),
+        name: draft.name,
+        description: draft.description,
+        price: String(amount),
+        feature_details: draft.features,
+        is_active: draft.is_active,
+      });
+      await apiRequest(`/admin/platform-plans/${source.id}`, { method: "PATCH", body: payload });
+      notifySuccess("Card saved.");
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save this card.");
+    } finally {
+      setSavingCardId(null);
+    }
+  }
+
+  async function toggleTokens() {
+    if (!policy || tokenBusy) return;
+    const enabled = policy.tokens_enabled === false;
+    const next = { ...policy, tokens_enabled: enabled };
+    setTokenBusy(true);
+    setPolicy(next);
+    try {
+      const res = await apiRequest("/admin/billing-policy", { method: "PUT", body: next });
+      setPolicy(res.data ?? next);
+      notifySuccess(enabled ? "Token subscriptions are on." : "Token subscriptions are off.");
+    } catch (err) {
+      setPolicy(policy);
+      notifyError(err instanceof ApiError ? err.message : "Could not update token billing.");
+    } finally {
+      setTokenBusy(false);
+    }
+  }
+
+  function previewTokenPayment() {
+    if (!policy) return;
+    setSimulation({
+      kind: "token",
+      amount: Number(policy.token_pack_price_kes) || 0,
+      currency: "KES",
+      tokens: Number(policy.token_pack_tokens) || 0,
+      saleTokens: Number(policy.sale_tokens) || 1,
+      plan: {
+        name: "Token pack",
+        description: "Pay for tokens instead of a calendar plan.",
+        features: [
+          `${Number(policy.token_pack_tokens) || 0} tokens added`,
+          `Each completed sale uses ${Number(policy.sale_tokens) || 1} token${Number(policy.sale_tokens) === 1 ? "" : "s"}`,
+          "Reading stays free",
+        ],
+      },
+    });
   }
 
   async function handleDelete(plan) {
@@ -612,6 +701,37 @@ export default function SelfServePlansPage() {
         </PrimaryButton>
       </div>
 
+      <div className="theme-panel mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Token-based subscription</p>
+          <p className="mt-1 max-w-xl text-sm text-slate-600">
+            When this is on, an organisation can buy a token pack instead of a monthly or yearly plan. Turn it off and the Tokens choice disappears from subscribe.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={policy?.tokens_enabled !== false}
+            disabled={!policy || tokenBusy}
+            onClick={() => void toggleTokens()}
+            className={`rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-60 ${
+              policy?.tokens_enabled !== false ? "theme-primary-btn" : "theme-secondary-btn"
+            }`}
+          >
+            {policy?.tokens_enabled !== false ? "On" : "Off"}
+          </button>
+          <button
+            type="button"
+            className="text-sm font-medium text-[#185FA5] disabled:text-slate-400"
+            disabled={!policy || policy.tokens_enabled === false}
+            onClick={previewTokenPayment}
+          >
+            Preview token payment
+          </button>
+        </div>
+      </div>
+
       <PlanPreview
         industryFilter={industryFilter}
         plans={plans}
@@ -620,73 +740,9 @@ export default function SelfServePlansPage() {
         setBilling={setPreviewBilling}
         ordering={ordering}
         onMove={moveOffers}
+        manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation }}
+        loading={loading}
       />
-
-      <div className="theme-panel mt-4 flex min-h-80 flex-1 flex-col rounded-xl border shadow-sm">
-        {loading ? (
-          <p className="px-5 py-8 text-sm text-slate-500">Loading plans…</p>
-        ) : plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter).length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500">
-            {plans.length === 0
-              ? "No self-serve plans yet. Create one, for example a 2,000 plan with a few sections and a 3,000 plan with more."
-              : "No packages for this industry yet. Set a price and publish one."}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-3">Plan</th>
-                  <th className="px-5 py-3">Industry</th>
-                  <th className="px-5 py-3">Billing</th>
-                  <th className="px-5 py-3">Price</th>
-                  <th className="px-5 py-3">Features</th>
-                  <th className="px-5 py-3">On the subscribe screen</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {byCardOrder(plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter)).map((plan) => (
-                  <tr key={plan.id}>
-                    <td className="px-5 py-3">
-                      <p className="font-medium text-slate-900">{plan.name}</p>
-                      {plan.description ? <p className="text-xs text-slate-500">{plan.description}</p> : null}
-                    </td>
-                    <td className="px-5 py-3">{industryById(plan.industry || "commerce")?.label ?? "Retail & Distribution"}</td>
-                    <td className="px-5 py-3">{plan.interval === "annual" || plan.interval === "yearly" ? "Yearly" : "Monthly"}</td>
-                    <td className="px-5 py-3 tabular-nums">
-                      {formatBillingMoney(
-                        plan.interval === "annual" || plan.interval === "yearly" ? plan.yearly_price : plan.monthly_price,
-                        plan.currency || "KES",
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-slate-600">{plan.feature_details?.length ?? 0}</td>
-                    <td className="px-5 py-3">
-                      {plan.is_active ? (
-                        <span className="text-emerald-700">Published</span>
-                      ) : (
-                        <span className="text-slate-500">Hidden</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        className="mr-3 text-sm font-medium text-[#185FA5]"
-                        onClick={() => openAiEdit(plan)}
-                      >
-                        Edit
-                      </button>
-                      <button type="button" className="text-sm text-red-700" onClick={() => void handleDelete(plan)}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
       </div>
 
       {formOpen ? (
@@ -856,6 +912,14 @@ export default function SelfServePlansPage() {
             </div>
           </form>
         </div>
+      ) : null}
+      {simulation ? (
+        <PaymentSimulation
+          key={`${simulation.kind}-${simulation.plan?.name}-${simulation.amount}`}
+          snapshot={simulation}
+          shortCode={shortCode}
+          onClose={() => setSimulation(null)}
+        />
       ) : null}
     </CatalogPageShell>
   );

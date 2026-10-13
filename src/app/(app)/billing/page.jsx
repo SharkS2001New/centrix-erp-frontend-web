@@ -65,7 +65,8 @@ export default function OrganizationBillingPage() {
 
       {!loading && !error ? (
         <div className="space-y-6">
-          <section className="grid gap-4 lg:grid-cols-3">
+          <section className={`grid gap-4 ${policy.tokens_enabled === false ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+            {policy.tokens_enabled === false ? null : (
             <ModelCard
               title="Token"
               active={activeModel === "token"}
@@ -78,6 +79,7 @@ export default function OrganizationBillingPage() {
               ]}
               action="Buy tokens"
             />
+            )}
             <ModelCard
               title="Monthly"
               active={activeModel === "monthly"}

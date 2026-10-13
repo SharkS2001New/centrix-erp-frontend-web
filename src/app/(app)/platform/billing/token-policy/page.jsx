@@ -30,6 +30,22 @@ export default function TokenPolicyPage() {
     setPolicy((current) => ({ ...current, ...partial }));
   }
 
+  async function setTokensEnabled(enabled) {
+    const next = { ...policy, tokens_enabled: enabled };
+    setPolicy(next);
+    setSaving(true);
+    try {
+      const res = await apiRequest("/admin/billing-policy", { method: "PUT", body: next });
+      setPolicy(res.data ?? next);
+      notifySuccess(enabled ? "Token subscriptions are on." : "Token subscriptions are off.");
+    } catch (err) {
+      setPolicy(policy);
+      notifyError(err instanceof ApiError ? err.message : "Could not update token billing.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
     try {
@@ -67,6 +83,26 @@ export default function TokenPolicyPage() {
       />
 
       <div className="space-y-6">
+        <section className="theme-panel flex flex-wrap items-center justify-between gap-4 rounded-xl border p-5 shadow-sm">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Token-based subscription</h2>
+            <p className="mt-1 max-w-xl text-sm text-slate-600">
+              Turn this off to stop offering token packs. Organisations then choose a monthly or yearly plan. Turn it on again to let them buy tokens.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={policy.tokens_enabled !== false}
+            disabled={saving}
+            onClick={() => void setTokensEnabled(policy.tokens_enabled === false)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-60 ${
+              policy.tokens_enabled !== false ? "bg-[#185FA5] text-white" : "border border-slate-300 bg-white text-slate-700"
+            }`}
+          >
+            {policy.tokens_enabled !== false ? "On" : "Off"}
+          </button>
+        </section>
         <section className="theme-panel grid gap-4 rounded-xl border p-5 shadow-sm md:grid-cols-3">
           <Field label="Value of 1 token (KES)">
             <input className={inputClass} type="number" min="1" value={policy.token_value_kes} onChange={(e) => patch({ token_value_kes: Number(e.target.value) })} />
