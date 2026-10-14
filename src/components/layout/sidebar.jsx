@@ -366,7 +366,7 @@ function CollapsibleNavSection({
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin, isOrgAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
   const [mailboxUnread, setMailboxUnread] = useState(0);
@@ -517,6 +517,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       customReportNavItems,
     );
     if (isSuperAdmin?.() || !licenceNeedsPayment(organizationLicense)) return sections;
+    const canPay = Boolean(isOrgAdmin?.());
     const mode = licenseAccessMode(organizationLicense);
     const allowPath = (href) => (mode === "free" ? isFreePlanPath(href, organizationLicense) : isLimitedLicencePath(href));
     const limited = sections
@@ -525,19 +526,21 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
         items: (section.items ?? []).filter((item) => allowPath(item.href)),
       }))
       .filter((section) => section.items.length > 0);
-    return [
-      {
-        id: "centrix-upgrade",
-        label: "Centrix licence",
-        icon: "💳",
-        items: [{
-          href: yearlyRenewalOpen(organizationLicense) || isYearlyLicence(organizationLicense) ? "/subscribe?renew=1" : "/subscribe",
-          label: isYearlyLicence(organizationLicense) ? "Renew" : "Choose a plan",
-        }],
-      },
-      ...limited,
-    ];
-  }, [capabilities, customReportNavItems, isSuperAdmin, navContext, organizationLicense, workspaceId]);
+    return canPay
+      ? [
+        {
+          id: "centrix-upgrade",
+          label: "Centrix licence",
+          icon: "💳",
+          items: [{
+            href: yearlyRenewalOpen(organizationLicense) || isYearlyLicence(organizationLicense) ? "/subscribe?renew=1" : "/subscribe",
+            label: isYearlyLicence(organizationLicense) ? "Renew" : "Choose a plan",
+          }],
+        },
+        ...limited,
+      ]
+      : limited;
+  }, [capabilities, customReportNavItems, isOrgAdmin, isSuperAdmin, navContext, organizationLicense, workspaceId]);
 
   const navZones = useMemo(
     () => groupNavSectionsByZone(visibleSections, workspaceId),

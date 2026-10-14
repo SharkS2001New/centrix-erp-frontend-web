@@ -23,7 +23,7 @@ import {
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
-import { isDrivingFeatureEnabled, isDrivingIndustry, isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingFeatureEnabled, isDrivingIndustry, isHospitalityIndustry, isSpaFeatureEnabled, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
@@ -1248,46 +1248,55 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/spa/appointments",
         label: "Appointments",
         module: "spa",
+        requireSpaFeature: "appointments",
       },
       {
         href: "/spa/pos",
         label: "POS / Sales",
         module: "spa",
+        requireSpaFeature: "pos",
       },
       {
         href: "/spa/clients",
         label: "Clients",
         module: "spa",
+        requireSpaFeature: "clients",
       },
       {
         href: "/spa/services",
         label: "Services",
         module: "spa",
+        requireSpaFeature: "services",
       },
       {
         href: "/spa/staff",
         label: "Staff & commissions",
         module: "spa",
+        requireSpaFeature: "staff",
       },
       {
         href: "/spa/inventory",
         label: "Inventory",
         module: "spa",
+        requireSpaFeature: "inventory",
       },
       {
         href: "/spa/expenses",
         label: "Expenses",
         module: "spa",
+        requireSpaFeature: "expenses",
       },
       {
         href: "/spa/suppliers",
         label: "Suppliers",
         module: "spa",
+        requireSpaFeature: "suppliers",
       },
       {
         href: "/spa/reports",
         label: "Reports",
         module: "spa",
+        requireSpaFeature: "reports",
       },
     ],
   },
@@ -1585,6 +1594,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.hideWhenDrivingIndustry && isDrivingIndustry(capabilities)) return false;
   if (item.requireDrivingIndustry && !isDrivingIndustry(capabilities)) return false;
   if (item.requireDrivingFeature && !isDrivingFeatureEnabled(capabilities, item.requireDrivingFeature)) return false;
+  if (item.requireSpaFeature && !isSpaFeatureEnabled(capabilities, item.requireSpaFeature)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;

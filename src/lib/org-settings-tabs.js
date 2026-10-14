@@ -76,6 +76,11 @@ export function isDrivingFeatureEnabled(capabilities, key) {
   return value !== false;
 }
 
+export function isSpaFeatureEnabled(capabilities, key) {
+  const value = capabilities?.module_settings?.spa?.features?.[key];
+  return value !== false;
+}
+
 /** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   const hospitality = isHospitalityIndustry(capabilities);

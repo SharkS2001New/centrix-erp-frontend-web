@@ -22,9 +22,10 @@ function MenuIcon({ className }) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
-  const { isSuperAdmin, organizationLicense } = useAuth();
+  const { isSuperAdmin, isOrgAdmin, organizationLicense } = useAuth();
   const pathname = usePathname();
   const hideModuleSearch = Boolean(isSuperAdmin?.());
+  const canPay = Boolean(isOrgAdmin?.());
   const yearly = isYearlyLicence(organizationLicense);
   const renew = yearlyRenewalOpen(organizationLicense);
 
@@ -59,7 +60,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {!hideModuleSearch && renew ? (
+          {canPay && renew ? (
             <Link
               href="/subscribe?renew=1"
               onClick={() => rememberLicenceReturn(pathname)}
@@ -68,7 +69,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
               Renew
             </Link>
           ) : null}
-          {!hideModuleSearch && !yearly ? (
+          {canPay && !yearly ? (
             <Link
               href="/subscribe"
               onClick={() => rememberLicenceReturn(pathname)}

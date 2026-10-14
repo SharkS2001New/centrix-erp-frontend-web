@@ -685,6 +685,11 @@ export function AuthProvider({ children }) {
     [capabilities?.access_scope, user?.access_scope, user?.is_admin],
   );
 
+  const isOrgAdmin = useCallback(
+    () => Boolean(user?.is_admin || capabilities?.is_admin),
+    [user?.is_admin, capabilities?.is_admin],
+  );
+
   const applyOperatorSession = useCallback(
     async (res) => {
       const channel = getStoredLoginChannel() ?? loginChannel ?? WEB_LOGIN_CHANNEL;
@@ -752,6 +757,7 @@ export function AuthProvider({ children }) {
           isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
         }),
       isOrgWide,
+      isOrgAdmin,
       generalSettings: () => resolveGeneralSettings(capabilities),
       sessionIdleMinutes: () => resolveSecurityTimeouts(capabilities).session_idle_minutes,
       screenLockMinutes: () => resolveSecurityTimeouts(capabilities).screen_lock_minutes,
@@ -782,6 +788,7 @@ export function AuthProvider({ children }) {
       passwordExpiry,
       organizationLicense,
       isOrgWide,
+      isOrgAdmin,
     ],
   );
 

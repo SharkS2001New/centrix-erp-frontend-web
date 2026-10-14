@@ -30,10 +30,11 @@ function renewalCharge(license) {
 export default function SubscribePage() {
   const router = useRouter();
   const forPos = useSearchParams().get("for") === "pos";
-  const { organization, organizationLicense, capabilities, user, isSuperAdmin, refreshCapabilities } = useAuth();
+  const { organization, organizationLicense, capabilities, user, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
+  const canPay = Boolean(isOrgAdmin?.());
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : [];
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
-  const renewOpen = yearlyRenewalOpen(organizationLicense);
+  const renewOpen = canPay && yearlyRenewalOpen(organizationLicense);
   const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
   const [billing, setBilling] = useState(forPos ? "monthly" : "token");
   const [quoteNotice, setQuoteNotice] = useState("");
@@ -117,14 +118,14 @@ export default function SubscribePage() {
   }, [capabilities, forPos, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
-    if (!isYearlyLicence(organizationLicense)) return;
+    if (!canPay || !isYearlyLicence(organizationLicense)) return;
     if (!yearlyRenewalOpen(organizationLicense)) {
       closeForLater();
       return;
     }
     setCharge(renewalCharge(organizationLicense));
     setStep("checkout");
-  }, [closeForLater, organizationLicense]);
+  }, [canPay, closeForLater, organizationLicense]);
 
   useEffect(() => {
     function onKey(event) {
@@ -344,6 +345,8 @@ export default function SubscribePage() {
             tokenPack={tokenPack}
             tokenBalance={Number(organizationLicense?.token_balance) || 0}
             currentName={mode === "full" || mode === "trial" ? organizationLicense?.plan_name || "" : ""}
+            currentPlanId={mode === "full" || mode === "trial" ? organizationLicense?.plan_id || null : null}
+            canPay={canPay}
             packageCurrent={mode === "free"}
             tokenCurrent={mode === "token"}
             freePages={(organizationLicense?.free_plan?.pages ?? []).map((page) => page?.label).filter(Boolean)}
@@ -367,6 +370,8 @@ function PlansStep({
   tokenPack,
   tokenBalance,
   currentName,
+  currentPlanId = null,
+  canPay = true,
   packageCurrent = false,
   tokenCurrent = false,
   freePages = [],
@@ -385,7 +390,7 @@ function PlansStep({
   const monthly = monthlyPlans.map(monthOffer);
   const saving = prepaid.some((offer) => offer.percent > 0);
   const quoteCard = (
-    <OneTimeQuoteCard busy={quoteBusy} onQuote={onQuote} notice={quoteNotice} />
+    <OneTimeQuoteCard busy={quoteBusy} canPay={canPay} onQuote={onQuote} notice={quoteNotice} />
   );
   const intro = billing === "token"
     ? "Package 1 is free. A token pack pays for completed sales. The current plan label sits on the plan this organisation is using."
@@ -431,6 +436,14 @@ function PlansStep({
         </p>
       ) : null}
       <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">{intro}</p>
+      {packageCurrent || tokenCurrent || currentName ? (
+        <p className="mx-auto mt-3 text-center text-sm font-semibold text-[var(--theme-primary)]">
+          Current package: {packageCurrent ? "Package 1" : tokenCurrent ? "Token pack" : currentName}
+        </p>
+      ) : null}
+      {canPay ? null : (
+        <p className="theme-subtext mx-auto mt-3 max-w-2xl text-center text-sm">An organisation admin pays for Centrix.</p>
+      )}
       {billing === "token" ? (
         <div className={`mt-8 grid items-stretch gap-4 ${tokensEnabled && tokenPack && tokenPack.price > 0 ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
           <FreePlanCard pages={freePages} current={packageCurrent} />
@@ -441,6 +454,7 @@ function PlansStep({
               saleTokens={tokenPack.saleTokens}
               balance={tokenBalance}
               current={tokenCurrent}
+              canPay={canPay}
               onStart={startToken}
             />
           ) : null}
@@ -459,6 +473,8 @@ function PlansStep({
                 hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
                 offers={prepaid}
                 currentName={currentName}
+                currentPlanId={currentPlanId}
+                canPay={canPay}
                 onPay={onPay}
                 trailing={once.length === 0 ? quoteCard : null}
               />
@@ -469,6 +485,8 @@ function PlansStep({
                 hint="A yearly price set for the plan. One payment, not twelve monthly charges."
                 offers={once}
                 currentName={currentName}
+                currentPlanId={currentPlanId}
+                canPay={canPay}
                 onPay={onPay}
                 trailing={quoteCard}
               />
@@ -479,7 +497,7 @@ function PlansStep({
         <p className="theme-panel theme-text-muted mx-auto mt-8 max-w-lg rounded-2xl border p-4 text-center text-sm">{emptyCopy}</p>
       ) : (
         <div className="mt-8">
-          <PlanGroup offers={monthly} currentName={currentName} onPay={onPay} />
+          <PlanGroup offers={monthly} currentName={currentName} currentPlanId={currentPlanId} canPay={canPay} onPay={onPay} />
         </div>
       )}
     </div>

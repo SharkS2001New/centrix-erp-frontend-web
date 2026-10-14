@@ -5,11 +5,10 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platform-billing";
-import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
+import { formatBillingMoney } from "@/lib/platform-billing";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { BillingIntervalTabs, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
+import { BillingIntervalTabs, FreePlanCard, initialPackageAccess, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -99,6 +98,7 @@ function previewPlan(plan, discount) {
     workspace_keys: Array.isArray(plan.workspace_keys) ? plan.workspace_keys : [],
     section_keys: Array.isArray(plan.section_keys) ? plan.section_keys : [],
     is_active: plan.is_active !== false,
+    is_recommended: Boolean(plan.is_recommended),
     discount_percent: discount.percent,
     discount_min_months: discount.minMonths,
   };
@@ -139,12 +139,16 @@ function emptyForm() {
     price: "",
     feature_details: [{ label: "", detail: "" }],
     workspace_keys: [],
+    feature_keys: {},
     section_keys: [],
     is_active: true,
+    is_recommended: false,
   };
 }
 
-function recordToForm(plan) {
+function recordToForm(plan, catalog) {
+  const access = modulesForPlan(catalog, plan);
+  const selected = initialPackageAccess(plan, access);
   const features = Array.isArray(plan.feature_details) && plan.feature_details.length > 0
     ? plan.feature_details.map((row) => ({ label: row?.label ?? "", detail: row?.detail ?? "" }))
     : [{ label: "", detail: "" }];
@@ -158,9 +162,11 @@ function recordToForm(plan) {
       ? (plan.yearly_price != null ? String(plan.yearly_price) : "")
       : (plan.monthly_price != null ? String(plan.monthly_price) : ""),
     feature_details: features,
-    workspace_keys: Array.isArray(plan.workspace_keys) ? [...plan.workspace_keys] : [],
+    workspace_keys: selected.workspace_keys,
+    feature_keys: selected.feature_keys,
     section_keys: Array.isArray(plan.section_keys) ? [...plan.section_keys] : [],
     is_active: plan.is_active !== false,
+    is_recommended: Boolean(plan.is_recommended),
   };
 }
 
@@ -197,9 +203,8 @@ function formToPayload(form) {
     renewal_price: amount,
     monthly_price: yearly ? null : amount,
     yearly_price: yearly ? amount : null,
-    workspace_keys: (form.workspace_keys ?? []).filter((id) =>
-      licensableWorkspacesForIndustry(form.industry || "commerce").some((ws) => ws.id === id),
-    ),
+    workspace_keys: form.workspace_keys ?? [],
+    feature_keys: form.feature_keys && typeof form.feature_keys === "object" ? form.feature_keys : {},
     section_keys: form.industry === "commerce" ? (form.section_keys ?? []) : [],
     feature_details: (form.feature_details ?? [])
       .map((row) => ({
@@ -209,10 +214,11 @@ function formToPayload(form) {
       .filter((row) => row.label !== ""),
     self_serve: true,
     is_active: form.is_active !== false,
+    is_recommended: Boolean(form.is_recommended),
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePages = [] }) {
+function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePages = [], tokenEditor = null }) {
   const published = byCardOrder(
     plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
@@ -230,13 +236,15 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
       <h2 className="text-sm font-semibold text-slate-900">Plan cards</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-600">
-        These are the cards an organisation sees. Change the name, price, and points here, add or remove a point, then save the card. The third card is marked Recommended. Move a card and the organisation screen uses that order. A hidden card stays here until you publish it again.
+        These are the cards an organisation sees. Package 1 is the free card on Tokens. Tick Recommended on the card you want marked, then save it. Move a card and the organisation screen uses that order. A hidden card stays here until you publish it again.
       </p>
       <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
       {loading && plans.length === 0 ? (
         <p className="mt-8 text-sm text-slate-500">Loading plans…</p>
       ) : billing === "token" ? (
-        <div className={`mt-8 grid items-stretch gap-4 ${tokenPackOn ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
+        <div className="mt-8 space-y-6">
+          {tokenEditor}
+          <div className={`grid items-stretch gap-4 ${tokenPackOn ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
           <FreePlanCard pages={freePages} preview />
           {tokenPackOn ? (
             <TokenPackCard
@@ -246,6 +254,7 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
               saleTokens={Number(policy?.sale_tokens) || 1}
             />
           ) : null}
+          </div>
         </div>
       ) : billing === "yearly" ? (
         <div className="mt-8 space-y-10">
@@ -318,7 +327,7 @@ export default function SelfServePlansPage() {
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
   const [discount, setDiscount] = useState({ percent: 0, minMonths: 3 });
-  const [previewBilling, setPreviewBilling] = useState("monthly");
+  const [previewBilling, setPreviewBilling] = useState("token");
   const [ordering, setOrdering] = useState(false);
   const [savingCardId, setSavingCardId] = useState(null);
   const [policy, setPolicy] = useState(null);
@@ -329,6 +338,7 @@ export default function SelfServePlansPage() {
   const [freeCatalog, setFreeCatalog] = useState([]);
   const [freeIndustry, setFreeIndustry] = useState("commerce");
   const [freeBusy, setFreeBusy] = useState(false);
+  const [packageCatalog, setPackageCatalog] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -336,6 +346,7 @@ export default function SelfServePlansPage() {
       const res = await apiRequest("/admin/platform-plans");
       const rows = Array.isArray(res.data) ? res.data : [];
       setPlans(rows.filter((plan) => plan.self_serve));
+      setPackageCatalog(res.catalog && typeof res.catalog === "object" ? res.catalog : {});
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not load self-serve plans.");
     } finally {
@@ -383,15 +394,6 @@ export default function SelfServePlansPage() {
     } finally {
       setOrdering(false);
     }
-  }
-
-  function toggleKey(field, key) {
-    setForm((prev) => {
-      const set = new Set(prev[field] ?? []);
-      if (set.has(key)) set.delete(key);
-      else set.add(key);
-      return { ...prev, [field]: [...set] };
-    });
   }
 
   async function handleSave(event) {
@@ -465,7 +467,7 @@ export default function SelfServePlansPage() {
 
   function openFieldEdit(plan) {
     setEditingId(plan.id);
-    setForm(recordToForm(plan));
+    setForm(recordToForm(plan, packageCatalog));
     setFormOpen(true);
   }
 
@@ -523,7 +525,9 @@ export default function SelfServePlansPage() {
         price: String(amount),
         feature_details: draft.features,
         is_active: draft.is_active,
+        is_recommended: Boolean(draft.is_recommended),
         workspace_keys: draft.workspace_keys,
+        feature_keys: draft.feature_keys,
         section_keys: draft.section_keys,
       });
       await apiRequest(`/admin/platform-plans/${source.id}`, { method: "PATCH", body: payload });
@@ -825,16 +829,6 @@ export default function SelfServePlansPage() {
         </div>
       </div>
 
-      <FreePlanEditor
-        catalog={freeCatalog}
-        access={freePlan}
-        industry={freeIndustry}
-        setIndustry={setFreeIndustry}
-        busy={freeBusy}
-        onToggle={toggleFreePage}
-        onSave={() => void saveFreePlan()}
-      />
-
       <PlanPreview
         industryFilter={industryFilter}
         plans={plans}
@@ -843,10 +837,21 @@ export default function SelfServePlansPage() {
         setBilling={setPreviewBilling}
         ordering={ordering}
         onMove={moveOffers}
-        manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation }}
+        manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation, catalog: packageCatalog }}
         loading={loading}
         policy={policy}
         freePages={freePlanLabels(freeCatalog, freePlan, industryFilter === "all" ? "commerce" : industryFilter)}
+        tokenEditor={(
+          <FreePlanEditor
+            catalog={freeCatalog}
+            access={freePlan}
+            industry={freeIndustry}
+            setIndustry={setFreeIndustry}
+            busy={freeBusy}
+            onToggle={toggleFreePage}
+            onSave={() => void saveFreePlan()}
+          />
+        )}
       />
       </div>
 
@@ -869,11 +874,15 @@ export default function SelfServePlansPage() {
                   value={form.industry}
                   onChange={(industry) => {
                     if (!industry) return;
-                    const allowed = new Set(licensableWorkspacesForIndustry(industry).map((ws) => ws.id));
+                    const access = initialPackageAccess(
+                      { industry, workspace_keys: [], feature_keys: null },
+                      modulesForPlan(packageCatalog, { industry }),
+                    );
                     setForm((f) => ({
                       ...f,
                       industry,
-                      workspace_keys: (f.workspace_keys ?? []).filter((id) => allowed.has(id)),
+                      workspace_keys: access.workspace_keys,
+                      feature_keys: access.feature_keys,
                       section_keys: industry === "commerce" ? f.section_keys : [],
                     }));
                   }}
@@ -955,49 +964,12 @@ export default function SelfServePlansPage() {
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-slate-600">Applications this payment turns on</p>
-                <p className="text-xs text-slate-500">When an organisation pays for this plan, these applications open.</p>
-                <ul className="space-y-1 rounded-lg border border-slate-200 p-2">
-                  {licensableWorkspacesForIndustry(form.industry).map((ws) => (
-                    <li key={ws.id}>
-                      <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={form.workspace_keys.includes(ws.id)}
-                          onChange={() => toggleKey("workspace_keys", ws.id)}
-                        />
-                        <span>
-                          <span className="font-medium">{ws.label}</span>
-                          <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {form.industry === "commerce" ? <div>
-                <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this payment turns on</p>
-                <p className="mb-2 text-xs text-slate-500">
-                  Paying for this plan opens only the checked Backoffice areas, including their reports.
-                </p>
-                <ul className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                  {BACKOFFICE_SECTION_CATALOG.map((section) => (
-                    <li key={section.key}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          checked={form.section_keys.includes(section.key)}
-                          onChange={() => toggleKey("section_keys", section.key)}
-                        />
-                        {section.label}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div> : null}
+              <PlanAccessFields
+                modules={modulesForPlan(packageCatalog, form)}
+                workspaceKeys={form.workspace_keys}
+                featureKeys={form.feature_keys}
+                onChange={(access) => setForm((current) => ({ ...current, ...access }))}
+              />
 
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -1006,6 +978,14 @@ export default function SelfServePlansPage() {
                   onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
                 />
                 Published on the subscription screen
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.is_recommended)}
+                  onChange={(e) => setForm((f) => ({ ...f, is_recommended: e.target.checked }))}
+                />
+                Recommended on the subscription screen
               </label>
             </div>
             <div className="mt-5 flex justify-end gap-2">

@@ -19,6 +19,7 @@ import {
 import { CentrixLogo } from "@/components/branding/centrix-logo";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { useAuth } from "@/contexts/auth-context";
+import { isSpaFeatureEnabled } from "@/lib/org-settings-tabs";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { Button } from "@/components/spa/ui";
@@ -36,20 +37,21 @@ function readSidebarCollapsed() {
 
 const NAV = [
   { href: "/spa", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/spa/appointments", label: "Appointments", icon: Calendar },
-  { href: "/spa/pos", label: "POS / Sales", icon: ShoppingBag },
-  { href: "/spa/clients", label: "Clients", icon: Users },
-  { href: "/spa/services", label: "Services", icon: Scissors },
-  { href: "/spa/inventory", label: "Inventory", icon: Package },
-  { href: "/spa/staff", label: "Staff", icon: UserRound },
-  { href: "/spa/expenses", label: "Expenses", icon: Receipt },
-  { href: "/spa/suppliers", label: "Suppliers", icon: Truck },
-  { href: "/spa/reports", label: "Reports", icon: BarChart3 },
+  { href: "/spa/appointments", label: "Appointments", icon: Calendar, feature: "appointments" },
+  { href: "/spa/pos", label: "POS / Sales", icon: ShoppingBag, feature: "pos" },
+  { href: "/spa/clients", label: "Clients", icon: Users, feature: "clients" },
+  { href: "/spa/services", label: "Services", icon: Scissors, feature: "services" },
+  { href: "/spa/inventory", label: "Inventory", icon: Package, feature: "inventory" },
+  { href: "/spa/staff", label: "Staff", icon: UserRound, feature: "staff" },
+  { href: "/spa/expenses", label: "Expenses", icon: Receipt, feature: "expenses" },
+  { href: "/spa/suppliers", label: "Suppliers", icon: Truck, feature: "suppliers" },
+  { href: "/spa/reports", label: "Reports", icon: BarChart3, feature: "reports" },
 ];
 
 export function SpaFrame({ children }) {
   const pathname = usePathname();
-  const { organization } = useAuth();
+  const { organization, capabilities } = useAuth();
+  const nav = NAV.filter((item) => !item.feature || isSpaFeatureEnabled(capabilities, item.feature));
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const iconOnly = collapsed && !open;
@@ -76,10 +78,10 @@ export function SpaFrame({ children }) {
 
   const phoneNav = [
     { href: "/spa", label: "Home", icon: LayoutDashboard, exact: true },
-    { href: "/spa/appointments", label: "Book", icon: Calendar },
-    { href: "/spa/pos", label: "Till", icon: ShoppingBag },
-    { href: "/spa/clients", label: "Clients", icon: Users },
-  ];
+    { href: "/spa/appointments", label: "Book", icon: Calendar, feature: "appointments" },
+    { href: "/spa/pos", label: "Till", icon: ShoppingBag, feature: "pos" },
+    { href: "/spa/clients", label: "Clients", icon: Users, feature: "clients" },
+  ].filter((item) => !item.feature || isSpaFeatureEnabled(capabilities, item.feature));
 
   return (
     <div className="app-shell-bg flex h-dvh overflow-hidden">
@@ -94,7 +96,7 @@ export function SpaFrame({ children }) {
             </Link>
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1" aria-label="SPA and Kinyozi">
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
               return (
@@ -119,7 +121,7 @@ export function SpaFrame({ children }) {
         <NetworkStatusBanner />
         <LicenseExpiryBanner />
         <div className="app-main-bg flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:p-6 lg:pb-6">{children}</div>
-        <nav className="app-topbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Spa and Kinyozi">
+        <nav className="app-topbar fixed inset-x-0 bottom-0 z-30 grid border-t pb-[env(safe-area-inset-bottom)] md:hidden" style={{ gridTemplateColumns: `repeat(${phoneNav.length + 1}, minmax(0, 1fr))` }} aria-label="Spa and Kinyozi">
           {phoneNav.map((item) => {
             const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;

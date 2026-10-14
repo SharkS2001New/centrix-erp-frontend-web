@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platform-billing";
 
 export function quoteMonths(unit, months, minMonths, percent) {
@@ -117,8 +116,15 @@ export function monthOffer(plan) {
   };
 }
 
-export function PlanGroup({ title, hint, offers, currentName, onPay, preview = false, onMove, moving = false, manage = null, trailing = null }) {
-  const recommendedIndex = offers.length >= 3 ? 2 : Math.max(0, offers.length - 1);
+function CurrentBadge() {
+  return (
+    <span className="rounded-full bg-[var(--theme-primary)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary-fg)]">
+      Current
+    </span>
+  );
+}
+
+export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, onMove, moving = false, manage = null, trailing = null }) {
   const count = offers.length + (trailing ? 1 : 0);
   const width = count <= 1
     ? "mx-auto max-w-sm"
@@ -133,15 +139,19 @@ export function PlanGroup({ title, hint, offers, currentName, onPay, preview = f
       {hint ? <p className="theme-subtext mt-1 text-sm">{hint}</p> : null}
       <div className={`grid items-stretch gap-4 ${title ? "mt-4" : ""} ${width}`}>
         {offers.map((offer, index) => {
-          const current = Boolean(currentName && offer.plan.name === currentName);
+          const current = Boolean(
+            (currentPlanId && Number(offer.plan.id) === Number(currentPlanId))
+            || (currentName && offer.plan.name === currentName),
+          );
           return (
             <div key={`${offer.kind}-${offer.plan.id}`} className="flex h-full flex-col">
               <PlanCard
                 offer={offer}
                 current={current}
-                recommended={index === recommendedIndex && !current}
+                recommended={Boolean(offer.plan.is_recommended) && !current}
                 onPay={onPay}
                 preview={preview}
+                canPay={canPay}
                 manage={manage}
               />
               {onMove ? (
@@ -181,7 +191,10 @@ export function FreePlanCard({ pages = [], current = false, preview = false }) {
         ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     }`}>
-      <p className="theme-subtext text-sm">Free</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="theme-subtext text-sm">Free</p>
+        {current ? <CurrentBadge /> : <span />}
+      </div>
       <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Package 1</h2>
       <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
         Open Centrix without paying. The platform administrator chooses which screens this includes.
@@ -219,6 +232,7 @@ export function TokenPackCard({
   balance = 0,
   current = false,
   preview = false,
+  canPay = true,
   onStart,
 }) {
   const each = Number(saleTokens) || 1;
@@ -228,7 +242,10 @@ export function TokenPackCard({
         ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     }`}>
-      <p className="theme-subtext text-sm">Tokens</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="theme-subtext text-sm">Tokens</p>
+        {current ? <CurrentBadge /> : <span />}
+      </div>
       <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Token pack</h2>
       <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
         Pay for a pack of tokens. A completed sale uses tokens when it is saved online.
@@ -237,18 +254,20 @@ export function TokenPackCard({
         {formatBillingMoney(price, "KES")}
       </p>
       <p className="theme-subtext mt-1 text-sm">{Number(tokens) || 0} tokens</p>
-      <button
-        type="button"
-        disabled={current}
-        onClick={() => {
-          if (!preview) onStart?.();
-        }}
-        className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
-          preview ? "pointer-events-none" : ""
-        } ${current ? "theme-secondary-btn" : "theme-primary-btn"}`}
-      >
-        {current ? "Your current plan" : "Get started"}
-      </button>
+      {preview || canPay ? (
+        <button
+          type="button"
+          disabled={current}
+          onClick={() => {
+            if (!preview) onStart?.();
+          }}
+          className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
+            preview ? "pointer-events-none" : ""
+          } ${current ? "theme-secondary-btn" : "theme-primary-btn"}`}
+        >
+          {current ? "Your current plan" : "Get started"}
+        </button>
+      ) : null}
       <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
       <ul className="mt-3 space-y-2.5 text-sm leading-5">
         <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>{Number(balance) || 0} tokens remaining</span></li>
@@ -259,7 +278,7 @@ export function TokenPackCard({
   );
 }
 
-export function OneTimeQuoteCard({ preview = false, busy = false, onQuote, notice = "" }) {
+export function OneTimeQuoteCard({ preview = false, canPay = true, busy = false, onQuote, notice = "" }) {
   return (
     <article className="flex h-full flex-1 flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
       <p className="theme-subtext text-sm">One time</p>
@@ -269,18 +288,20 @@ export function OneTimeQuoteCard({ preview = false, busy = false, onQuote, notic
       </p>
       <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">Quote</p>
       <p className="theme-subtext mt-1 text-sm">Not a monthly or yearly fee.</p>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          if (!preview) onQuote?.();
-        }}
-        className={`theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-70 ${
-          preview ? "pointer-events-none" : ""
-        }`}
-      >
-        {busy ? "Sending…" : "Get Quote"}
-      </button>
+      {preview || canPay ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (!preview) onQuote?.();
+          }}
+          className={`theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-70 ${
+            preview ? "pointer-events-none" : ""
+          }`}
+        >
+          {busy ? "Sending…" : "Get Quote"}
+        </button>
+      ) : null}
       <p className="theme-heading mt-6 text-sm font-medium">What happens</p>
       <ul className="mt-3 space-y-2.5 text-sm leading-5">
         <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>One payment for Centrix</span></li>
@@ -292,13 +313,14 @@ export function OneTimeQuoteCard({ preview = false, busy = false, onQuote, notic
   );
 }
 
-function PlanCard({ offer, current, recommended, onPay, preview, manage = null }) {
+function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, manage = null }) {
   if (manage) {
     return (
       <ManagedPlanCard
         offer={offer}
         recommended={recommended}
         saving={manage.savingId === offer.plan.id}
+        modules={modulesForPlan(manage.catalog, offer.plan)}
         onSave={(draft) => manage.onSave(offer.plan, draft)}
         onRemove={() => manage.onRemove(offer.plan)}
         onPreview={(snapshot) => manage.onPreview?.(snapshot)}
@@ -310,13 +332,13 @@ function PlanCard({ offer, current, recommended, onPay, preview, manage = null }
   const perMonth = yearly ? offer.amount / 12 : null;
   return (
     <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
-      recommended
+      current || recommended
         ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     }`}>
       <div className="flex items-center justify-between gap-3">
         <p className="theme-subtext text-sm">{offer.kind === "prepaid" ? "12 months" : offer.kind === "once" ? "Pay once" : "Monthly"}</p>
-        {recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : <span />}
+        {current ? <CurrentBadge /> : recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : <span />}
       </div>
       <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">{offer.plan.name}</h2>
       <p className="theme-subtext mt-2 min-h-[3.75rem] line-clamp-3 text-sm leading-5">{offer.plan.description || "\u00a0"}</p>
@@ -334,18 +356,20 @@ function PlanCard({ offer, current, recommended, onPay, preview, manage = null }
       ) : (
         <p className="mt-1 text-sm">&nbsp;</p>
       )}
-      <button
-        type="button"
-        disabled={current}
-        onClick={() => {
-          if (!preview) onPay(offer);
-        }}
-        className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
-          preview ? "pointer-events-none" : ""
-        } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
-      >
-        {current ? "Your current plan" : "Get started"}
-      </button>
+      {preview || canPay ? (
+        <button
+          type="button"
+          disabled={current}
+          onClick={() => {
+            if (!preview) onPay(offer);
+          }}
+          className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
+            preview ? "pointer-events-none" : ""
+          } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
+        >
+          {current ? "Your current plan" : "Get started"}
+        </button>
+      ) : null}
       {features.length > 0 ? (
         <>
           <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
@@ -363,7 +387,8 @@ function PlanCard({ offer, current, recommended, onPay, preview, manage = null }
   );
 }
 
-function cardDraft(offer) {
+function cardDraft(offer, modules = []) {
+  const access = initialPackageAccess(offer.plan, modules);
   const yearly = offer.kind === "once";
   const price = yearly ? offer.plan.yearly_price : offer.plan.monthly_price;
   const features = Array.isArray(offer.plan.feature_details) && offer.plan.feature_details.length > 0
@@ -378,13 +403,15 @@ function cardDraft(offer) {
     price: price == null ? "" : String(price),
     features,
     is_active: offer.plan.is_active !== false,
-    workspace_keys: Array.isArray(offer.plan.workspace_keys) ? [...offer.plan.workspace_keys] : [],
+    is_recommended: Boolean(offer.plan.is_recommended),
+    workspace_keys: access.workspace_keys,
+    feature_keys: access.feature_keys,
     section_keys: Array.isArray(offer.plan.section_keys) ? [...offer.plan.section_keys] : [],
   };
 }
 
-function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPreview }) {
-  const [draft, setDraft] = useState(() => cardDraft(offer));
+function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPreview }) {
+  const [draft, setDraft] = useState(() => cardDraft(offer, modules));
   const yearlyOnce = offer.kind === "once";
   const prepaid = offer.kind === "prepaid";
   const unit = Number(draft.price) || 0;
@@ -398,9 +425,15 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
   const featureKey = (offer.plan.feature_details ?? [])
     .map((row) => `${row?.label ?? ""}|${row?.detail ?? ""}`)
     .join("\n");
+  const workspaceKey = (offer.plan.workspace_keys ?? []).join("|");
+  const sectionKey = (offer.plan.section_keys ?? []).join("|");
+  const licensedFeatureKey = JSON.stringify(offer.plan.feature_keys ?? null);
+  const moduleKey = modules.map((entry) => entry.id).join("|");
 
   useEffect(() => {
-    setDraft(cardDraft(offer));
+    setDraft(cardDraft(offer, modules));
+    // Primitive keys only, so typing in the card is not reset on each parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     offer.plan.id,
     offer.plan.name,
@@ -408,16 +441,19 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
     offer.plan.monthly_price,
     offer.plan.yearly_price,
     offer.plan.is_active,
+    offer.plan.is_recommended,
     featureKey,
-    (offer.plan.workspace_keys ?? []).join("|"),
-    (offer.plan.section_keys ?? []).join("|"),
+    workspaceKey,
+    sectionKey,
+    licensedFeatureKey,
+    moduleKey,
   ]);
 
   const fieldClass = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 outline-none hover:border-[var(--theme-border)] focus:border-[var(--theme-primary)] focus:bg-[var(--theme-surface)]";
 
   return (
     <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
-      recommended
+      draft.is_recommended
         ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     } ${draft.is_active ? "" : "opacity-80"}`}>
@@ -425,7 +461,7 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
         <p className="theme-subtext text-sm">{prepaid ? "12 months" : yearlyOnce ? "Pay once" : "Monthly"}</p>
         <div className="flex items-center gap-2">
           {draft.is_active ? null : <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hidden</span>}
-          {recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : null}
+          {draft.is_recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : null}
         </div>
       </div>
       <input
@@ -467,16 +503,19 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
         />
         Published on the subscription screen
       </label>
+      <label className="mt-2 flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.is_recommended)}
+          onChange={(event) => setDraft((current) => ({ ...current, is_recommended: event.target.checked }))}
+        />
+        Recommended
+      </label>
       <PlanAccessFields
-        industry={offer.plan.industry || "commerce"}
+        modules={modules}
         workspaceKeys={draft.workspace_keys}
-        sectionKeys={draft.section_keys}
-        onToggle={(field, id) => setDraft((current) => {
-          const list = current[field].includes(id)
-            ? current[field].filter((key) => key !== id)
-            : [...current[field], id];
-          return { ...current, [field]: list };
-        })}
+        featureKeys={draft.feature_keys}
+        onChange={(access) => setDraft((current) => ({ ...current, ...access }))}
       />
       <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
       <ul className="mt-3 space-y-2">
@@ -534,7 +573,7 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
         type="button"
         onClick={() => onPreview(previewSnapshot(offer, draft, prepaid ? yearTotal : unit))}
         className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold ${
-          recommended ? "theme-primary-btn" : "theme-secondary-btn"
+          draft.is_recommended ? "theme-primary-btn" : "theme-secondary-btn"
         }`}
       >
         Get started
@@ -664,45 +703,136 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
   );
 }
 
-function PlanAccessFields({ industry, workspaceKeys = [], sectionKeys = [], onToggle }) {
-  const workspaces = licensableWorkspacesForIndustry(industry);
+export function modulesForPlan(catalog, plan) {
+  const industry = plan?.industry || "commerce";
+  const fromCatalog = catalog?.[industry];
+  if (Array.isArray(fromCatalog) && fromCatalog.length > 0) return fromCatalog;
+  return licensableWorkspacesForIndustry(industry).map((workspace) => ({
+    ...workspace,
+    features: [],
+  }));
+}
+
+export function initialPackageAccess(plan, modules = []) {
+  const list = Array.isArray(modules) ? modules : [];
+  const known = new Set(list.map((entry) => entry.id));
+  const stored = plan?.feature_keys && typeof plan.feature_keys === "object" && !Array.isArray(plan.feature_keys)
+    ? plan.feature_keys
+    : null;
+  const selected = new Set(Array.isArray(plan?.workspace_keys) ? plan.workspace_keys : []);
+  if (!stored) {
+    const industry = plan?.industry || "commerce";
+    if (industry === "commerce") {
+      selected.add("mobile");
+      selected.add("manager");
+    } else if (industry === "hospitality") {
+      selected.add("manager");
+    }
+  }
+  const workspace_keys = [...selected].filter((id) => known.size === 0 || known.has(id));
+  const feature_keys = {};
+  for (const entry of list) {
+    if (!workspace_keys.includes(entry.id)) continue;
+    const picked = Array.isArray(stored?.[entry.id]) ? stored[entry.id] : null;
+    const available = (entry.features ?? []).map((feature) => feature.id);
+    feature_keys[entry.id] = picked && picked.length > 0
+      ? picked.filter((id) => available.includes(id))
+      : available;
+  }
+  return { workspace_keys, feature_keys };
+}
+
+export function PlanAccessFields({ modules = [], workspaceKeys = [], featureKeys = {}, onChange }) {
+  function emit(nextKeys, nextFeatures) {
+    onChange({ workspace_keys: nextKeys, feature_keys: nextFeatures });
+  }
+
+  function toggleModule(entry) {
+    const on = workspaceKeys.includes(entry.id);
+    if (on) {
+      const nextFeatures = { ...featureKeys };
+      delete nextFeatures[entry.id];
+      emit(workspaceKeys.filter((id) => id !== entry.id), nextFeatures);
+      return;
+    }
+    emit(
+      [...workspaceKeys, entry.id],
+      { ...featureKeys, [entry.id]: (entry.features ?? []).map((feature) => feature.id) },
+    );
+  }
+
+  function toggleFeature(entry, featureId) {
+    const current = featureKeys[entry.id] ?? [];
+    const next = current.includes(featureId)
+      ? current.filter((id) => id !== featureId)
+      : [...current, featureId];
+    if (next.length === 0) {
+      const nextFeatures = { ...featureKeys };
+      delete nextFeatures[entry.id];
+      emit(workspaceKeys.filter((id) => id !== entry.id), nextFeatures);
+      return;
+    }
+    emit(workspaceKeys, { ...featureKeys, [entry.id]: next });
+  }
+
   return (
     <details className="mt-4 rounded-xl border border-[var(--theme-border)] px-3 py-2">
-      <summary className="cursor-pointer text-sm font-medium">Modules this payment opens</summary>
+      <summary className="cursor-pointer text-sm font-medium">Modules and features this payment opens</summary>
       <p className="theme-subtext mt-2 text-xs leading-5">
-        When an organisation pays for this plan, these applications turn on. For Retail & Distribution, only the checked sections open.
+        The organisation sees only the checked modules after they pay. Open a module to leave features out. External POS, the mobile app, and the manager app are modules here.
       </p>
-      <ul className="mt-2 space-y-1">
-        {workspaces.map((workspace) => (
-          <li key={workspace.id}>
-            <label className="flex cursor-pointer items-start gap-2 py-1 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={workspaceKeys.includes(workspace.id)}
-                onChange={() => onToggle("workspace_keys", workspace.id)}
-              />
-              <span>{workspace.label}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      {industry === "commerce" ? (
-        <ul className="mt-2 grid grid-cols-2 gap-1">
-          {BACKOFFICE_SECTION_CATALOG.map((section) => (
-            <li key={section.key}>
-              <label className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+      <ul className="mt-2 space-y-2">
+        {modules.map((entry) => {
+          const on = workspaceKeys.includes(entry.id);
+          const selected = featureKeys[entry.id] ?? [];
+          const groups = [];
+          for (const feature of entry.features ?? []) {
+            const label = feature.group || entry.label;
+            const group = groups.find((row) => row.label === label);
+            if (group) group.features.push(feature);
+            else groups.push({ label, features: [feature] });
+          }
+          return (
+            <li key={entry.id}>
+              <label className="flex cursor-pointer items-start gap-2 py-1 text-sm">
                 <input
                   type="checkbox"
-                  checked={sectionKeys.includes(section.key)}
-                  onChange={() => onToggle("section_keys", section.key)}
+                  className="mt-0.5"
+                  checked={on}
+                  onChange={() => toggleModule(entry)}
                 />
-                {section.label}
+                <span>
+                  <span className="font-medium">{entry.label}</span>
+                  {entry.description ? <span className="theme-subtext mt-0.5 block text-xs">{entry.description}</span> : null}
+                </span>
               </label>
+              {on && groups.length > 0 ? (
+                <div className="mt-1 max-h-48 space-y-2 overflow-y-auto pl-6">
+                  {groups.map((group) => (
+                    <div key={group.label}>
+                      <p className="theme-subtext text-[11px] font-medium uppercase tracking-wide">{group.label}</p>
+                      <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
+                        {group.features.map((feature) => (
+                          <li key={feature.id}>
+                            <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(feature.id)}
+                                onChange={() => toggleFeature(entry, feature.id)}
+                              />
+                              {feature.label}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </li>
-          ))}
-        </ul>
-      ) : null}
+          );
+        })}
+      </ul>
     </details>
   );
 }

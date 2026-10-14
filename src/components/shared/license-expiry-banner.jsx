@@ -20,7 +20,8 @@ import { LicensePaybillInstructions } from "@/components/shared/license-paybill-
  */
 export function LicenseExpiryBanner({ className = "" }) {
   const pathname = usePathname();
-  const { organizationLicense, isSuperAdmin } = useAuth();
+  const { organizationLicense, isSuperAdmin, isOrgAdmin } = useAuth();
+  const canPay = Boolean(isOrgAdmin?.());
 
   if (isSuperAdmin?.() || !organizationLicense) return null;
 
@@ -53,15 +54,17 @@ export function LicenseExpiryBanner({ className = "" }) {
     >
       <div className="min-w-0 flex-1 space-y-2">
         <p className="font-medium">{limited || mode === "token" || mode === "trial" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
-        <LicensePaybillInstructions paybill={organizationLicense.paybill} />
+        {canPay ? <LicensePaybillInstructions paybill={organizationLicense.paybill} /> : null}
       </div>
-      <Link
-        href={renew ? "/subscribe?renew=1" : licencePlanPath(pathname)}
-        className="shrink-0 text-xs font-semibold underline"
-        onClick={() => rememberLicenceReturn(pathname)}
-      >
-        {renew ? "Renew" : mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
-      </Link>
+      {canPay ? (
+        <Link
+          href={renew ? "/subscribe?renew=1" : licencePlanPath(pathname)}
+          className="shrink-0 text-xs font-semibold underline"
+          onClick={() => rememberLicenceReturn(pathname)}
+        >
+          {renew ? "Renew" : mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
+        </Link>
+      ) : null}
     </div>
   );
 }

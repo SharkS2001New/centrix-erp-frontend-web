@@ -29,7 +29,8 @@ import { PrimaryButton } from "@/components/catalog/catalog-shared";
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { organizationLicense, loading, isSuperAdmin, refreshCapabilities } = useAuth();
+  const { organizationLicense, loading, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
+  const canPay = Boolean(isOrgAdmin?.());
   const [promptOpen, setPromptOpen] = useState(false);
   const posNeedsSubscription =
     !loading &&
@@ -66,18 +67,18 @@ export function LicenseExpiryGuard({ children }) {
   }, [isSuperAdmin, loading, organizationLicense, refreshCapabilities]);
 
   useEffect(() => {
-    if (!posNeedsSubscription) return;
+    if (!posNeedsSubscription || !canPay) return;
     if (pathname === "/subscribe" || pathname.startsWith("/subscribe/")) return;
     rememberLicenceReturn(pathname);
     router.replace("/subscribe?for=pos");
-  }, [pathname, posNeedsSubscription, router]);
+  }, [canPay, pathname, posNeedsSubscription, router]);
 
   useEffect(() => {
-    if (!limited || allowed) return;
+    if (!limited || allowed || !canPay) return;
     if (pathname === planPath || pathname.startsWith(`${planPath}/`)) return;
     rememberLicenceReturn(pathname);
     router.replace(planPath);
-  }, [allowed, limited, pathname, planPath, router]);
+  }, [allowed, canPay, limited, pathname, planPath, router]);
 
   useEffect(() => {
     if (loading || !hasAuthSession() || isSuperAdmin() || limited || choosingPlan) {
@@ -95,10 +96,18 @@ export function LicenseExpiryGuard({ children }) {
     setPromptOpen(true);
   }, [choosingPlan, organizationLicense, isSuperAdmin, limited, loading]);
 
-  if (posNeedsSubscription || (limited && !allowed)) {
+  if ((posNeedsSubscription || (limited && !allowed)) && canPay) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
         <p className="max-w-md text-center text-sm text-slate-600">Opening the Centrix payment page…</p>
+      </div>
+    );
+  }
+
+  if ((posNeedsSubscription || (limited && !allowed)) && !canPay) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center p-6">
+        <p className="max-w-md text-center text-sm text-slate-600">Ask your organisation admin to pay for Centrix.</p>
       </div>
     );
   }
