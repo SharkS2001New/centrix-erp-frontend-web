@@ -4,12 +4,13 @@ import Link from "next/link";
 import { CalendarPlus, Package, ShoppingBag, UserPlus, Wallet, Users, Footprints, CalendarCheck } from "lucide-react";
 import { datePart, formatLong, formatTime, ksh, todayISO } from "@/lib/spa/format";
 import { useAuth } from "@/contexts/auth-context";
+import { isSpaFeatureEnabled } from "@/lib/org-settings-tabs";
 import { useSpa } from "@/lib/spa/store";
 import { Badge, Card } from "@/components/spa/ui";
 
 export function DashboardScreen() {
   const spa = useSpa();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
   const firstName = String(user?.full_name || user?.username || "there").split(" ")[0];
   const today = todayISO();
   const daySales = spa.salesOn(today);
@@ -69,10 +70,10 @@ export function DashboardScreen() {
             {trend.map((item) => <span key={item.label}>{item.label}</span>)}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Action href="/spa/appointments/new" icon={CalendarPlus} label="New appointment" tint="bg-blue-50 text-blue-600" />
-            <Action href="/spa/pos" icon={ShoppingBag} label="Quick sale" tint="bg-emerald-50 text-emerald-600" />
-            <Action href="/spa/clients/new" icon={UserPlus} label="Add client" tint="bg-violet-50 text-violet-600" />
-            <Action href="/spa/inventory" icon={Package} label="Check inventory" tint="bg-amber-50 text-amber-600" />
+            {isSpaFeatureEnabled(capabilities, "appointments") ? <Action href="/spa/appointments/new" icon={CalendarPlus} label="New appointment" tint="bg-blue-50 text-blue-600" /> : null}
+            {isSpaFeatureEnabled(capabilities, "pos") ? <Action href="/spa/pos" icon={ShoppingBag} label="Quick sale" tint="bg-emerald-50 text-emerald-600" /> : null}
+            {isSpaFeatureEnabled(capabilities, "clients") ? <Action href="/spa/clients/new" icon={UserPlus} label="Add client" tint="bg-violet-50 text-violet-600" /> : null}
+            {isSpaFeatureEnabled(capabilities, "inventory") ? <Action href="/spa/inventory" icon={Package} label="Check inventory" tint="bg-amber-50 text-amber-600" /> : null}
           </div>
         </Card>
         <Card>
@@ -102,7 +103,7 @@ export function DashboardScreen() {
               <li key={item.id} className="flex justify-between"><span>{item.name}</span><span className="text-amber-700">{item.qty} left</span></li>
             ))}
           </ul>
-          <Link href="/spa/inventory" className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">View inventory</Link>
+          {isSpaFeatureEnabled(capabilities, "inventory") ? <Link href="/spa/inventory" className="mt-3 inline-block text-sm font-medium text-[var(--theme-accent-text)]">View inventory</Link> : null}
         </Card>
         <Card>
           <h2 className="text-sm font-semibold text-[#0E2340]">Top services</h2>

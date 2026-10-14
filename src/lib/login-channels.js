@@ -73,7 +73,8 @@ export function allowedLoginChannelValues(capabilities) {
         capabilities?.modules?.["hospitality.backend"] ||
         capabilities?.modules?.["hospitality.bar_pos"],
     );
-  if (salesManager || nonSalesManager) {
+  const managerSetting = capabilities?.module_settings?.sales?.enable_manager_app;
+  if (managerSetting === true || (managerSetting !== false && (salesManager || nonSalesManager))) {
     allowed.add("manager");
   }
 

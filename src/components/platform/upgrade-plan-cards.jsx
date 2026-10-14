@@ -183,6 +183,75 @@ export function PlanGroup({ title, hint, offers, currentName, currentPlanId = nu
   );
 }
 
+export function ManagedFreePlanCard({
+  modules = [],
+  access = { workspace_keys: [], feature_keys: {} },
+  industries = [],
+  industry = "",
+  onIndustry,
+  busy = false,
+  onChange,
+  onSave,
+}) {
+  const included = modules
+    .filter((entry) => (access.workspace_keys ?? []).includes(entry.id))
+    .map((entry) => entry.label);
+  const points = included.length > 0 ? included : ["Dashboard"];
+  return (
+    <article className="flex h-full flex-1 flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
+      <p className="theme-subtext text-sm">Free</p>
+      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Package 1</h2>
+      <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
+        Open Centrix without paying. Choose the modules and features this free plan includes.
+      </p>
+      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">{formatBillingMoney(0, "KES")}</p>
+      <p className="theme-subtext mt-1 text-sm">No charge.</p>
+      <button type="button" disabled className="theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70">
+        Free
+      </button>
+      {industries.length > 1 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {industries.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`rounded-full px-3 py-1 text-xs font-medium ${industry === item.id ? "bg-[var(--theme-primary)] text-[var(--theme-primary-fg)]" : "bg-[var(--theme-surface-subtle)] text-[var(--theme-text)]"}`}
+              onClick={() => onIndustry?.(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <PlanAccessFields
+        modules={modules}
+        workspaceKeys={access.workspace_keys ?? []}
+        featureKeys={access.feature_keys ?? {}}
+        onChange={onChange}
+        summary="Modules and features this free plan opens"
+        hint="The organisation sees only the checked modules on Package 1. Open a module to leave features out."
+      />
+      <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
+      <ul className="mt-3 space-y-2.5 text-sm leading-5">
+        {points.map((point) => (
+          <li key={point} className="flex gap-2.5">
+            <span className="theme-subtext">✓</span>
+            <span>{point}</span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        disabled={busy || !onSave}
+        onClick={onSave}
+        className="theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+      >
+        {busy ? "Saving…" : "Save card"}
+      </button>
+    </article>
+  );
+}
+
 export function FreePlanCard({ pages = [], current = false, preview = false }) {
   const points = (pages.length ? pages : ["Dashboard"]).map((page) => String(page)).filter(Boolean);
   return (
@@ -719,16 +788,11 @@ export function initialPackageAccess(plan, modules = []) {
   const stored = plan?.feature_keys && typeof plan.feature_keys === "object" && !Array.isArray(plan.feature_keys)
     ? plan.feature_keys
     : null;
-  const selected = new Set(Array.isArray(plan?.workspace_keys) ? plan.workspace_keys : []);
-  if (!stored) {
-    const industry = plan?.industry || "commerce";
-    if (industry === "commerce") {
-      selected.add("mobile");
-      selected.add("manager");
-    } else if (industry === "hospitality") {
-      selected.add("manager");
-    }
-  }
+  const selected = new Set(
+    stored
+      ? Object.keys(stored)
+      : (Array.isArray(plan?.workspace_keys) ? plan.workspace_keys : []),
+  );
   const workspace_keys = [...selected].filter((id) => known.size === 0 || known.has(id));
   const feature_keys = {};
   for (const entry of list) {
@@ -742,7 +806,14 @@ export function initialPackageAccess(plan, modules = []) {
   return { workspace_keys, feature_keys };
 }
 
-export function PlanAccessFields({ modules = [], workspaceKeys = [], featureKeys = {}, onChange }) {
+export function PlanAccessFields({
+  modules = [],
+  workspaceKeys = [],
+  featureKeys = {},
+  onChange,
+  summary = "Modules and features this payment opens",
+  hint = "The organisation sees only the checked modules after they pay. Open a module to leave features out. External POS, the mobile app, and the manager app are modules here.",
+}) {
   function emit(nextKeys, nextFeatures) {
     onChange({ workspace_keys: nextKeys, feature_keys: nextFeatures });
   }
@@ -777,10 +848,8 @@ export function PlanAccessFields({ modules = [], workspaceKeys = [], featureKeys
 
   return (
     <details className="mt-4 rounded-xl border border-[var(--theme-border)] px-3 py-2">
-      <summary className="cursor-pointer text-sm font-medium">Modules and features this payment opens</summary>
-      <p className="theme-subtext mt-2 text-xs leading-5">
-        The organisation sees only the checked modules after they pay. Open a module to leave features out. External POS, the mobile app, and the manager app are modules here.
-      </p>
+      <summary className="cursor-pointer text-sm font-medium">{summary}</summary>
+      <p className="theme-subtext mt-2 text-xs leading-5">{hint}</p>
       <ul className="mt-2 space-y-2">
         {modules.map((entry) => {
           const on = workspaceKeys.includes(entry.id);

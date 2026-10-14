@@ -8,7 +8,7 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { BillingIntervalTabs, FreePlanCard, initialPackageAccess, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
+import { BillingIntervalTabs, initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -16,61 +16,6 @@ const inputClass =
 const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
 const MIN_PLAN_POINTS = 8;
 const MAX_PLAN_POINTS = 20;
-
-function freePlanLabels(catalog, access, industry) {
-  const industryCatalog = (catalog ?? []).find((item) => item.id === industry);
-  const pages = industryCatalog?.pages ?? [{ id: "dashboard", label: "Dashboard" }];
-  const selected = access?.[industry]?.page_keys ?? ["dashboard"];
-  const labels = pages.filter((page) => selected.includes(page.id)).map((page) => page.label);
-  return labels.length > 0 ? labels : ["Dashboard"];
-}
-
-function FreePlanEditor({ catalog, access, industry, setIndustry, busy, onToggle, onSave }) {
-  const current = (catalog ?? []).find((item) => item.id === industry) ?? catalog?.[0];
-  const selected = access?.[current?.id]?.page_keys ?? ["dashboard"];
-  if (!current) return null;
-  return (
-    <section className="theme-panel mb-4 rounded-2xl border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Package 1, the free plan</p>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Choose what each industry can open before they pay. Dashboard is the starting point. A paid plan uses its own applications and sections.
-          </p>
-        </div>
-        <PrimaryButton type="button" showIcon={false} disabled={busy || !access} onClick={onSave}>
-          {busy ? "Saving…" : "Save Package 1"}
-        </PrimaryButton>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(catalog ?? []).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`rounded-full px-3 py-1 text-xs font-medium ${industry === item.id ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
-            onClick={() => setIndustry(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <ul className="mt-3 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-        {(current.pages ?? []).map((page) => (
-          <li key={page.id}>
-            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={selected.includes(page.id)}
-                onChange={() => onToggle(current.id, page.id)}
-              />
-              {page.label}
-            </label>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
 
 function byCardOrder(rows) {
   return [...rows].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.name ?? "").localeCompare(String(b.name ?? "")));
@@ -218,7 +163,7 @@ function formToPayload(form) {
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePages = [], tokenEditor = null }) {
+function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePlan = null }) {
   const published = byCardOrder(
     plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
@@ -236,16 +181,15 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
       <h2 className="text-sm font-semibold text-slate-900">Plan cards</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-600">
-        These are the cards an organisation sees. Package 1 is the free card on Tokens. Tick Recommended on the card you want marked, then save it. Move a card and the organisation screen uses that order. A hidden card stays here until you publish it again.
+        These are the cards an organisation sees. Package 1 is the free card on Tokens. Choose its modules and features on that card, then save it. Tick Recommended on the paid card you want marked. Move a card and the organisation screen uses that order.
       </p>
       <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
       {loading && plans.length === 0 ? (
         <p className="mt-8 text-sm text-slate-500">Loading plans…</p>
       ) : billing === "token" ? (
         <div className="mt-8 space-y-6">
-          {tokenEditor}
           <div className={`grid items-stretch gap-4 ${tokenPackOn ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
-          <FreePlanCard pages={freePages} preview />
+          {freePlan}
           {tokenPackOn ? (
             <TokenPackCard
               preview
@@ -558,14 +502,16 @@ export default function SelfServePlansPage() {
     }
   }
 
-  function toggleFreePage(industry, pageId) {
+  function setFreeAccess(industry, access) {
     setFreePlan((current) => {
       const base = current && typeof current === "object" ? current : {};
-      const keys = Array.isArray(base[industry]?.page_keys) ? base[industry].page_keys : ["dashboard"];
-      const next = keys.includes(pageId) ? keys.filter((id) => id !== pageId) : [...keys, pageId];
       return {
         ...base,
-        [industry]: { page_keys: next.length > 0 ? next : keys },
+        [industry]: {
+          ...(base[industry] ?? {}),
+          workspace_keys: access.workspace_keys ?? [],
+          feature_keys: access.feature_keys ?? {},
+        },
       };
     });
   }
@@ -840,16 +786,16 @@ export default function SelfServePlansPage() {
         manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation, catalog: packageCatalog }}
         loading={loading}
         policy={policy}
-        freePages={freePlanLabels(freeCatalog, freePlan, industryFilter === "all" ? "commerce" : industryFilter)}
-        tokenEditor={(
-          <FreePlanEditor
-            catalog={freeCatalog}
-            access={freePlan}
-            industry={freeIndustry}
-            setIndustry={setFreeIndustry}
+        freePlan={(
+          <ManagedFreePlanCard
+            modules={modulesForPlan(packageCatalog, { industry: industryFilter === "all" ? freeIndustry : industryFilter })}
+            access={freePlan?.[industryFilter === "all" ? freeIndustry : industryFilter] ?? { workspace_keys: [], feature_keys: {} }}
+            industries={industryFilter === "all" ? (freeCatalog ?? []) : []}
+            industry={industryFilter === "all" ? freeIndustry : industryFilter}
+            onIndustry={setFreeIndustry}
             busy={freeBusy}
-            onToggle={toggleFreePage}
-            onSave={() => void saveFreePlan()}
+            onChange={(access) => setFreeAccess(industryFilter === "all" ? freeIndustry : industryFilter, access)}
+            onSave={freePlan ? () => void saveFreePlan() : undefined}
           />
         )}
       />
