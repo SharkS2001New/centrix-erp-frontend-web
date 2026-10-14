@@ -18,39 +18,48 @@ export function quoteMonths(unit, months, minMonths, percent) {
   };
 }
 
-const BILLING_TAB_LABELS = {
-  token: "Tokens",
-  monthly: "Monthly",
-  yearly: "Yearly",
+const BILLING_TABS = {
+  token: { label: "Tokens", hint: "Free plan or a pack" },
+  monthly: { label: "Monthly", hint: "Billed each month" },
+  yearly: { label: "Yearly", hint: "A year ahead, or once" },
 };
 
 export function BillingIntervalTabs({ value, onChange, options }) {
-  const columns = options.length <= 2 ? "grid-cols-2" : "grid-cols-3";
+  const wide = options.length > 2;
   return (
-    <div
-      role="tablist"
-      aria-label="How you pay"
-      className={`mx-auto mt-6 grid w-full max-w-xl ${columns} gap-1 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-1.5 shadow-sm`}
-    >
-      {options.map((option) => {
-        const selected = value === option;
-        return (
-          <button
-            key={option}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => onChange(option)}
-            className={`rounded-xl px-4 py-3 text-sm font-semibold tracking-tight transition ${
-              selected
-                ? "bg-[var(--theme-primary)] text-white shadow-sm"
-                : "text-[var(--theme-text-muted)] hover:bg-[var(--theme-surface-subtle)] hover:text-[var(--theme-text)]"
-            }`}
-          >
-            {BILLING_TAB_LABELS[option] || option}
-          </button>
-        );
-      })}
+    <div className={`mx-auto mt-7 w-full ${wide ? "max-w-2xl" : "max-w-md"}`}>
+      <div
+        role="tablist"
+        aria-label="How you pay"
+        className="grid gap-1 rounded-2xl bg-[var(--theme-surface-subtle)] p-1.5 shadow-[inset_0_0_0_1px_var(--theme-border)]"
+        style={{ gridTemplateColumns: `repeat(${Math.max(options.length, 1)}, minmax(0, 1fr))` }}
+      >
+        {options.map((option) => {
+          const tab = BILLING_TABS[option] || { label: option, hint: "" };
+          const selected = value === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => onChange(option)}
+              className={`rounded-xl px-3 py-2.5 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--theme-primary)] ${
+                selected
+                  ? "bg-[var(--theme-primary)] text-[var(--theme-primary-fg)] shadow-sm"
+                  : "text-[var(--theme-text)] hover:bg-[var(--theme-surface)]"
+              }`}
+            >
+              <span className="block text-sm font-semibold tracking-tight">{tab.label}</span>
+              {tab.hint ? (
+                <span className={`mt-0.5 block text-[11px] font-medium leading-4 ${selected ? "opacity-80" : "text-[var(--theme-text-subtle)]"}`}>
+                  {tab.hint}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
