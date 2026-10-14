@@ -10,6 +10,7 @@ import {
   rememberLicenceReturn,
   licenseAccessMode,
   licenseWarningMessage,
+  yearlyRenewalOpen,
 } from "@/lib/organization-license";
 import { LicensePaybillInstructions } from "@/components/shared/license-paybill-instructions";
 
@@ -26,6 +27,7 @@ export function LicenseExpiryBanner({ className = "" }) {
   const limited = licenceNeedsPayment(organizationLicense);
   const soon = isLicenseExpiringSoon(organizationLicense);
   const mode = licenseAccessMode(organizationLicense);
+  const renew = yearlyRenewalOpen(organizationLicense);
   if (!limited && !soon && mode !== "token" && mode !== "trial") return null;
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
@@ -54,11 +56,11 @@ export function LicenseExpiryBanner({ className = "" }) {
         <LicensePaybillInstructions paybill={organizationLicense.paybill} />
       </div>
       <Link
-        href={licencePlanPath(pathname)}
+        href={renew ? "/subscribe?renew=1" : licencePlanPath(pathname)}
         className="shrink-0 text-xs font-semibold underline"
         onClick={() => rememberLicenceReturn(pathname)}
       >
-        {mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
+        {renew ? "Renew" : mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
       </Link>
     </div>
   );

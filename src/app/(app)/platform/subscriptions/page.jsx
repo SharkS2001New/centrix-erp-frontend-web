@@ -95,6 +95,8 @@ export default function PlatformSubscriptionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [assignOpen, setAssignOpen] = useState(false);
   const [extendTarget, setExtendTarget] = useState(null);
+  const [renewTarget, setRenewTarget] = useState(null);
+  const [renewAmount, setRenewAmount] = useState("");
   const [attachTarget, setAttachTarget] = useState(null);
   const [attachInvoiceKind, setAttachInvoiceKind] = useState("initial");
   const [attachInvoiceId, setAttachInvoiceId] = useState("");
@@ -275,6 +277,30 @@ export default function PlatformSubscriptionsPage() {
       await load();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to attach invoice.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRenewAmount(e) {
+    e.preventDefault();
+    if (!renewTarget) return;
+    const amount = Number(renewAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notifyError("Enter the renew amount in KES.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiRequest(`/admin/platform-subscriptions/${renewTarget.id}`, {
+        method: "PATCH",
+        body: { renewal_price: amount, amount, sync_from_plan: false },
+      });
+      notifySuccess("Renew amount saved for this organisation.");
+      setRenewTarget(null);
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save the renew amount.");
     } finally {
       setSaving(false);
     }
@@ -605,6 +631,16 @@ export default function PlatformSubscriptionsPage() {
                           <button
                             type="button"
                             className="text-xs font-medium text-[#185FA5] hover:underline"
+                            onClick={() => {
+                              setRenewTarget(sub);
+                              setRenewAmount(sub.renewal_price != null ? String(sub.renewal_price) : "");
+                            }}
+                          >
+                            Set renew amount
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[#185FA5] hover:underline"
                             onClick={() => setChangePlanTarget(sub)}
                           >
                             Change package
@@ -678,6 +714,30 @@ export default function PlatformSubscriptionsPage() {
           </div>
         )}
       </div>
+
+      {renewTarget ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">
+          <form onSubmit={(e) => void handleRenewAmount(e)} className="theme-modal w-full max-w-md rounded-xl border p-6 shadow-2xl">
+            <h2 className="text-base font-semibold text-slate-900">Renew amount</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This is what {renewTarget.organization?.org_name || "this organisation"} pays when a yearly licence is renewed. It does not change the plan catalogue.
+            </p>
+            <label className="mt-4 block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Amount (KES)</span>
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                value={renewAmount}
+                onChange={(e) => setRenewAmount(e.target.value)}
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setRenewTarget(null)}>Cancel</button>
+              <PrimaryButton type="submit" showIcon={false} disabled={saving}>{saving ? "Saving…" : "Save"}</PrimaryButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {assignOpen ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">

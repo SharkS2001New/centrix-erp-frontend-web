@@ -11,7 +11,7 @@ import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribut
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { rememberLicenceReturn } from "@/lib/organization-license";
+import { isYearlyLicence, rememberLicenceReturn, yearlyRenewalOpen } from "@/lib/organization-license";
 
 function MenuIcon({ className }) {
   return (
@@ -22,9 +22,11 @@ function MenuIcon({ className }) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, organizationLicense } = useAuth();
   const pathname = usePathname();
   const hideModuleSearch = Boolean(isSuperAdmin?.());
+  const yearly = isYearlyLicence(organizationLicense);
+  const renew = yearlyRenewalOpen(organizationLicense);
 
   return (
     <>
@@ -57,7 +59,16 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {!hideModuleSearch ? (
+          {!hideModuleSearch && renew ? (
+            <Link
+              href="/subscribe?renew=1"
+              onClick={() => rememberLicenceReturn(pathname)}
+              className="theme-primary-btn inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold"
+            >
+              Renew
+            </Link>
+          ) : null}
+          {!hideModuleSearch && !yearly ? (
             <Link
               href="/subscribe"
               onClick={() => rememberLicenceReturn(pathname)}

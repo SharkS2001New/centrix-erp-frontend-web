@@ -5,6 +5,8 @@ import {
   isLicenseExpiringSoon,
   isFreePlanPath,
   isLimitedLicencePath,
+  isYearlyLicence,
+  yearlyRenewalOpen,
   freePlanHome,
   licencePlanPath,
   licenseAccessMode,
@@ -186,6 +188,32 @@ describe("organization license", () => {
     expect(isFreePlanPath("/subscribe", free)).toBe(true);
     expect(freePlanHome(free)).toBe("/dashboard");
     expect(isLimitedLicencePath("/products")).toBe(true);
+  });
+
+  it("hides plan changes for a healthy yearly licence and opens renew while it is counting down", () => {
+    const healthy = resolveOrganizationLicense({
+      status: "active",
+      expires_at: "2099-12-31",
+      billing_cycle: "yearly",
+      renewal_amount: 51000,
+      plan_name: "Yearly",
+    });
+    expect(isYearlyLicence(healthy)).toBe(true);
+    expect(yearlyRenewalOpen(healthy)).toBe(false);
+
+    const soon = resolveOrganizationLicense({
+      status: "active",
+      expires_at: addCalendarDays(undefined, 3),
+      billing_cycle: "yearly",
+      renewal_amount: 51000,
+    });
+    expect(yearlyRenewalOpen(soon)).toBe(true);
+    expect(isYearlyLicence(resolveOrganizationLicense({
+      status: "trialing",
+      is_trial: true,
+      expires_at: addCalendarDays(undefined, 3),
+      billing_cycle: "yearly",
+    }))).toBe(false);
   });
 
   it("keeps External POS off token billing", () => {

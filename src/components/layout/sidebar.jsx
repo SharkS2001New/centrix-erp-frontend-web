@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
-import { isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, licenseAccessMode } from "@/lib/organization-license";
+import { isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, yearlyRenewalOpen } from "@/lib/organization-license";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
@@ -530,7 +530,10 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
         id: "centrix-upgrade",
         label: "Centrix licence",
         icon: "💳",
-        items: [{ href: "/subscribe", label: "Choose a plan" }],
+        items: [{
+          href: yearlyRenewalOpen(organizationLicense) || isYearlyLicence(organizationLicense) ? "/subscribe?renew=1" : "/subscribe",
+          label: isYearlyLicence(organizationLicense) ? "Renew" : "Choose a plan",
+        }],
       },
       ...limited,
     ];

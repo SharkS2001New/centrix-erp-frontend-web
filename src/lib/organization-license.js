@@ -159,7 +159,24 @@ export function resolveOrganizationLicense(source = null) {
     duration_discount:
       raw.duration_discount && typeof raw.duration_discount === "object" ? raw.duration_discount : null,
     free_plan: raw.free_plan && typeof raw.free_plan === "object" ? raw.free_plan : null,
+    billing_cycle: raw.billing_cycle === "yearly" || raw.billing_cycle === "monthly" ? raw.billing_cycle : null,
+    plan_id: raw.plan_id != null ? Number(raw.plan_id) : null,
+    renewal_amount: raw.renewal_amount != null && Number(raw.renewal_amount) > 0 ? Number(raw.renewal_amount) : null,
   };
+}
+
+/** A paid yearly organisation. Trials still choose a plan. */
+export function isYearlyLicence(license) {
+  if (!license || license.is_trial || license.status === "trialing") return false;
+  return license.billing_cycle === "yearly";
+}
+
+/** Yearly organisations renew only while the licence is counting down or has ended. */
+export function yearlyRenewalOpen(license) {
+  if (!isYearlyLicence(license)) return false;
+  const mode = licenseAccessMode(license);
+  if (mode === "trial" || mode === "free" || mode === "token") return false;
+  return isLicenseExpiringSoon(license) || mode === "expired";
 }
 
 /** Extract licence from capabilities and/or organization objects. */

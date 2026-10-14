@@ -5,12 +5,27 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath } from "@/lib/organization-license";
+import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath, yearlyRenewalOpen } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
 import { BillingIntervalTabs, featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
+
+function renewalCharge(license) {
+  return {
+    kind: "renew",
+    billing: "renew",
+    months: 12,
+    amount: Number(license?.renewal_amount) || 0,
+    currency: "KES",
+    plan: {
+      id: license?.plan_id,
+      name: license?.plan_name || "Yearly plan",
+      features: ["Another year on the current plan"],
+    },
+  };
+}
 
 export default function SubscribePage() {
   const router = useRouter();
@@ -18,12 +33,13 @@ export default function SubscribePage() {
   const { organization, organizationLicense, capabilities, user, isSuperAdmin, refreshCapabilities } = useAuth();
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : [];
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
-  const [charge, setCharge] = useState(null);
+  const renewOpen = yearlyRenewalOpen(organizationLicense);
+  const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
   const [billing, setBilling] = useState(forPos ? "monthly" : "token");
   const [quoteNotice, setQuoteNotice] = useState("");
   const [tokenPack, setTokenPack] = useState(null);
   const [tokensEnabled, setTokensEnabled] = useState(true);
-  const [step, setStep] = useState("plans");
+  const [step, setStep] = useState(renewOpen ? "checkout" : "plans");
   const [phone, setPhone] = useState(user?.phone || organizationLicense?.paybill?.account_phone || "");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
@@ -101,10 +117,21 @@ export default function SubscribePage() {
   }, [capabilities, forPos, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
+    if (!isYearlyLicence(organizationLicense)) return;
+    if (!yearlyRenewalOpen(organizationLicense)) {
+      closeForLater();
+      return;
+    }
+    setCharge(renewalCharge(organizationLicense));
+    setStep("checkout");
+  }, [closeForLater, organizationLicense]);
+
+  useEffect(() => {
     function onKey(event) {
       if (event.key !== "Escape") return;
       if (step === "checkout") {
-        setStep("plans");
+        if (charge?.kind === "renew") closeForLater();
+        else setStep("plans");
         return;
       }
       closeForLater();
@@ -168,8 +195,12 @@ export default function SubscribePage() {
         : "Token billing is turned off. Choose a monthly or yearly plan.");
       return;
     }
-    if (!charge || (charge.kind !== "token" && !charge.plan?.id)) {
+    if (!charge || (charge.kind !== "token" && charge.kind !== "renew" && !charge.plan?.id)) {
       setNotice("Choose a plan.");
+      return;
+    }
+    if (charge.kind === "renew" && !(Number(charge.amount) > 0)) {
+      setNotice("A platform administrator has not set the renew amount for this organisation.");
       return;
     }
     setBusy("stk");
@@ -179,7 +210,9 @@ export default function SubscribePage() {
         method: "POST",
         body: charge.kind === "token"
           ? { billing: "token", phone }
-          : { plan_id: charge.plan.id, months: charge.months, phone, billing: charge.billing },
+          : charge.kind === "renew"
+            ? { billing: "renew", phone }
+            : { plan_id: charge.plan.id, months: charge.months, phone, billing: charge.billing },
       });
       if (res.checkout?.id) setCheckoutId(res.checkout.id);
       setWatching(Boolean(res.stk && res.checkout?.id));
@@ -193,7 +226,7 @@ export default function SubscribePage() {
 
   async function notifyAdmin() {
     if (charge?.kind === "token" && (forPos || !tokensEnabled)) return;
-    if (!charge || (charge.kind !== "token" && !charge.plan?.id)) return;
+    if (!charge || (charge.kind !== "token" && charge.kind !== "renew" && !charge.plan?.id)) return;
     setBusy("manual");
     setNotice("");
     try {
@@ -201,7 +234,9 @@ export default function SubscribePage() {
         method: "POST",
         body: charge.kind === "token"
           ? { billing: "token" }
-          : { plan_id: charge.plan.id, months: charge.months, billing: charge.billing },
+          : charge.kind === "renew"
+            ? { billing: "renew" }
+            : { plan_id: charge.plan.id, months: charge.months, billing: charge.billing },
       });
       if (res.checkout?.id) setCheckoutId(res.checkout.id);
       setNotice(res.message || "Centrix has been notified on WhatsApp.");
@@ -230,7 +265,9 @@ export default function SubscribePage() {
         method: "POST",
         body: charge?.kind === "token"
           ? { mpesa_code: code.trim(), billing: "token" }
-          : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing },
+          : charge?.kind === "renew"
+            ? { mpesa_code: code.trim(), billing: "renew" }
+            : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing },
       });
       if (await leaveIfPaid(res.license)) return;
       const next = await refreshCapabilities({ force: true });
@@ -289,7 +326,8 @@ export default function SubscribePage() {
             busy={busy}
             notice={notice}
             watching={watching}
-            onBack={() => setStep("plans")}
+            onBack={charge.kind === "renew" ? closeForLater : () => setStep("plans")}
+            backLabel={charge.kind === "renew" ? "Close" : "‹ Configure your plan"}
             onPay={() => void payNow()}
             onNotify={() => void notifyAdmin()}
             onCheck={() => void checkNow()}
@@ -462,6 +500,7 @@ function CheckoutStep({
   notice,
   watching = false,
   onBack,
+  backLabel = "‹ Configure your plan",
   onPay,
   onNotify,
   onCheck,
@@ -470,6 +509,8 @@ function CheckoutStep({
   const features = (charge?.plan?.features ?? []).slice(0, 5).map(featureTitle).filter(Boolean);
   const product = token
     ? "Token pack"
+    : charge?.kind === "renew"
+      ? "Yearly renewal"
     : charge?.kind === "once"
       ? "Yearly subscription"
       : charge?.kind === "prepaid"
@@ -480,7 +521,7 @@ function CheckoutStep({
   return (
     <div>
       <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
-        ‹ Configure your plan
+        {backLabel}
       </button>
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
