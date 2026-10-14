@@ -5,12 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { dismissLicenseWarning, isLimitedLicencePath, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath } from "@/lib/organization-license";
+import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
-import { featureTitle, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer } from "@/components/platform/upgrade-plan-cards";
+import { BillingIntervalTabs, featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
 
 export default function SubscribePage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function SubscribePage() {
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : [];
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
   const [charge, setCharge] = useState(null);
-  const [billing, setBilling] = useState("monthly");
+  const [billing, setBilling] = useState(forPos ? "monthly" : "token");
   const [quoteNotice, setQuoteNotice] = useState("");
   const [tokenPack, setTokenPack] = useState(null);
   const [tokensEnabled, setTokensEnabled] = useState(true);
@@ -51,8 +51,8 @@ export default function SubscribePage() {
   }, []);
 
   useEffect(() => {
-    if (!tokensEnabled && billing === "token") setBilling("monthly");
-  }, [tokensEnabled, billing]);
+    if (forPos && billing === "token") setBilling("monthly");
+  }, [forPos, billing]);
 
   const due = Number(charge?.amount) || 0;
   const paybill = organizationLicense?.paybill;
@@ -71,8 +71,17 @@ export default function SubscribePage() {
       return;
     }
     const back = takeLicenceReturnPath();
-    if (back && (isLimitedLicencePath(back) || !licenceNeedsPayment(organizationLicense))) {
+    const modeNow = licenseAccessMode(organizationLicense);
+    const backAllowed = Boolean(back) && (
+      !licenceNeedsPayment(organizationLicense)
+      || (modeNow === "free" ? isFreePlanPath(back, organizationLicense) : isLimitedLicencePath(back))
+    );
+    if (backAllowed) {
       router.replace(back);
+      return;
+    }
+    if (modeNow === "free") {
+      router.replace(freePlanHome(organizationLicense));
       return;
     }
     if (licenceNeedsPayment(organizationLicense)) {
@@ -265,7 +274,7 @@ export default function SubscribePage() {
       >
         Close
       </button>
-      <div className="mx-auto min-h-full max-w-7xl px-4 pb-16 pt-16 sm:px-8">
+      <div className="mx-auto min-h-full max-w-[96rem] px-4 pb-16 pt-16 sm:px-8">
         {step === "checkout" && charge ? (
           <CheckoutStep
             charge={charge}
@@ -296,7 +305,10 @@ export default function SubscribePage() {
             mode={mode}
             tokenPack={tokenPack}
             tokenBalance={Number(organizationLicense?.token_balance) || 0}
-            currentName={mode === "full" ? organizationLicense?.plan_name : ""}
+            currentName={mode === "full" || mode === "trial" ? organizationLicense?.plan_name || "" : ""}
+            packageCurrent={mode === "free"}
+            tokenCurrent={mode === "token"}
+            freePages={(organizationLicense?.free_plan?.pages ?? []).map((page) => page?.label).filter(Boolean)}
             onPay={openCheckout}
             onQuote={() => void requestQuote()}
             quoteBusy={busy === "quote"}
@@ -317,6 +329,9 @@ function PlansStep({
   tokenPack,
   tokenBalance,
   currentName,
+  packageCurrent = false,
+  tokenCurrent = false,
+  freePages = [],
   onPay,
   onQuote,
   quoteBusy,
@@ -324,7 +339,7 @@ function PlansStep({
   forPos = false,
   tokensEnabled = true,
 }) {
-  const tabs = forPos || !tokensEnabled ? ["monthly", "yearly"] : ["monthly", "yearly", "token"];
+  const tabs = forPos ? ["monthly", "yearly"] : ["token", "monthly", "yearly"];
   const monthlyPlans = plans.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = plans.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
@@ -335,7 +350,7 @@ function PlansStep({
     <OneTimeQuoteCard busy={quoteBusy} onQuote={onQuote} notice={quoteNotice} />
   );
   const intro = billing === "token"
-    ? "Buy a pack of tokens. A completed sale uses tokens when it is saved online. Reading stays free."
+    ? "Package 1 is free. A token pack pays for completed sales. The current plan label sits on the plan this organisation is using."
     : billing === "yearly"
       ? (saving
         ? "Pay 12 months of a monthly plan and take the duration discount, pay a yearly price once, or ask for a one-time quote."
@@ -371,22 +386,7 @@ function PlansStep({
   return (
     <div>
       <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
-      <div className="mx-auto mt-6 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
-        {tabs.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setBilling(option)}
-            className={`rounded-full px-5 py-1.5 font-medium ${
-              billing === option
-                ? "bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-sm"
-                : "text-[var(--theme-text-muted)]"
-            }`}
-          >
-            {option === "yearly" ? "Yearly" : option === "monthly" ? "Monthly" : "Tokens"}
-          </button>
-        ))}
-      </div>
+      <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
       {forPos ? (
         <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
           External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.
@@ -394,27 +394,19 @@ function PlansStep({
       ) : null}
       <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">{intro}</p>
       {billing === "token" ? (
-        tokenPack && tokenPack.price > 0 ? (
-          <div className="mt-8 flex flex-wrap justify-center gap-5">
-            <article className="theme-panel flex w-full flex-col rounded-2xl border border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)] p-5 sm:w-[calc((100%-3rem)/3)] sm:min-w-[20rem] sm:flex-none">
-              <p className="theme-text-muted text-sm">Token pack</p>
-              <h2 className="theme-heading mt-3 text-xl font-semibold">{tokenPack.tokens} tokens</h2>
-              <p className="theme-heading mt-6 text-4xl font-semibold tracking-tight">
-                {formatBillingMoney(tokenPack.price, "KES")}
-              </p>
-              <button type="button" onClick={startToken} className="theme-primary-btn mt-5 w-full rounded-lg px-4 py-2.5 text-sm font-semibold">
-                Get started
-              </button>
-              <ul className="theme-text-muted mt-6 space-y-3 text-sm">
-                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>{tokenBalance} tokens remaining</span></li>
-                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>Each completed sale uses {tokenPack.saleTokens} token{tokenPack.saleTokens === 1 ? "" : "s"}</span></li>
-                <li className="flex gap-2"><span className="text-[var(--theme-primary)]">✓</span><span>Reading stays free</span></li>
-              </ul>
-            </article>
-          </div>
-        ) : (
-          <p className="theme-panel theme-text-muted mx-auto mt-8 max-w-lg rounded-2xl border p-4 text-center text-sm">{emptyCopy}</p>
-        )
+        <div className={`mt-8 grid items-stretch gap-4 ${tokensEnabled && tokenPack && tokenPack.price > 0 ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
+          <FreePlanCard pages={freePages} current={packageCurrent} />
+          {tokensEnabled && tokenPack && tokenPack.price > 0 ? (
+            <TokenPackCard
+              tokens={tokenPack.tokens}
+              price={tokenPack.price}
+              saleTokens={tokenPack.saleTokens}
+              balance={tokenBalance}
+              current={tokenCurrent}
+              onStart={startToken}
+            />
+          ) : null}
+        </div>
       ) : billing === "yearly" ? (
         prepaid.length + once.length === 0 ? (
           <div className="mt-8 space-y-6">

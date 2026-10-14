@@ -188,7 +188,7 @@ export function suggestKraFailureFix(rawError, options = {}) {
   }
 
   if (code === "314" || code === "12" || code === "994" || /receiptno|duplicate invoice|invoice number/i.test(text)) {
-    return "Retry the credit note so it uses the original sale receipt number and a new credit-note reference. If it still fails, confirm that sale was fiscalized.";
+    return "Retry the credit note. It must cite the original sale’s CU invoice number, and the retry uses a new credit-note receipt number. Confirm that sale was fiscalized if it still fails.";
   }
 
   if (

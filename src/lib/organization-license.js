@@ -4,7 +4,8 @@
  * Backend contract (login, capabilities, and every authenticated API):
  * - Include `license` (or `subscription`) on `/auth/login` and `/erp/capabilities`.
  * - Free trial, unpaid, and expired licences stay signed in.
- * - Those organisations can open products, customers, suppliers, and sales reports.
+ * - Package 1 opens the screens the platform administrator allowed, starting with the dashboard.
+ * - An expired licence can still open products, customers, suppliers, and sales reports.
  * - Every other API returns `organization_license_upgrade_required` until they pay.
  */
 
@@ -157,6 +158,7 @@ export function resolveOrganizationLicense(source = null) {
     plans: Array.isArray(raw.plans) ? raw.plans : [],
     duration_discount:
       raw.duration_discount && typeof raw.duration_discount === "object" ? raw.duration_discount : null,
+    free_plan: raw.free_plan && typeof raw.free_plan === "object" ? raw.free_plan : null,
   };
 }
 
@@ -245,6 +247,29 @@ export function takeLicenceReturnPath() {
   } catch {
     return null;
   }
+}
+
+const FREE_PLAN_SHELL = ["/subscribe", "/billing", "/choose-workspace", "/profile"];
+
+/** Pages Package 1 may open. Expired organisations keep the wider limited list. */
+export function isFreePlanPath(pathname, license) {
+  const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
+  if (FREE_PLAN_SHELL.some((shell) => path === shell || path.startsWith(`${shell}/`))) return true;
+  const rules = Array.isArray(license?.free_plan?.rules) ? license.free_plan.rules : [];
+  const list = rules.length > 0 ? rules : [{ path: "/dashboard", exact: true }];
+  return list.some((rule) => {
+    const target = String(rule?.path || "");
+    if (!target) return false;
+    if (rule.exact) return path === target;
+    return path === target || path.startsWith(`${target}/`);
+  });
+}
+
+/** First screen Package 1 opens, used when the subscription overlay is closed. */
+export function freePlanHome(license) {
+  const rules = Array.isArray(license?.free_plan?.rules) ? license.free_plan.rules : [];
+  const first = rules.map((rule) => String(rule?.path || "")).find(Boolean);
+  return first || "/dashboard";
 }
 
 /** Pages a free or expired organisation may open. Everything else goes to the payment screen. */

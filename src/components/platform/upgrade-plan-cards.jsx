@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatBillingMoney } from "@/lib/platform-billing";
+import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
+import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platform-billing";
 
 export function quoteMonths(unit, months, minMonths, percent) {
   const count = Math.min(36, Math.max(1, Number(months) || 1));
@@ -15,6 +16,43 @@ export function quoteMonths(unit, months, minMonths, percent) {
     percent: applied,
     amount: Math.round((gross - discount) * 100) / 100,
   };
+}
+
+const BILLING_TAB_LABELS = {
+  token: "Tokens",
+  monthly: "Monthly",
+  yearly: "Yearly",
+};
+
+export function BillingIntervalTabs({ value, onChange, options }) {
+  const columns = options.length <= 2 ? "grid-cols-2" : "grid-cols-3";
+  return (
+    <div
+      role="tablist"
+      aria-label="How you pay"
+      className={`mx-auto mt-6 grid w-full max-w-xl ${columns} gap-1 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-1.5 shadow-sm`}
+    >
+      {options.map((option) => {
+        const selected = value === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(option)}
+            className={`rounded-xl px-4 py-3 text-sm font-semibold tracking-tight transition ${
+              selected
+                ? "bg-[var(--theme-primary)] text-white shadow-sm"
+                : "text-[var(--theme-text-muted)] hover:bg-[var(--theme-surface-subtle)] hover:text-[var(--theme-text)]"
+            }`}
+          >
+            {BILLING_TAB_LABELS[option] || option}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function featureTitle(feature) {
@@ -77,7 +115,9 @@ export function PlanGroup({ title, hint, offers, currentName, onPay, preview = f
     ? "mx-auto max-w-sm"
     : count === 2
       ? "mx-auto max-w-4xl md:grid-cols-2"
-      : "md:grid-cols-2 xl:grid-cols-3";
+      : count === 3
+        ? "md:grid-cols-2 xl:grid-cols-3"
+        : "sm:grid-cols-2 xl:grid-cols-4";
   return (
     <section>
       {title ? <h2 className="theme-heading text-sm font-semibold">{title}</h2> : null}
@@ -121,6 +161,92 @@ export function PlanGroup({ title, hint, offers, currentName, onPay, preview = f
         {trailing ? <div className="flex h-full flex-col">{trailing}</div> : null}
       </div>
     </section>
+  );
+}
+
+export function FreePlanCard({ pages = [], current = false, preview = false }) {
+  const points = (pages.length ? pages : ["Dashboard"]).map((page) => String(page)).filter(Boolean);
+  return (
+    <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
+      current
+        ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
+        : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
+    }`}>
+      <p className="theme-subtext text-sm">Free</p>
+      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Package 1</h2>
+      <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
+        Open Centrix without paying. The platform administrator chooses which screens this includes.
+      </p>
+      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">
+        {formatBillingMoney(0, "KES")}
+      </p>
+      <p className="theme-subtext mt-1 text-sm">No charge.</p>
+      <button
+        type="button"
+        disabled
+        className={`theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
+          preview ? "pointer-events-none" : ""
+        }`}
+      >
+        {current ? "Your current plan" : "Free"}
+      </button>
+      <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
+      <ul className="mt-3 space-y-2.5 text-sm leading-5">
+        {points.map((point) => (
+          <li key={point} className="flex gap-2.5">
+            <span className="theme-subtext">✓</span>
+            <span>{point}</span>
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+export function TokenPackCard({
+  tokens = 0,
+  price = 0,
+  saleTokens = 1,
+  balance = 0,
+  current = false,
+  preview = false,
+  onStart,
+}) {
+  const each = Number(saleTokens) || 1;
+  return (
+    <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
+      current
+        ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
+        : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
+    }`}>
+      <p className="theme-subtext text-sm">Tokens</p>
+      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Token pack</h2>
+      <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
+        Pay for a pack of tokens. A completed sale uses tokens when it is saved online.
+      </p>
+      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">
+        {formatBillingMoney(price, "KES")}
+      </p>
+      <p className="theme-subtext mt-1 text-sm">{Number(tokens) || 0} tokens</p>
+      <button
+        type="button"
+        disabled={current}
+        onClick={() => {
+          if (!preview) onStart?.();
+        }}
+        className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
+          preview ? "pointer-events-none" : ""
+        } ${current ? "theme-secondary-btn" : "theme-primary-btn"}`}
+      >
+        {current ? "Your current plan" : "Get started"}
+      </button>
+      <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
+      <ul className="mt-3 space-y-2.5 text-sm leading-5">
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>{Number(balance) || 0} tokens remaining</span></li>
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Each completed sale uses {each} token{each === 1 ? "" : "s"}</span></li>
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Reading stays free</span></li>
+      </ul>
+    </article>
   );
 }
 
@@ -243,6 +369,8 @@ function cardDraft(offer) {
     price: price == null ? "" : String(price),
     features,
     is_active: offer.plan.is_active !== false,
+    workspace_keys: Array.isArray(offer.plan.workspace_keys) ? [...offer.plan.workspace_keys] : [],
+    section_keys: Array.isArray(offer.plan.section_keys) ? [...offer.plan.section_keys] : [],
   };
 }
 
@@ -272,6 +400,8 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
     offer.plan.yearly_price,
     offer.plan.is_active,
     featureKey,
+    (offer.plan.workspace_keys ?? []).join("|"),
+    (offer.plan.section_keys ?? []).join("|"),
   ]);
 
   const fieldClass = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 outline-none hover:border-[var(--theme-border)] focus:border-[var(--theme-primary)] focus:bg-[var(--theme-surface)]";
@@ -328,6 +458,17 @@ function ManagedPlanCard({ offer, recommended, saving, onSave, onRemove, onPrevi
         />
         Published on the subscription screen
       </label>
+      <PlanAccessFields
+        industry={offer.plan.industry || "commerce"}
+        workspaceKeys={draft.workspace_keys}
+        sectionKeys={draft.section_keys}
+        onToggle={(field, id) => setDraft((current) => {
+          const list = current[field].includes(id)
+            ? current[field].filter((key) => key !== id)
+            : [...current[field], id];
+          return { ...current, [field]: list };
+        })}
+      />
       <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
       <ul className="mt-3 space-y-2">
         {draft.features.map((row, index) => (
@@ -511,5 +652,48 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
         )}
       </div>
     </div>
+  );
+}
+
+function PlanAccessFields({ industry, workspaceKeys = [], sectionKeys = [], onToggle }) {
+  const workspaces = licensableWorkspacesForIndustry(industry);
+  return (
+    <details className="mt-4 rounded-xl border border-[var(--theme-border)] px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium">Modules this payment opens</summary>
+      <p className="theme-subtext mt-2 text-xs leading-5">
+        When an organisation pays for this plan, these applications turn on. For Retail & Distribution, only the checked sections open.
+      </p>
+      <ul className="mt-2 space-y-1">
+        {workspaces.map((workspace) => (
+          <li key={workspace.id}>
+            <label className="flex cursor-pointer items-start gap-2 py-1 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={workspaceKeys.includes(workspace.id)}
+                onChange={() => onToggle("workspace_keys", workspace.id)}
+              />
+              <span>{workspace.label}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {industry === "commerce" ? (
+        <ul className="mt-2 grid grid-cols-2 gap-1">
+          {BACKOFFICE_SECTION_CATALOG.map((section) => (
+            <li key={section.key}>
+              <label className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+                <input
+                  type="checkbox"
+                  checked={sectionKeys.includes(section.key)}
+                  onChange={() => onToggle("section_keys", section.key)}
+                />
+                {section.label}
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </details>
   );
 }

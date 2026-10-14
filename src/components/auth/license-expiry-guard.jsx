@@ -6,8 +6,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
 import {
   isLicenseExpiringSoon,
+  isFreePlanPath,
   isLimitedLicencePath,
   licenceNeedsPayment,
+  licenseAccessMode,
   licencePlanPath,
   externalPosRequiresDatedSubscription,
   parseLicenceInstant,
@@ -21,8 +23,8 @@ import { PrimaryButton } from "@/components/catalog/catalog-shared";
 /**
  * An active free trial uses the whole system.
  * After the trial or a paid period ends, the user stays signed in.
- * Pages outside products, customers, suppliers, and sales reports
- * go to the Centrix payment screen.
+ * Package 1 stays on the screens the platform administrator allowed.
+ * An expired licence keeps products, customers, suppliers, and sales reports.
  */
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
@@ -37,7 +39,8 @@ export function LicenseExpiryGuard({ children }) {
     (pathname === "/pos" || pathname.startsWith("/pos/"));
   const limited =
     !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
-  const allowed = isLimitedLicencePath(pathname);
+  const mode = licenseAccessMode(organizationLicense);
+  const allowed = mode === "free" ? isFreePlanPath(pathname, organizationLicense) : isLimitedLicencePath(pathname);
   const planPath = licencePlanPath(pathname);
   const choosingPlan =
     pathname === "/subscribe" ||

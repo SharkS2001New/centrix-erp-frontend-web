@@ -9,7 +9,7 @@ import { formatBillingMoney, licensableWorkspacesForIndustry } from "@/lib/platf
 import { BACKOFFICE_SECTION_CATALOG } from "@/lib/backoffice-sections";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanGroup, prepaidOffer } from "@/components/platform/upgrade-plan-cards";
+import { BillingIntervalTabs, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -17,6 +17,61 @@ const inputClass =
 const industryOptions = INDUSTRIES.map((item) => ({ value: item.id, label: item.label }));
 const MIN_PLAN_POINTS = 8;
 const MAX_PLAN_POINTS = 20;
+
+function freePlanLabels(catalog, access, industry) {
+  const industryCatalog = (catalog ?? []).find((item) => item.id === industry);
+  const pages = industryCatalog?.pages ?? [{ id: "dashboard", label: "Dashboard" }];
+  const selected = access?.[industry]?.page_keys ?? ["dashboard"];
+  const labels = pages.filter((page) => selected.includes(page.id)).map((page) => page.label);
+  return labels.length > 0 ? labels : ["Dashboard"];
+}
+
+function FreePlanEditor({ catalog, access, industry, setIndustry, busy, onToggle, onSave }) {
+  const current = (catalog ?? []).find((item) => item.id === industry) ?? catalog?.[0];
+  const selected = access?.[current?.id]?.page_keys ?? ["dashboard"];
+  if (!current) return null;
+  return (
+    <section className="theme-panel mb-4 rounded-2xl border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Package 1, the free plan</p>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+            Choose what each industry can open before they pay. Dashboard is the starting point. A paid plan uses its own applications and sections.
+          </p>
+        </div>
+        <PrimaryButton type="button" showIcon={false} disabled={busy || !access} onClick={onSave}>
+          {busy ? "Saving…" : "Save Package 1"}
+        </PrimaryButton>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(catalog ?? []).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-medium ${industry === item.id ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
+            onClick={() => setIndustry(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <ul className="mt-3 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+        {(current.pages ?? []).map((page) => (
+          <li key={page.id}>
+            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={selected.includes(page.id)}
+                onChange={() => onToggle(current.id, page.id)}
+              />
+              {page.label}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function byCardOrder(rows) {
   return [...rows].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.name ?? "").localeCompare(String(b.name ?? "")));
@@ -40,6 +95,9 @@ function previewPlan(plan, discount) {
     yearly_price: plan.yearly_price,
     features,
     feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
+    industry: plan.industry || "commerce",
+    workspace_keys: Array.isArray(plan.workspace_keys) ? plan.workspace_keys : [],
+    section_keys: Array.isArray(plan.section_keys) ? plan.section_keys : [],
     is_active: plan.is_active !== false,
     discount_percent: discount.percent,
     discount_min_months: discount.minMonths,
@@ -154,7 +212,7 @@ function formToPayload(form) {
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading }) {
+function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePages = [] }) {
   const published = byCardOrder(
     plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
@@ -165,7 +223,8 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
   const once = yearlyPlans.map(onceOffer);
   const saving = prepaid.some((offer) => offer.percent > 0);
   const quoteCard = <OneTimeQuoteCard preview />;
-  const tabs = ["monthly", "yearly"];
+  const tabs = ["token", "monthly", "yearly"];
+  const tokenPackOn = policy?.tokens_enabled !== false && Number(policy?.token_pack_price_kes) > 0;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
@@ -173,24 +232,21 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
       <p className="mt-1 max-w-2xl text-sm text-slate-600">
         These are the cards an organisation sees. Change the name, price, and points here, add or remove a point, then save the card. The third card is marked Recommended. Move a card and the organisation screen uses that order. A hidden card stays here until you publish it again.
       </p>
-      <div className="mx-auto mt-5 flex w-fit rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-1 text-sm">
-        {tabs.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setBilling(option)}
-            className={`rounded-full px-5 py-1.5 font-medium ${
-              billing === option
-                ? "bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-sm"
-                : "text-[var(--theme-text-muted)]"
-            }`}
-          >
-            {option === "yearly" ? "Yearly" : "Monthly"}
-          </button>
-        ))}
-      </div>
+      <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
       {loading && plans.length === 0 ? (
         <p className="mt-8 text-sm text-slate-500">Loading plans…</p>
+      ) : billing === "token" ? (
+        <div className={`mt-8 grid items-stretch gap-4 ${tokenPackOn ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
+          <FreePlanCard pages={freePages} preview />
+          {tokenPackOn ? (
+            <TokenPackCard
+              preview
+              tokens={Number(policy?.token_pack_tokens) || 0}
+              price={Number(policy?.token_pack_price_kes) || 0}
+              saleTokens={Number(policy?.sale_tokens) || 1}
+            />
+          ) : null}
+        </div>
       ) : billing === "yearly" ? (
         <div className="mt-8 space-y-10">
           {prepaid.length > 0 ? (
@@ -269,6 +325,10 @@ export default function SelfServePlansPage() {
   const [shortCode, setShortCode] = useState("");
   const [simulation, setSimulation] = useState(null);
   const [tokenBusy, setTokenBusy] = useState(false);
+  const [freePlan, setFreePlan] = useState(null);
+  const [freeCatalog, setFreeCatalog] = useState([]);
+  const [freeIndustry, setFreeIndustry] = useState("commerce");
+  const [freeBusy, setFreeBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -292,6 +352,8 @@ export default function SelfServePlansPage() {
       });
       setShortCode(String(settings.data?.short_code ?? ""));
       setPolicy(policyRes.data ?? null);
+      setFreePlan(settings.data?.free_plan_access && typeof settings.data.free_plan_access === "object" ? settings.data.free_plan_access : null);
+      setFreeCatalog(Array.isArray(settings.data?.free_plan_catalog) ? settings.data.free_plan_catalog : []);
     } catch {
       setDiscount({ percent: 0, minMonths: 3 });
     }
@@ -461,6 +523,8 @@ export default function SelfServePlansPage() {
         price: String(amount),
         feature_details: draft.features,
         is_active: draft.is_active,
+        workspace_keys: draft.workspace_keys,
+        section_keys: draft.section_keys,
       });
       await apiRequest(`/admin/platform-plans/${source.id}`, { method: "PATCH", body: payload });
       notifySuccess("Card saved.");
@@ -487,6 +551,35 @@ export default function SelfServePlansPage() {
       notifyError(err instanceof ApiError ? err.message : "Could not update token billing.");
     } finally {
       setTokenBusy(false);
+    }
+  }
+
+  function toggleFreePage(industry, pageId) {
+    setFreePlan((current) => {
+      const base = current && typeof current === "object" ? current : {};
+      const keys = Array.isArray(base[industry]?.page_keys) ? base[industry].page_keys : ["dashboard"];
+      const next = keys.includes(pageId) ? keys.filter((id) => id !== pageId) : [...keys, pageId];
+      return {
+        ...base,
+        [industry]: { page_keys: next.length > 0 ? next : keys },
+      };
+    });
+  }
+
+  async function saveFreePlan() {
+    if (!freePlan || freeBusy) return;
+    setFreeBusy(true);
+    try {
+      const res = await apiRequest("/admin/platform-paybill", {
+        method: "PUT",
+        body: { free_plan_access: freePlan },
+      });
+      if (res.data?.free_plan_access) setFreePlan(res.data.free_plan_access);
+      notifySuccess("Package 1 screens saved.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save Package 1.");
+    } finally {
+      setFreeBusy(false);
     }
   }
 
@@ -705,7 +798,7 @@ export default function SelfServePlansPage() {
         <div>
           <p className="text-sm font-semibold text-slate-900">Token-based subscription</p>
           <p className="mt-1 max-w-xl text-sm text-slate-600">
-            When this is on, an organisation can buy a token pack instead of a monthly or yearly plan. Turn it off and the Tokens choice disappears from subscribe.
+            When this is on, an organisation can buy a token pack as well as Package 1. Turn it off and the token pack card disappears. Package 1 stays.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -732,6 +825,16 @@ export default function SelfServePlansPage() {
         </div>
       </div>
 
+      <FreePlanEditor
+        catalog={freeCatalog}
+        access={freePlan}
+        industry={freeIndustry}
+        setIndustry={setFreeIndustry}
+        busy={freeBusy}
+        onToggle={toggleFreePage}
+        onSave={() => void saveFreePlan()}
+      />
+
       <PlanPreview
         industryFilter={industryFilter}
         plans={plans}
@@ -742,6 +845,8 @@ export default function SelfServePlansPage() {
         onMove={moveOffers}
         manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation }}
         loading={loading}
+        policy={policy}
+        freePages={freePlanLabels(freeCatalog, freePlan, industryFilter === "all" ? "commerce" : industryFilter)}
       />
       </div>
 
@@ -851,7 +956,8 @@ export default function SelfServePlansPage() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-xs font-medium text-slate-600">Applications this plan opens</p>
+                <p className="text-xs font-medium text-slate-600">Applications this payment turns on</p>
+                <p className="text-xs text-slate-500">When an organisation pays for this plan, these applications open.</p>
                 <ul className="space-y-1 rounded-lg border border-slate-200 p-2">
                   {licensableWorkspacesForIndustry(form.industry).map((ws) => (
                     <li key={ws.id}>
@@ -873,9 +979,9 @@ export default function SelfServePlansPage() {
               </div>
 
               {form.industry === "commerce" ? <div>
-                <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this plan turns on</p>
+                <p className="mb-1 text-xs font-medium text-slate-600">Backoffice sections this payment turns on</p>
                 <p className="mb-2 text-xs text-slate-500">
-                  Checked sections are the only Backoffice areas this plan opens, including their reports.
+                  Paying for this plan opens only the checked Backoffice areas, including their reports.
                 </p>
                 <ul className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
                   {BACKOFFICE_SECTION_CATALOG.map((section) => (

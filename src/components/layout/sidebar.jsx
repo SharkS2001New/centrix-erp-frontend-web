@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
-import { isLimitedLicencePath, licenceNeedsPayment } from "@/lib/organization-license";
+import { isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, licenseAccessMode } from "@/lib/organization-license";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
@@ -517,10 +517,12 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       customReportNavItems,
     );
     if (isSuperAdmin?.() || !licenceNeedsPayment(organizationLicense)) return sections;
+    const mode = licenseAccessMode(organizationLicense);
+    const allowPath = (href) => (mode === "free" ? isFreePlanPath(href, organizationLicense) : isLimitedLicencePath(href));
     const limited = sections
       .map((section) => ({
         ...section,
-        items: (section.items ?? []).filter((item) => isLimitedLicencePath(item.href)),
+        items: (section.items ?? []).filter((item) => allowPath(item.href)),
       }))
       .filter((section) => section.items.length > 0);
     return [

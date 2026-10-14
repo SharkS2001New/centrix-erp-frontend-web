@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { GlobalModuleSearch } from "@/components/layout/global-module-search";
@@ -9,6 +11,7 @@ import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribut
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
+import { rememberLicenceReturn } from "@/lib/organization-license";
 
 function MenuIcon({ className }) {
   return (
@@ -20,6 +23,7 @@ function MenuIcon({ className }) {
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
   const { isSuperAdmin } = useAuth();
+  const pathname = usePathname();
   const hideModuleSearch = Boolean(isSuperAdmin?.());
 
   return (
@@ -53,6 +57,15 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {!hideModuleSearch ? (
+            <Link
+              href="/subscribe"
+              onClick={() => rememberLicenceReturn(pathname)}
+              className="theme-secondary-btn inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold"
+            >
+              Change plan
+            </Link>
+          ) : null}
           <AccountingHelpTopbarButton />
           <DistributionHelpTopbarButton />
           <NotificationBell />

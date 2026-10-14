@@ -3,7 +3,9 @@ import {
   addCalendarDays,
   isLicenseExpired,
   isLicenseExpiringSoon,
+  isFreePlanPath,
   isLimitedLicencePath,
+  freePlanHome,
   licencePlanPath,
   licenseAccessMode,
   licenceNeedsPayment,
@@ -170,6 +172,20 @@ describe("organization license", () => {
 
     const cancelledSub = { status: "cancelled", current_period_end: "2026-01-01" };
     expect(canStartPlatformTrial(cancelledSub, expiredLicense, { expired: false })).toBe(true);
+  });
+
+  it("keeps Package 1 on the dashboard until more screens are allowed", () => {
+    const free = resolveOrganizationLicense({
+      status: "missing",
+      access: "free",
+      free_plan: { rules: [{ path: "/dashboard", exact: true }] },
+    });
+    expect(free.free_plan.rules).toHaveLength(1);
+    expect(isFreePlanPath("/dashboard", free)).toBe(true);
+    expect(isFreePlanPath("/products", free)).toBe(false);
+    expect(isFreePlanPath("/subscribe", free)).toBe(true);
+    expect(freePlanHome(free)).toBe("/dashboard");
+    expect(isLimitedLicencePath("/products")).toBe(true);
   });
 
   it("keeps External POS off token billing", () => {

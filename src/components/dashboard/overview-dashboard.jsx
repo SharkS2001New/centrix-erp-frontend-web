@@ -15,6 +15,7 @@ import {
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
 import { AiDashboardInsightCards } from "@/components/ai/ai-dashboard-insight-cards";
+import { isFreePlanPath, licenseAccessMode } from "@/lib/organization-license";
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.dashboard.sales.view },
@@ -32,7 +33,7 @@ const MODULE_LINKS = [
 ];
 
 export function OverviewDashboard() {
-  const { user, organization, capabilities, isModuleEnabled, hasPermission } = useAuth();
+  const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission } = useAuth();
   const [dashError, setDashError] = useState(null);
   const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
 
@@ -55,9 +56,13 @@ export function OverviewDashboard() {
         if (link.permissionAny?.length) {
           return link.permissionAny.some((code) => hasPermission(code));
         }
-        return !link.permission || hasPermission(link.permission);
+        if (link.permission && !hasPermission(link.permission)) return false;
+        if (licenseAccessMode(organizationLicense) === "free" && !isFreePlanPath(link.href, organizationLicense)) {
+          return false;
+        }
+        return true;
       }),
-    [hasPermission, isModuleEnabled],
+    [hasPermission, isModuleEnabled, organizationLicense],
   );
 
   return (
@@ -72,7 +77,7 @@ export function OverviewDashboard() {
               setReportsRefreshKey((key) => key + 1);
             }}
           />
-          {hasPermission(P.reports.hub.view) ? (
+          {hasPermission(P.reports.hub.view) && (licenseAccessMode(organizationLicense) !== "free" || isFreePlanPath("/reports", organizationLicense)) ? (
             <Link
               href="/reports"
               className="inline-flex items-center theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
