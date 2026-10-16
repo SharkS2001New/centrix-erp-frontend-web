@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
-import { isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
+import { isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, usesPackageOne } from "@/lib/organization-license";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
@@ -366,7 +366,7 @@ function CollapsibleNavSection({
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin, isOrgAdmin } = useAuth();
+  const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
   const [mailboxUnread, setMailboxUnread] = useState(0);
@@ -517,30 +517,14 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       customReportNavItems,
     );
     if (isSuperAdmin?.() || (!licenceNeedsPayment(organizationLicense) && !usesPackageOne(organizationLicense))) return sections;
-    const canPay = Boolean(isOrgAdmin?.());
-    const mode = licenseAccessMode(organizationLicense);
     const allowPath = (href) => (usesPackageOne(organizationLicense) ? isFreePlanPath(href, organizationLicense) : isLimitedLicencePath(href));
-    const limited = sections
+    return sections
       .map((section) => ({
         ...section,
         items: (section.items ?? []).filter((item) => allowPath(item.href)),
       }))
       .filter((section) => section.items.length > 0);
-    return canPay
-      ? [
-        {
-          id: "centrix-upgrade",
-          label: "Centrix licence",
-          icon: "💳",
-          items: [{
-            href: yearlyRenewalOpen(organizationLicense) || isYearlyLicence(organizationLicense) ? "/subscribe?renew=1" : "/subscribe",
-            label: isYearlyLicence(organizationLicense) ? "Renew" : "Choose a plan",
-          }],
-        },
-        ...limited,
-      ]
-      : limited;
-  }, [capabilities, customReportNavItems, isOrgAdmin, isSuperAdmin, navContext, organizationLicense, workspaceId]);
+  }, [capabilities, customReportNavItems, isSuperAdmin, navContext, organizationLicense, workspaceId]);
 
   const navZones = useMemo(
     () => groupNavSectionsByZone(visibleSections, workspaceId),

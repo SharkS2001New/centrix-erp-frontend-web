@@ -4,8 +4,8 @@
  * Backend contract (login, capabilities, and every authenticated API):
  * - Include `license` (or `subscription`) on `/auth/login` and `/erp/capabilities`.
  * - Free trial, unpaid, and expired licences stay signed in.
- * - Package 1 opens the screens the platform administrator allowed, starting with the dashboard.
- * - An expired licence can still open products, customers, suppliers, and sales reports.
+ * - A trial uses the assigned payment package modules until that trial ends.
+ * - Package 1 opens after expiry, or when there is no subscription — screens the platform administrator allowed.
  * - Every other API returns `organization_license_upgrade_required` until they pay.
  */
 
@@ -132,7 +132,8 @@ export function resolveOrganizationLicense(source = null) {
     status = "scheduled";
   }
 
-  const isTrial = Boolean(raw.is_trial || status === "trialing");
+  const access = ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null;
+  const isTrial = access === "trial" || (access == null && Boolean(raw.is_trial || status === "trialing") && !(daysRemaining != null && daysRemaining < 0));
 
   return {
     status: status || (end ? "active" : "missing"),
@@ -143,7 +144,8 @@ export function resolveOrganizationLicense(source = null) {
     days_remaining: daysRemaining,
     warning_days: warningDays,
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
-    access: ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null,
+    current_package: raw.current_package != null ? String(raw.current_package) : null,
+    access,
     tokens_enabled: raw.tokens_enabled !== false,
     allow_unpaid_login: raw.allow_unpaid_login !== false,
     token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
@@ -201,7 +203,7 @@ export function licenseAccessMode(license) {
   if (!license) return "full";
   if (license.status === "missing") return "free";
   if (isLicenseExpired(license)) return "expired";
-  if (license.is_trial || license.status === "trialing") return "trial";
+  if ((license.is_trial || license.status === "trialing") && !isLicenseExpired(license)) return "trial";
   return "full";
 }
 
@@ -210,9 +212,10 @@ export function licenceNeedsPayment(license) {
   return mode === "free" || mode === "expired";
 }
 
-/** Package 1 while the organisation has no paid or trial package. */
+/** Package 1 when there is no paid or trial package, or after that package ended. */
 export function usesPackageOne(license) {
-  return licenseAccessMode(license) === "free";
+  const mode = licenseAccessMode(license);
+  return mode === "free" || mode === "expired";
 }
 
 /** External POS cannot run on tokens. Offline sales upload later, so the till needs a monthly or yearly period. */
@@ -274,7 +277,7 @@ export function takeLicenceReturnPath() {
 
 const FREE_PLAN_SHELL = ["/subscribe", "/billing", "/choose-workspace", "/profile"];
 
-/** Pages Package 1 may open. Expired organisations keep the wider limited list. */
+/** Pages Package 1 may open (no subscription, or after a trial/paid period ends). */
 export function isFreePlanPath(pathname, license) {
   const path = String(pathname || "").split("?")[0].replace(/\/$/, "") || "/";
   if (FREE_PLAN_SHELL.some((shell) => path === shell || path.startsWith(`${shell}/`))) return true;

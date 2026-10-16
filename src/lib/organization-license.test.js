@@ -83,6 +83,7 @@ describe("organization license", () => {
     expect(licenceNeedsPayment({ access: "trial" })).toBe(false);
     expect(usesPackageOne({ access: "trial" })).toBe(false);
     expect(usesPackageOne({ access: "free" })).toBe(true);
+    expect(usesPackageOne({ access: "expired" })).toBe(true);
     expect(usesPackageOne({ access: "full" })).toBe(false);
     expect(licenseAccessMode({ status: "trialing", is_trial: true, days_remaining: 5 })).toBe("trial");
     const withModules = resolveOrganizationLicense({
@@ -193,6 +194,23 @@ describe("organization license", () => {
     expect(isFreePlanPath("/subscribe", free)).toBe(true);
     expect(freePlanHome(free)).toBe("/dashboard");
     expect(isLimitedLicencePath("/products")).toBe(true);
+  });
+
+  it("switches an ended trial onto Package 1 so they can pay", () => {
+    const ended = resolveOrganizationLicense({
+      status: "expired",
+      access: "expired",
+      is_trial: false,
+      plan_name: "Starter",
+      current_package: "Package 1",
+      free_plan: { rules: [{ path: "/dashboard", exact: true }] },
+    });
+    expect(licenseAccessMode(ended)).toBe("expired");
+    expect(usesPackageOne(ended)).toBe(true);
+    expect(ended.is_trial).toBe(false);
+    expect(ended.current_package).toBe("Package 1");
+    expect(licenceNeedsPayment(ended)).toBe(true);
+    expect(isFreePlanPath("/dashboard", ended)).toBe(true);
   });
 
   it("hides plan changes for a healthy yearly licence and opens renew while it is counting down", () => {

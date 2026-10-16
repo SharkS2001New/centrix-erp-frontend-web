@@ -186,6 +186,8 @@ export function PlanGroup({ title, hint, offers, currentName, currentPlanId = nu
 export function ManagedFreePlanCard({
   modules = [],
   access = { workspace_keys: [], feature_keys: {} },
+  name = "Package 1",
+  onNameChange,
   industries = [],
   industry = "",
   onIndustry,
@@ -200,10 +202,17 @@ export function ManagedFreePlanCard({
     .filter((entry) => (access.workspace_keys ?? []).includes(entry.id))
     .map((entry) => entry.label);
   const points = included.length > 0 ? included : ["Dashboard"];
+  const fieldClass = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 outline-none hover:border-[var(--theme-border)] focus:border-[var(--theme-primary)] focus:bg-[var(--theme-surface)]";
   return (
     <article className="flex h-full flex-1 flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
       <p className="theme-subtext text-sm">Free</p>
-      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Package 1</h2>
+      <input
+        className={`${fieldClass} theme-heading mt-2 text-2xl font-semibold tracking-tight`}
+        value={name}
+        aria-label="Free plan name"
+        placeholder="Package 1"
+        onChange={(event) => onNameChange?.(event.target.value)}
+      />
       <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
         Open Centrix without paying. Choose the modules and features this free plan includes.
       </p>
@@ -256,7 +265,7 @@ export function ManagedFreePlanCard({
         featureKeys={access.feature_keys ?? {}}
         onChange={onChange}
         summary="Modules and features this free plan opens"
-        hint="The organisation sees only the checked modules on Package 1. Open a module to leave features out."
+        hint={`The organisation sees only the checked modules on ${name || "Package 1"}. Open a module to leave features out.`}
       />
       <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
       <ul className="mt-3 space-y-2.5 text-sm leading-5">
@@ -279,8 +288,9 @@ export function ManagedFreePlanCard({
   );
 }
 
-export function FreePlanCard({ pages = [], current = false, preview = false }) {
+export function FreePlanCard({ pages = [], name = "Package 1", current = false, preview = false }) {
   const points = (pages.length ? pages : ["Dashboard"]).map((page) => String(page)).filter(Boolean);
+  const title = String(name || "Package 1").trim() || "Package 1";
   return (
     <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
       current
@@ -291,7 +301,7 @@ export function FreePlanCard({ pages = [], current = false, preview = false }) {
         <p className="theme-subtext text-sm">Free</p>
         {current ? <CurrentBadge /> : <span />}
       </div>
-      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Package 1</h2>
+      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">{title}</h2>
       <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
         Open Centrix without paying. The platform administrator chooses which screens this includes.
       </p>
@@ -433,7 +443,15 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     }`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="theme-subtext text-sm">{offer.kind === "prepaid" ? "12 months" : offer.kind === "once" ? "Pay once" : "Monthly"}</p>
+        <p className="theme-subtext text-sm">
+          {offer.kind === "prepaid"
+            ? "12 months"
+            : offer.kind === "year_sub"
+              ? "Yearly subscription"
+              : offer.kind === "once"
+                ? "Yearly one-time"
+                : "Monthly"}
+        </p>
         {current ? <CurrentBadge /> : recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : <span />}
       </div>
       <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">{offer.plan.name}</h2>
@@ -447,11 +465,18 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
           <span className="line-through">{formatBillingMoney(offer.gross, offer.currency)}</span>
           <span className="ml-2 text-[var(--theme-primary)]">Save {offer.percent}%</span>
         </p>
+      ) : offer.kind === "once" && Number(offer.plan.renewal_price) > 0 ? (
+        <p className="theme-subtext mt-1 text-sm">
+          Renews at {formatBillingMoney(offer.plan.renewal_price, offer.currency)}
+        </p>
       ) : yearly ? (
         <p className="theme-subtext mt-1 text-sm">{formatBillingMoney(perMonth, offer.currency)} / month</p>
       ) : (
         <p className="mt-1 text-sm">&nbsp;</p>
       )}
+      {Number(offer.plan.seat_limit) > 0 ? (
+        <p className="theme-subtext mt-1 text-sm">{offer.plan.seat_limit} seat{Number(offer.plan.seat_limit) === 1 ? "" : "s"}</p>
+      ) : null}
       {preview || canPay ? (
         <button
           type="button"
@@ -485,7 +510,7 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
 
 function cardDraft(offer, modules = []) {
   const access = initialPackageAccess(offer.plan, modules);
-  const yearly = offer.kind === "once";
+  const yearly = offer.kind === "once" || offer.kind === "year_sub";
   const price = yearly ? offer.plan.yearly_price : offer.plan.monthly_price;
   const features = Array.isArray(offer.plan.feature_details) && offer.plan.feature_details.length > 0
     ? offer.plan.feature_details.map((row) => ({
@@ -497,6 +522,11 @@ function cardDraft(offer, modules = []) {
     name: offer.plan.name ?? "",
     description: offer.plan.description ?? "",
     price: price == null ? "" : String(price),
+    renewal_price: offer.plan.renewal_price != null ? String(offer.plan.renewal_price) : "",
+    seat_limit: offer.plan.seat_limit != null ? String(offer.plan.seat_limit) : "1",
+    yearly_billing: offer.kind === "year_sub" || offer.plan.yearly_billing === "subscription"
+      ? "subscription"
+      : "one_time",
     features,
     is_active: offer.plan.is_active !== false,
     is_recommended: Boolean(offer.plan.is_recommended),
@@ -508,7 +538,9 @@ function cardDraft(offer, modules = []) {
 
 function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPreview }) {
   const [draft, setDraft] = useState(() => cardDraft(offer, modules));
-  const yearlyOnce = offer.kind === "once";
+  const yearSub = draft.yearly_billing === "subscription" && (offer.kind === "once" || offer.kind === "year_sub");
+  const yearlyOnce = (offer.kind === "once" || offer.kind === "year_sub") && !yearSub;
+  const yearlyCard = offer.kind === "once" || offer.kind === "year_sub";
   const prepaid = offer.kind === "prepaid";
   const unit = Number(draft.price) || 0;
   const quotedYear = quoteMonths(
@@ -536,8 +568,12 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
     offer.plan.description,
     offer.plan.monthly_price,
     offer.plan.yearly_price,
+    offer.plan.renewal_price,
+    offer.plan.seat_limit,
+    offer.plan.yearly_billing,
     offer.plan.is_active,
     offer.plan.is_recommended,
+    offer.kind,
     featureKey,
     workspaceKey,
     sectionKey,
@@ -554,7 +590,9 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
         : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
     } ${draft.is_active ? "" : "opacity-80"}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="theme-subtext text-sm">{prepaid ? "12 months" : yearlyOnce ? "Pay once" : "Monthly"}</p>
+        <p className="theme-subtext text-sm">
+          {prepaid ? "12 months" : yearSub ? "Yearly subscription" : yearlyOnce ? "Yearly one-time" : "Monthly"}
+        </p>
         <div className="flex items-center gap-2">
           {draft.is_active ? null : <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hidden</span>}
           {draft.is_recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : null}
@@ -579,17 +617,67 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
         </p>
       ) : null}
       <label className="mt-3 block">
-        <span className="theme-subtext text-xs">{yearlyOnce ? "Yearly price" : "Monthly price"}</span>
+        <span className="theme-subtext text-xs">{yearlyCard ? "Yearly price" : "Monthly price"}</span>
         <span className="mt-1 flex items-baseline gap-2">
           <input
             className={`${fieldClass} theme-heading w-40 text-3xl font-semibold tracking-tight`}
             inputMode="decimal"
-            aria-label={yearlyOnce ? "Yearly price" : "Monthly price"}
+            aria-label={yearlyCard ? "Yearly price" : "Monthly price"}
             value={draft.price}
             onChange={(event) => setDraft((current) => ({ ...current, price: event.target.value }))}
           />
-          <span className="theme-subtext text-sm">{yearlyOnce ? "KES / year" : "KES / month"}</span>
+          <span className="theme-subtext text-sm">{yearlyCard ? "KES / year" : "KES / month"}</span>
         </span>
+      </label>
+      {yearlyCard ? (
+        <div className="mt-3 space-y-2">
+          <p className="theme-subtext text-xs">Yearly billing</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "one_time", label: "One-time payment" },
+              { id: "subscription", label: "Yearly subscription" },
+            ].map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  draft.yearly_billing === option.id
+                    ? "bg-[var(--theme-primary)] text-[var(--theme-primary-fg)]"
+                    : "bg-[var(--theme-surface-subtle)] text-[var(--theme-text)]"
+                }`}
+                onClick={() => setDraft((current) => ({ ...current, yearly_billing: option.id }))}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {draft.yearly_billing === "one_time" ? (
+            <label className="block">
+              <span className="theme-subtext text-xs">Agreed renewal amount (KES)</span>
+              <input
+                className={`${fieldClass} mt-1 w-40 text-sm font-medium`}
+                inputMode="decimal"
+                value={draft.renewal_price}
+                placeholder={draft.price || "Renewal"}
+                onChange={(event) => setDraft((current) => ({ ...current, renewal_price: event.target.value }))}
+              />
+            </label>
+          ) : (
+            <p className="theme-subtext text-xs">The yearly price above is also the renewal amount.</p>
+          )}
+        </div>
+      ) : (
+        <p className="theme-subtext mt-2 text-xs">The monthly price is the renewal amount.</p>
+      )}
+      <label className="mt-3 block">
+        <span className="theme-subtext text-xs">Seats on this package</span>
+        <input
+          className={`${fieldClass} mt-1 w-24 text-sm font-medium`}
+          inputMode="numeric"
+          min="1"
+          value={draft.seat_limit}
+          onChange={(event) => setDraft((current) => ({ ...current, seat_limit: event.target.value }))}
+        />
       </label>
       <label className="mt-4 flex items-center gap-2 text-sm">
         <input
@@ -725,15 +813,18 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
   const [receipt] = useState(() => `SIM${String(Date.now()).slice(-8)}`);
   const [startedAt] = useState(() => new Date());
   const token = snapshot.kind === "token";
-  const days = snapshot.kind === "once" ? 365 : snapshot.kind === "prepaid" ? 360 : 30;
+  const yearlyKind = snapshot.kind === "once" || snapshot.kind === "year_sub";
+  const days = yearlyKind ? 365 : snapshot.kind === "prepaid" ? 360 : 30;
   const endsAt = addDays(startedAt, days);
   const product = token
     ? "Token pack"
-    : snapshot.kind === "once"
+    : snapshot.kind === "year_sub"
       ? "Yearly subscription"
-      : snapshot.kind === "prepaid"
-        ? "12 months paid in advance"
-        : "Monthly subscription";
+      : snapshot.kind === "once"
+        ? "Yearly one-time"
+        : snapshot.kind === "prepaid"
+          ? "12 months paid in advance"
+          : "Monthly subscription";
   const features = Array.isArray(snapshot.plan?.features) ? snapshot.plan.features : [];
   const tokens = Number(snapshot.tokens) || 0;
   const saleTokens = Number(snapshot.saleTokens) || 1;

@@ -11,7 +11,7 @@ import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribut
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { isYearlyLicence, rememberLicenceReturn, yearlyRenewalOpen } from "@/lib/organization-license";
+import { isYearlyLicence, rememberLicenceReturn, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
 
 function MenuIcon({ className }) {
   return (
@@ -28,6 +28,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
   const canPay = Boolean(isOrgAdmin?.());
   const yearly = isYearlyLicence(organizationLicense);
   const renew = yearlyRenewalOpen(organizationLicense);
+  const onPackageOne = usesPackageOne(organizationLicense);
 
   return (
     <>
@@ -73,9 +74,9 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
             <Link
               href="/subscribe"
               onClick={() => rememberLicenceReturn(pathname)}
-              className="theme-secondary-btn inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold"
+              className={`${onPackageOne ? "theme-primary-btn" : "theme-secondary-btn"} inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold`}
             >
-              Change plan
+              {onPackageOne ? "Choose a plan" : "Change plan"}
             </Link>
           ) : null}
           <AccountingHelpTopbarButton />

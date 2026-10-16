@@ -108,7 +108,11 @@ export default function OrganizationBillingPage() {
                   {subscription?.plan_name || (mode === "token" ? "Token balance" : "No active plan")}
                 </p>
               </div>
-              <StatusPill mode={mode} status={subscription?.status || license?.status} />
+              <StatusPill
+                mode={mode}
+                status={subscription?.status || license?.status}
+                freeLabel={license?.current_package || license?.free_plan?.name || "Package 1"}
+              />
             </div>
             <div className="grid gap-4 px-5 py-4 md:grid-cols-3">
               <Fact label="Renews or ends" value={formatBillingDate(subscription?.current_period_end || license?.expires_at)} />
@@ -200,8 +204,8 @@ function ModelCard({ title, price, period, summary, points, action, active }) {
   );
 }
 
-function StatusPill({ mode, status }) {
-  const label = mode === "token" ? "Tokens" : mode === "trial" ? "Trial" : mode === "full" ? "Active" : mode === "expired" ? "Expired" : "Not subscribed";
+function StatusPill({ mode, status, freeLabel = "Package 1" }) {
+  const label = mode === "token" ? "Tokens" : mode === "trial" ? "Trial" : mode === "full" ? "Active" : mode === "expired" || mode === "free" ? freeLabel : "Not subscribed";
   return (
     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
       {label}{status ? ` · ${status}` : ""}

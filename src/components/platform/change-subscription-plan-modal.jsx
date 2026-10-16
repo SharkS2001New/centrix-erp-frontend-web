@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
+  commercialTermsFromPlan,
   formatBillingMoney,
+  organizationIndustryLabel,
+  planBillingLabel,
+  plansForOrganizationIndustry,
+  platformPlanOptionLabel,
   subscriptionStatusLabel,
 } from "@/lib/platform-billing";
 
@@ -14,7 +20,8 @@ const inputClass =
 
 /**
  * Change the subscription package for an organization (platform admin).
- * PATCH plan_id and sync commercial terms from the selected plan.
+ * Only packages for that organisation's industry are offered.
+ * Seats and commercial terms come from the selected package.
  */
 export function ChangeSubscriptionPlanModal({
   open,
@@ -26,32 +33,42 @@ export function ChangeSubscriptionPlanModal({
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [planId, setPlanId] = useState("");
-  const [seatCount, setSeatCount] = useState("");
   const [endTrial, setEndTrial] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const organization = subscription?.organization ?? null;
   const currentPlanId = subscription?.plan_id ?? subscription?.plan?.id ?? null;
   const isTrialing = subscription?.status === "trialing" || subscription?.is_trial;
+  const industryLabel = organizationIndustryLabel(organization);
+
+  const orgProfile = organization?.deployment_profile ?? "";
+  const orgIndustry = organization?.industry ?? "";
 
   useEffect(() => {
     if (!open || !subscription) return;
     setPlanId(currentPlanId ? String(currentPlanId) : "");
-    setSeatCount(
-      subscription.seat_count != null ? String(subscription.seat_count) : "",
-    );
-    setEndTrial(Boolean(isTrialing));
+    setEndTrial(false);
     setLoadingPlans(true);
+    const org = subscription.organization ?? null;
     void apiRequest("/admin/platform-plans", { loading: false })
       .then((res) => {
-        setPlans((res.data ?? []).filter((p) => p.is_active !== false));
+        const active = (res.data ?? []).filter((plan) => plan.is_active !== false);
+        setPlans(
+          plansForOrganizationIndustry(active, org, { keepPlanId: currentPlanId }),
+        );
       })
       .catch(() => setPlans([]))
       .finally(() => setLoadingPlans(false));
-  }, [open, subscription, currentPlanId, isTrialing]);
+  }, [open, subscription, currentPlanId, orgProfile, orgIndustry]);
 
   const selectedPlan = useMemo(
-    () => plans.find((p) => String(p.id) === String(planId)) ?? null,
+    () => plans.find((plan) => String(plan.id) === String(planId)) ?? null,
     [plans, planId],
+  );
+
+  const terms = useMemo(
+    () => (selectedPlan ? commercialTermsFromPlan(selectedPlan) : null),
+    [selectedPlan],
   );
 
   if (!open || !subscription) return null;
@@ -73,8 +90,8 @@ export function ChangeSubscriptionPlanModal({
         plan_id: Number(planId),
         sync_from_plan: true,
       };
-      if (seatCount.trim() !== "") {
-        body.seat_count = Math.max(1, Number(seatCount) || 1);
+      if (terms) {
+        body.seat_count = terms.seat_count;
       }
       if (endTrial && isTrialing) {
         body.status = "active";
@@ -107,8 +124,8 @@ export function ChangeSubscriptionPlanModal({
           {organizationLabel
             ? `Update the plan for ${organizationLabel}.`
             : "Update the plan for this organization."}{" "}
-          Prices, seats (if set on the plan), and included applications are copied from the new
-          package. The current licence period is kept.
+          Only {industryLabel} packages are listed. Prices, seats, and included modules are copied
+          from the new package. The current licence period is kept.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -119,6 +136,7 @@ export function ChangeSubscriptionPlanModal({
             </span>
             {" · "}
             {subscriptionStatusLabel(subscription.status)}
+            <span className="mt-0.5 block text-slate-500">{industryLabel}</span>
           </div>
 
           <label className="block text-sm">
@@ -126,55 +144,53 @@ export function ChangeSubscriptionPlanModal({
             <SearchableSelect
               className={inputClass}
               value={planId}
-              onChange={(next) => {
-                setPlanId(next);
-                const plan = plans.find((p) => String(p.id) === next);
-                if (plan?.seat_limit != null) {
-                  setSeatCount(String(plan.seat_limit));
-                }
-              }}
-              disabled={loadingPlans || saving}
+              onChange={(next) => setPlanId(next)}
+              disabled={loadingPlans || saving || plans.length === 0}
+              placeholder={
+                loadingPlans
+                  ? "Loading packages…"
+                  : plans.length === 0
+                    ? `No ${industryLabel} packages`
+                    : "— Select —"
+              }
               options={plans.map((plan) => ({
                 value: String(plan.id),
-                label: `${plan.name} · first ${formatBillingMoney(
-                  plan.first_payment_price ?? plan.price,
-                  plan.currency,
-                )} · renew ${formatBillingMoney(
-                  plan.renewal_price ?? plan.price,
-                  plan.currency,
-                )}/${plan.interval}`,
+                label: platformPlanOptionLabel(plan),
               }))}
             />
+            {plans.length === 0 && !loadingPlans ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Create a {industryLabel} package on{" "}
+                <Link href="/platform/self-serve-plans" className="font-medium text-[#185FA5] hover:underline">
+                  Self-serve plans
+                </Link>
+                .
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">
+                Showing {plans.length} package{plans.length === 1 ? "" : "s"} for {industryLabel}.
+              </p>
+            )}
           </label>
 
-          {selectedPlan ? (
-            <p className="text-xs text-slate-500">
-              First payment{" "}
-              {formatBillingMoney(
-                selectedPlan.first_payment_price ?? selectedPlan.price,
-                selectedPlan.currency,
-              )}
-              {" · "}
-              Renewal{" "}
-              {formatBillingMoney(
-                selectedPlan.renewal_price ?? selectedPlan.price,
-                selectedPlan.currency,
-              )}
-              /{selectedPlan.interval}
-            </p>
+          {selectedPlan && terms ? (
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+              <p>
+                <span className="font-medium text-slate-800">{planBillingLabel(selectedPlan)}</span>
+                {" · "}
+                {terms.seat_count} seat{terms.seat_count === 1 ? "" : "s"}
+              </p>
+              <p className="mt-1">
+                First payment{" "}
+                {formatBillingMoney(terms.first_payment_price, selectedPlan.currency)}
+                {" · "}
+                Renewal{" "}
+                {formatBillingMoney(terms.renewal_price, selectedPlan.currency)}
+                /{terms.billing_cycle === "yearly" ? "year" : "month"}
+              </p>
+              <p className="mt-1 text-slate-500">Seats and amounts come from this package.</p>
+            </div>
           ) : null}
-
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Seats</span>
-            <input
-              type="number"
-              min="1"
-              className={inputClass}
-              value={seatCount}
-              disabled={saving}
-              onChange={(e) => setSeatCount(e.target.value)}
-            />
-          </label>
 
           {isTrialing ? (
             <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -188,7 +204,7 @@ export function ChangeSubscriptionPlanModal({
               <span>
                 End trial and set status to <strong>Active</strong>
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  Uncheck to keep Trialing on the new package.
+                  Leave unchecked to keep Trialing on the new package.
                 </span>
               </span>
             </label>
@@ -207,7 +223,7 @@ export function ChangeSubscriptionPlanModal({
           <button
             type="submit"
             className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144e8a] disabled:opacity-50"
-            disabled={saving || loadingPlans || !planId}
+            disabled={saving || loadingPlans || !planId || plans.length === 0}
           >
             {saving ? "Saving…" : "Change package"}
           </button>

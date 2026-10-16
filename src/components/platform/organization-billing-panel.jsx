@@ -11,6 +11,7 @@ import {
   CONTRACT_STATUS_STYLES,
   SUBSCRIPTION_STATUS_STYLES,
   billingIntervalLabel,
+  commercialTermsFromPlan,
   contractKindLabel,
   contractStatusLabel,
   formatBillingDate,
@@ -18,8 +19,12 @@ import {
   formatBillingMoney,
   isSubscriptionOverdue,
   licenseBasisLabel,
+  organizationIndustryLabel,
+  planBillingLabel,
   planModuleLabels,
+  plansForOrganizationIndustry,
   platformInvoiceLabel,
+  platformPlanOptionLabel,
   resolveAgreementPrices,
   resolveSubscriptionInvoices,
   subscriptionStatusLabel,
@@ -35,14 +40,14 @@ import { periodEndForPlanInterval } from "@/lib/provision-subscription";
 import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
 import { EditSubscriptionPeriodModal } from "@/components/platform/edit-subscription-period-modal";
 
-function AssignOrganizationPlan({ organizationId, onSaved }) {
+function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [planId, setPlanId] = useState("");
   const [mode, setMode] = useState("trial");
   const [trialDays, setTrialDays] = useState("14");
-  const [seatCount, setSeatCount] = useState("1");
   const [saving, setSaving] = useState(false);
+  const industryLabel = organizationIndustryLabel(organization);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +55,10 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
     void apiRequest("/admin/platform-plans", { loading: false })
       .then((res) => {
         if (cancelled) return;
-        const rows = (res.data ?? []).filter((plan) => plan.is_active !== false);
+        const rows = plansForOrganizationIndustry(
+          (res.data ?? []).filter((plan) => plan.is_active !== false),
+          organization,
+        );
         setPlans(rows);
         setPlanId(rows[0] ? String(rows[0].id) : "");
       })
@@ -63,9 +71,10 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organization]);
 
   const selected = plans.find((plan) => String(plan.id) === String(planId)) ?? null;
+  const terms = selected ? commercialTermsFromPlan(selected) : null;
 
   async function handleAssign(event) {
     event.preventDefault();
@@ -86,7 +95,7 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
           organization_id: Number(organizationId),
           plan_id: Number(planId),
           status: isTrial ? "trialing" : "active",
-          seat_count: Number(seatCount) || Number(selected?.seat_limit) || 1,
+          seat_count: terms?.seat_count ?? 1,
           current_period_start: start,
           current_period_end: end,
           is_trial: isTrial,
@@ -109,9 +118,9 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
   if (plans.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-        <p>No payment plans yet. Create monthly, yearly, and token prices first, then come back and assign one.</p>
-        <Link href="/platform/plans" className="mt-3 inline-flex text-sm font-semibold text-[#185FA5] hover:underline">
-          Create payment plans
+        <p>No {industryLabel} payment packages yet. Create one for this industry, then come back and assign it.</p>
+        <Link href="/platform/self-serve-plans" className="mt-3 inline-flex text-sm font-semibold text-[#185FA5] hover:underline">
+          Self-serve plans
         </Link>
       </div>
     );
@@ -119,7 +128,7 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
 
   return (
     <form onSubmit={(event) => void handleAssign(event)} className="space-y-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-4">
-      <p className="text-sm text-slate-700">This organisation has no plan yet. Assign one so Paybill payments auto-subscribe it.</p>
+      <p className="text-sm text-slate-700">This organisation has no plan yet. Assign a {industryLabel} package so Paybill payments match it.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-600">Payment plan</span>
@@ -130,7 +139,7 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
           >
             {plans.map((plan) => (
               <option key={plan.id} value={plan.id}>
-                {plan.name}
+                {platformPlanOptionLabel(plan)}
               </option>
             ))}
           </select>
@@ -158,17 +167,17 @@ function AssignOrganizationPlan({ organizationId, onSaved }) {
             />
           </label>
         ) : null}
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Seats</span>
-          <input
-            type="number"
-            min="1"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-            value={seatCount}
-            onChange={(event) => setSeatCount(event.target.value)}
-          />
-        </label>
       </div>
+      {selected && terms ? (
+        <p className="text-xs text-slate-500">
+          {planBillingLabel(selected)} · {terms.seat_count} seat{terms.seat_count === 1 ? "" : "s"} ·{" "}
+          {formatBillingMoney(terms.first_payment_price, selected.currency)}
+          {terms.renewal_price !== terms.first_payment_price
+            ? ` · renews ${formatBillingMoney(terms.renewal_price, selected.currency)}`
+            : ` / ${terms.billing_cycle === "yearly" ? "year" : "month"}`}
+          . Seats and amounts come from the package.
+        </p>
+      ) : null}
       <button
         type="submit"
         disabled={saving || !planId}
@@ -383,6 +392,7 @@ export function OrganizationBillingPanel({
           ) : (
             <AssignOrganizationPlan
               organizationId={organizationId}
+              organization={organization}
               onSaved={load}
             />
           )

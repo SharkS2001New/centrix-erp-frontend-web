@@ -1,5 +1,6 @@
 import { PLATFORM_BILLING_MODULES } from "@/lib/platform-invoices";
 import { parseApiDateValue } from "@/lib/dashboard-dates";
+import { industryById, industryForProfile } from "@/lib/erp-industries";
 import {
   PROVISIONABLE_WORKSPACES,
   appIdsForIndustry,
@@ -20,6 +21,103 @@ export const PLAN_INTERVALS = [
 export function billingIntervalLabel(interval) {
   const id = interval === "yearly" ? "annual" : interval;
   return PLAN_INTERVALS.find((row) => row.id === id)?.label?.toLowerCase() ?? (interval || "monthly");
+}
+
+/** Industry for a tenant from its deployment profile (or an explicit industry field). */
+export function organizationIndustry(organization) {
+  if (organization?.industry) return String(organization.industry);
+  return industryForProfile(organization?.deployment_profile);
+}
+
+/**
+ * Payment packages that match the organisation's industry.
+ * Keeps the current plan in the list even when it is inactive or from another industry.
+ */
+export function plansForOrganizationIndustry(plans, organization, { keepPlanId = null } = {}) {
+  const industry = organizationIndustry(organization);
+  const list = Array.isArray(plans) ? plans : [];
+  const matched = list.filter((plan) => (plan.industry || "commerce") === industry);
+  const keep =
+    keepPlanId != null ? list.find((plan) => String(plan.id) === String(keepPlanId)) : null;
+  const out = [...matched].sort((a, b) => {
+    const aSelf = a.self_serve ? 0 : 1;
+    const bSelf = b.self_serve ? 0 : 1;
+    if (aSelf !== bSelf) return aSelf - bSelf;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+  if (keep && !out.some((plan) => String(plan.id) === String(keep.id))) {
+    out.unshift(keep);
+  }
+  return out;
+}
+
+export function organizationIndustryLabel(organization) {
+  return industryById(organizationIndustry(organization))?.label ?? "this industry";
+}
+
+/** Yearly one-time vs yearly subscription. Monthly packages ignore this. */
+export function planYearlyBilling(plan) {
+  if (!plan) return null;
+  const yearly = plan.interval === "yearly" || plan.interval === "annual";
+  if (!yearly) return null;
+  return plan.yearly_billing === "subscription" ? "subscription" : "one_time";
+}
+
+export function planBillingLabel(plan) {
+  const mode = planYearlyBilling(plan);
+  if (mode === "one_time") return "Yearly · one-time";
+  if (mode === "subscription") return "Yearly · subscription";
+  return "Monthly · subscription";
+}
+
+/**
+ * Seats and money terms taken from a payment package.
+ * Monthly / yearly subscription: package amount is the renewal amount.
+ * Yearly one-time: yearly price now, agreed renewal amount later.
+ */
+export function commercialTermsFromPlan(plan) {
+  const seats = Math.max(1, Number(plan?.seat_limit) || 1);
+  const mode = planYearlyBilling(plan);
+  if (!mode) {
+    const amount = Number(plan?.monthly_price ?? plan?.renewal_price ?? plan?.price) || 0;
+    return {
+      billing_cycle: "monthly",
+      first_payment_price: amount,
+      renewal_price: amount,
+      amount,
+      seat_count: seats,
+    };
+  }
+  const yearAmount = Number(plan?.yearly_price ?? plan?.price) || 0;
+  if (mode === "subscription") {
+    return {
+      billing_cycle: "yearly",
+      first_payment_price: yearAmount,
+      renewal_price: yearAmount,
+      amount: yearAmount,
+      seat_count: seats,
+    };
+  }
+  const renewal = Number(plan?.renewal_price ?? yearAmount) || 0;
+  return {
+    billing_cycle: "yearly",
+    first_payment_price: yearAmount,
+    renewal_price: renewal,
+    amount: yearAmount,
+    seat_count: seats,
+  };
+}
+
+/** Compact label for plan pickers: name · billing · price. */
+export function platformPlanOptionLabel(plan) {
+  if (!plan) return "";
+  const terms = commercialTermsFromPlan(plan);
+  const mode = planYearlyBilling(plan);
+  const price =
+    mode === "one_time"
+      ? `${formatBillingMoney(terms.first_payment_price, plan.currency)} once · renew ${formatBillingMoney(terms.renewal_price, plan.currency)}`
+      : `${formatBillingMoney(terms.renewal_price, plan.currency)}/${terms.billing_cycle === "yearly" ? "year" : "month"}`;
+  return `${plan.name} · ${planBillingLabel(plan)} · ${price}`;
 }
 
 /** Org-wide flat fee vs per named user / seat. */

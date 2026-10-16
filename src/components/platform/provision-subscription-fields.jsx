@@ -9,8 +9,10 @@ import {
 } from "@/lib/provision-subscription";
 import { addCalendarDays } from "@/lib/organization-license";
 import {
-  formatBillingMoney,
+  commercialTermsFromPlan,
   licenseBasisLabel,
+  planBillingLabel,
+  platformPlanOptionLabel,
 } from "@/lib/platform-billing";
 
 const inputClass =
@@ -69,12 +71,13 @@ export function ProvisionSubscriptionFields({
 
   function applyPlan(planId) {
     const plan = plans.find((row) => String(row.id) === String(planId));
+    const terms = plan ? commercialTermsFromPlan(plan) : null;
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
     patch({
       plan_id: planId,
       seat_count:
-        plan?.seat_limit != null && form.license_mode === "plan"
-          ? String(plan.seat_limit)
+        terms && form.license_mode === "plan"
+          ? String(terms.seat_count)
           : form.seat_count,
       current_period_end:
         form.license_mode === "trial"
@@ -147,19 +150,15 @@ export function ProvisionSubscriptionFields({
                 required={form.license_mode === "plan"}
                 options={plans.map((plan) => ({
                   value: String(plan.id),
-                  label: `${plan.name} · first ${formatBillingMoney(
-                    plan.first_payment_price ?? plan.price,
-                    plan.currency,
-                  )} · renew ${formatBillingMoney(
-                    plan.renewal_price ?? plan.price,
-                    plan.currency,
-                  )}/${plan.interval}`,
+                  label: platformPlanOptionLabel(plan),
                 }))}
               />
               {selectedPlan ? (
                 <span className="mt-1 block text-xs text-slate-500">
+                  {planBillingLabel(selectedPlan)}
+                  {" · "}
                   {licenseBasisLabel(selectedPlan.license_basis)}
-                  {selectedPlan.seat_limit != null ? ` · ${selectedPlan.seat_limit} seats` : ""}
+                  {` · ${commercialTermsFromPlan(selectedPlan).seat_count} seats`}
                 </span>
               ) : null}
             </label>

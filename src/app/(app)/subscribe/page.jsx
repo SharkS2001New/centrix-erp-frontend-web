@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath, yearlyRenewalOpen } from "@/lib/organization-license";
+import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath, yearlyRenewalOpen } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
@@ -91,18 +91,14 @@ export default function SubscribePage() {
     const modeNow = licenseAccessMode(organizationLicense);
     const backAllowed = Boolean(back) && (
       !licenceNeedsPayment(organizationLicense)
-      || (modeNow === "free" ? isFreePlanPath(back, organizationLicense) : isLimitedLicencePath(back))
+      || isFreePlanPath(back, organizationLicense)
     );
     if (backAllowed) {
       router.replace(back);
       return;
     }
-    if (modeNow === "free") {
+    if (licenceNeedsPayment(organizationLicense) || modeNow === "free") {
       router.replace(freePlanHome(organizationLicense));
-      return;
-    }
-    if (licenceNeedsPayment(organizationLicense)) {
-      router.replace("/products");
       return;
     }
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -347,8 +343,9 @@ export default function SubscribePage() {
             currentName={mode === "full" || mode === "trial" ? organizationLicense?.plan_name || "" : ""}
             currentPlanId={mode === "full" || mode === "trial" ? organizationLicense?.plan_id || null : null}
             canPay={canPay}
-            packageCurrent={mode === "free"}
+            packageCurrent={mode === "free" || mode === "expired"}
             tokenCurrent={mode === "token"}
+            freeName={organizationLicense?.free_plan?.name || organizationLicense?.current_package || "Package 1"}
             freePages={(organizationLicense?.free_plan?.pages ?? []).map((page) => page?.label).filter(Boolean)}
             onPay={openCheckout}
             onQuote={() => void requestQuote()}
@@ -374,6 +371,7 @@ function PlansStep({
   canPay = true,
   packageCurrent = false,
   tokenCurrent = false,
+  freeName = "Package 1",
   freePages = [],
   onPay,
   onQuote,
@@ -392,14 +390,15 @@ function PlansStep({
   const quoteCard = (
     <OneTimeQuoteCard busy={quoteBusy} canPay={canPay} onQuote={onQuote} notice={quoteNotice} />
   );
+  const freeLabel = String(freeName || "Package 1").trim() || "Package 1";
   const intro = billing === "token"
-    ? "Package 1 is free. A token pack pays for completed sales. The current plan label sits on the plan this organisation is using."
+    ? `${freeLabel} is free. A token pack pays for completed sales. The current plan label sits on the plan this organisation is using.`
     : billing === "yearly"
       ? (saving
         ? "Pay 12 months of a monthly plan and take the duration discount, pay a yearly price once, or ask for a one-time quote."
         : "Pay 12 months of a monthly plan now, pay a yearly price once, or ask for a one-time quote.")
       : mode === "expired"
-        ? "This organisation’s paid period has ended. Choose a plan to open those features again."
+        ? `Your trial or paid period has ended. This organisation is on ${freeLabel} until you choose a plan again.`
         : "Choose the plan this organisation should use. Features left off a plan stay hidden.";
   const emptyCopy = billing === "yearly"
     ? "No yearly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."
@@ -438,7 +437,7 @@ function PlansStep({
       <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">{intro}</p>
       {packageCurrent || tokenCurrent || currentName ? (
         <p className="mx-auto mt-3 text-center text-sm font-semibold text-[var(--theme-primary)]">
-          Current package: {packageCurrent ? "Package 1" : tokenCurrent ? "Token pack" : currentName}
+          Current package: {packageCurrent ? freeLabel : tokenCurrent ? "Token pack" : currentName}
         </p>
       ) : null}
       {canPay ? null : (
@@ -446,7 +445,7 @@ function PlansStep({
       )}
       {billing === "token" ? (
         <div className={`mt-8 grid items-stretch gap-4 ${tokensEnabled && tokenPack && tokenPack.price > 0 ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
-          <FreePlanCard pages={freePages} current={packageCurrent} />
+          <FreePlanCard pages={freePages} name={freeLabel} current={packageCurrent} />
           {tokensEnabled && tokenPack && tokenPack.price > 0 ? (
             <TokenPackCard
               tokens={tokenPack.tokens}

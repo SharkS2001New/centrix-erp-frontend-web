@@ -37,8 +37,8 @@ export function LicenseExpiryBanner({ className = "" }) {
       : mode === "token"
       ? `This organisation has ${tokenBalance} Centrix token${tokenBalance === 1 ? "" : "s"}. Each completed sale uses ${Number(organizationLicense.sale_tokens ?? 1)} when it is saved online, including when an offline order syncs. Reading is free.`
       : mode === "expired"
-        ? "This Centrix licence has expired. You can still sign in. Products, customers, suppliers, and sales reports stay open. Pay the Centrix Paybill to restore the modules."
-        : "This organisation has no paid Centrix plan yet. Products, customers, suppliers, and sales reports are open. Choose modules and pay the Centrix Paybill to use the rest.";
+        ? `${organizationLicense.plan_name ? `Your trial or paid period for ${organizationLicense.plan_name} has ended.` : "Your trial or paid period has ended."} This organisation is now on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan again.`
+        : `This organisation is on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan.`;
 
   return (
     <div
@@ -62,7 +62,7 @@ export function LicenseExpiryBanner({ className = "" }) {
           className="shrink-0 text-xs font-semibold underline"
           onClick={() => rememberLicenceReturn(pathname)}
         >
-          {renew ? "Renew" : mode === "trial" ? "See modules and pay" : limited ? "Choose a plan" : "View payment options"}
+          {renew ? "Renew" : mode === "trial" ? "See modules and pay" : mode === "expired" || mode === "free" ? "Choose a plan" : "View payment options"}
         </Link>
       ) : null}
     </div>

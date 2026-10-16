@@ -34,13 +34,19 @@ function previewPlan(plan, discount) {
     name: plan.name,
     description: plan.description,
     interval: yearly ? "yearly" : "monthly",
+    yearly_billing: yearly
+      ? (plan.yearly_billing === "subscription" ? "subscription" : "one_time")
+      : null,
     currency: plan.currency || "KES",
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
+    renewal_price: plan.renewal_price,
+    seat_limit: plan.seat_limit,
     features,
     feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
     industry: plan.industry || "commerce",
     workspace_keys: Array.isArray(plan.workspace_keys) ? plan.workspace_keys : [],
+    feature_keys: plan.feature_keys && typeof plan.feature_keys === "object" ? plan.feature_keys : null,
     section_keys: Array.isArray(plan.section_keys) ? plan.section_keys : [],
     is_active: plan.is_active !== false,
     is_recommended: Boolean(plan.is_recommended),
@@ -81,7 +87,10 @@ function emptyForm() {
     description: "",
     industry: "commerce",
     interval: "monthly",
+    yearly_billing: "one_time",
     price: "",
+    renewal_price: "",
+    seat_limit: "1",
     feature_details: [{ label: "", detail: "" }],
     workspace_keys: [],
     feature_keys: {},
@@ -103,9 +112,12 @@ function recordToForm(plan, catalog) {
     description: plan.description ?? "",
     industry: plan.industry || "commerce",
     interval: yearly ? "yearly" : "monthly",
+    yearly_billing: plan.yearly_billing === "subscription" ? "subscription" : "one_time",
     price: yearly
       ? (plan.yearly_price != null ? String(plan.yearly_price) : "")
       : (plan.monthly_price != null ? String(plan.monthly_price) : ""),
+    renewal_price: plan.renewal_price != null ? String(plan.renewal_price) : "",
+    seat_limit: plan.seat_limit != null ? String(plan.seat_limit) : "1",
     feature_details: features,
     workspace_keys: selected.workspace_keys,
     feature_keys: selected.feature_keys,
@@ -136,18 +148,28 @@ function PlanContents({ title, items }) {
 function formToPayload(form) {
   const amount = Number(form.price);
   const yearly = form.interval === "yearly";
+  const yearlyBilling = yearly
+    ? (form.yearly_billing === "subscription" ? "subscription" : "one_time")
+    : null;
+  const renewal =
+    yearly && yearlyBilling === "one_time" && form.renewal_price !== "" && form.renewal_price != null
+      ? Number(form.renewal_price)
+      : amount;
+  const seats = Math.max(1, Number(form.seat_limit) || 1);
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
     industry: form.industry || "commerce",
     interval: yearly ? "annual" : "monthly",
+    yearly_billing: yearlyBilling,
     license_basis: "org",
     currency: "KES",
     price: amount,
     first_payment_price: amount,
-    renewal_price: amount,
+    renewal_price: Number.isFinite(renewal) && renewal > 0 ? renewal : amount,
     monthly_price: yearly ? null : amount,
     yearly_price: yearly ? amount : null,
+    seat_limit: seats,
     workspace_keys: form.workspace_keys ?? [],
     feature_keys: form.feature_keys && typeof form.feature_keys === "object" ? form.feature_keys : {},
     section_keys: form.industry === "commerce" ? (form.section_keys ?? []) : [],
@@ -171,7 +193,11 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
   const yearlyPlans = published.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
   const monthly = monthlyPlans.map(monthOffer);
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
-  const once = yearlyPlans.map(onceOffer);
+  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription").map(onceOffer);
+  const yearSubs = yearlyPlans.filter((plan) => plan.yearly_billing === "subscription").map((plan) => ({
+    ...onceOffer(plan),
+    kind: "year_sub",
+  }));
   const saving = prepaid.some((offer) => offer.percent > 0);
   const quoteCard = <OneTimeQuoteCard preview />;
   const tabs = ["token", "monthly", "yearly"];
@@ -211,13 +237,24 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
               moving={ordering}
               onMove={industryFilter === "all" ? undefined : onMove}
               manage={manage}
-              trailing={once.length === 0 ? quoteCard : null}
+              trailing={once.length + yearSubs.length === 0 ? quoteCard : null}
+            />
+          ) : null}
+          {yearSubs.length > 0 ? (
+            <PlanGroup
+              title="Yearly subscription"
+              hint="The organisation pays this amount each year. The package amount is the renewal amount."
+              offers={yearSubs}
+              preview
+              moving={ordering}
+              onMove={industryFilter === "all" ? undefined : onMove}
+              manage={manage}
             />
           ) : null}
           {once.length > 0 ? (
             <PlanGroup
-              title="Pay once for the year"
-              hint="A yearly price set for the plan. One payment, not twelve monthly charges."
+              title="Yearly one-time payment"
+              hint="One payment for the year. Set the agreed renewal amount on the card for when they renew."
               offers={once}
               preview
               moving={ordering}
@@ -226,7 +263,7 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
               trailing={quoteCard}
             />
           ) : null}
-          {prepaid.length + once.length === 0 ? (
+          {prepaid.length + once.length + yearSubs.length === 0 ? (
             <>
               <p className="mx-auto max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
                 No yearly prices are published for this industry yet.
@@ -467,6 +504,9 @@ export default function SelfServePlansPage() {
         name: draft.name,
         description: draft.description,
         price: String(amount),
+        renewal_price: draft.renewal_price ?? "",
+        seat_limit: draft.seat_limit ?? "1",
+        yearly_billing: draft.yearly_billing === "subscription" ? "subscription" : "one_time",
         feature_details: draft.features,
         is_active: draft.is_active,
         is_recommended: Boolean(draft.is_recommended),
@@ -537,18 +577,26 @@ export default function SelfServePlansPage() {
     });
   }
 
+  function setFreePlanName(nextName) {
+    setFreePlan((current) => {
+      const base = current && typeof current === "object" ? current : {};
+      return { ...base, name: nextName };
+    });
+  }
+
   async function saveFreePlan() {
     if (!freePlan || freeBusy) return;
+    const label = String(freePlan.name ?? "").trim() || "Package 1";
     setFreeBusy(true);
     try {
       const res = await apiRequest("/admin/platform-paybill", {
         method: "PUT",
-        body: { free_plan_access: freePlan },
+        body: { free_plan_access: { ...freePlan, name: label } },
       });
       if (res.data?.free_plan_access) setFreePlan(res.data.free_plan_access);
-      notifySuccess("Package 1 screens saved.");
+      notifySuccess(`${label} saved.`);
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Could not save Package 1.");
+      notifyError(err instanceof ApiError ? err.message : "Could not save the free plan.");
     } finally {
       setFreeBusy(false);
     }
@@ -811,6 +859,8 @@ export default function SelfServePlansPage() {
           <ManagedFreePlanCard
             modules={modulesForPlan(packageCatalog, { industry: industryFilter === "all" ? freeIndustry : industryFilter })}
             access={freePlan?.[industryFilter === "all" ? freeIndustry : industryFilter] ?? { workspace_keys: [], feature_keys: {} }}
+            name={freePlan?.name || "Package 1"}
+            onNameChange={setFreePlanName}
             industries={industryFilter === "all" ? (freeCatalog ?? []) : []}
             industry={industryFilter === "all" ? freeIndustry : industryFilter}
             onIndustry={setFreeIndustry}
@@ -880,6 +930,59 @@ export default function SelfServePlansPage() {
                   <input className={inputClass} inputMode="decimal" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder={form.interval === "yearly" ? "15000" : "2000"} />
                 </label>
               </div>
+
+              {form.interval === "yearly" ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-600">Yearly billing</span>
+                    <SearchableSelect
+                      value={form.yearly_billing}
+                      nativeEvent
+                      onChange={(e) => setForm((f) => ({ ...f, yearly_billing: e.target.value }))}
+                      options={[
+                        { value: "one_time", label: "One-time payment" },
+                        { value: "subscription", label: "Yearly subscription" },
+                      ]}
+                      placeholder="One-time or subscription"
+                    />
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Subscription renews at the yearly price. One-time uses an agreed renewal amount.
+                    </span>
+                  </label>
+                  {form.yearly_billing === "one_time" ? (
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-xs font-medium text-slate-600">Agreed renewal (KES)</span>
+                      <input
+                        className={inputClass}
+                        inputMode="decimal"
+                        value={form.renewal_price}
+                        onChange={(e) => setForm((f) => ({ ...f, renewal_price: e.target.value }))}
+                        placeholder={form.price || "Renewal amount"}
+                      />
+                    </label>
+                  ) : (
+                    <p className="self-end text-xs text-slate-500 sm:pb-2">
+                      The yearly price above is the renewal amount.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">The monthly price is the renewal amount for subscriptions.</p>
+              )}
+
+              <label className="block text-sm sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Seats on this package</span>
+                <input
+                  className={inputClass}
+                  inputMode="numeric"
+                  min="1"
+                  value={form.seat_limit}
+                  onChange={(e) => setForm((f) => ({ ...f, seat_limit: e.target.value }))}
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Applied automatically when this package is assigned to an organisation.
+                </span>
+              </label>
 
               <div>
                 <p className="mb-1 text-xs font-medium text-slate-600">What the organisation reads on the card</p>

@@ -9,7 +9,7 @@ import {
   isFreePlanPath,
   isLimitedLicencePath,
   licenceNeedsPayment,
-  licenseAccessMode,
+  usesPackageOne,
   licencePlanPath,
   externalPosRequiresDatedSubscription,
   parseLicenceInstant,
@@ -21,8 +21,7 @@ import {
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * Unpaid orgs stay on Package 1. Trial and paid orgs use their package modules.
- * After a paid period ends, the user stays signed in on the expired limited set.
+ * Unpaid and expired orgs stay on Package 1. Trial and paid orgs use their package modules.
  */
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
@@ -36,8 +35,7 @@ export function LicenseExpiryGuard({ children }) {
     !isSuperAdmin() &&
     externalPosRequiresDatedSubscription(organizationLicense) &&
     (pathname === "/pos" || pathname.startsWith("/pos/"));
-  const mode = licenseAccessMode(organizationLicense);
-  const onPackageOne = mode === "free";
+  const onPackageOne = usesPackageOne(organizationLicense);
   const limited =
     !loading &&
     hasAuthSession() &&
@@ -132,8 +130,7 @@ export function LicenseExpiryGuard({ children }) {
             </h2>
             <p className="mt-3 text-sm text-slate-600">{licenseWarningMessage(organizationLicense)}</p>
             <p className="mt-2 text-xs text-slate-500">
-              After expiry you can still sign in, but only products, customers, suppliers, and sales reports
-              stay open until you renew on the Centrix Paybill.
+              After expiry you can still sign in on Package 1, the free plan, until you renew on the Centrix Paybill.
             </p>
             <div className="mt-5 flex justify-end">
               <PrimaryButton type="button" showIcon={false} onClick={() => { dismissLicenseWarning(); setPromptOpen(false); }}>

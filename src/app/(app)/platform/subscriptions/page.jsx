@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -11,9 +11,14 @@ import { CatalogPageShell, FilterSelect, PrimaryButton, SECONDARY_BTN_CLASS, Sea
 import {
   SUBSCRIPTION_STATUSES,
   SUBSCRIPTION_STATUS_STYLES,
+  commercialTermsFromPlan,
   formatBillingDate,
   formatBillingDateTime,
   formatBillingMoney,
+  organizationIndustryLabel,
+  planBillingLabel,
+  plansForOrganizationIndustry,
+  platformPlanOptionLabel,
   toLicenceDateTimeLocal,
   isSubscriptionOverdue,
   licenseBasisLabel,
@@ -83,6 +88,70 @@ function SubscriptionInvoiceCell({ label, invoice, onView }) {
   );
 }
 
+function SubscriptionActionsMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const visible = items.filter(Boolean);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="relative inline-flex justify-end" ref={rootRef}>
+      <button
+        type="button"
+        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+      >
+        Actions
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {visible.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50 ${
+                item.tone === "danger" ? "text-red-600" : "text-slate-700"
+              }`}
+              onClick={() => {
+                setOpen(false);
+                item.onClick?.();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function PlatformSubscriptionsPage() {
   const router = useRouter();
   const confirm = useConfirm();
@@ -108,6 +177,19 @@ export default function PlatformSubscriptionsPage() {
   const [extendUntil, setExtendUntil] = useState("");
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => emptyAssignForm());
+
+  const assignOrganization = useMemo(
+    () => organizations.find((org) => String(org.id) === String(form.organization_id)) ?? null,
+    [organizations, form.organization_id],
+  );
+  const assignPlans = useMemo(
+    () =>
+      form.organization_id
+        ? plansForOrganizationIndustry(plans, assignOrganization)
+        : [],
+    [plans, assignOrganization, form.organization_id],
+  );
+  const assignIndustryLabel = organizationIndustryLabel(assignOrganization);
 
   const loadOrgInvoices = useCallback(async (organizationId) => {
     if (!organizationId) {
@@ -175,20 +257,21 @@ export default function PlatformSubscriptionsPage() {
     }));
   }
 
-  /** Paid plan: fill start (today if empty) + expiry from plan interval (yearly → +1 year). */
+  /** Paid plan: fill start (today if empty) + expiry from plan interval (yearly → +1 year). Seats from package. */
   function applyPaidPlanPeriod(planId, startDate = null) {
     const plan = plans.find((row) => String(row.id) === String(planId));
+    const terms = plan ? commercialTermsFromPlan(plan) : null;
     setForm((f) => {
       const start =
         startDate ||
         f.current_period_start ||
         new Date().toISOString().slice(0, 10);
+      const seats = terms ? String(terms.seat_count) : f.seat_count;
       if (f.status === "trialing") {
         return {
           ...f,
           plan_id: planId,
-          seat_count:
-            plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
+          seat_count: seats,
           current_period_start: start,
           current_period_end: toLicenceDateTimeLocal(addCalendarDays(start, Number(f.trial_days) || 14), { end: true }),
         };
@@ -196,8 +279,7 @@ export default function PlatformSubscriptionsPage() {
       return {
         ...f,
         plan_id: planId,
-        seat_count:
-          plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
+        seat_count: seats,
         current_period_start: start,
         current_period_end: toLicenceDateTimeLocal(periodEndForPlanInterval(start, plan?.interval), { end: true }),
       };
@@ -611,100 +693,61 @@ export default function PlatformSubscriptionsPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <div className="flex flex-col items-end gap-1">
-                          {showExtend ? (
-                          <button
-                            type="button"
-                            className="text-sm font-medium text-[#185FA5] hover:underline"
-                            onClick={() => openExtend(sub)}
-                          >
-                            Extend licence
-                          </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-[#185FA5] hover:underline"
-                            onClick={() => setPeriodTarget(sub)}
-                          >
-                            Edit period
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-[#185FA5] hover:underline"
-                            onClick={() => {
-                              setRenewTarget(sub);
-                              setRenewAmount(sub.renewal_price != null ? String(sub.renewal_price) : "");
-                            }}
-                          >
-                            Set renew amount
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-[#185FA5] hover:underline"
-                            onClick={() => setChangePlanTarget(sub)}
-                          >
-                            Change package
-                          </button>
-                          {showStartTrial ? (
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-sky-700 hover:underline"
-                              disabled={saving}
-                              onClick={() => void startTrialOnRow(sub)}
-                            >
-                              Start 14-day trial
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-indigo-700 hover:underline"
-                            onClick={() => openAttachInvoice(sub, "initial")}
-                          >
-                            {initialInvoice?.id ? "Change initial invoice" : "Attach initial invoice"}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-indigo-700 hover:underline"
-                            onClick={() => openAttachInvoice(sub, "renewal")}
-                          >
-                            {renewalInvoice?.id ? "Change renewal invoice" : "Attach renewal invoice"}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-slate-600 hover:underline"
-                            onClick={() => void draftInvoice(sub)}
-                          >
-                            Draft next invoice
-                          </button>
-                          {sub.organization_id ? (
-                            <button
-                              type="button"
-                              className="text-xs text-slate-600 hover:underline"
-                              onClick={() => setLicenseInfoTarget(sub)}
-                            >
-                              License info
-                            </button>
-                          ) : null}
-                          {sub.status === "cancelled" ? (
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
-                              disabled={saving}
-                              onClick={() => void unrevokeLicence(sub)}
-                            >
-                              Restore licence
-                            </button>
-                          ) : sub.status !== "expired" ? (
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
-                              disabled={saving}
-                              onClick={() => void revokeLicence(sub)}
-                            >
-                              Revoke licence
-                            </button>
-                          ) : null}
-                        </div>
+                        <SubscriptionActionsMenu
+                          items={[
+                            showExtend
+                              ? { label: "Extend licence", onClick: () => openExtend(sub) }
+                              : null,
+                            { label: "Edit period", onClick: () => setPeriodTarget(sub) },
+                            { label: "Change package", onClick: () => setChangePlanTarget(sub) },
+                            showStartTrial
+                              ? {
+                                  label: "Start 14-day trial",
+                                  disabled: saving,
+                                  onClick: () => void startTrialOnRow(sub),
+                                }
+                              : null,
+                            {
+                              label: "Set renew amount",
+                              onClick: () => {
+                                setRenewTarget(sub);
+                                setRenewAmount(
+                                  sub.renewal_price != null ? String(sub.renewal_price) : "",
+                                );
+                              },
+                            },
+                            {
+                              label: initialInvoice?.id
+                                ? "Change initial invoice"
+                                : "Attach initial invoice",
+                              onClick: () => openAttachInvoice(sub, "initial"),
+                            },
+                            {
+                              label: renewalInvoice?.id
+                                ? "Change renewal invoice"
+                                : "Attach renewal invoice",
+                              onClick: () => openAttachInvoice(sub, "renewal"),
+                            },
+                            { label: "Draft next invoice", onClick: () => void draftInvoice(sub) },
+                            sub.organization_id
+                              ? { label: "License info", onClick: () => setLicenseInfoTarget(sub) }
+                              : null,
+                            sub.status === "cancelled"
+                              ? {
+                                  label: "Restore licence",
+                                  disabled: saving,
+                                  onClick: () => void unrevokeLicence(sub),
+                                }
+                              : sub.status !== "expired"
+                                ? {
+                                    label: "Revoke licence",
+                                    tone: "danger",
+                                    disabled: saving,
+                                    onClick: () => void revokeLicence(sub),
+                                  }
+                                : null,
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
@@ -758,6 +801,7 @@ export default function PlatformSubscriptionsPage() {
                     setForm((f) => ({
                       ...f,
                       organization_id: e.target.value,
+                      plan_id: "",
                       initial_invoice_id: "",
                     }))
                   }
@@ -820,42 +864,65 @@ export default function PlatformSubscriptionsPage() {
                   className={inputClass}
                   value={form.plan_id}
                   onChange={(next) => applyPaidPlanPeriod(next)}
-                  placeholder="— Select —"
+                  disabled={!form.organization_id}
+                  placeholder={
+                    !form.organization_id
+                      ? "Select organisation first"
+                      : assignPlans.length === 0
+                        ? `No ${assignIndustryLabel} packages`
+                        : "— Select —"
+                  }
                   options={[
-                    { value: "", label: "— Select —" },
-                    ...plans.map((plan) => ({
+                    {
+                      value: "",
+                      label: !form.organization_id
+                        ? "Select organisation first"
+                        : assignPlans.length === 0
+                          ? `No ${assignIndustryLabel} packages`
+                          : "— Select —",
+                    },
+                    ...assignPlans.map((plan) => ({
                       value: String(plan.id),
-                      label: `${plan.name} · first ${formatBillingMoney(
-                        plan.first_payment_price ?? plan.price,
-                        plan.currency,
-                      )} · renew ${formatBillingMoney(
-                        plan.renewal_price ?? plan.price,
-                        plan.currency,
-                      )}/${plan.interval}`,
+                      label: platformPlanOptionLabel(plan),
                     })),
                   ]}
                 />
-                {form.plan_id && form.status !== "trialing" ? (
+                {form.organization_id ? (
                   <p className="mt-1 text-xs text-slate-500">
-                    Expiry auto-fills from the plan interval (
-                    {isAnnualBillingInterval(
-                      plans.find((p) => String(p.id) === String(form.plan_id))?.interval,
-                    )
-                      ? "yearly → same date next year"
-                      : "monthly → +30 days"}
-                    ). You can still edit the dates.
+                    {assignPlans.length === 0
+                      ? `Create a ${assignIndustryLabel} package on Self-serve plans first.`
+                      : `Showing ${assignPlans.length} package${assignPlans.length === 1 ? "" : "s"} for ${assignIndustryLabel}.`}
                   </p>
                 ) : null}
+                {form.plan_id ? (() => {
+                  const assignPlan = assignPlans.find((p) => String(p.id) === String(form.plan_id));
+                  if (!assignPlan) return null;
+                  const terms = commercialTermsFromPlan(assignPlan);
+                  return (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {planBillingLabel(assignPlan)} · {terms.seat_count} seat{terms.seat_count === 1 ? "" : "s"} ·{" "}
+                      {formatBillingMoney(terms.first_payment_price, assignPlan.currency)}
+                      {terms.renewal_price !== terms.first_payment_price
+                        ? ` · renews ${formatBillingMoney(terms.renewal_price, assignPlan.currency)}`
+                        : ` / ${terms.billing_cycle === "yearly" ? "year" : "month"}`}
+                      . Seats come from the package.
+                      {form.status !== "trialing"
+                        ? ` Expiry auto-fills (${isAnnualBillingInterval(assignPlan.interval) ? "yearly → same date next year" : "monthly → +30 days"}).`
+                        : ""}
+                    </p>
+                  );
+                })() : null}
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Seats</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Seats (from package)</span>
                   <input
                     type="number"
                     min="1"
-                    className={inputClass}
+                    className={`${inputClass} bg-slate-50`}
                     value={form.seat_count}
-                    onChange={(e) => setForm((f) => ({ ...f, seat_count: e.target.value }))}
+                    readOnly
+                    title="Seats are set on the payment package"
                   />
                 </label>
                 <label className="block text-sm">
