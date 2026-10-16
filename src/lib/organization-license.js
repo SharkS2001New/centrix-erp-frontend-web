@@ -145,6 +145,7 @@ export function resolveOrganizationLicense(source = null) {
     plan_name: raw.plan?.name ?? raw.plan_name ?? null,
     access: ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null,
     tokens_enabled: raw.tokens_enabled !== false,
+    allow_unpaid_login: raw.allow_unpaid_login !== false,
     token_balance: raw.token_balance != null ? Number(raw.token_balance) : 0,
     sale_tokens: raw.sale_tokens != null ? Number(raw.sale_tokens) : Number(raw.write_costs?.create ?? 1),
     write_costs: {
@@ -209,10 +210,9 @@ export function licenceNeedsPayment(license) {
   return mode === "free" || mode === "expired";
 }
 
-/** Package 1 while unpaid or still on the free trial. */
+/** Package 1 while the organisation has no paid or trial package. */
 export function usesPackageOne(license) {
-  const mode = licenseAccessMode(license);
-  return mode === "free" || mode === "trial";
+  return licenseAccessMode(license) === "free";
 }
 
 /** External POS cannot run on tokens. Offline sales upload later, so the till needs a monthly or yearly period. */

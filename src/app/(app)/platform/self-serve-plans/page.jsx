@@ -502,6 +502,27 @@ export default function SelfServePlansPage() {
     }
   }
 
+  async function toggleUnpaidLogin(enabled) {
+    if (!policy || freeBusy) return;
+    const next = { ...policy, allow_unpaid_login: enabled };
+    setFreeBusy(true);
+    setPolicy(next);
+    try {
+      const res = await apiRequest("/admin/billing-policy", { method: "PUT", body: next });
+      setPolicy(res.data ?? next);
+      notifySuccess(
+        enabled
+          ? "Organisations without a trial or paid plan can sign in on Package 1."
+          : "Organisations without a trial or paid plan cannot sign in until they pay.",
+      );
+    } catch (err) {
+      setPolicy(policy);
+      notifyError(err instanceof ApiError ? err.message : "Could not update unpaid sign-in.");
+    } finally {
+      setFreeBusy(false);
+    }
+  }
+
   function setFreeAccess(industry, access) {
     setFreePlan((current) => {
       const base = current && typeof current === "object" ? current : {};
@@ -796,6 +817,9 @@ export default function SelfServePlansPage() {
             busy={freeBusy}
             onChange={(access) => setFreeAccess(industryFilter === "all" ? freeIndustry : industryFilter, access)}
             onSave={freePlan ? () => void saveFreePlan() : undefined}
+            allowUnpaidLogin={policy?.allow_unpaid_login !== false}
+            unpaidLoginBusy={freeBusy || !policy}
+            onUnpaidLoginChange={(enabled) => void toggleUnpaidLogin(enabled)}
           />
         )}
       />

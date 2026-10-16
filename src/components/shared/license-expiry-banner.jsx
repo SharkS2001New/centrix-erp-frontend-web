@@ -33,7 +33,7 @@ export function LicenseExpiryBanner({ className = "" }) {
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
     mode === "trial"
-      ? `You are on a free trial${organizationLicense.expires_at ? ` until ${organizationLicense.expires_at}` : ""}. Package 1 modules stay open. Pay the Centrix Paybill when you want the rest.`
+      ? `You are on a free trial${organizationLicense.plan_name ? ` of ${organizationLicense.plan_name}` : ""}${organizationLicense.expires_at ? ` until ${organizationLicense.expires_at}` : ""}. You can use the modules on that package. Pay the Centrix Paybill to keep them.`
       : mode === "token"
       ? `This organisation has ${tokenBalance} Centrix token${tokenBalance === 1 ? "" : "s"}. Each completed sale uses ${Number(organizationLicense.sale_tokens ?? 1)} when it is saved online, including when an offline order syncs. Reading is free.`
       : mode === "expired"

@@ -21,7 +21,7 @@ import {
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * Free trial and unpaid orgs stay on Package 1 screens the platform admin allowed.
+ * Unpaid orgs stay on Package 1. Trial and paid orgs use their package modules.
  * After a paid period ends, the user stays signed in on the expired limited set.
  */
 export function LicenseExpiryGuard({ children }) {
@@ -37,7 +37,7 @@ export function LicenseExpiryGuard({ children }) {
     externalPosRequiresDatedSubscription(organizationLicense) &&
     (pathname === "/pos" || pathname.startsWith("/pos/"));
   const mode = licenseAccessMode(organizationLicense);
-  const onPackageOne = mode === "free" || mode === "trial";
+  const onPackageOne = mode === "free";
   const limited =
     !loading &&
     hasAuthSession() &&

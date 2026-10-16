@@ -81,7 +81,7 @@ describe("organization license", () => {
     expect(licenceNeedsPayment({ access: "expired" })).toBe(true);
     expect(licenceNeedsPayment({ access: "full" })).toBe(false);
     expect(licenceNeedsPayment({ access: "trial" })).toBe(false);
-    expect(usesPackageOne({ access: "trial" })).toBe(true);
+    expect(usesPackageOne({ access: "trial" })).toBe(false);
     expect(usesPackageOne({ access: "free" })).toBe(true);
     expect(usesPackageOne({ access: "full" })).toBe(false);
     expect(licenseAccessMode({ status: "trialing", is_trial: true, days_remaining: 5 })).toBe("trial");
@@ -94,7 +94,7 @@ describe("organization license", () => {
     });
     expect(withModules?.modules).toEqual(["backoffice", "hr"]);
     expect(licenceNeedsPayment(withModules)).toBe(false);
-    expect(usesPackageOne(withModules)).toBe(true);
+    expect(usesPackageOne(withModules)).toBe(false);
     expect(isLimitedLicencePath("/products")).toBe(true);
     expect(isLimitedLicencePath("/customers/4")).toBe(true);
     expect(isLimitedLicencePath("/suppliers")).toBe(true);

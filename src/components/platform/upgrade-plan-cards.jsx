@@ -192,6 +192,9 @@ export function ManagedFreePlanCard({
   busy = false,
   onChange,
   onSave,
+  allowUnpaidLogin = true,
+  unpaidLoginBusy = false,
+  onUnpaidLoginChange,
 }) {
   const included = modules
     .filter((entry) => (access.workspace_keys ?? []).includes(entry.id))
@@ -209,6 +212,30 @@ export function ManagedFreePlanCard({
       <button type="button" disabled className="theme-secondary-btn mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70">
         Free
       </button>
+      <div className="mt-4 rounded-xl border border-[var(--theme-border)] px-3 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--theme-text)]">Sign in without payment</p>
+            <p className="theme-subtext mt-1 text-xs leading-5">
+              {allowUnpaidLogin
+                ? "Organisations with no trial and no paid plan can sign in and only see the modules checked below. A trial still opens the package they are trying."
+                : "Organisations with no trial and no paid plan cannot sign in until they pay. A trial still opens the package they are trying."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={allowUnpaidLogin}
+            disabled={unpaidLoginBusy || !onUnpaidLoginChange}
+            onClick={() => onUnpaidLoginChange?.(!allowUnpaidLogin)}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+              allowUnpaidLogin ? "theme-primary-btn" : "theme-secondary-btn"
+            }`}
+          >
+            {allowUnpaidLogin ? "On" : "Off"}
+          </button>
+        </div>
+      </div>
       {industries.length > 1 ? (
         <div className="mt-4 flex flex-wrap gap-2">
           {industries.map((item) => (
