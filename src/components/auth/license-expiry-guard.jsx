@@ -21,10 +21,8 @@ import {
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * An active free trial uses the whole system.
- * After the trial or a paid period ends, the user stays signed in.
- * Package 1 stays on the screens the platform administrator allowed.
- * An expired licence keeps products, customers, suppliers, and sales reports.
+ * Free trial and unpaid orgs stay on Package 1 screens the platform admin allowed.
+ * After a paid period ends, the user stays signed in on the expired limited set.
  */
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
@@ -38,10 +36,16 @@ export function LicenseExpiryGuard({ children }) {
     !isSuperAdmin() &&
     externalPosRequiresDatedSubscription(organizationLicense) &&
     (pathname === "/pos" || pathname.startsWith("/pos/"));
-  const limited =
-    !loading && hasAuthSession() && !isSuperAdmin() && licenceNeedsPayment(organizationLicense);
   const mode = licenseAccessMode(organizationLicense);
-  const allowed = mode === "free" ? isFreePlanPath(pathname, organizationLicense) : isLimitedLicencePath(pathname);
+  const onPackageOne = mode === "free" || mode === "trial";
+  const limited =
+    !loading &&
+    hasAuthSession() &&
+    !isSuperAdmin() &&
+    (licenceNeedsPayment(organizationLicense) || onPackageOne);
+  const allowed = onPackageOne
+    ? isFreePlanPath(pathname, organizationLicense)
+    : isLimitedLicencePath(pathname);
   const planPath = licencePlanPath(pathname);
   const choosingPlan =
     pathname === "/subscribe" ||

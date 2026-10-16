@@ -11,6 +11,7 @@ import {
   licencePlanPath,
   licenseAccessMode,
   licenceNeedsPayment,
+  usesPackageOne,
   externalPosRequiresDatedSubscription,
   resolveOrganizationLicense,
   canExtendPlatformLicence,
@@ -80,6 +81,9 @@ describe("organization license", () => {
     expect(licenceNeedsPayment({ access: "expired" })).toBe(true);
     expect(licenceNeedsPayment({ access: "full" })).toBe(false);
     expect(licenceNeedsPayment({ access: "trial" })).toBe(false);
+    expect(usesPackageOne({ access: "trial" })).toBe(true);
+    expect(usesPackageOne({ access: "free" })).toBe(true);
+    expect(usesPackageOne({ access: "full" })).toBe(false);
     expect(licenseAccessMode({ status: "trialing", is_trial: true, days_remaining: 5 })).toBe("trial");
     const withModules = resolveOrganizationLicense({
       status: "trialing",
@@ -90,6 +94,7 @@ describe("organization license", () => {
     });
     expect(withModules?.modules).toEqual(["backoffice", "hr"]);
     expect(licenceNeedsPayment(withModules)).toBe(false);
+    expect(usesPackageOne(withModules)).toBe(true);
     expect(isLimitedLicencePath("/products")).toBe(true);
     expect(isLimitedLicencePath("/customers/4")).toBe(true);
     expect(isLimitedLicencePath("/suppliers")).toBe(true);

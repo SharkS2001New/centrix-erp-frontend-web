@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
-import { isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, yearlyRenewalOpen } from "@/lib/organization-license";
+import { isFreePlanPath, isLimitedLicencePath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
@@ -516,10 +516,10 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       }),
       customReportNavItems,
     );
-    if (isSuperAdmin?.() || !licenceNeedsPayment(organizationLicense)) return sections;
+    if (isSuperAdmin?.() || (!licenceNeedsPayment(organizationLicense) && !usesPackageOne(organizationLicense))) return sections;
     const canPay = Boolean(isOrgAdmin?.());
     const mode = licenseAccessMode(organizationLicense);
-    const allowPath = (href) => (mode === "free" ? isFreePlanPath(href, organizationLicense) : isLimitedLicencePath(href));
+    const allowPath = (href) => (usesPackageOne(organizationLicense) ? isFreePlanPath(href, organizationLicense) : isLimitedLicencePath(href));
     const limited = sections
       .map((section) => ({
         ...section,

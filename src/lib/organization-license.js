@@ -209,6 +209,12 @@ export function licenceNeedsPayment(license) {
   return mode === "free" || mode === "expired";
 }
 
+/** Package 1 while unpaid or still on the free trial. */
+export function usesPackageOne(license) {
+  const mode = licenseAccessMode(license);
+  return mode === "free" || mode === "trial";
+}
+
 /** External POS cannot run on tokens. Offline sales upload later, so the till needs a monthly or yearly period. */
 export const EXTERNAL_POS_SUBSCRIPTION_MESSAGE =
   "External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.";

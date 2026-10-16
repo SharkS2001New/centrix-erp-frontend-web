@@ -15,7 +15,7 @@ import {
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
 import { AiDashboardInsightCards } from "@/components/ai/ai-dashboard-insight-cards";
-import { isFreePlanPath, licenseAccessMode } from "@/lib/organization-license";
+import { isFreePlanPath, usesPackageOne } from "@/lib/organization-license";
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.dashboard.sales.view },
@@ -57,7 +57,7 @@ export function OverviewDashboard() {
           return link.permissionAny.some((code) => hasPermission(code));
         }
         if (link.permission && !hasPermission(link.permission)) return false;
-        if (licenseAccessMode(organizationLicense) === "free" && !isFreePlanPath(link.href, organizationLicense)) {
+        if (usesPackageOne(organizationLicense) && !isFreePlanPath(link.href, organizationLicense)) {
           return false;
         }
         return true;
@@ -77,7 +77,7 @@ export function OverviewDashboard() {
               setReportsRefreshKey((key) => key + 1);
             }}
           />
-          {hasPermission(P.reports.hub.view) && (licenseAccessMode(organizationLicense) !== "free" || isFreePlanPath("/reports", organizationLicense)) ? (
+          {hasPermission(P.reports.hub.view) && (!usesPackageOne(organizationLicense) || isFreePlanPath("/reports", organizationLicense)) ? (
             <Link
               href="/reports"
               className="inline-flex items-center theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
