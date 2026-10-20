@@ -8,7 +8,7 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { BillingIntervalTabs, initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
+import { initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -42,6 +42,7 @@ function previewPlan(plan, discount) {
     yearly_price: plan.yearly_price,
     renewal_price: plan.renewal_price,
     seat_limit: plan.seat_limit,
+    trial_days: plan.trial_days,
     features,
     feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
     industry: plan.industry || "commerce",
@@ -91,6 +92,7 @@ function emptyForm() {
     price: "",
     renewal_price: "",
     seat_limit: "1",
+    trial_days: "14",
     feature_details: [{ label: "", detail: "" }],
     workspace_keys: [],
     feature_keys: {},
@@ -118,6 +120,7 @@ function recordToForm(plan, catalog) {
       : (plan.monthly_price != null ? String(plan.monthly_price) : ""),
     renewal_price: plan.renewal_price != null ? String(plan.renewal_price) : "",
     seat_limit: plan.seat_limit != null ? String(plan.seat_limit) : "1",
+    trial_days: plan.trial_days != null ? String(plan.trial_days) : "14",
     feature_details: features,
     workspace_keys: selected.workspace_keys,
     feature_keys: selected.feature_keys,
@@ -156,6 +159,7 @@ function formToPayload(form) {
       ? Number(form.renewal_price)
       : amount;
   const seats = Math.max(1, Number(form.seat_limit) || 1);
+  const trialDays = Math.max(1, Math.min(365, Number(form.trial_days) || 14));
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
@@ -170,6 +174,7 @@ function formToPayload(form) {
     monthly_price: yearly ? null : amount,
     yearly_price: yearly ? amount : null,
     seat_limit: seats,
+    trial_days: trialDays,
     workspace_keys: form.workspace_keys ?? [],
     feature_keys: form.feature_keys && typeof form.feature_keys === "object" ? form.feature_keys : {},
     section_keys: form.industry === "commerce" ? (form.section_keys ?? []) : [],
@@ -185,7 +190,7 @@ function formToPayload(form) {
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ordering, onMove, manage, loading, policy, freePlan = null }) {
+function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearly, ordering, onMove, manage, loading, policy, freePlan = null }) {
   const published = byCardOrder(
     plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
@@ -198,93 +203,45 @@ function PlanPreview({ industryFilter, plans, discount, billing, setBilling, ord
     ...onceOffer(plan),
     kind: "year_sub",
   }));
-  const saving = prepaid.some((offer) => offer.percent > 0);
+  const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
   const quoteCard = <OneTimeQuoteCard preview />;
-  const tabs = ["token", "monthly", "yearly"];
   const tokenPackOn = policy?.tokens_enabled !== false && Number(policy?.token_pack_price_kes) > 0;
+  const tokenCard = tokenPackOn ? (
+    <TokenPackCard
+      preview
+      tokens={Number(policy?.token_pack_tokens) || 0}
+      price={Number(policy?.token_pack_price_kes) || 0}
+      saleTokens={Number(policy?.sale_tokens) || 1}
+    />
+  ) : null;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
       <h2 className="text-sm font-semibold text-slate-900">Plan cards</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-600">
-        These are the cards an organisation sees. Package 1 is the free card on Tokens. Choose its modules and features on that card, then save it. Tick Recommended on the paid card you want marked. Move a card and the organisation screen uses that order.
+        Free sits first, then the paid packages. Use the Yearly switch to preview a whole year on those packages. Name the free plan, choose its modules, tick Recommended on a paid card, then save.
       </p>
-      <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
+      <YearlyBillingSwitch yearly={yearly} onChange={setYearly} />
       {loading && plans.length === 0 ? (
         <p className="mt-8 text-sm text-slate-500">Loading plans…</p>
-      ) : billing === "token" ? (
-        <div className="mt-8 space-y-6">
-          <div className={`grid items-stretch gap-4 ${tokenPackOn ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
-          {freePlan}
-          {tokenPackOn ? (
-            <TokenPackCard
-              preview
-              tokens={Number(policy?.token_pack_tokens) || 0}
-              price={Number(policy?.token_pack_price_kes) || 0}
-              saleTokens={Number(policy?.sale_tokens) || 1}
-            />
-          ) : null}
-          </div>
-        </div>
-      ) : billing === "yearly" ? (
-        <div className="mt-8 space-y-10">
-          {prepaid.length > 0 ? (
-            <PlanGroup
-              title="12 months of a monthly plan"
-              hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
-              offers={prepaid}
-              preview
-              moving={ordering}
-              onMove={industryFilter === "all" ? undefined : onMove}
-              manage={manage}
-              trailing={once.length + yearSubs.length === 0 ? quoteCard : null}
-            />
-          ) : null}
-          {yearSubs.length > 0 ? (
-            <PlanGroup
-              title="Yearly subscription"
-              hint="The organisation pays this amount each year. The package amount is the renewal amount."
-              offers={yearSubs}
-              preview
-              moving={ordering}
-              onMove={industryFilter === "all" ? undefined : onMove}
-              manage={manage}
-            />
-          ) : null}
-          {once.length > 0 ? (
-            <PlanGroup
-              title="Yearly one-time payment"
-              hint="One payment for the year. Set the agreed renewal amount on the card for when they renew."
-              offers={once}
-              preview
-              moving={ordering}
-              onMove={industryFilter === "all" ? undefined : onMove}
-              manage={manage}
-              trailing={quoteCard}
-            />
-          ) : null}
-          {prepaid.length + once.length + yearSubs.length === 0 ? (
-            <>
-              <p className="mx-auto max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
-                No yearly prices are published for this industry yet.
-              </p>
-              <div className="mx-auto max-w-sm">{quoteCard}</div>
-            </>
-          ) : null}
-        </div>
-      ) : monthly.length === 0 ? (
-        <p className="mx-auto mt-8 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
-          No monthly plans are published for this industry yet.
-        </p>
       ) : (
         <div className="mt-8">
           <PlanGroup
-            offers={monthly}
+            leading={freePlan}
+            offers={offers}
             preview
             moving={ordering}
             onMove={industryFilter === "all" ? undefined : onMove}
             manage={manage}
+            trailing={[tokenCard, quoteCard].filter(Boolean)}
           />
+          {offers.length === 0 ? (
+            <p className="mx-auto mt-6 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
+              {yearly
+                ? "No yearly prices are published for this industry yet."
+                : "No monthly plans are published for this industry yet."}
+            </p>
+          ) : null}
         </div>
       )}
     </section>
@@ -308,7 +265,7 @@ export default function SelfServePlansPage() {
   const [created, setCreated] = useState(null);
   const [industryFilter, setIndustryFilter] = useState("all");
   const [discount, setDiscount] = useState({ percent: 0, minMonths: 3 });
-  const [previewBilling, setPreviewBilling] = useState("token");
+  const [previewYearly, setPreviewYearly] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [savingCardId, setSavingCardId] = useState(null);
   const [policy, setPolicy] = useState(null);
@@ -506,6 +463,7 @@ export default function SelfServePlansPage() {
         price: String(amount),
         renewal_price: draft.renewal_price ?? "",
         seat_limit: draft.seat_limit ?? "1",
+        trial_days: draft.trial_days ?? "14",
         yearly_billing: draft.yearly_billing === "subscription" ? "subscription" : "one_time",
         feature_details: draft.features,
         is_active: draft.is_active,
@@ -848,8 +806,8 @@ export default function SelfServePlansPage() {
         industryFilter={industryFilter}
         plans={plans}
         discount={discount}
-        billing={previewBilling}
-        setBilling={setPreviewBilling}
+        yearly={previewYearly}
+        setYearly={setPreviewYearly}
         ordering={ordering}
         onMove={moveOffers}
         manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation, catalog: packageCatalog }}
@@ -981,6 +939,21 @@ export default function SelfServePlansPage() {
                 />
                 <span className="mt-1 block text-xs text-slate-500">
                   Applied automatically when this package is assigned to an organisation.
+                </span>
+              </label>
+
+              <label className="block text-sm sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Maximum trial days</span>
+                <input
+                  className={inputClass}
+                  inputMode="numeric"
+                  min="1"
+                  max="365"
+                  value={form.trial_days}
+                  onChange={(e) => setForm((f) => ({ ...f, trial_days: e.target.value }))}
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Cap when platform admin puts a shop on trial of this package. After the trial ends they move to the free plan.
                 </span>
               </label>
 

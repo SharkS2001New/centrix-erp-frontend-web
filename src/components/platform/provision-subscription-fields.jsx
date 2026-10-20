@@ -5,6 +5,7 @@ import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   PROVISION_LICENSE_MODES,
   PROVISION_TRIAL_PRESETS,
+  packageTrialMax,
   periodEndForPlanInterval,
 } from "@/lib/provision-subscription";
 import { addCalendarDays } from "@/lib/organization-license";
@@ -30,6 +31,7 @@ export function ProvisionSubscriptionFields({
   const selectedPlan = plans.find((row) => String(row.id) === String(form.plan_id));
   const isTrial = form.license_mode === "trial";
   const needsPlan = form.license_mode === "plan" || (isTrial && plans.length > 0);
+  const trialMax = packageTrialMax(selectedPlan);
 
   function patch(partial) {
     onChange({ ...form, ...partial });
@@ -38,7 +40,7 @@ export function ProvisionSubscriptionFields({
   function setMode(license_mode) {
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
     if (license_mode === "trial") {
-      const days = Number(form.trial_days) || 14;
+      const days = Math.min(trialMax, Math.max(1, Number(form.trial_days) || trialMax));
       patch({
         license_mode,
         status: "trialing",
@@ -62,7 +64,7 @@ export function ProvisionSubscriptionFields({
 
   function applyTrialDays(days) {
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
-    const n = Number(days) || 14;
+    const n = Math.min(trialMax, Math.max(1, Number(days) || trialMax));
     patch({
       trial_days: String(n),
       current_period_end: addCalendarDays(start, n),
@@ -73,15 +75,18 @@ export function ProvisionSubscriptionFields({
     const plan = plans.find((row) => String(row.id) === String(planId));
     const terms = plan ? commercialTermsFromPlan(plan) : null;
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
+    const max = packageTrialMax(plan);
+    const trialDays = Math.min(max, Math.max(1, Number(form.trial_days) || max));
     patch({
       plan_id: planId,
       seat_count:
         terms && form.license_mode === "plan"
           ? String(terms.seat_count)
           : form.seat_count,
+      trial_days: form.license_mode === "trial" ? String(trialDays) : form.trial_days,
       current_period_end:
         form.license_mode === "trial"
-          ? form.current_period_end
+          ? addCalendarDays(start, trialDays)
           : periodEndForPlanInterval(start, plan?.interval),
     });
   }
@@ -166,9 +171,12 @@ export function ProvisionSubscriptionFields({
 
           {isTrial ? (
             <div>
-              <p className="mb-2 text-xs font-medium text-slate-600">Trial length</p>
+              <p className="mb-2 text-xs font-medium text-slate-600">
+                Trial length
+                <span className="ml-1 font-normal text-slate-500">(max {trialMax} days on this package)</span>
+              </p>
               <div className="flex flex-wrap gap-2">
-                {PROVISION_TRIAL_PRESETS.map((days) => (
+                {PROVISION_TRIAL_PRESETS.filter((days) => days <= trialMax).map((days) => (
                   <button
                     key={days}
                     type="button"
@@ -182,12 +190,26 @@ export function ProvisionSubscriptionFields({
                     {days} days
                   </button>
                 ))}
+                {!PROVISION_TRIAL_PRESETS.includes(trialMax) ? (
+                  <button
+                    type="button"
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                      String(form.trial_days) === String(trialMax)
+                        ? "border-sky-500 bg-sky-50 text-sky-800"
+                        : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                    onClick={() => applyTrialDays(trialMax)}
+                  >
+                    {trialMax} days (package max)
+                  </button>
+                ) : null}
               </div>
               <label className="mt-2 block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Custom days</span>
                 <input
                   type="number"
                   min="1"
+                  max={trialMax}
                   className={inputClass}
                   value={form.trial_days}
                   onChange={(e) => applyTrialDays(e.target.value)}

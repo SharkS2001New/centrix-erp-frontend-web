@@ -28,6 +28,21 @@ describe("provision subscription", () => {
     });
   });
 
+  it("caps trial days to the package maximum", () => {
+    const form = emptyProvisionSubscriptionForm({
+      license_mode: "trial",
+      trial_days: "30",
+      current_period_start: "2026-07-01",
+      current_period_end: "",
+      plan_id: "3",
+    });
+    const payload = buildProvisionSubscriptionPayload(form, [
+      { id: 3, name: "Starter", interval: "monthly", trial_days: 10 },
+    ]);
+    expect(payload.trial_days).toBe(10);
+    expect(payload.current_period_end).toBe("2026-07-11");
+  });
+
   it("builds an active plan payload", () => {
     const form = emptyProvisionSubscriptionForm({
       license_mode: "plan",

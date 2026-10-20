@@ -5,7 +5,7 @@ export const PROVISION_LICENSE_MODES = [
   {
     id: "trial",
     label: "Free trial",
-    description: "Org can use Centrix until the trial end date, then locks until extended.",
+    description: "Org can use the selected package until the trial ends, then moves to the free plan.",
   },
   {
     id: "plan",
@@ -21,6 +21,12 @@ export const PROVISION_LICENSE_MODES = [
 ];
 
 export const PROVISION_TRIAL_PRESETS = [7, 14, 30];
+
+/** Maximum trial length for a package (defaults to 14 when unset). */
+export function packageTrialMax(plan) {
+  const n = Number(plan?.trial_days);
+  return Number.isFinite(n) && n > 0 ? Math.min(365, Math.floor(n)) : 14;
+}
 
 /** Plan / contract intervals that mean a one-year licence period. */
 export function isAnnualBillingInterval(interval) {
@@ -71,10 +77,15 @@ export function buildProvisionSubscriptionPayload(form, plans = []) {
   const start = form.current_period_start || new Date().toISOString().slice(0, 10);
   const isTrial = form.license_mode === "trial" || form.status === "trialing";
 
+  const trialMax = packageTrialMax(plan);
+  const trialDays = isTrial
+    ? Math.min(trialMax, Math.max(1, Number(form.trial_days) || trialMax))
+    : null;
+
   let end = form.current_period_end;
   if (!end) {
     end = isTrial
-      ? addCalendarDays(start, Number(form.trial_days) || 14)
+      ? addCalendarDays(start, trialDays)
       : periodEndForPlanInterval(start, plan?.interval);
   }
 
@@ -85,7 +96,7 @@ export function buildProvisionSubscriptionPayload(form, plans = []) {
     current_period_start: start,
     current_period_end: end,
     is_trial: isTrial,
-    trial_days: isTrial ? Number(form.trial_days) || 14 : null,
+    trial_days: trialDays,
     trial_ends_at: isTrial ? end : null,
   };
 

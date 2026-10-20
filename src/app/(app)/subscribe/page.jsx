@@ -10,7 +10,7 @@ import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
-import { BillingIntervalTabs, featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard } from "@/components/platform/upgrade-plan-cards";
+import { featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 function renewalCharge(license) {
   return {
@@ -36,7 +36,7 @@ export default function SubscribePage() {
   const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
   const renewOpen = canPay && yearlyRenewalOpen(organizationLicense);
   const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
-  const [billing, setBilling] = useState(forPos ? "monthly" : "token");
+  const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
   const [tokenPack, setTokenPack] = useState(null);
   const [tokensEnabled, setTokensEnabled] = useState(true);
@@ -66,10 +66,6 @@ export default function SubscribePage() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (forPos && billing === "token") setBilling("monthly");
-  }, [forPos, billing]);
 
   const due = Number(charge?.amount) || 0;
   const paybill = organizationLicense?.paybill;
@@ -335,8 +331,8 @@ export default function SubscribePage() {
             discount={discount}
             forPos={forPos}
             tokensEnabled={tokensEnabled}
-            billing={billing}
-            setBilling={setBilling}
+            yearly={yearly}
+            setYearly={setYearly}
             mode={mode}
             tokenPack={tokenPack}
             tokenBalance={Number(organizationLicense?.token_balance) || 0}
@@ -361,8 +357,8 @@ export default function SubscribePage() {
 function PlansStep({
   plans,
   discount,
-  billing,
-  setBilling,
+  yearly = false,
+  setYearly,
   mode,
   tokenPack,
   tokenBalance,
@@ -380,55 +376,63 @@ function PlansStep({
   forPos = false,
   tokensEnabled = true,
 }) {
-  const tabs = forPos ? ["monthly", "yearly"] : ["token", "monthly", "yearly"];
   const monthlyPlans = plans.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = plans.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
-  const once = yearlyPlans.map(onceOffer);
+  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription").map(onceOffer);
+  const yearSubs = yearlyPlans.filter((plan) => plan.yearly_billing === "subscription").map((plan) => ({
+    ...onceOffer(plan),
+    kind: "year_sub",
+  }));
   const monthly = monthlyPlans.map(monthOffer);
+  const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
   const saving = prepaid.some((offer) => offer.percent > 0);
+  const showToken = !forPos && tokensEnabled && tokenPack && tokenPack.price > 0;
   const quoteCard = (
     <OneTimeQuoteCard busy={quoteBusy} canPay={canPay} onQuote={onQuote} notice={quoteNotice} />
   );
   const freeLabel = String(freeName || "Package 1").trim() || "Package 1";
-  const intro = billing === "token"
-    ? `${freeLabel} is free. A token pack pays for completed sales. The current plan label sits on the plan this organisation is using.`
-    : billing === "yearly"
+  const freeCard = <FreePlanCard pages={freePages} name={freeLabel} current={packageCurrent} />;
+  const tokenCard = showToken ? (
+    <TokenPackCard
+      tokens={tokenPack.tokens}
+      price={tokenPack.price}
+      saleTokens={tokenPack.saleTokens}
+      balance={tokenBalance}
+      current={tokenCurrent}
+      canPay={canPay}
+      onStart={() => {
+        const saleTokens = Number(tokenPack?.saleTokens) || 1;
+        onPay({
+          kind: "token",
+          billing: "token",
+          months: 0,
+          amount: Number(tokenPack?.price) || 0,
+          currency: "KES",
+          plan: {
+            name: "Token pack",
+            features: [
+              `${Number(tokenPack?.tokens) || 0} tokens`,
+              `Each completed sale uses ${saleTokens} token${saleTokens === 1 ? "" : "s"}`,
+              "Reading stays free",
+            ],
+          },
+        });
+      }}
+    />
+  ) : null;
+  const intro = mode === "expired"
+    ? `Your trial or paid period has ended. This organisation is on ${freeLabel} until you choose a plan again.`
+    : yearly
       ? (saving
-        ? "Pay 12 months of a monthly plan and take the duration discount, pay a yearly price once, or ask for a one-time quote."
-        : "Pay 12 months of a monthly plan now, pay a yearly price once, or ask for a one-time quote.")
-      : mode === "expired"
-        ? `Your trial or paid period has ended. This organisation is on ${freeLabel} until you choose a plan again.`
-        : "Choose the plan this organisation should use. Features left off a plan stay hidden.";
-  const emptyCopy = billing === "yearly"
-    ? "No yearly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."
-    : billing === "monthly"
-      ? "No monthly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."
-      : "A platform administrator has not published a token pack yet.";
-
-  function startToken() {
-    const saleTokens = Number(tokenPack?.saleTokens) || 1;
-    onPay({
-      kind: "token",
-      billing: "token",
-      months: 0,
-      amount: Number(tokenPack?.price) || 0,
-      currency: "KES",
-      plan: {
-        name: "Token pack",
-        features: [
-          `${Number(tokenPack?.tokens) || 0} tokens`,
-          `Each completed sale uses ${saleTokens} token${saleTokens === 1 ? "" : "s"}`,
-          "Reading stays free",
-        ],
-      },
-    });
-  }
+        ? "Turn Yearly on to pay for a whole year now. Duration discount is taken off where it applies."
+        : "Turn Yearly on to see the price for a whole year on each package.")
+      : "Free sits first. Paid packages bill each month, or turn Yearly on to pay for the year.";
 
   return (
     <div>
       <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
-      <BillingIntervalTabs value={billing} onChange={setBilling} options={tabs} />
+      <YearlyBillingSwitch yearly={yearly} onChange={setYearly} />
       {forPos ? (
         <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
           External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.
@@ -443,62 +447,32 @@ function PlansStep({
       {canPay ? null : (
         <p className="theme-subtext mx-auto mt-3 max-w-2xl text-center text-sm">An organisation admin pays for Centrix.</p>
       )}
-      {billing === "token" ? (
-        <div className={`mt-8 grid items-stretch gap-4 ${tokensEnabled && tokenPack && tokenPack.price > 0 ? "mx-auto max-w-4xl md:grid-cols-2" : "mx-auto max-w-sm"}`}>
-          <FreePlanCard pages={freePages} name={freeLabel} current={packageCurrent} />
-          {tokensEnabled && tokenPack && tokenPack.price > 0 ? (
-            <TokenPackCard
-              tokens={tokenPack.tokens}
-              price={tokenPack.price}
-              saleTokens={tokenPack.saleTokens}
-              balance={tokenBalance}
-              current={tokenCurrent}
-              canPay={canPay}
-              onStart={startToken}
+      <div className="mt-8">
+        {offers.length === 0 && !showToken ? (
+          <div className="space-y-6">
+            <PlanGroup
+              leading={freeCard}
+              offers={[]}
+              trailing={quoteCard}
             />
-          ) : null}
-        </div>
-      ) : billing === "yearly" ? (
-        prepaid.length + once.length === 0 ? (
-          <div className="mt-8 space-y-6">
-            <p className="theme-panel theme-text-muted mx-auto max-w-lg rounded-2xl border p-4 text-center text-sm">{emptyCopy}</p>
-            <div className="mx-auto max-w-sm">{quoteCard}</div>
+            <p className="theme-panel theme-text-muted mx-auto max-w-lg rounded-2xl border p-4 text-center text-sm">
+              {yearly
+                ? "No yearly prices are published for this industry yet. A platform administrator sets the price under Self-serve plans."
+                : "No monthly plans are published for this industry yet. A platform administrator sets the price under Self-serve plans."}
+            </p>
           </div>
         ) : (
-          <div className="mt-8 space-y-10">
-            {prepaid.length > 0 ? (
-              <PlanGroup
-                title="12 months of a monthly plan"
-                hint={saving ? "The monthly price for a year, with the duration discount taken off." : "The monthly price, paid now for the whole year."}
-                offers={prepaid}
-                currentName={currentName}
-                currentPlanId={currentPlanId}
-                canPay={canPay}
-                onPay={onPay}
-                trailing={once.length === 0 ? quoteCard : null}
-              />
-            ) : null}
-            {once.length > 0 ? (
-              <PlanGroup
-                title="Pay once for the year"
-                hint="A yearly price set for the plan. One payment, not twelve monthly charges."
-                offers={once}
-                currentName={currentName}
-                currentPlanId={currentPlanId}
-                canPay={canPay}
-                onPay={onPay}
-                trailing={quoteCard}
-              />
-            ) : null}
-          </div>
-        )
-      ) : monthly.length === 0 ? (
-        <p className="theme-panel theme-text-muted mx-auto mt-8 max-w-lg rounded-2xl border p-4 text-center text-sm">{emptyCopy}</p>
-      ) : (
-        <div className="mt-8">
-          <PlanGroup offers={monthly} currentName={currentName} currentPlanId={currentPlanId} canPay={canPay} onPay={onPay} />
-        </div>
-      )}
+          <PlanGroup
+            leading={freeCard}
+            offers={offers}
+            currentName={currentName}
+            currentPlanId={currentPlanId}
+            canPay={canPay}
+            onPay={onPay}
+            trailing={[tokenCard, quoteCard].filter(Boolean)}
+          />
+        )}
+      </div>
     </div>
   );
 }

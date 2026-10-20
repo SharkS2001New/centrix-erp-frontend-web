@@ -17,49 +17,47 @@ export function quoteMonths(unit, months, minMonths, percent) {
   };
 }
 
-const BILLING_TABS = {
-  token: { label: "Tokens", hint: "Free plan or a pack" },
-  monthly: { label: "Monthly", hint: "Billed each month" },
-  yearly: { label: "Yearly", hint: "A year ahead, or once" },
-};
-
-export function BillingIntervalTabs({ value, onChange, options }) {
-  const wide = options.length > 2;
+/** Monthly / Yearly price switch. Not a tab — same packages, yearly prices when on. */
+export function YearlyBillingSwitch({ yearly = false, onChange, className = "" }) {
   return (
-    <div className={`mx-auto mt-7 w-full ${wide ? "max-w-2xl" : "max-w-md"}`}>
-      <div
-        role="tablist"
-        aria-label="How you pay"
-        className="grid gap-1 rounded-2xl bg-[var(--theme-surface-subtle)] p-1.5 shadow-[inset_0_0_0_1px_var(--theme-border)]"
-        style={{ gridTemplateColumns: `repeat(${Math.max(options.length, 1)}, minmax(0, 1fr))` }}
+    <div className={`mx-auto mt-7 flex items-center justify-center gap-3 ${className}`}>
+      <span className={`text-sm font-medium ${yearly ? "text-[var(--theme-text-subtle)]" : "text-[var(--theme-text)]"}`}>
+        Monthly
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={yearly}
+        aria-label="Pay yearly"
+        onClick={() => onChange?.(!yearly)}
+        className={`relative h-8 w-14 shrink-0 rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--theme-primary)] ${
+          yearly ? "bg-[var(--theme-primary)]" : "bg-[var(--theme-surface-subtle)] shadow-[inset_0_0_0_1px_var(--theme-border)]"
+        }`}
       >
-        {options.map((option) => {
-          const tab = BILLING_TABS[option] || { label: option, hint: "" };
-          const selected = value === option;
-          return (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => onChange(option)}
-              className={`rounded-xl px-3 py-2.5 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--theme-primary)] ${
-                selected
-                  ? "bg-[var(--theme-primary)] text-[var(--theme-primary-fg)] shadow-sm"
-                  : "text-[var(--theme-text)] hover:bg-[var(--theme-surface)]"
-              }`}
-            >
-              <span className="block text-sm font-semibold tracking-tight">{tab.label}</span>
-              {tab.hint ? (
-                <span className={`mt-0.5 block text-[11px] font-medium leading-4 ${selected ? "opacity-80" : "text-[var(--theme-text-subtle)]"}`}>
-                  {tab.hint}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+        <span
+          className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${
+            yearly ? "left-7" : "left-1"
+          }`}
+        />
+      </button>
+      <span className={`text-sm font-medium ${yearly ? "text-[var(--theme-text)]" : "text-[var(--theme-text-subtle)]"}`}>
+        Yearly
+      </span>
     </div>
+  );
+}
+
+/** @deprecated Prefer YearlyBillingSwitch. Kept for older screens that still pass tab options. */
+export function BillingIntervalTabs({ value, onChange, options }) {
+  const yearly = value === "yearly";
+  if (Array.isArray(options) && options.includes("monthly") && options.includes("yearly") && !options.includes("token")) {
+    return <YearlyBillingSwitch yearly={yearly} onChange={(on) => onChange(on ? "yearly" : "monthly")} />;
+  }
+  return (
+    <YearlyBillingSwitch
+      yearly={yearly}
+      onChange={(on) => onChange(on ? "yearly" : (options?.includes("token") ? "monthly" : "monthly"))}
+    />
   );
 }
 
@@ -124,8 +122,9 @@ function CurrentBadge() {
   );
 }
 
-export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, onMove, moving = false, manage = null, trailing = null }) {
-  const count = offers.length + (trailing ? 1 : 0);
+export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, onMove, moving = false, manage = null, leading = null, trailing = null }) {
+  const trail = Array.isArray(trailing) ? trailing.filter(Boolean) : (trailing ? [trailing] : []);
+  const count = (leading ? 1 : 0) + offers.length + trail.length;
   const width = count <= 1
     ? "mx-auto max-w-sm"
     : count === 2
@@ -138,6 +137,7 @@ export function PlanGroup({ title, hint, offers, currentName, currentPlanId = nu
       {title ? <h2 className="theme-heading text-sm font-semibold">{title}</h2> : null}
       {hint ? <p className="theme-subtext mt-1 text-sm">{hint}</p> : null}
       <div className={`grid items-stretch gap-4 ${title ? "mt-4" : ""} ${width}`}>
+        {leading ? <div className="flex h-full flex-col">{leading}</div> : null}
         {offers.map((offer, index) => {
           const current = Boolean(
             (currentPlanId && Number(offer.plan.id) === Number(currentPlanId))
@@ -177,7 +177,9 @@ export function PlanGroup({ title, hint, offers, currentName, currentPlanId = nu
             </div>
           );
         })}
-        {trailing ? <div className="flex h-full flex-col">{trailing}</div> : null}
+        {trail.map((node, index) => (
+          <div key={`trail-${index}`} className="flex h-full flex-col">{node}</div>
+        ))}
       </div>
     </section>
   );
@@ -387,13 +389,13 @@ export function TokenPackCard({
 export function OneTimeQuoteCard({ preview = false, canPay = true, busy = false, onQuote, notice = "" }) {
   return (
     <article className="flex h-full flex-1 flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
-      <p className="theme-subtext text-sm">One time</p>
-      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Centrix One time payment</h2>
+      <p className="theme-subtext text-sm">Enterprise</p>
+      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Enterprise</h2>
       <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
-        Buy Centrix once, instead of paying every month or every year. The platform administrator sends the price.
+        For organisations that need a custom Centrix package, limits, or support.
       </p>
-      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">Quote</p>
-      <p className="theme-subtext mt-1 text-sm">Not a monthly or yearly fee.</p>
+      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">Let&apos;s talk</p>
+      <p className="theme-subtext mt-1 text-sm">Custom pricing for your organisation.</p>
       {preview || canPay ? (
         <button
           type="button"
@@ -405,12 +407,14 @@ export function OneTimeQuoteCard({ preview = false, canPay = true, busy = false,
             preview ? "pointer-events-none" : ""
           }`}
         >
-          {busy ? "Sending…" : "Get Quote"}
+          {busy ? "Sending…" : "Contact us"}
         </button>
       ) : null}
-      <p className="theme-heading mt-6 text-sm font-medium">What happens</p>
+      <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
       <ul className="mt-3 space-y-2.5 text-sm leading-5">
-        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>One payment for Centrix</span></li>
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Everything in the paid packages</span></li>
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Custom pricing and limits</span></li>
+        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Priority support from Centrix</span></li>
         <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>A quote is emailed to the platform administrator</span></li>
         <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>You stay on your current plan until you accept the price</span></li>
       </ul>
@@ -524,6 +528,7 @@ function cardDraft(offer, modules = []) {
     price: price == null ? "" : String(price),
     renewal_price: offer.plan.renewal_price != null ? String(offer.plan.renewal_price) : "",
     seat_limit: offer.plan.seat_limit != null ? String(offer.plan.seat_limit) : "1",
+    trial_days: offer.plan.trial_days != null ? String(offer.plan.trial_days) : "14",
     yearly_billing: offer.kind === "year_sub" || offer.plan.yearly_billing === "subscription"
       ? "subscription"
       : "one_time",
@@ -570,6 +575,7 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
     offer.plan.yearly_price,
     offer.plan.renewal_price,
     offer.plan.seat_limit,
+    offer.plan.trial_days,
     offer.plan.yearly_billing,
     offer.plan.is_active,
     offer.plan.is_recommended,
@@ -678,6 +684,18 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
           value={draft.seat_limit}
           onChange={(event) => setDraft((current) => ({ ...current, seat_limit: event.target.value }))}
         />
+      </label>
+      <label className="mt-3 block">
+        <span className="theme-subtext text-xs">Maximum trial days</span>
+        <input
+          className={`${fieldClass} mt-1 w-24 text-sm font-medium`}
+          inputMode="numeric"
+          min="1"
+          max="365"
+          value={draft.trial_days}
+          onChange={(event) => setDraft((current) => ({ ...current, trial_days: event.target.value }))}
+        />
+        <span className="theme-subtext mt-1 block text-xs">When a shop is put on trial of this package, the trial cannot exceed this many days. After that they move to the free plan.</span>
       </label>
       <label className="mt-4 flex items-center gap-2 text-sm">
         <input

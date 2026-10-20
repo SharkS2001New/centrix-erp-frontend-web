@@ -54,6 +54,12 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
+  const signupCompanyCode = String(searchParams.get("company_code") || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const signupUsername = String(searchParams.get("username") || searchParams.get("user") || "").trim();
+  const fromFreeSignup = searchParams.get("from") === "free-signup";
 
   const [showOrgField, setShowOrgField] = useState(true);
   const [companyCode, setCompanyCode] = useState(() => getDefaultCompanyCode());
@@ -72,10 +78,23 @@ function LoginForm() {
   const [mfaCode, setMfaCode] = useState("");
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [authFlow, setAuthFlow] = useState(null);
+  const [signupHint, setSignupHint] = useState(false);
   const progressTimerRef = useRef(null);
   const passkeysOk = webAuthnSupported();
 
   useEffect(() => {
+    // Marketing instant trial deep-link: /login?company_code=…&username=…&from=free-signup
+    if (signupCompanyCode || signupUsername) {
+      if (signupCompanyCode) {
+        setCompanyCode(signupCompanyCode);
+        setShowOrgField(false);
+      }
+      if (signupUsername) setUsername(signupUsername);
+      setSignupHint(fromFreeSignup || Boolean(signupCompanyCode && signupUsername));
+      setUsePasswordOverride(true);
+      return;
+    }
+
     const stored = getStoredCompanyCode();
     const bound = getHotelPinDeviceBinding();
     if (bound) {
@@ -89,7 +108,7 @@ function LoginForm() {
       setCompanyCode(stored);
       setShowOrgField(false);
     }
-  }, []);
+  }, [signupCompanyCode, signupUsername, fromFreeSignup]);
 
   useEffect(() => {
     if (!passkeysOk) {
@@ -559,7 +578,9 @@ function LoginForm() {
         subtitle={
           showPinSignIn
             ? "This computer is locked to your hotel account. Enter your PIN."
-            : "Sign in with your email or username and password."
+            : signupHint
+              ? "Your free Centrix workspace is ready. Enter the password you chose on Instant trial."
+              : "Sign in with your email or username and password."
         }
       >
         <div className="relative">

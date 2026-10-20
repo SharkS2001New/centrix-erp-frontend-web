@@ -47,6 +47,11 @@ const inputClass =
 const TRIAL_PRESETS = [7, 14, 30];
 const EXTEND_PRESETS = [7, 14, 30, 90];
 
+function packageTrialMax(plan) {
+  const n = Number(plan?.trial_days);
+  return Number.isFinite(n) && n > 0 ? Math.min(365, Math.floor(n)) : 14;
+}
+
 function emptyAssignForm() {
   const start = toLicenceDateTimeLocal(new Date().toISOString());
   return {
@@ -247,8 +252,12 @@ export default function PlatformSubscriptionsPage() {
     }
   }, [attachTarget, loadOrgInvoices]);
 
-  function applyTrialDays(days, start = form.current_period_start) {
-    const n = Number(days) || 14;
+  function applyTrialDays(days, start = form.current_period_start, planOverride = null) {
+    const plan =
+      planOverride ||
+      plans.find((row) => String(row.id) === String(form.plan_id));
+    const max = packageTrialMax(plan);
+    const n = Math.min(max, Math.max(1, Number(days) || max));
     setForm((f) => ({
       ...f,
       status: "trialing",
@@ -261,6 +270,7 @@ export default function PlatformSubscriptionsPage() {
   function applyPaidPlanPeriod(planId, startDate = null) {
     const plan = plans.find((row) => String(row.id) === String(planId));
     const terms = plan ? commercialTermsFromPlan(plan) : null;
+    const trialMax = packageTrialMax(plan);
     setForm((f) => {
       const start =
         startDate ||
@@ -268,12 +278,14 @@ export default function PlatformSubscriptionsPage() {
         new Date().toISOString().slice(0, 10);
       const seats = terms ? String(terms.seat_count) : f.seat_count;
       if (f.status === "trialing") {
+        const trialDays = Math.min(trialMax, Math.max(1, Number(f.trial_days) || trialMax));
         return {
           ...f,
           plan_id: planId,
           seat_count: seats,
+          trial_days: String(trialDays),
           current_period_start: start,
-          current_period_end: toLicenceDateTimeLocal(addCalendarDays(start, Number(f.trial_days) || 14), { end: true }),
+          current_period_end: toLicenceDateTimeLocal(addCalendarDays(start, trialDays), { end: true }),
         };
       }
       return {
@@ -304,7 +316,12 @@ export default function PlatformSubscriptionsPage() {
           current_period_start: form.current_period_start || null,
           current_period_end: form.current_period_end || null,
           is_trial: form.status === "trialing",
-          trial_days: form.status === "trialing" ? Number(form.trial_days) || 14 : null,
+          trial_days: form.status === "trialing"
+            ? Math.min(
+                packageTrialMax(plans.find((row) => String(row.id) === String(form.plan_id))),
+                Math.max(1, Number(form.trial_days) || 14),
+              )
+            : null,
           initial_invoice_id: form.initial_invoice_id ? Number(form.initial_invoice_id) : null,
         },
       });
@@ -932,7 +949,8 @@ export default function PlatformSubscriptionsPage() {
                     value={form.status}
                     onChange={(status) => {
                       if (status === "trialing") {
-                        applyTrialDays(form.trial_days || 14);
+                        const plan = plans.find((row) => String(row.id) === String(form.plan_id));
+                        applyTrialDays(packageTrialMax(plan), form.current_period_start, plan);
                       } else {
                         const plan = plans.find((row) => String(row.id) === String(form.plan_id));
                         const start =
@@ -953,11 +971,18 @@ export default function PlatformSubscriptionsPage() {
                   />
                 </label>
               </div>
-              {form.status === "trialing" ? (
+              {form.status === "trialing" ? (() => {
+                const assignPlan = plans.find((row) => String(row.id) === String(form.plan_id));
+                const trialMax = packageTrialMax(assignPlan);
+                const presets = TRIAL_PRESETS.filter((days) => days <= trialMax);
+                return (
                 <div>
-                  <p className="mb-2 text-xs font-medium text-slate-600">Free trial length</p>
+                  <p className="mb-2 text-xs font-medium text-slate-600">
+                    Free trial length
+                    <span className="ml-1 font-normal text-slate-500">(max {trialMax} days on this package)</span>
+                  </p>
                   <div className="flex flex-wrap gap-2">
-                    {TRIAL_PRESETS.map((days) => (
+                    {presets.map((days) => (
                       <button
                         key={days}
                         type="button"
@@ -971,19 +996,34 @@ export default function PlatformSubscriptionsPage() {
                         {days} days
                       </button>
                     ))}
+                    {!presets.includes(trialMax) ? (
+                      <button
+                        type="button"
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                          String(form.trial_days) === String(trialMax)
+                            ? "border-sky-500 bg-sky-50 text-sky-800"
+                            : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                        onClick={() => applyTrialDays(trialMax)}
+                      >
+                        {trialMax} days (package max)
+                      </button>
+                    ) : null}
                   </div>
                   <label className="mt-2 block text-sm">
                     <span className="mb-1 block text-xs font-medium text-slate-600">Custom days</span>
                     <input
                       type="number"
                       min="1"
+                      max={trialMax}
                       className={inputClass}
                       value={form.trial_days}
                       onChange={(e) => applyTrialDays(e.target.value)}
                     />
                   </label>
                 </div>
-              ) : null}
+                );
+              })() : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Period start</span>

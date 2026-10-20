@@ -49,6 +49,11 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
   const [saving, setSaving] = useState(false);
   const industryLabel = organizationIndustryLabel(organization);
 
+  function packageTrialMax(plan) {
+    const n = Number(plan?.trial_days);
+    return Number.isFinite(n) && n > 0 ? Math.min(365, Math.floor(n)) : 14;
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoadingPlans(true);
@@ -60,7 +65,9 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
           organization,
         );
         setPlans(rows);
-        setPlanId(rows[0] ? String(rows[0].id) : "");
+        const first = rows[0] ?? null;
+        setPlanId(first ? String(first.id) : "");
+        if (first) setTrialDays(String(packageTrialMax(first)));
       })
       .catch(() => {
         if (!cancelled) setPlans([]);
@@ -75,6 +82,7 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
 
   const selected = plans.find((plan) => String(plan.id) === String(planId)) ?? null;
   const terms = selected ? commercialTermsFromPlan(selected) : null;
+  const trialMax = packageTrialMax(selected);
 
   async function handleAssign(event) {
     event.preventDefault();
@@ -84,8 +92,9 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
     }
     const start = new Date().toISOString().slice(0, 10);
     const isTrial = mode === "trial";
+    const cappedTrial = Math.min(trialMax, Math.max(1, Number(trialDays) || trialMax));
     const end = isTrial
-      ? addCalendarDays(start, Number(trialDays) || 14)
+      ? addCalendarDays(start, cappedTrial)
       : periodEndForPlanInterval(start, selected?.interval);
     setSaving(true);
     try {
@@ -99,7 +108,7 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
           current_period_start: start,
           current_period_end: end,
           is_trial: isTrial,
-          trial_days: isTrial ? Number(trialDays) || 14 : null,
+          trial_days: isTrial ? cappedTrial : null,
         },
       });
       notifySuccess(isTrial ? "Free trial started." : "Plan assigned. Paybill payments now match this plan.");
@@ -135,7 +144,12 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
           <select
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             value={planId}
-            onChange={(event) => setPlanId(event.target.value)}
+            onChange={(event) => {
+              const nextId = event.target.value;
+              setPlanId(nextId);
+              const next = plans.find((plan) => String(plan.id) === String(nextId));
+              setTrialDays(String(packageTrialMax(next)));
+            }}
           >
             {plans.map((plan) => (
               <option key={plan.id} value={plan.id}>
@@ -157,13 +171,20 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
         </label>
         {mode === "trial" ? (
           <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Trial days</span>
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              Trial days <span className="font-normal text-slate-500">(max {trialMax})</span>
+            </span>
             <input
               type="number"
               min="1"
+              max={trialMax}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               value={trialDays}
-              onChange={(event) => setTrialDays(event.target.value)}
+              onChange={(event) => {
+                const raw = Number(event.target.value);
+                const next = Number.isFinite(raw) ? Math.min(trialMax, Math.max(1, raw)) : trialMax;
+                setTrialDays(String(next));
+              }}
             />
           </label>
         ) : null}
