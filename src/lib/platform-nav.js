@@ -180,6 +180,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "AI-assisted Centrix portfolios for shops, hotels, spas, and more.",
       },
       {
+        href: "/platform/blogs",
+        label: "Marketing blogs",
+        icon: "file",
+        description: "Publish posts to the CentrixERP website Resources blog.",
+      },
+      {
         href: "/platform/invoice-templates",
         label: "Templates",
         icon: "package",
