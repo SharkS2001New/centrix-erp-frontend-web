@@ -195,6 +195,7 @@ export function FinanceSettingsPanel({
   const [form, setForm] = useState(financeFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [kraHealthTesting, setKraHealthTesting] = useState(false);
+  const [kraPendingUpload, setKraPendingUpload] = useState(false);
   const [kraInitTesting, setKraInitTesting] = useState(false);
   const [kraRestartTesting, setKraRestartTesting] = useState(false);
   const [kraAgentDownloading, setKraAgentDownloading] = useState(false);
@@ -403,6 +404,16 @@ export function FinanceSettingsPanel({
 
   async function initializeKraDevice() {
     await runKraDeviceAction("/kra/device-init", setKraInitTesting);
+  }
+
+  async function uploadPendingKraInvoices() {
+    const ok = await confirm({
+      title: "Upload pending invoices to KRA",
+      message: "Comstore will queue all unsent invoices currently stored on this device for eTIMS upload. This includes invoices not created by Centrix.",
+      confirmLabel: "Upload pending",
+    });
+    if (!ok) return;
+    await runKraDeviceAction("/kra/device-upload", setKraPendingUpload);
   }
 
   async function restartKraDevice() {
@@ -769,6 +780,14 @@ export function FinanceSettingsPanel({
                       </button>
                       <button
                         type="button"
+                        disabled={kraPendingUpload || !form.kra_device_ip.trim() || !form.kra_serial_number.trim() || Boolean(form.kra_device_test_mode)}
+                        onClick={() => void uploadPendingKraInvoices()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraPendingUpload ? "Uploading…" : "Upload pending invoices"}
+                      </button>
+                      <button
+                        type="button"
                         disabled={kraInitTesting || !form.kra_device_ip.trim() || !form.kra_serial_number.trim()}
                         onClick={() => void initializeKraDevice()}
                         className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
@@ -785,6 +804,9 @@ export function FinanceSettingsPanel({
                       </button>
                       <KraQrDrawCheck />
                     </div>
+                    <p className="theme-subtext text-xs">
+                      Completed sales are submitted automatically. Use this action to ask Comstore to queue all invoices already waiting on the device for eTIMS upload. Centrix continues retrying transient failed submissions automatically every five minutes.
+                    </p>
                     {kraHealthResult ? (
                       <div
                         className={`text-sm ${

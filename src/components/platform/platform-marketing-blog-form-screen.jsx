@@ -283,31 +283,6 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
         subtitle="Images are compressed on upload (max 1200px JPEG). Published posts appear under Resources → Blog."
         backHref="/platform/blogs"
         backLabel="Blogs"
-        action={
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={SECONDARY_BTN_CLASS}
-              disabled={purging}
-              onClick={() => void clearCaches()}
-            >
-              {purging ? "Clearing…" : "Clear cache"}
-            </button>
-            {(isEdit || savedId) && (
-              <button
-                type="button"
-                className={SECONDARY_BTN_CLASS}
-                disabled={busy || saving}
-                onClick={() => void togglePublish()}
-              >
-                {busy ? "…" : status === "published" ? "Unpublish" : "Publish"}
-              </button>
-            )}
-            <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void savePost()}>
-              {saving ? "Saving…" : savedId ? "Save changes" : "Save draft"}
-            </PrimaryButton>
-          </div>
-        }
       >
         <AdminBreadcrumb
           items={[
@@ -319,6 +294,23 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
 
         <div className="mt-4 w-full min-w-0 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 sm:p-6">
           <div className="grid gap-4">
+            <Field label="SEO title (optional)">
+              <input
+                className={inputClassName()}
+                value={form.seo_title}
+                onChange={(event) => setForm((prev) => ({ ...prev, seo_title: event.target.value }))}
+              />
+            </Field>
+            <Field label="SEO description (optional)">
+              <textarea
+                className={inputClassName()}
+                rows={2}
+                value={form.seo_description}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, seo_description: event.target.value }))
+                }
+              />
+            </Field>
             <Field label="Title" required>
               <input
                 className={inputClassName()}
@@ -418,24 +410,30 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
                 placeholder="CentrixERP"
               />
             </Field>
-            <Field label="SEO title (optional)">
-              <input
-                className={inputClassName()}
-                value={form.seo_title}
-                onChange={(event) => setForm((prev) => ({ ...prev, seo_title: event.target.value }))}
-              />
-            </Field>
-            <Field label="SEO description (optional)">
-              <textarea
-                className={inputClassName()}
-                rows={2}
-                value={form.seo_description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, seo_description: event.target.value }))
-                }
-              />
-            </Field>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={purging}
+            onClick={() => void clearCaches()}
+          >
+            {purging ? "Clearing…" : "Clear cache"}
+          </button>
+          {(isEdit || savedId) && (
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={busy || saving}
+              onClick={() => void togglePublish()}
+            >
+              {busy ? "…" : status === "published" ? "Unpublish" : "Publish"}
+            </button>
+          )}
+          <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void savePost()}>
+            {saving ? "Saving…" : savedId ? "Save changes" : "Save draft"}
+          </PrimaryButton>
         </div>
       </CatalogPageShell>
 
