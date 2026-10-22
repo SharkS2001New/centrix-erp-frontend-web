@@ -103,7 +103,7 @@ export function CatalogPageShell({
   usePageNavigationReady(navigationReady);
 
   return (
-    <div className="theme-workspace min-h-full">
+    <div className="theme-workspace min-h-full w-full min-w-0">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         {backHref ? (
           <TabFormPageHeader

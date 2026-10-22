@@ -317,7 +317,7 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
           ]}
         />
 
-        <div className="mt-4 max-w-3xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 sm:p-6">
+        <div className="mt-4 w-full min-w-0 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 sm:p-6">
           <div className="grid gap-4">
             <Field label="Title" required>
               <input
