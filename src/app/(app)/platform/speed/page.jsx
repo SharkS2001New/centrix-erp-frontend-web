@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, platformSpeedProbeStream, ApiError } from "@/lib/api";
 import {
   CatalogPageShell,
   PrimaryButton,
@@ -12,6 +13,119 @@ import {
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { classifyLatency } from "@/lib/latency-split";
+
+function stamp() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function LiveSpeedProbeModal({
+  open,
+  busy,
+  advising,
+  logs,
+  logEndRef,
+  advice,
+  onClose,
+  onAskAi,
+}) {
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[1px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="live-speed-probe-title"
+    >
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-5 py-4">
+          <div className="min-w-0">
+            <h2 id="live-speed-probe-title" className="text-base font-semibold text-white">
+              Live ERP Speed probe
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              {busy
+                ? "Streaming each probe step…"
+                : logs.length
+                  ? `${logs.length} line(s) · probe finished`
+                  : "Waiting for output…"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-violet-500/60 bg-violet-600/20 px-3 py-1.5 text-sm text-violet-100 hover:bg-violet-600/30 disabled:opacity-40"
+              onClick={onAskAi}
+              disabled={busy || advising || logs.length === 0}
+            >
+              {advising ? "Asking AI…" : "Ask Centrix AI"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+              onClick={onClose}
+              disabled={busy}
+            >
+              {busy ? "Running…" : "Close"}
+            </button>
+          </div>
+        </div>
+        <div className="min-h-[220px] flex-1 overflow-y-auto px-5 py-4 font-mono text-xs leading-relaxed">
+          {logs.length === 0 ? (
+            <p className="text-slate-500">Waiting for probe…</p>
+          ) : (
+            logs.map((line) => (
+              <div
+                key={line.id}
+                className={
+                  line.tone === "error"
+                    ? "text-rose-300"
+                    : line.tone === "ok"
+                      ? "text-emerald-300"
+                      : line.tone === "warn"
+                        ? "text-amber-200"
+                        : "text-slate-200"
+                }
+              >
+                <span className="mr-2 text-slate-500">[{line.at}]</span>
+                {line.message}
+              </div>
+            ))
+          )}
+          <div ref={logEndRef} />
+        </div>
+        {advice ? (
+          <div className="border-t border-slate-800 bg-slate-900/80 px-5 py-4 text-sm text-slate-100">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+              Centrix AI · {advice.source === "ai" ? "AI" : "Rules"}
+              {advice.urgency ? ` · ${advice.urgency}` : ""}
+            </p>
+            <p className="mt-1 font-medium text-white">{advice.headline}</p>
+            {advice.note ? <p className="mt-1 text-xs text-amber-200/90">{advice.note}</p> : null}
+            {(advice.findings ?? []).length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-300">
+                {advice.findings.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            ) : null}
+            {(advice.actions ?? []).length > 0 ? (
+              <>
+                <p className="mt-3 text-xs font-semibold text-slate-400">Suggested actions</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-slate-300">
+                  {advice.actions.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -129,6 +243,21 @@ export default function PlatformSpeedPage() {
   const [tabData, setTabData] = useState(null);
   const [clientProbe, setClientProbe] = useState(null);
   const [synthBusy, setSynthBusy] = useState(false);
+  const [probeOpen, setProbeOpen] = useState(false);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [probeAdvising, setProbeAdvising] = useState(false);
+  const [probeLogs, setProbeLogs] = useState([]);
+  const [probeAdvice, setProbeAdvice] = useState(null);
+  const [probeSummary, setProbeSummary] = useState(null);
+  const probeLogEndRef = useRef(null);
+
+  const appendProbeLog = useCallback((message, tone = "info") => {
+    if (!message) return;
+    setProbeLogs((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${prev.length}`, at: stamp(), message, tone },
+    ]);
+  }, []);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -204,6 +333,84 @@ export default function PlatformSpeedPage() {
     }
   }
 
+  useEffect(() => {
+    if (probeOpen && probeLogEndRef.current) {
+      probeLogEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [probeLogs, probeOpen]);
+
+  async function runLiveProbe() {
+    setProbeOpen(true);
+    setProbeBusy(true);
+    setProbeAdvice(null);
+    setProbeSummary(null);
+    setProbeLogs([]);
+    appendProbeLog("Opening live probe stream…", "info");
+    try {
+      const done = await platformSpeedProbeStream({
+        range,
+        onEvent: (event) => {
+          if (!event?.message) return;
+          const tone =
+            event.event === "error"
+              ? "error"
+              : event.ok === false
+                ? "error"
+                : event.ok === true || event.phase === "done"
+                  ? "ok"
+                  : "info";
+          appendProbeLog(event.message, tone);
+        },
+      });
+      if (done?.summary) {
+        setProbeSummary(done.summary);
+        if (done.summary.status) {
+          setResult((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: done.summary.status,
+                  latency_probe: done.summary.latency_probe ?? prev.latency_probe,
+                  health: done.summary.health ?? prev.health,
+                  slow_queries: done.summary.slow_queries ?? prev.slow_queries,
+                }
+              : prev,
+          );
+        }
+      }
+      notifySuccess("Live probe finished.");
+    } catch (e) {
+      appendProbeLog(e instanceof ApiError ? e.message : "Live probe failed.", "error");
+      notifyError(e instanceof ApiError ? e.message : "Live probe failed.");
+    } finally {
+      setProbeBusy(false);
+    }
+  }
+
+  async function askProbeAi() {
+    if (!probeSummary && probeLogs.length === 0) return;
+    setProbeAdvising(true);
+    try {
+      const res = await apiRequest("/admin/platform-speed/advise", {
+        method: "POST",
+        body: {
+          summary: probeSummary ?? {
+            status: result?.status,
+            latency_probe: result?.latency_probe,
+            api: result?.api,
+            slow_issues: result?.slow_issues,
+          },
+          log_excerpt: probeLogs.map((l) => `[${l.at}] ${l.message}`).join("\n").slice(0, 11000),
+        },
+      });
+      setProbeAdvice(res.advice ?? null);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "AI advice failed.");
+    } finally {
+      setProbeAdvising(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="ERP Speed"
@@ -230,13 +437,34 @@ export default function PlatformSpeedPage() {
             <span className={`h-1.5 w-1.5 rounded-full ${monitoringOn ? "bg-emerald-500" : "bg-slate-400"}`} />
             {monitoringOn ? "Monitoring Active" : "Monitoring Off"}
           </span>
-          <PrimaryButton type="button" showIcon={false} onClick={() => void loadOverview()} disabled={loading}>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={probeBusy || loading}
+            onClick={() => void runLiveProbe()}
+          >
+            {probeBusy ? "Probing…" : "Live probe"}
+          </button>
+          <PrimaryButton type="button" showIcon={false} onClick={() => void loadOverview()} disabled={loading || probeBusy}>
             {loading ? "Measuring…" : "Measure"}
           </PrimaryButton>
         </div>
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "ERP Speed" }]} />
+
+      <LiveSpeedProbeModal
+        open={probeOpen}
+        busy={probeBusy}
+        advising={probeAdvising}
+        logs={probeLogs}
+        logEndRef={probeLogEndRef}
+        advice={probeAdvice}
+        onClose={() => {
+          if (!probeBusy) setProbeOpen(false);
+        }}
+        onAskAi={() => void askProbeAi()}
+      />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
         {TABS.map((t) => (
@@ -257,11 +485,19 @@ export default function PlatformSpeedPage() {
 
       {tab === "overview" ? (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <button
+            type="button"
+            className="flex flex-wrap items-center gap-2 text-left text-sm text-slate-600 hover:text-slate-900"
+            onClick={() => void runLiveProbe()}
+            title="Open live probe log"
+          >
             <StatusBadge status={result?.status} />
-            <span>Probe {formatMs(result?.server_ms)}</span>
+            <span className="underline decoration-slate-300 underline-offset-2">
+              Probe {formatMs(result?.server_ms)}
+            </span>
             {clientProbe ? <span>· Client RTT {formatMs(clientProbe.clientRttMs)}</span> : null}
-          </div>
+            <span className="text-xs font-medium text-[#185FA5]">· Live log</span>
+          </button>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard label="API p50" value={formatMs(api.p50)} hint={api.request_count ? `${api.request_count} req` : "No aggregates yet"} />
