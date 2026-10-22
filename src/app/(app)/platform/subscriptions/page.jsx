@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -95,15 +96,57 @@ function SubscriptionInvoiceCell({ label, invoice, onView }) {
 
 function SubscriptionActionsMenu({ items }) {
   const [open, setOpen] = useState(false);
+  const [menuBox, setMenuBox] = useState(null);
   const rootRef = useRef(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
   const visible = items.filter(Boolean);
+
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuBox(null);
+      return undefined;
+    }
+
+    function updatePosition() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 208; // w-52
+      const gap = 4;
+      const estimatedHeight = Math.min(visible.length * 36 + 8, 320);
+      const spaceBelow = window.innerHeight - rect.bottom - gap;
+      const spaceAbove = rect.top - gap;
+      const openUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+      const left = Math.min(
+        Math.max(8, rect.right - menuWidth),
+        window.innerWidth - menuWidth - 8,
+      );
+      setMenuBox({
+        left,
+        width: menuWidth,
+        top: openUp ? undefined : rect.bottom + gap,
+        bottom: openUp ? window.innerHeight - rect.top + gap : undefined,
+        maxHeight: Math.max(160, openUp ? spaceAbove : spaceBelow),
+      });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, visible.length]);
 
   useEffect(() => {
     if (!open) return undefined;
     function onDoc(event) {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
+      const target = event.target;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
     }
     function onKey(event) {
       if (event.key === "Escape") setOpen(false);
@@ -118,9 +161,49 @@ function SubscriptionActionsMenu({ items }) {
 
   if (visible.length === 0) return null;
 
+  const menu =
+    open && menuBox && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{
+              position: "fixed",
+              left: menuBox.left,
+              width: menuBox.width,
+              top: menuBox.top,
+              bottom: menuBox.bottom,
+              maxHeight: menuBox.maxHeight,
+              zIndex: 80,
+            }}
+            className="overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          >
+            {visible.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50 ${
+                  item.tone === "danger" ? "text-red-600" : "text-slate-700"
+                }`}
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick?.();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="relative inline-flex justify-end" ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
         aria-expanded={open}
@@ -129,30 +212,7 @@ function SubscriptionActionsMenu({ items }) {
       >
         Actions
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {visible.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50 ${
-                item.tone === "danger" ? "text-red-600" : "text-slate-700"
-              }`}
-              onClick={() => {
-                setOpen(false);
-                item.onClick?.();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {menu}
     </div>
   );
 }
