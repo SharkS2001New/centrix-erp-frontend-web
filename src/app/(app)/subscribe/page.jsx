@@ -248,7 +248,7 @@ export default function SubscribePage() {
         const status = await apiRequest(`/erp/organization/licence/status?checkout_id=${checkoutId}`);
         if (status.status === "paid") {
           if (await leaveIfPaid(status.license)) return;
-          const next = await refreshCapabilities({ force: true });
+      const next = await refreshCapabilities({ force: true });
           if (await leaveIfPaid(next?.license ?? next?.subscription)) return;
         }
         setNotice(status.message || "M-Pesa has not confirmed this payment yet.");
@@ -509,11 +509,11 @@ function CheckoutStep({
         : "Monthly subscription";
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
-  return (
+              return (
     <div>
       <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
         {backLabel}
-      </button>
+                </button>
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
           <h2 className="theme-heading text-sm font-medium">Pay with</h2>
@@ -528,7 +528,7 @@ function CheckoutStep({
             <div className={fieldClass}>
               <dt className="theme-subtext text-xs">Paybill</dt>
               <dd className="theme-heading mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
-            </div>
+        </div>
             <div className={fieldClass}>
               <dt className="theme-subtext text-xs">Account</dt>
               <dd className="theme-heading mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>

@@ -779,8 +779,8 @@ export default function SelfServePlansPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+                      <button
+                        type="button"
             role="switch"
             aria-checked={policy?.tokens_enabled !== false}
             disabled={!policy || tokenBusy}
@@ -790,7 +790,7 @@ export default function SelfServePlansPage() {
             }`}
           >
             {policy?.tokens_enabled !== false ? "On" : "Off"}
-          </button>
+                      </button>
           <button
             type="button"
             className="text-sm font-medium text-[#185FA5] disabled:text-slate-400"
@@ -798,9 +798,9 @@ export default function SelfServePlansPage() {
             onClick={previewTokenPayment}
           >
             Preview token payment
-          </button>
+                      </button>
         </div>
-      </div>
+          </div>
 
       <PlanPreview
         industryFilter={industryFilter}

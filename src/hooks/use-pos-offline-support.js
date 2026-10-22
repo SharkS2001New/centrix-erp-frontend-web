@@ -310,7 +310,7 @@ export function usePosOfflineSupport({
                 .catch(() => {
                   const total = Number(progress.total ?? 0);
                   const remaining = Math.max(0, total - Number(progress.done ?? 0));
-                  setPendingSync(remaining);
+              setPendingSync(remaining);
                 });
             }
           },
@@ -365,7 +365,7 @@ export function usePosOfflineSupport({
             message: emptyMessage,
           });
           if (pendingLeft <= 0) {
-            notifySuccess("No offline orders waiting to sync.");
+          notifySuccess("No offline orders waiting to sync.");
           } else if (!/no offline orders waiting to sync/i.test(emptyMessage)) {
             notifyError(emptyMessage);
           }
@@ -576,7 +576,7 @@ export function usePosOfflineSupport({
       }
       await refreshCounts();
       if (cancelled) return;
-      void prepare();
+    void prepare();
       const canFlush = await probeCanFlushOutbox();
       if (!canFlush || cancelled) return;
       if (await shouldAttemptBackgroundOutboxFlush()) {

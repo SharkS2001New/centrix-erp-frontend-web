@@ -982,8 +982,8 @@ export function PlatformAiTrainingScreen() {
                   <label className="block text-sm">
                     <span className="theme-heading mb-1 block font-medium">Module scope</span>
                     <SearchableSelect
-                      className={inputClassName()}
-                      value={form.workspace_id}
+  className={inputClassName()}
+  value={form.workspace_id}
   nativeEvent
                       onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
                         options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
@@ -1091,8 +1091,8 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
                 <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
                 <SearchableSelect
-                  className={`${inputClassName()} px-2 py-1 text-xs`}
-                  value={filterWorkspace}
+  className={`${inputClassName()} px-2 py-1 text-xs`}
+  value={filterWorkspace}
   nativeEvent
                   onChange={(e) => setFilterWorkspace(e.target.value)}
                   options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({
@@ -1359,8 +1359,8 @@ A: Enable Sell on retail, then configure /retail-package-settings.`}
               <label className="mt-3 block max-w-md text-sm">
                 <span className="theme-heading mb-1 block font-medium">Sample data organization</span>
                 <SearchableSelect
-                  className={inputClassName()}
-                  value={previewOrgId}
+  className={inputClassName()}
+  value={previewOrgId}
   nativeEvent
   onChange={((e) => setPreviewOrgId(e.target.value))}
   options={tenantOrgs.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}

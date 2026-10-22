@@ -122,7 +122,7 @@ function openHotelReceiptPrintWindow() {
 }
 
 async function printCheckReceiptSafe(
-  check,
+      check,
   { title, organization, capabilities, user, checkPrintSettings, printWindow = null } = {},
 ) {
   try {
@@ -725,9 +725,9 @@ export function HotelBarPosScreen() {
                   /* ignore */
                 }
               })();
-              return;
-            }
-            const res = await fetchHotelPosCatalog({
+          return;
+        }
+        const res = await fetchHotelPosCatalog({
           q,
           perPage: catalogLimit,
           popularDays: 5,
@@ -986,9 +986,9 @@ export function HotelBarPosScreen() {
     const next = opened?.check ?? null;
     if (apply) {
       commitCheck(next);
-      setSelectedLineId(null);
+    setSelectedLineId(null);
       setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
-      resetRoomChargeSelection();
+    resetRoomChargeSelection();
     }
     return next;
   }
@@ -1053,8 +1053,8 @@ export function HotelBarPosScreen() {
     if (!product?.product_code || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
-      return;
-    }
+        return;
+      }
 
     if (product.is_room || menuGroup === "rooms") {
       if (!(Number(product.nightly_rate ?? product.unit_price) > 0)) {
@@ -1086,7 +1086,7 @@ export function HotelBarPosScreen() {
       void idbSaveLocalCheck({ ...next, id: "active" }).catch((err) =>
         notifyError(dedupeError(err)),
       );
-      if (showGuestField && String(guestNameDraft ?? "").trim()) {
+        if (showGuestField && String(guestNameDraft ?? "").trim()) {
         void patchLocalHotelCheck(next, { guest_name: guestNameDraft.trim() })
           .then((saved) => {
             checkRef.current = saved;
@@ -1094,8 +1094,8 @@ export function HotelBarPosScreen() {
           })
           .catch(() => {});
       }
-      return;
-    }
+        return;
+      }
 
     lineAddQueueRef.current.push(catalog);
     void flushServerLineAdds();
@@ -1170,7 +1170,7 @@ export function HotelBarPosScreen() {
       notifySuccess(
         `Room ${roomNumber} · ${nights} night${nights === 1 ? "" : "s"} added — collect payment to print`,
       );
-      void loadCatalog(debouncedSearch, { offset: 0, append: false });
+        void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -1619,9 +1619,9 @@ export function HotelBarPosScreen() {
           checkNumber: next?.check_number ?? "",
           total: next?.total,
           message:
-            roomPaid && roomLabel
+          roomPaid && roomLabel
               ? `Charged to ${roomLabel} · ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`
-              : `Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`,
+            : `Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`,
         });
         if (menuGroup === "rooms") {
           void loadCatalog(debouncedSearch, { offset: 0, append: false });
@@ -1670,10 +1670,10 @@ export function HotelBarPosScreen() {
       status === "void"
         ? "VOID ORDER"
         : status === "paid" || status === "settled"
-          ? "Paid receipt"
-          : status === "partial" || status === "partially_paid"
-            ? "Partial payment"
-            : "Unpaid order";
+        ? "Paid receipt"
+        : status === "partial" || status === "partially_paid"
+          ? "Partial payment"
+          : "Unpaid order";
     await printCheckReceiptSafe(lastReceiptCheck, {
       title,
       organization,
@@ -1980,11 +1980,11 @@ export function HotelBarPosScreen() {
                 <div className="hotel-pos-catalog-grid grid gap-2 sm:gap-3" style={gridStyle}>
                   {products.map((product) => (
                     <HotelPosCatalogTile
-                      key={product.product_code || product.id}
+                        key={product.product_code || product.id}
                       product={product}
                       isRoom={Boolean(product.is_room || menuGroup === "rooms")}
-                      disabled={busy}
-                      offlineMode={offlineMode}
+                        disabled={busy}
+                              offlineMode={offlineMode}
                       onTap={onCatalogTap}
                     />
                   ))}
@@ -2278,14 +2278,14 @@ export function HotelBarPosScreen() {
                 >
                   Hold
                 </button>
-                <button
-                  type="button"
-                  disabled={busy || !hasLines}
-                  onClick={() => void handlePrimaryComplete()}
+              <button
+                type="button"
+                disabled={busy || !hasLines}
+                onClick={() => void handlePrimaryComplete()}
                   className="hotel-pos-primary-cta rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-40 sm:py-3.5 sm:text-sm"
-                >
-                  {primaryCtaLabel}
-                </button>
+              >
+                {primaryCtaLabel}
+              </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2 sm:gap-2.5">

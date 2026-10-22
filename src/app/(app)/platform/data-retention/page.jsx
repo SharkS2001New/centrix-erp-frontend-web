@@ -279,8 +279,8 @@ export default function PlatformDataRetentionPage() {
 
     try {
       const body = {
-        dry_run: dryRun,
-        optimize_tables: !dryRun && optimizeTables,
+          dry_run: dryRun,
+          optimize_tables: !dryRun && optimizeTables,
       };
       if (days != null) body.days = days;
       if (rowLimit != null) body.max_rows = rowLimit;
@@ -717,10 +717,10 @@ export default function PlatformDataRetentionPage() {
                             </p>
                           ) : null}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{row.mb}</td>
                         <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
-                          {Number(row.rows || 0).toLocaleString()}
-                        </td>
+                        {Number(row.rows || 0).toLocaleString()}
+                      </td>
                         <td className="py-2 pr-3 text-right">
                           {target ? (
                             <input
@@ -760,7 +760,7 @@ export default function PlatformDataRetentionPage() {
                             </button>
                           </div>
                         </td>
-                      </tr>
+                    </tr>
                     );
                   })}
                 </tbody>

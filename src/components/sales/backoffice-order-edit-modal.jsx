@@ -286,15 +286,15 @@ export function ModernBackofficeOrderEditModal({
           return line;
         }
         if (line.id == null) {
-          const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
-            asRetail,
-            routeMarkupPerUnit,
-            cashRound: enablePosCashRounding,
-          });
-          return {
-            ...rebuilt,
-            clientKey: line.clientKey,
-            draftDiscount: line.draftDiscount,
+        const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
+          asRetail,
+          routeMarkupPerUnit,
+          cashRound: enablePosCashRounding,
+        });
+        return {
+          ...rebuilt,
+          clientKey: line.clientKey,
+          draftDiscount: line.draftDiscount,
           };
         }
         return {
@@ -347,7 +347,7 @@ export function ModernBackofficeOrderEditModal({
       );
       setPendingFocusQtyKey(focusKey);
       setAddProductCode("");
-        return;
+      return;
     }
 
     const newLine = buildNewDraftLine(product, uomById, packages, {
@@ -433,8 +433,8 @@ export function ModernBackofficeOrderEditModal({
       removedIds,
       customerNum,
       baselineCustomerNum,
-      uomById,
-      retailByCode,
+            uomById,
+            retailByCode,
       discountEditEnabled,
     });
     if (bodyOrError.error) {
@@ -660,135 +660,135 @@ export function ModernBackofficeOrderEditModal({
                   ) : null}
                 </div>
               ) : null}
-            <table className="w-full border-collapse text-sm">
+              <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
                   <th className="px-3 py-2">Item</th>
-                    {retailPricingEnabled ? <th className="w-28 px-3 py-2">Type</th> : null}
+                  {retailPricingEnabled ? <th className="w-28 px-3 py-2">Type</th> : null}
                   <th className="w-28 px-3 py-2 text-right">Qty</th>
                   <th className="w-32 px-3 py-2 text-right">Unit price</th>
-                    {discountEditEnabled ? (
-                      <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
+                  {discountEditEnabled ? (
+                    <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
                   ) : null}
                   <th className="w-32 px-3 py-2 text-right">Amount</th>
-                    <th className="w-12 px-2 py-2 text-center">
-                      <span className="sr-only">Remove</span>
-                    </th>
+                  <th className="w-12 px-2 py-2 text-center">
+                    <span className="sr-only">Remove</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                    {lines.map((line) => {
-                    const key = lineKey(line);
-                    const changeKind = lineChangeKind(line, baselineByKey);
-                    const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
-                      discountEditEnabled,
-                      cashRound: enablePosCashRounding,
-                    });
-                    const amount = priced.amount;
-                    const unitPrice = priced.unitPrice;
-                    const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
+                {lines.map((line) => {
+                  const key = lineKey(line);
+                  const changeKind = lineChangeKind(line, baselineByKey);
+      const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
+        discountEditEnabled,
+        cashRound: enablePosCashRounding,
+      });
+                  const amount = priced.amount;
+                  const unitPrice = priced.unitPrice;
+                  const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
                     const canTogglePricing = retailPricingEnabled && allowsRetail;
 
-                      return (
-                      <tr
-                        key={key}
-                        className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
-                      >
-                        <td className="px-3 py-2.5 text-slate-800 dark:text-slate-100">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span>{lineLabel(line)}</span>
-                            {changeKind === "new" ? (
-                              <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
-                                New
-                              </span>
-                            ) : null}
-                            {changeKind === "edited" ? (
-                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/70 dark:text-amber-200">
-                                Edited
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        {retailPricingEnabled ? (
-                          <td className="px-3 py-2.5">
-                            {canTogglePricing ? (
+                  return (
+                    <tr
+                      key={key}
+                      className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
+                    >
+                      <td className="px-3 py-2.5 text-slate-800 dark:text-slate-100">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{lineLabel(line)}</span>
+                          {changeKind === "new" ? (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
+                              New
+                            </span>
+                          ) : null}
+                          {changeKind === "edited" ? (
+                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/70 dark:text-amber-200">
+                              Edited
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      {retailPricingEnabled ? (
+                        <td className="px-3 py-2.5">
+                          {canTogglePricing ? (
                               <SearchableSelect
-                                value={isRetailLine(line) ? "retail" : "wholesale"}
-                                disabled={saving}
+                              value={isRetailLine(line) ? "retail" : "wholesale"}
+                              disabled={saving}
                                 onChange={(value) =>
                                   updateLinePricingMode(key, value === "retail")
-                                }
+                              }
                                 options={[
                                   { value: "wholesale", label: "Wholesale" },
                                   { value: "retail", label: "Retail" },
                                 ]}
-                                className={`${inputClassName()} w-full min-w-[6.5rem] text-xs`}
+                              className={`${inputClassName()} w-full min-w-[6.5rem] text-xs`}
                               />
-                            ) : (
-                              <span
-                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                                  isRetailLine(line)
-                                    ? "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
-                                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                                }`}
-                                title={
-                                  line.id == null && !allowsRetail
-                                    ? "This product has wholesale pricing only"
-                                    : undefined
-                                }
-                              >
-                                {posCartLineTypeLabel(line)}
-                              </span>
-                            )}
-                          </td>
-                        ) : null}
+                          ) : (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                                isRetailLine(line)
+                                  ? "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
+                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              }`}
+                              title={
+                                line.id == null && !allowsRetail
+                                  ? "This product has wholesale pricing only"
+                                  : undefined
+                              }
+                            >
+                              {posCartLineTypeLabel(line)}
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2.5 text-right">
                         <input
-                            ref={(el) => {
-                              if (el) qtyInputRefs.current.set(key, el);
-                              else qtyInputRefs.current.delete(key);
-                            }}
+                          ref={(el) => {
+                            if (el) qtyInputRefs.current.set(key, el);
+                            else qtyInputRefs.current.delete(key);
+                          }}
                           type="number"
                           min="0.0001"
                           step="any"
-                            value={line.draftQty ?? ""}
+                          value={line.draftQty ?? ""}
                           disabled={saving}
-                            onChange={(e) => updateQty(key, e.target.value)}
+                          onChange={(e) => updateQty(key, e.target.value)}
                           className={`${inputClassName()} w-24 text-right text-sm`}
                           aria-label={`Quantity for ${lineLabel(line)}`}
                         />
                       </td>
-                        <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
+                      <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
                         {formatSaleKes(unitPrice)}
                       </td>
-                        {discountEditEnabled ? (
-                            <td className="px-3 py-2.5 text-right">
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={line.draftDiscount ?? 0}
-                                disabled={saving}
-                              onChange={(e) => updateDiscount(key, e.target.value)}
-                                className={`${inputClassName()} w-28 text-right text-sm`}
-                                aria-label={`Discount for ${lineLabel(line)}`}
-                              />
-                            </td>
-                          ) : null}
-                        <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
+                      {discountEditEnabled ? (
+                        <td className="px-3 py-2.5 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={line.draftDiscount ?? 0}
+                            disabled={saving}
+                            onChange={(e) => updateDiscount(key, e.target.value)}
+                            className={`${inputClassName()} w-28 text-right text-sm`}
+                            aria-label={`Discount for ${lineLabel(line)}`}
+                          />
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
                         {formatSaleKes(amount)}
                       </td>
-                        <td className="px-2 py-2.5 text-center">
-                          <button
-                            type="button"
-                            disabled={saving || lines.length <= 1}
-                            onClick={() => removeLine(line)}
-                            className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
-                            aria-label={`Remove ${lineLabel(line)}`}
-                            title="Remove item"
-                          >
-                            <TrashIcon />
-                          </button>
+                      <td className="px-2 py-2.5 text-center">
+                        <button
+                          type="button"
+                          disabled={saving || lines.length <= 1}
+                          onClick={() => removeLine(line)}
+                          className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
+                          aria-label={`Remove ${lineLabel(line)}`}
+                          title="Remove item"
+                        >
+                          <TrashIcon />
+                        </button>
                       </td>
                     </tr>
                   );

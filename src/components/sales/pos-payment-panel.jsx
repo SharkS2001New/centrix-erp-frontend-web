@@ -783,9 +783,9 @@ export function PosPaymentPanel({
     const paymentSplits = creditSale
       ? []
       : alignPaymentSplitsToPayNow(
-          buildCheckoutPaymentSplits(cfg, tenderAmounts),
+      buildCheckoutPaymentSplits(cfg, tenderAmounts),
           adjustmentMode ? paid : payNow + cartMpesa,
-        );
+    );
     const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
       changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, paid - confirmedTotal),
       amountPaid: creditSale ? 0 : paid,
@@ -863,8 +863,8 @@ export function PosPaymentPanel({
     // Credit customer + full C/M/E/K tender → not credit; validate like a cash sale.
     if (hasCreditCustomer) {
       if (showCreditPaymentField && !creditCustomer) {
-        return "Select a valid credit customer.";
-      }
+      return "Select a valid credit customer.";
+    }
       const creditSale = isCheckoutCreditSale({
         hasCreditCustomer,
         amountPaid: paid,
@@ -1703,16 +1703,16 @@ export function PosPaymentPanel({
   }, [open, step, autoContinueAfterPrint, receiptPrintStatus]);
 
   useEffect(() => {
-  enterActionRef.current = (e) => {
-    if (e.key !== "Enter" || saving || step === "saving") return;
-    if (step === "complete") {
+    enterActionRef.current = (e) => {
+      if (e.key !== "Enter" || saving || step === "saving") return;
+      if (step === "complete") {
         if (receiptPrintStatus === "pending") return;
         if (autoContinueAfterPrint && receiptPrintStatus !== "failed") return;
-      e.preventDefault();
+        e.preventDefault();
         void handleOrderCompleteOk();
-      return;
-    }
-    if (step === "customerName") {
+        return;
+      }
+      if (step === "customerName") {
         // Let PosSearchableSelect handle Enter while picking from search results.
         const active = document.activeElement;
         if (
@@ -1721,17 +1721,17 @@ export function PosPaymentPanel({
         ) {
           return;
         }
-      e.preventDefault();
-      handleCustomerNameContinue();
-      return;
-    }
-    if (step === "confirm") {
-      e.preventDefault();
-      handleConfirmYes();
-      return;
-    }
+        e.preventDefault();
+        handleCustomerNameContinue();
+        return;
+      }
+      if (step === "confirm") {
+        e.preventDefault();
+        handleConfirmYes();
+        return;
+      }
       // Payment step: Enter only prefills amounts in field handlers — Page Down completes.
-  };
+    };
   });
 
   useEffect(() => {
@@ -1918,26 +1918,26 @@ export function PosPaymentPanel({
 
         {customerNameMode === "walkin" ? (
           <>
-        <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
-        <PosField label="Customer name">
-          <input
-            ref={walkInNameRef}
-            type="text"
-            className={inputCls}
-            value={walkInCustomerName}
-            onChange={(e) => {
-              setWalkInCustomerName(e.target.value);
-              setLocalError(null);
-            }}
-            placeholder="Walk-in customer name"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleCustomerNameContinue();
-              }
-            }}
-          />
-        </PosField>
+            <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
+            <PosField label="Customer name">
+              <input
+                ref={walkInNameRef}
+                type="text"
+                className={inputCls}
+                value={walkInCustomerName}
+                onChange={(e) => {
+                  setWalkInCustomerName(e.target.value);
+                  setLocalError(null);
+                }}
+                placeholder="Walk-in customer name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCustomerNameContinue();
+                  }
+                }}
+              />
+            </PosField>
           </>
         ) : (
           <>
@@ -2107,8 +2107,8 @@ export function PosPaymentPanel({
               {kraFiscalize
                 ? "Centrix is submitting this receipt to KRA. Please wait — do not close this screen."
                 : stkPhase === "completing"
-                  ? "Please wait while the order is saved and the receipt is prepared."
-                  : "Please wait."}
+                ? "Please wait while the order is saved and the receipt is prepared."
+                : "Please wait."}
             </p>
           </div>
         )}
@@ -2413,7 +2413,7 @@ export function PosPaymentPanel({
             <dd className="text-[1.1025rem] font-semibold tabular-nums tracking-tight">
               {formatSaleKes(parseDecimalInput(mpesaAmount))}
             </dd>
-        </div>
+          </div>
         ) : null}
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Amount Paid</dt>

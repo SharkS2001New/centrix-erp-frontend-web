@@ -305,18 +305,18 @@ export function MpesaPaybillAccountsPanel({
 
                 return (
                   <tr
-                    key={row.id}
+                key={row.id}
                     className={`border-b border-[var(--theme-border)] ${
                       editingId === row.id ? "bg-sky-50/60 dark:bg-sky-950/20" : ""
                     }`}
-                  >
+              >
                     <td className="px-3 py-2 font-medium text-slate-900">
                       {row.name}
-                      {row.is_default ? (
+                  {row.is_default ? (
                         <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-800">
-                          Default
-                        </span>
-                      ) : null}
+                      Default
+                    </span>
+                  ) : null}
                     </td>
                     <td className="px-3 py-2 text-slate-700">{typeLabel(row)}</td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-800">{mainNumber}</td>
@@ -335,33 +335,33 @@ export function MpesaPaybillAccountsPanel({
                       {row.is_active === false ? "Inactive" : "Active"}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-[#185FA5]"
-                        onClick={() => startEdit(row)}
-                      >
-                        Edit
-                      </button>
-                      {!row.is_default ? (
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[#185FA5]"
+                    onClick={() => startEdit(row)}
+                  >
+                    Edit
+                  </button>
+                  {!row.is_default ? (
                         <>
                           <span className="mx-1 text-slate-300">·</span>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-red-600"
-                            disabled={saving}
-                            onClick={() => void remove(row)}
-                          >
-                            Remove
-                          </button>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-red-600"
+                      disabled={saving}
+                      onClick={() => void remove(row)}
+                    >
+                      Remove
+                    </button>
                         </>
-                      ) : null}
+                  ) : null}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+                </div>
       )}
 
       <h4 className="theme-heading mt-6 text-sm font-semibold">
@@ -413,21 +413,21 @@ export function MpesaPaybillAccountsPanel({
         ) : (
           <>
             <Field label="Paybill number">
-              <input
-                className={inputClassName()}
-                value={form.primary_short_code}
-                onChange={(e) => setForm((f) => ({ ...f, primary_short_code: e.target.value }))}
+          <input
+            className={inputClassName()}
+            value={form.primary_short_code}
+            onChange={(e) => setForm((f) => ({ ...f, primary_short_code: e.target.value }))}
                 placeholder="Business shortcode for C2B and STK"
-              />
-            </Field>
+          />
+        </Field>
             <Field label="Till number for STK (optional)">
-              <input
-                className={inputClassName()}
-                value={form.till_number}
-                onChange={(e) => setForm((f) => ({ ...f, till_number: e.target.value }))}
+          <input
+            className={inputClassName()}
+            value={form.till_number}
+            onChange={(e) => setForm((f) => ({ ...f, till_number: e.target.value }))}
                 placeholder="PartyB when different from paybill"
-              />
-            </Field>
+          />
+        </Field>
           </>
         )}
 

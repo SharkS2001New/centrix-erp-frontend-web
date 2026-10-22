@@ -500,13 +500,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           buildPageContext({ pathname, screenKey: workspaceId, voiceMode: fromVoice });
         const mergedFormValues = formValuesOverride ?? formValues;
         const requestBody = {
-          context: "erp",
-          workspace_id: workspaceId,
-          pathname,
+            context: "erp",
+            workspace_id: workspaceId,
+            pathname,
           page_context: Object.keys(effectivePageContext).length ? effectivePageContext : undefined,
-          message,
-          conversation_id: conversationId || undefined,
-          history,
+            message,
+            conversation_id: conversationId || undefined,
+            history,
           entity_refs: refsForSend.length ? refsForSend : undefined,
           // Keep create/write drafts across turns so "confirm" can POST (e.g. create_lpo).
           pending_action: pendingAction || undefined,
@@ -612,7 +612,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     return subscribeAiAssistRequests((request) => {
       setExpanded(false);
       if (request.openPanel !== false) {
-        setOpen(true);
+      setOpen(true);
       }
 
       if (request.pageContext) {
@@ -785,8 +785,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     m.role === "user"
                       ? `whitespace-pre-wrap ${
                           expanded
-                            ? "ml-16 bg-indigo-50 text-indigo-900"
-                            : "ml-8 bg-indigo-50 text-indigo-900"
+                        ? "ml-16 bg-indigo-50 text-indigo-900"
+                        : "ml-8 bg-indigo-50 text-indigo-900"
                         }`
                       : expanded
                         ? "mr-16 bg-slate-100 text-slate-800"
@@ -903,16 +903,16 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                     <p className="mt-1 text-xs text-emerald-800">{actionResult.note}</p>
                   ) : null}
                   {actionResult.path || actionResult.href ? (
-                    <Link
-                      href={actionResult.path || actionResult.href}
-                      className="mt-1 inline-block text-emerald-700 underline"
+                  <Link
+                    href={actionResult.path || actionResult.href}
+                    className="mt-1 inline-block text-emerald-700 underline"
                       onClick={(event) => {
                         event.preventDefault();
                         void navigateFromAi(actionResult.path || actionResult.href);
                       }}
-                    >
-                      {actionResult.path || actionResult.href}
-                    </Link>
+                  >
+                    {actionResult.path || actionResult.href}
+                  </Link>
                   ) : null}
                   {Array.isArray(actionResult.document_links) &&
                   actionResult.document_links.length > 0 ? (
@@ -996,8 +996,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             >
               <div className="min-w-0">
                 <EntityMentionTextarea
-                  rows={expanded ? 5 : 4}
-                  value={input}
+                rows={expanded ? 5 : 4}
+                value={input}
                   entityRefs={entityRefs}
                   disabled={loading}
                   placeholder={

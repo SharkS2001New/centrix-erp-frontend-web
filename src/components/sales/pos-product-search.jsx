@@ -370,9 +370,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (picksLocked) return;
     onSelect?.(product, { fromKeyboard: Boolean(opts.fromKeyboard) });
     setUserDismissed(true);
-    setOpen(false);
-    setHighlight(-1);
-    highlightCodeRef.current = null;
+      setOpen(false);
+      setHighlight(-1);
+      highlightCodeRef.current = null;
     if (classic) {
       // Parent parks the code and moves focus to qty (SearchLookUp → qty).
       return;

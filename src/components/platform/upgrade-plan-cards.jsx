@@ -482,18 +482,18 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
         <p className="theme-subtext mt-1 text-sm">{offer.plan.seat_limit} seat{Number(offer.plan.seat_limit) === 1 ? "" : "s"}</p>
       ) : null}
       {preview || canPay ? (
-        <button
-          type="button"
-          disabled={current}
-          onClick={() => {
-            if (!preview) onPay(offer);
-          }}
-          className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
-            preview ? "pointer-events-none" : ""
-          } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
-        >
-          {current ? "Your current plan" : "Get started"}
-        </button>
+      <button
+        type="button"
+        disabled={current}
+        onClick={() => {
+          if (!preview) onPay(offer);
+        }}
+        className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
+          preview ? "pointer-events-none" : ""
+        } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
+      >
+        {current ? "Your current plan" : "Get started"}
+      </button>
       ) : null}
       {features.length > 0 ? (
         <>

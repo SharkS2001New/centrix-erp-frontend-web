@@ -177,10 +177,10 @@ export function priorSaleTenderMap(sourceSale) {
         }
       } else {
         const code = codes[0] || "CASH";
-        if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa = paid;
+      if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa = paid;
         else if (code.includes("EQUITY") || code.includes("ECOBANK") || code === "ECO") equity = paid;
-        else if (code.includes("KCB")) kcb = paid;
-        else cash = paid;
+      else if (code.includes("KCB")) kcb = paid;
+      else cash = paid;
       }
     }
   }
@@ -236,36 +236,36 @@ export function reconcilePreviousOrderEditAdjustments(
       },
     ];
   } else {
-    const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+  const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
     if (Math.abs(sum - expectedAbs) < 0.02) {
       reconciled = rows;
     } else if (sum <= 0.009) {
       reconciled = [
-        {
-          method_code: rows[0].method_code,
-          amount: expectedAbs,
-          adjustment_type: type,
-          reference_number: rows[0].reference_number,
-        },
-      ];
+      {
+        method_code: rows[0].method_code,
+        amount: expectedAbs,
+        adjustment_type: type,
+        reference_number: rows[0].reference_number,
+      },
+    ];
     } else {
-      const factor = expectedAbs / sum;
-      const scaled = rows.map((row) => ({
-        ...row,
-        amount: Math.round(Number(row.amount) * factor * 100) / 100,
-      }));
-      const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-      const drift = Math.round((expectedAbs - scaledSum) * 100) / 100;
-      if (Math.abs(drift) >= 0.01 && scaled.length) {
-        let largest = 0;
-        scaled.forEach((row, i) => {
-          if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
-        });
-        scaled[largest] = {
-          ...scaled[largest],
-          amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
-        };
-      }
+  const factor = expectedAbs / sum;
+  const scaled = rows.map((row) => ({
+    ...row,
+    amount: Math.round(Number(row.amount) * factor * 100) / 100,
+  }));
+  const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+  const drift = Math.round((expectedAbs - scaledSum) * 100) / 100;
+  if (Math.abs(drift) >= 0.01 && scaled.length) {
+    let largest = 0;
+    scaled.forEach((row, i) => {
+      if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
+    });
+    scaled[largest] = {
+      ...scaled[largest],
+      amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
+    };
+  }
       reconciled = scaled.filter((row) => Number(row.amount) > 0.009);
     }
   }
@@ -413,23 +413,23 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
         },
       ];
     } else {
-      const factor = expected / sum;
-      const scaled = rows.map((row) => ({
-        ...row,
-        amount: Math.round(Number(row.amount) * factor * 100) / 100,
-      }));
-      const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
-      const drift = Math.round((expected - scaledSum) * 100) / 100;
-      if (Math.abs(drift) >= 0.01 && scaled.length) {
-        let largest = 0;
-        scaled.forEach((row, i) => {
-          if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
-        });
-        scaled[largest] = {
-          ...scaled[largest],
-          amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
-        };
-      }
+    const factor = expected / sum;
+    const scaled = rows.map((row) => ({
+      ...row,
+      amount: Math.round(Number(row.amount) * factor * 100) / 100,
+    }));
+    const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+    const drift = Math.round((expected - scaledSum) * 100) / 100;
+    if (Math.abs(drift) >= 0.01 && scaled.length) {
+      let largest = 0;
+      scaled.forEach((row, i) => {
+        if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
+      });
+      scaled[largest] = {
+        ...scaled[largest],
+        amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
+      };
+    }
       reconciled = scaled.filter((row) => Number(row.amount) > 0.009);
     }
     return normalizePaymentAdjustmentMethodCodes(reconciled);
@@ -661,14 +661,14 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
       priorPaid > 0.009 ? priorPaid : hasSourcePayments ? priorTenderSum : 0,
       target,
     );
-    const normalized = normalizePreviousOrderEditTenders(
-      { cash, mpesa, equity, kcb },
+  const normalized = normalizePreviousOrderEditTenders(
+    { cash, mpesa, equity, kcb },
       normalizeTarget,
-    );
-    const amountPaid =
-      Math.round(
-        (normalized.cash + normalized.mpesa + normalized.equity + normalized.kcb) * 100,
-      ) / 100;
+  );
+  const amountPaid =
+    Math.round(
+      (normalized.cash + normalized.mpesa + normalized.equity + normalized.kcb) * 100,
+    ) / 100;
     return {
       ...normalized,
       returnGiven,

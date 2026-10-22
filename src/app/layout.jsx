@@ -19,6 +19,7 @@ export const metadata = {
     capable: true,
     title: APP_TITLE,
   },
+  // Favicons: src/app/favicon.ico, icon.png, icon.svg, apple-icon.png
 };
 
 export default function RootLayout({ children }) {

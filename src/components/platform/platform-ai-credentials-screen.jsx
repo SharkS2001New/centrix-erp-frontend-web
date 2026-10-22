@@ -235,18 +235,18 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   const canTestOpenAi = openaiSaved;
 
   const body = (
-      <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
-        <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
-        <p className="mt-1 text-sm theme-subtext">
+    <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
+      <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
+      <p className="mt-1 text-sm theme-subtext">
         Chat assistant (and email / training) uses the saved Gemini or OpenAI-compatible key below — the radio is
         only a preference when both are saved. Talk uses its own keys in the Talk section: configure Gemini and/or
         ChatGPT Whisper independently. If a Talk provider is out of balance or rate-limited, the next configured
         Talk provider is tried automatically. Tenants may still add their own API key to override chat.
-        </p>
+      </p>
 
-        {loading ? (
-          <p className="mt-4 text-sm theme-subtext">Loading…</p>
-        ) : (
+      {loading ? (
+        <p className="mt-4 text-sm theme-subtext">Loading…</p>
+      ) : (
         <div className="mt-5 space-y-6">
           {geminiSaved || openaiSaved ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -296,14 +296,14 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             </div>
           </div>
 
-            <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={aiForm.enabled}
-                onChange={(e) => setAiForm((f) => ({ ...f, enabled: e.target.checked }))}
-              />
-              <span>
+          <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={aiForm.enabled}
+              onChange={(e) => setAiForm((f) => ({ ...f, enabled: e.target.checked }))}
+            />
+            <span>
               <span className="block text-sm font-medium theme-heading">
                 Enable platform AI tools (email assist &amp; training)
               </span>
@@ -409,8 +409,8 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
                   <SavedKeyField
                     label="Talk Gemini API key (optional)"
                     value={aiForm.talk_gemini_api_key}
@@ -526,10 +526,10 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 />
               </div>
                 <Field label="Model (optional)">
-                  <input
-                    className={inputClassName()}
-                    value={aiForm.model}
-                    onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
+                <input
+                  className={inputClassName()}
+                  value={aiForm.model}
+                  onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
                   placeholder="gpt-4o-mini — or provider model e.g. llama-3.3-70b-versatile"
                 />
               </Field>
@@ -549,7 +549,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           ) : null}
 
           {showGemini ? (
-            <div className="border-t pt-5">
+          <div className="border-t pt-5">
               <h3 className="text-sm font-semibold theme-heading">
                 {freeProvider === "gemini"
                   ? "Gemini credentials"
@@ -557,15 +557,15 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                     ? "Gemini credentials (saved)"
                     : "Gemini credentials (optional)"}
               </h3>
-              <p className="mt-1 text-xs theme-subtext">
+            <p className="mt-1 text-xs theme-subtext">
                 {freeProvider === "gemini"
                   ? "Required for free tenant Gemini and for platform email/training when that key is the one in use."
                   : geminiSaved
                     ? "Saved on this platform. Used automatically if OpenAI is not available."
                     : "Stored for later; free AI remains OpenAI until you switch."}
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
                   <SavedKeyField
                     label="Gemini API key"
                     value={aiForm.gemini_api_key}
@@ -574,17 +574,17 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                     placeholder="AQ.… or AIza…"
                     onChange={(e) => setAiForm((f) => ({ ...f, gemini_api_key: e.target.value }))}
                   />
-                </div>
-                <Field label="Gemini model (optional)">
-                  <input
-                    className={inputClassName()}
-                    value={aiForm.gemini_model}
-                    onChange={(e) => setAiForm((f) => ({ ...f, gemini_model: e.target.value }))}
-                    placeholder="gemini-3.6-flash"
-                  />
-                </Field>
               </div>
+              <Field label="Gemini model (optional)">
+                <input
+                  className={inputClassName()}
+                  value={aiForm.gemini_model}
+                  onChange={(e) => setAiForm((f) => ({ ...f, gemini_model: e.target.value }))}
+                    placeholder="gemini-3.6-flash"
+                />
+              </Field>
             </div>
+          </div>
           ) : null}
 
           {testResult ? (
@@ -609,8 +609,8 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
 
           <div className="flex flex-wrap gap-3">
             <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={busy}>
-              {saving ? "Saving…" : "Save platform credentials"}
-            </PrimaryButton>
+            {saving ? "Saving…" : "Save platform credentials"}
+          </PrimaryButton>
             {showGemini ? (
               <button
                 type="button"
@@ -632,9 +632,9 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               </button>
             ) : null}
           </div>
-          </div>
-        )}
-      </section>
+        </div>
+      )}
+    </section>
   );
 
   if (embedded) {

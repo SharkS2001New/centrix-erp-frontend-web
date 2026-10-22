@@ -16,7 +16,7 @@ import { Card, DataTable, DayBoard, DrivingSelect, Empty, Field, FormCard, FormS
 function useLoad(loader, key) {
   const loaderRef = useRef(loader);
   useEffect(() => {
-    loaderRef.current = loader;
+  loaderRef.current = loader;
   });
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -370,7 +370,7 @@ function PackageFormScreen() {
           <Field label="Theory lessons"><input className={inputClass} type="number" min="0" value={pkg.theory_lessons} onChange={(e) => setPkg({ ...pkg, theory_lessons: Number(e.target.value) })} /></Field>
         </div>
         <RecordFormActions backHref="/driving-school/courses" submitLabel="Save package" />
-      </form>
+        </form>
     </RecordFormDialog>
   );
 }
@@ -445,7 +445,7 @@ function LessonFormScreen() {
     <RecordFormDialog title="Book a lesson" backHref="/driving-school/schedule">
       <form onSubmit={save}>
         <div className="grid gap-4 md:grid-cols-2">
-          <div>
+    <div>
             <FormSection title="Select student" />
             <div className="mt-3">
               <SearchField value={studentQuery} onChange={setStudentQuery} placeholder="Search students" />
@@ -465,20 +465,20 @@ function LessonFormScreen() {
             <FormSection title="Lesson details" />
             <Field label="Type">
               <DrivingSelect value={form.lesson_type} onChange={(e) => setForm({ ...form, lesson_type: e.target.value })} options={[{ value: "practical", label: "Practical" }, { value: "theory", label: "Theory" }]} />
-            </Field>
-            <Field label="Instructor">
+          </Field>
+          <Field label="Instructor">
               <DrivingSelect value={form.instructor_id} placeholder="Choose an instructor" onChange={(e) => setForm({ ...form, instructor_id: e.target.value })} options={[{ value: "", label: "Choose an instructor" }, ...instructors.map((row) => ({ value: String(row.id), label: row.full_name }))]} />
-            </Field>
-            <Field label="Vehicle">
+          </Field>
+          <Field label="Vehicle">
               <DrivingSelect value={form.vehicle_id} placeholder="No vehicle" onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })} options={[{ value: "", label: "No vehicle" }, ...vehicles.map((row) => ({ value: String(row.id), label: row.registration_number }))]} />
-            </Field>
-            <Field label="Starts"><input className={inputClass} required type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></Field>
+          </Field>
+          <Field label="Starts"><input className={inputClass} required type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></Field>
             <Field label="Duration (minutes)"><input className={inputClass} type="number" min="15" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></Field>
             <Field label="Location"><input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Yard, route, or classroom" /></Field>
           </div>
         </div>
         <RecordFormActions backHref="/driving-school/schedule" submitLabel="Book lesson" />
-      </form>
+        </form>
     </RecordFormDialog>
   );
 }
@@ -558,7 +558,7 @@ function DirectoryFormScreen({ title, path, fields, backHref }) {
           ))}
         </div>
         <RecordFormActions backHref={backHref} />
-      </form>
+        </form>
     </RecordFormDialog>
   );
 }
@@ -697,7 +697,7 @@ export function AttendanceScreen() {
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
+      <Card>
           <DataTable
             empty="No active students yet."
             rows={students}
@@ -747,7 +747,7 @@ export function AttendanceScreen() {
               ))}
             </ul>
           )}
-        </Card>
+      </Card>
       </div>
     </div>
   );
@@ -783,7 +783,7 @@ function AssessmentFormScreen() {
           <Field label="Date"><input className={inputClass} required type="date" value={form.assessed_on} onChange={(e) => setForm({ ...form, assessed_on: e.target.value })} /></Field>
         </div>
         <RecordFormActions backHref="/driving-school/assessments" submitLabel="Save assessment" />
-      </form>
+        </form>
     </RecordFormDialog>
   );
 }
@@ -869,7 +869,7 @@ function PaymentFormScreen() {
           <Field label="Reference"><input className={inputClass} value={payment.reference} onChange={(e) => setPayment({ ...payment, reference: e.target.value })} placeholder="Receipt or transaction code" /></Field>
         </div>
         <RecordFormActions backHref="/driving-school/payments" submitLabel="Record receipt" />
-      </form>
+        </form>
     </RecordFormDialog>
     {slip ? <ServiceReceiptDialog receipt={slip} paper={paper} onPaper={setPaper} onClose={() => exitTo("/driving-school/payments")} /> : null}
     </>
@@ -1107,7 +1107,7 @@ export function SettingsScreen({ embedded = false }) {
     <div>
       {embedded ? null : <PageTitle title="Driving School" subtitle="School name, lesson reminders, and the tools this school uses." />}
       <FormCard title="School" hint="Branches, users, and the audit trail stay on their Administration pages. Reminders stay queued until a messaging provider is connected." submitLabel="Save school settings" onSubmit={save}>
-        <Field label="School name"><input className={inputClass} value={form.school_name} onChange={(e) => setForm({ ...form, school_name: e.target.value })} /></Field>
+          <Field label="School name"><input className={inputClass} value={form.school_name} onChange={(e) => setForm({ ...form, school_name: e.target.value })} /></Field>
         <Field label="Reminder hours before a lesson"><input className={inputClass} type="number" min="1" max="168" value={form.reminder_hours} onChange={(e) => setForm({ ...form, reminder_hours: e.target.value })} /></Field>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-1" checked={form.sms_enabled} onChange={(e) => setForm({ ...form, sms_enabled: e.target.checked })} />
