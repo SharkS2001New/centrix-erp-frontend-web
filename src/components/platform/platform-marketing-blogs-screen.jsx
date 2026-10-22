@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ApiError } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, apiUpload } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -10,6 +10,7 @@ import {
   SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { MarketingBlogEditor } from "@/components/platform/marketing-blog-editor";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import {
@@ -20,6 +21,7 @@ import {
   getMarketingBlog,
   listMarketingBlogs,
   publishMarketingBlog,
+  purgeMarketingBlogCache,
   unpublishMarketingBlog,
   updateMarketingBlog,
 } from "@/lib/platform-blogs";
@@ -51,8 +53,17 @@ function StatusPill({ status }) {
   );
 }
 
+function bodyIsEmpty(html) {
+  const text = String(html || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+  return text === "";
+}
+
 export function PlatformMarketingBlogsScreen() {
   const confirm = useConfirm();
+  const coverInputRef = useRef(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +71,8 @@ export function PlatformMarketingBlogsScreen() {
   const [editingId, setEditingId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState(EMPTY_FORM);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +130,7 @@ export function PlatformMarketingBlogsScreen() {
   }
 
   async function savePost() {
-    if (!form.title.trim() || !form.body.trim()) {
+    if (!form.title.trim() || bodyIsEmpty(form.body)) {
       notifyError("Title and body are required.");
       return;
     }
@@ -127,7 +140,7 @@ export function PlatformMarketingBlogsScreen() {
         title: form.title.trim(),
         slug: form.slug.trim() || undefined,
         excerpt: form.excerpt.trim() || null,
-        body: form.body.trim(),
+        body: form.body,
         cover_image_url: form.cover_image_url.trim() || null,
         category: form.category || "general",
         author_name: form.author_name.trim() || null,
@@ -140,6 +153,7 @@ export function PlatformMarketingBlogsScreen() {
       } else {
         const res = await createMarketingBlog(payload);
         setEditingId(res?.data?.id ?? null);
+        if (res?.data?.slug) setForm((prev) => ({ ...prev, slug: res.data.slug }));
         notifySuccess("Blog draft created.");
       }
       await load();
@@ -196,10 +210,41 @@ export function PlatformMarketingBlogsScreen() {
     }
   }
 
+  async function uploadCover(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setCoverUploading(true);
+    try {
+      const res = await apiUpload("/admin/marketing-blogs/upload-image", file, "image", {
+        preset: "photo",
+      });
+      if (!res?.url) throw new Error("No URL returned.");
+      setForm((prev) => ({ ...prev, cover_image_url: res.url }));
+      notifySuccess("Cover image uploaded.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Cover upload failed.");
+    } finally {
+      setCoverUploading(false);
+    }
+  }
+
+  async function clearCaches() {
+    setPurging(true);
+    try {
+      await purgeMarketingBlogCache(form.slug || undefined);
+      notifySuccess("Blog caches cleared (API + website).");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not purge caches.");
+    } finally {
+      setPurging(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Marketing blogs"
-      description="Write and publish posts for the CentrixERP public Resources page. Drafts stay private until you publish."
+      description="Write posts with images for the CentrixERP Resources blog — same workflow as Pitch Predictions: compress on upload, publish, caches purge automatically."
       breadcrumb={
         <AdminBreadcrumb
           items={[
@@ -209,12 +254,17 @@ export function PlatformMarketingBlogsScreen() {
         />
       }
       actions={
-        <PrimaryButton type="button" onClick={startCreate}>
-          New post
-        </PrimaryButton>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={purging} onClick={() => void clearCaches()}>
+            {purging ? "Clearing…" : "Clear blog cache"}
+          </button>
+          <PrimaryButton type="button" onClick={startCreate}>
+            New post
+          </PrimaryButton>
+        </div>
       }
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <section className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-[var(--theme-text)]">Posts</h2>
@@ -233,55 +283,72 @@ export function PlatformMarketingBlogsScreen() {
             <p className="text-sm text-[var(--theme-muted)]">Loading…</p>
           ) : posts.length === 0 ? (
             <p className="text-sm text-[var(--theme-muted)]">
-              No blog posts yet. Create a draft, then publish it to the website Resources page.
+              No blog posts yet. Create a draft with a cover image, then publish it to Resources → Blog.
             </p>
           ) : (
-            <ul className="divide-y divide-[var(--theme-border)]">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {posts.map((post) => (
-                <li key={post.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
+                <li
+                  key={post.id}
+                  className="flex flex-col overflow-hidden rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)]"
+                >
+                  {post.cover_image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={post.cover_image_url}
+                      alt=""
+                      className="h-28 w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-28 items-center justify-center bg-[var(--theme-border)]/40 text-xs text-[var(--theme-muted)]">
+                      No cover
+                    </div>
+                  )}
+                  <div className="flex flex-1 flex-col gap-2 p-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-[var(--theme-text)]">{post.title}</p>
+                      <p className="line-clamp-2 text-sm font-semibold text-[var(--theme-text)]">{post.title}</p>
                       <StatusPill status={post.status} />
                     </div>
-                    <p className="mt-1 text-xs text-[var(--theme-muted)]">
-                      {blogCategoryLabel(post.category)} · /{post.slug}
+                    <p className="text-[11px] text-[var(--theme-muted)]">
+                      {blogCategoryLabel(post.category)}
+                      {post.read_time ? ` · ${post.read_time} min` : ""}
                       {post.published_at ? ` · ${new Date(post.published_at).toLocaleDateString()}` : ""}
                     </p>
                     {post.excerpt ? (
-                      <p className="mt-2 line-clamp-2 text-sm text-[var(--theme-muted)]">{post.excerpt}</p>
+                      <p className="line-clamp-2 text-xs text-[var(--theme-muted)]">{post.excerpt}</p>
                     ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => startEdit(post)}>
-                      Edit
-                    </button>
-                    {post.status === "published" ? (
+                    <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+                      <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => startEdit(post)}>
+                        Edit
+                      </button>
+                      {post.status === "published" ? (
+                        <button
+                          type="button"
+                          className={SECONDARY_BTN_CLASS}
+                          disabled={busyId === post.id}
+                          onClick={() => unpublishPost(post.id)}
+                        >
+                          Unpublish
+                        </button>
+                      ) : (
+                        <PrimaryButton
+                          type="button"
+                          disabled={busyId === post.id}
+                          onClick={() => publishPost(post.id)}
+                        >
+                          Publish
+                        </PrimaryButton>
+                      )}
                       <button
                         type="button"
                         className={SECONDARY_BTN_CLASS}
                         disabled={busyId === post.id}
-                        onClick={() => unpublishPost(post.id)}
+                        onClick={() => removePost(post.id)}
                       >
-                        Unpublish
+                        Delete
                       </button>
-                    ) : (
-                      <PrimaryButton
-                        type="button"
-                        disabled={busyId === post.id}
-                        onClick={() => publishPost(post.id)}
-                      >
-                        Publish
-                      </PrimaryButton>
-                    )}
-                    <button
-                      type="button"
-                      className={SECONDARY_BTN_CLASS}
-                      disabled={busyId === post.id}
-                      onClick={() => removePost(post.id)}
-                    >
-                      Delete
-                    </button>
+                    </div>
                   </div>
                 </li>
               ))}
@@ -294,7 +361,7 @@ export function PlatformMarketingBlogsScreen() {
             {editingId ? "Edit post" : "New post"}
           </h2>
           <p className="mt-1 text-sm text-[var(--theme-muted)]">
-            Published posts appear on the marketing site under Resources → Blog.
+            Images are compressed on upload (max 1200px JPEG). Published posts appear under Resources → Blog.
           </p>
 
           <div className="mt-4 grid gap-4">
@@ -337,23 +404,46 @@ export function PlatformMarketingBlogsScreen() {
               />
             </Field>
             <Field label="Body">
-              <textarea
-                className={inputClassName}
-                rows={12}
+              <MarketingBlogEditor
                 value={form.body}
-                onChange={(event) => setForm((prev) => ({ ...prev, body: event.target.value }))}
-                placeholder="Write the full post. Use blank lines between paragraphs."
+                onChange={(body) => setForm((prev) => ({ ...prev, body }))}
+                disabled={saving}
               />
             </Field>
-            <Field label="Cover image URL (optional)">
-              <input
-                className={inputClassName}
-                value={form.cover_image_url}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, cover_image_url: event.target.value }))
-                }
-                placeholder="https://…"
-              />
+            <Field label="Cover image">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  disabled={coverUploading}
+                  onClick={() => coverInputRef.current?.click()}
+                >
+                  {coverUploading ? "Uploading…" : "Upload cover"}
+                </button>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => void uploadCover(event)}
+                />
+                <input
+                  className={`${inputClassName} min-w-0 flex-1`}
+                  value={form.cover_image_url}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, cover_image_url: event.target.value }))
+                  }
+                  placeholder="Or paste image URL"
+                />
+              </div>
+              {form.cover_image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.cover_image_url}
+                  alt=""
+                  className="mt-3 max-h-40 rounded-lg border border-[var(--theme-border)] object-cover"
+                />
+              ) : null}
             </Field>
             <Field label="Author name (optional)">
               <input

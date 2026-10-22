@@ -111,7 +111,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/data-retention",
         label: "Data retention",
         icon: "database",
-        description: "Run operational prune now — Hikvision, attendance, and related cleanup.",
+        description: "Prune agent commands and related operational junk — never attendance.",
       },
       {
         href: "/platform/health",

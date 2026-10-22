@@ -103,13 +103,6 @@ const RETENTION_FIELDS = [
     max: 90,
   },
   {
-    key: "attendance_days",
-    label: "Attendance + clock sessions",
-    hint: "Day-level attendance kept after the date (min 30)",
-    min: 30,
-    max: 365,
-  },
-  {
     key: "hikvision_agent_commands_completed_days",
     label: "Hikvision commands (completed)",
     hint: "Leftover completed device command payloads",
@@ -247,11 +240,12 @@ export default function PlatformDataRetentionPage() {
   }
 
   function pruneTargetForTable(tableName) {
-    if (tableName === "employee_clock_sessions") return "employee_attendance";
+    if (tableName === "employee_attendance" || tableName === "employee_clock_sessions") {
+      return null;
+    }
     const allowed = new Set([
       "hikvision_agent_commands",
       "hikvision_access_events",
-      "employee_attendance",
       "kra_agent_commands",
       "stock_reservations",
       "audit_logs",
@@ -705,6 +699,17 @@ export default function PlatformDataRetentionPage() {
                           <div className="font-mono text-xs text-slate-800">{row.name}</div>
                           {row.note ? (
                             <p className="mt-1 max-w-xs text-[11px] leading-snug text-slate-500">{row.note}</p>
+                          ) : null}
+                          {!target &&
+                          (row.name === "employee_attendance" ||
+                            row.name === "employee_clock_sessions") ? (
+                            <p className="mt-1 max-w-xs text-[11px] leading-snug text-emerald-800">
+                              Never pruned. Restore missing rows from{" "}
+                              <Link href="/platform/database-backups" className="underline">
+                                Database backups
+                              </Link>
+                              .
+                            </p>
                           ) : null}
                           {row.prunable_rows != null ? (
                             <p className="mt-0.5 text-[11px] text-amber-800">

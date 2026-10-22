@@ -49,3 +49,10 @@ export async function unpublishMarketingBlog(id) {
 export async function deleteMarketingBlog(id) {
   return apiRequest(`${BASE}/${id}`, { method: "DELETE" });
 }
+
+export async function purgeMarketingBlogCache(slug) {
+  return apiRequest(`${BASE}/purge-cache`, {
+    method: "POST",
+    body: slug ? { slug } : {},
+  });
+}

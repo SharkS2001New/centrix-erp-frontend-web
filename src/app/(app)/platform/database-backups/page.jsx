@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { apiFetchBlob, apiRequest, ApiError } from "@/lib/api";
+import { apiFetchBlob, apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
@@ -12,6 +12,30 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+
+/** Fallback if API has not returned restore_datasets yet. */
+const FALLBACK_RESTORE_DATASETS = [
+  {
+    id: "hr_attendance",
+    label: "HR attendance (day + clock sessions)",
+    description:
+      "Employee day sheets and clock in/out sessions — what the Attendance screen shows for staff.",
+    recommended_mode: "merge",
+    available_tables: ["employee_attendance", "employee_clock_sessions"],
+  },
+  {
+    id: "hr_attendance_with_punches",
+    label: "HR attendance + device punches",
+    description:
+      "Day sheets, clock sessions, and raw Hikvision access events (for forgotten clock-out checks).",
+    recommended_mode: "merge",
+    available_tables: [
+      "employee_attendance",
+      "employee_clock_sessions",
+      "hikvision_access_events",
+    ],
+  },
+];
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return "0 B";
@@ -53,7 +77,58 @@ export default function PlatformDatabaseBackupsPage() {
   const [warning, setWarning] = useState(null);
   const [busyFilename, setBusyFilename] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMode, setRestoreMode] = useState("merge");
+  const [restoreDatasets, setRestoreDatasets] = useState(FALLBACK_RESTORE_DATASETS);
+  const [selectedDatasetId, setSelectedDatasetId] = useState("hr_attendance");
+  const [selectedTables, setSelectedTables] = useState([
+    "employee_attendance",
+    "employee_clock_sessions",
+  ]);
+  const [restoreFile, setRestoreFile] = useState(null);
+  const [confirmFull, setConfirmFull] = useState(false);
+  const [showAdvancedTables, setShowAdvancedTables] = useState(false);
+  const [customTables, setCustomTables] = useState("");
   const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the database backup runs…");
+
+  function parseTablesInput(raw) {
+    const parts = String(raw || "")
+      .split(/[\s,]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    return parts.length ? parts : null;
+  }
+
+  function applyDataset(dataset) {
+    if (!dataset) {
+      setSelectedDatasetId("");
+      setSelectedTables([]);
+      return;
+    }
+    setSelectedDatasetId(dataset.id);
+    setSelectedTables([...(dataset.available_tables ?? dataset.tables ?? [])]);
+    if (dataset.recommended_mode) {
+      setRestoreMode(dataset.recommended_mode);
+    }
+    setCustomTables("");
+    setShowAdvancedTables(false);
+  }
+
+  function toggleTable(table) {
+    setSelectedTables((prev) => {
+      const set = new Set(prev);
+      if (set.has(table)) set.delete(table);
+      else set.add(table);
+      return [...set];
+    });
+    setSelectedDatasetId("");
+  }
+
+  function resolveRestoreTables() {
+    const custom = parseTablesInput(customTables);
+    if (custom) return custom;
+    return selectedTables.length ? selectedTables : null;
+  }
 
   const applySchedule = useCallback((payload) => {
     const settings = payload?.settings ?? payload?.effective ?? {};
@@ -73,6 +148,9 @@ export default function PlatformDatabaseBackupsPage() {
       setBackups(res.data ?? []);
       setR2Status(res.r2 ?? null);
       if (res.schedule) applySchedule(res.schedule);
+      if (Array.isArray(res.restore_datasets) && res.restore_datasets.length > 0) {
+        setRestoreDatasets(res.restore_datasets);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load database backups.");
     } finally {
@@ -162,15 +240,121 @@ export default function PlatformDatabaseBackupsPage() {
     }
   }
 
+  async function handleRestoreFromBackup(filename) {
+    const tables = resolveRestoreTables();
+    const isFull = !tables;
+    if (!isFull && tables.length === 0) {
+      notifyError("Select at least one table, or choose Full database.");
+      return;
+    }
+    if (selectedDatasetId && isFull) {
+      notifyError("That pack has no tables selected. Tick at least one table, or choose Full database.");
+      return;
+    }
+    if (isFull && restoreMode === "replace" && !confirmFull) {
+      notifyError("Check “I understand this will replace the full database” before a full replace.");
+      return;
+    }
+    const datasetLabel =
+      restoreDatasets.find((d) => d.id === selectedDatasetId)?.label || selectedDatasetId || null;
+    const ok = await confirm({
+      title: "Restore from backup?",
+      message: isFull
+        ? `Apply the full dump from ${filename} using ${restoreMode} mode.${
+            restoreMode === "replace"
+              ? "\n\nReplace will overwrite matching tables from the dump."
+              : "\n\nMerge inserts missing rows (INSERT IGNORE) and skips DROP/TRUNCATE."
+          }`
+        : `Restore${datasetLabel ? ` “${datasetLabel}”` : ""} (${tables.join(", ")}) from ${filename} using ${
+            restoreMode === "replace" ? "replace (truncate then load)" : "merge (insert ignore)"
+          }.`,
+      confirmLabel: "Restore",
+    });
+    if (!ok) return;
+
+    setRestoring(true);
+    setBusyFilename(filename);
+    try {
+      const res = await apiRequest(`/admin/database-backups/${encodeURIComponent(filename)}/restore`, {
+        method: "POST",
+        body: {
+          mode: restoreMode,
+          dataset: selectedDatasetId || undefined,
+          tables: tables ?? undefined,
+          confirm_full: Boolean(isFull && restoreMode === "replace" && confirmFull),
+        },
+      });
+      notifySuccess(res.message ?? "Restore completed.");
+    } catch (e) {
+      notifyError(
+        e instanceof ApiError
+          ? e.data?.detail || e.message
+          : "Database restore failed.",
+      );
+    } finally {
+      setRestoring(false);
+      setBusyFilename(null);
+    }
+  }
+
+  async function handleRestoreUpload(e) {
+    e.preventDefault();
+    if (!restoreFile) {
+      notifyError("Choose a .sql or .sql.gz file first.");
+      return;
+    }
+    const tables = resolveRestoreTables();
+    const isFull = !tables;
+    if (selectedDatasetId && isFull) {
+      notifyError("That pack has no tables selected. Tick at least one table, or choose Full database.");
+      return;
+    }
+    if (isFull && restoreMode === "replace" && !confirmFull) {
+      notifyError("Check “I understand this will replace the full database” before a full replace.");
+      return;
+    }
+    const datasetLabel =
+      restoreDatasets.find((d) => d.id === selectedDatasetId)?.label || selectedDatasetId || null;
+    const ok = await confirm({
+      title: "Restore uploaded dump?",
+      message: isFull
+        ? `Apply ${restoreFile.name} as a full dump (${restoreMode}).`
+        : `Restore${datasetLabel ? ` “${datasetLabel}”` : ""} (${tables.join(", ")}) from ${restoreFile.name} (${restoreMode}).`,
+      confirmLabel: "Restore upload",
+    });
+    if (!ok) return;
+
+    setRestoring(true);
+    try {
+      const res = await apiRequestMultipart("/admin/database-backups/restore-upload", {
+        file: restoreFile,
+        mode: restoreMode,
+        dataset: selectedDatasetId || "",
+        tables: tables ? JSON.stringify(tables) : "",
+        confirm_full: isFull && restoreMode === "replace" && confirmFull ? "1" : "0",
+      });
+      notifySuccess(res.message ?? "Restore completed.");
+      setRestoreFile(null);
+    } catch (err) {
+      notifyError(
+        err instanceof ApiError
+          ? err.data?.detail || err.message
+          : "Database restore failed.",
+      );
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   const scheduleLabel = schedule?.effective?.label || "Daily (default)";
   const retentionDays = schedule?.effective?.retention_days ?? 3;
 
   return (
     <CatalogPageShell
       title="Database backups"
-      subtitle="Scheduled snapshots, downloads, and manual runs. Super-admin only."
+      subtitle="Scheduled snapshots, downloads, manual runs, and table/full restore. Super-admin only."
       action={
-        <PrimaryButton type="button" showIcon={false} disabled={creating} onClick={handleCreateBackup}>
+        <PrimaryButton type="button" showIcon={false} disabled={creating || restoring} onClick={handleCreateBackup}>
           {creating ? "Running backup…" : "Run manual backup"}
         </PrimaryButton>
       }
@@ -304,11 +488,168 @@ export default function PlatformDatabaseBackupsPage() {
         </p>
       ) : null}
 
+      <form
+        onSubmit={(e) => void handleRestoreUpload(e)}
+        className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <h2 className="text-sm font-semibold text-slate-900">Restore</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Pick what you need (e.g. HR attendance) — Centrix selects the related tables for you.
+          Prefer <strong>Merge</strong> to fill missing rows without wiping newer data.
+        </p>
+
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-slate-600">What do you want to restore?</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {restoreDatasets.map((dataset) => {
+              const active = selectedDatasetId === dataset.id;
+              const tableCount = (dataset.available_tables ?? dataset.tables ?? []).length;
+              return (
+                <button
+                  key={dataset.id}
+                  type="button"
+                  disabled={restoring || tableCount === 0}
+                  onClick={() => applyDataset(dataset)}
+                  className={`rounded-lg border px-3 py-3 text-left transition ${
+                    active
+                      ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-1 ring-[#185FA5]/40"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  } disabled:opacity-50`}
+                >
+                  <span className="block text-sm font-medium text-slate-900">{dataset.label}</span>
+                  <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+                    {dataset.description}
+                  </span>
+                  <span className="mt-2 block font-mono text-[10px] text-slate-400">
+                    {(dataset.available_tables ?? dataset.tables ?? []).join(", ") || "tables missing"}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              disabled={restoring}
+              onClick={() => {
+                setSelectedDatasetId("");
+                setSelectedTables([]);
+                setCustomTables("");
+                setShowAdvancedTables(true);
+              }}
+              className={`rounded-lg border px-3 py-3 text-left transition ${
+                !selectedDatasetId && selectedTables.length === 0 && !customTables
+                  ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-1 ring-[#185FA5]/40"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <span className="block text-sm font-medium text-slate-900">Full database</span>
+              <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+                Entire dump — only use when you really need everything. Replace requires an extra
+                confirmation.
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {(selectedTables.length > 0 || selectedDatasetId) && (
+          <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+            <p className="text-xs font-medium text-slate-600">Tables included (untick to exclude)</p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              {selectedTables.map((table) => (
+                <label key={table} className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked
+                    disabled={restoring}
+                    onChange={() => toggleTable(table)}
+                  />
+                  <span className="font-mono">{table}</span>
+                </label>
+              ))}
+            </div>
+            {selectedDatasetId && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Pack: <span className="font-medium text-slate-700">{selectedDatasetId}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Mode</span>
+            <SearchableSelect
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={restoreMode}
+              nativeEvent
+              onChange={(e) => setRestoreMode(e.target.value)}
+              options={[
+                { value: "merge", label: "Merge (insert ignore / keep existing)" },
+                { value: "replace", label: "Replace (truncate then load)" },
+              ]}
+            />
+          </label>
+          <div className="block text-sm">
+            <button
+              type="button"
+              className="mb-1 text-xs font-medium text-[#185FA5] hover:underline"
+              onClick={() => setShowAdvancedTables((v) => !v)}
+            >
+              {showAdvancedTables ? "Hide custom table list" : "Advanced: type table names"}
+            </button>
+            {showAdvancedTables ? (
+              <input
+                type="text"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm"
+                value={customTables}
+                onChange={(e) => {
+                  setCustomTables(e.target.value);
+                  if (e.target.value.trim()) {
+                    setSelectedDatasetId("");
+                    setSelectedTables([]);
+                  }
+                }}
+                placeholder="table_a,table_b"
+                disabled={restoring}
+              />
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                Usually you only need a pack above — custom names are optional.
+              </p>
+            )}
+          </div>
+        </div>
+        {restoreMode === "replace" && !resolveRestoreTables() ? (
+          <label className="mt-3 flex items-center gap-2 text-sm text-rose-800">
+            <input
+              type="checkbox"
+              checked={confirmFull}
+              onChange={(e) => setConfirmFull(e.target.checked)}
+            />
+            I understand this will replace the full database from the dump
+          </label>
+        ) : null}
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Upload .sql / .sql.gz</span>
+            <input
+              type="file"
+              accept=".sql,.gz,.sql.gz,application/gzip,application/sql,text/plain"
+              className="block w-full max-w-md text-sm"
+              onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
+              disabled={restoring}
+            />
+          </label>
+          <PrimaryButton type="submit" showIcon={false} disabled={restoring || !restoreFile}>
+            {restoring ? "Restoring…" : "Restore upload"}
+          </PrimaryButton>
+        </div>
+      </form>
+
       <div className="mt-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-slate-900">Available backups</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Newest first. Download a file to restore or archive it locally. Fresh backups are
+            Newest first. Download or restore using the mode/tables above. Fresh backups are
             sanitized for MySQL generated columns (e.g. <code>balance_due</code>) so Workbench import
             does not fail with ERROR 3105. If you have an older dump that fails on import, gunzip it
             then run:{" "}
@@ -341,14 +682,24 @@ export default function PlatformDatabaseBackupsPage() {
                     <td className="px-5 py-3 text-slate-600">{formatBytes(backup.size_bytes)}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(backup.created_at)}</td>
                     <td className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        disabled={busyFilename === backup.filename}
-                        onClick={() => handleDownload(backup.filename)}
-                        className="text-sm font-medium text-[#185FA5] hover:underline disabled:opacity-50"
-                      >
-                        {busyFilename === backup.filename ? "Downloading…" : "Download"}
-                      </button>
+                      <div className="flex flex-wrap justify-end gap-3">
+                        <button
+                          type="button"
+                          disabled={restoring || busyFilename === backup.filename}
+                          onClick={() => void handleRestoreFromBackup(backup.filename)}
+                          className="text-sm font-medium text-amber-800 hover:underline disabled:opacity-50"
+                        >
+                          {busyFilename === backup.filename && restoring ? "Restoring…" : "Restore"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyFilename === backup.filename}
+                          onClick={() => handleDownload(backup.filename)}
+                          className="text-sm font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                        >
+                          {busyFilename === backup.filename && !restoring ? "Downloading…" : "Download"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
