@@ -144,7 +144,11 @@ export function defaultSmallLabelForType(uomType) {
 }
 
 export function uomHasMiddlePack(uom) {
-  return Boolean(middlePackagingLabel(uom) && Number(uom?.middle_factor ?? 0) > 1);
+  return Boolean(
+    middlePackagingLabel(uom) &&
+      (Number(uom?.middle_factor ?? 0) > 1 ||
+        (!uomUsesSmallPackaging(uom) && Number(uom?.conversion_factor ?? 1) > 1)),
+  );
 }
 
 export function uomHasFullPack(uom) {
@@ -160,7 +164,11 @@ export function uomUsesSmallPackaging(uom) {
 }
 
 export function uomIsFullPackageOnly(uom) {
-  return !uomUsesSmallPackaging(uom);
+  return !uomUsesSmallPackaging(uom) && !uomHasMiddlePack(uom);
+}
+
+export function uomUsesMiddleAsBase(uom) {
+  return !uomUsesSmallPackaging(uom) && uomHasMiddlePack(uom);
 }
 
 /**
@@ -173,6 +181,13 @@ export function uomIsFullPackageOnly(uom) {
 export function uomStockTakeLevels(uom) {
   if (uomIsFullPackageOnly(uom)) {
     return [{ level: "full", key: "full", label: fullPackageLabel(uom) }];
+  }
+
+  if (uomUsesMiddleAsBase(uom)) {
+    return [
+      { level: "full", key: "full", label: fullPackageLabel(uom) },
+      { level: "middle", key: "middle", label: middlePackagingLabel(uom) },
+    ];
   }
 
   if (!uomHasFullPack(uom)) {
@@ -205,6 +220,7 @@ export function uomStockTakeHint(uom) {
 
 export function smallPackagingLabel(uom) {
   if (!uom) return "pcs";
+  if (uomUsesMiddleAsBase(uom)) return middlePackagingLabel(uom);
   const explicit = uom.small_packaging_label?.trim();
   if (explicit) return explicit;
   const factor = Number(uom.conversion_factor ?? 1);
@@ -337,6 +353,9 @@ export function uomWholesaleConversionExample(uom) {
   if (uomIsFullPackageOnly(uom)) {
     return `1 ${full}`;
   }
+  if (uomUsesMiddleAsBase(uom)) {
+    return `1 ${full} = ${factor} ${middlePackagingLabel(uom)}`;
+  }
   const small = smallPackagingLabel(uom);
   if (factor <= 1) return `1 ${small}`;
 
@@ -383,6 +402,10 @@ export function uomConversionSummary(uom) {
   const factor = Number(uom?.conversion_factor ?? 1);
   if (factor <= 1) return null;
 
+  if (uomUsesMiddleAsBase(uom)) {
+    return uomWholesaleConversionExample(uom);
+  }
+
   const parts = [uomWholesaleConversionExample(uom)];
 
   if (uomHasMiddlePack(uom)) {
@@ -401,6 +424,11 @@ export function uomHierarchyChain(uom) {
     const full = fullPackageLabel(uom);
     return name ? `${name}: ${full}` : full;
   }
+  if (uomUsesMiddleAsBase(uom)) {
+    const chain = `${fullPackageLabel(uom)} → ${middlePackagingLabel(uom)}`;
+    const name = uomMeasureName(uom);
+    return name ? `${name}: ${chain}` : chain;
+  }
   const parts = [smallPackagingLabel(uom)];
   if (uomHasMiddlePack(uom)) {
     parts.unshift(middlePackagingLabel(uom));
@@ -416,15 +444,17 @@ export function uomHierarchyChain(uom) {
 /** Build a UOM-like object from the form for live preview. */
 export function uomFromForm(form) {
   const usesSmall = form.uses_small_packaging !== false;
-  const hasMiddle = usesSmall && Boolean(form.has_middle_pack && form.middle_packaging_label?.trim());
+  const hasMiddle = Boolean(form.has_middle_pack && form.middle_packaging_label?.trim());
   return {
     full_name: form.full_name,
     measure_name: form.measure_name?.trim() || null,
     uses_small_packaging: usesSmall,
     small_packaging_label: form.small_packaging_label || defaultSmallLabelForType(form.uom_type),
     middle_packaging_label: hasMiddle ? form.middle_packaging_label.trim() : null,
-    middle_factor: hasMiddle && form.middle_factor !== "" ? Number(form.middle_factor) : null,
-    conversion_factor: usesSmall ? Number(form.conversion_factor ?? 1) : 1,
+    middle_factor:
+      usesSmall && hasMiddle && form.middle_factor !== "" ? Number(form.middle_factor) : null,
+    conversion_factor:
+      usesSmall || hasMiddle ? Number(form.conversion_factor ?? 1) : 1,
     uom_type: form.uom_type,
   };
 }
@@ -442,6 +472,13 @@ export function uomStockReportExamples(uom) {
     return [
       { base: 25, note: `25 ${full} in stock` },
       { base: 400, note: `400 ${full} — typical wholesale quantity` },
+    ];
+  }
+
+  if (uomUsesMiddleAsBase(uom)) {
+    return [
+      { base: factor, note: `Exactly 1 ${full} (${factor} ${middlePackagingLabel(uom)})` },
+      { base: factor + 1, note: `${factor + 1} ${middlePackagingLabel(uom)} in stock` },
     ];
   }
 

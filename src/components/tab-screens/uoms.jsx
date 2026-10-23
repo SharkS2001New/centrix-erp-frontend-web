@@ -18,6 +18,7 @@ import {
   uomHasMiddlePack,
   uomIsFullPackageOnly,
   uomStockReportExamples,
+  uomUsesMiddleAsBase,
   uomUsesSmallPackaging,
   UOM_TYPE_FILTER_OPTIONS,
   UOM_TYPE_OPTIONS,
@@ -269,7 +270,8 @@ export function UomsScreen() {
       : "Edit UOM";
   const typeOptions = hotelCatalogue ? hospitalityUomTypeOptions() : UOM_TYPE_OPTIONS;
   const packFilterOptions = hotelCatalogue ? HOTEL_PACK_FILTER_OPTIONS : RETAIL_PACK_FILTER_OPTIONS;
-  const fullPackageOnly = form.uses_small_packaging === false;
+  const smallBreakdownDisabled = form.uses_small_packaging === false;
+  const fullPackageOnly = smallBreakdownDisabled && !form.has_middle_pack;
   const hotelSimpleMode = hotelCatalogue && !form.hotel_advanced_case && !fullPackageOnly;
   const formFactor = fullPackageOnly ? 1 : uomConversionFactor(form.conversion_factor);
   const fullSectionNum = form.has_middle_pack ? 3 : 2;
@@ -341,12 +343,6 @@ export function UomsScreen() {
       if (key === "uom_type" && !prev.small_packaging_label) {
         next.small_packaging_label = defaultSmallLabelForType(value);
       }
-      if (key === "uses_small_packaging" && value === false) {
-        next.conversion_factor = "1";
-        next.has_middle_pack = false;
-        next.middle_packaging_label = "";
-        next.middle_factor = "";
-      }
       if (key === "has_middle_pack" && !value) {
         next.middle_packaging_label = "";
         next.middle_factor = "";
@@ -360,25 +356,31 @@ export function UomsScreen() {
     setFormError(null);
     setSaving(true);
     const hotelSimple = hotelCatalogue && !form.hotel_advanced_case && form.uses_small_packaging !== false;
-    const fullPackageOnlySave = form.uses_small_packaging === false;
+    const smallBreakdownDisabledSave = form.uses_small_packaging === false;
+    const hasMiddle = Boolean(form.has_middle_pack && form.middle_packaging_label.trim());
+    const fullPackageOnlySave = smallBreakdownDisabledSave && !hasMiddle;
     const conversionFactor = hotelSimple || fullPackageOnlySave ? 1 : parseFloat(form.conversion_factor);
     const useMiddle =
       !hotelSimple &&
-      !fullPackageOnlySave &&
-      form.has_middle_pack &&
-      form.middle_packaging_label.trim();
+      hasMiddle;
     const name = form.full_name.trim() || form.small_packaging_label.trim();
     const body = {
       full_name: name,
       measure_name: form.measure_name.trim() || null,
-      uses_small_packaging: !fullPackageOnlySave,
+      uses_small_packaging: !smallBreakdownDisabledSave,
       small_packaging_label:
         form.small_packaging_label.trim() ||
         defaultSmallLabelForType(form.uom_type) ||
         name.toLowerCase(),
       middle_packaging_label: useMiddle ? form.middle_packaging_label.trim() : null,
       middle_factor:
-        useMiddle && form.middle_factor !== "" ? parseFloat(form.middle_factor) : null,
+        useMiddle
+          ? smallBreakdownDisabledSave
+            ? 1
+            : form.middle_factor !== ""
+              ? parseFloat(form.middle_factor)
+              : null
+          : null,
       uom_type: form.uom_type.trim(),
       conversion_factor: conversionFactor,
       is_base_unit: conversionFactor === 1,
@@ -629,11 +631,13 @@ export function UomsScreen() {
                             </span>
                           ) : Number(uom.conversion_factor ?? 1) > 1 ? (
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              1 {uom.full_name} = {uom.conversion_factor}{" "}
-                              {uom.small_packaging_label ?? uom.uom_type}
-                              {uomHasMiddlePack(uom)
-                                ? ` · 1 ${uom.middle_packaging_label} = ${uom.middle_factor} ${uom.small_packaging_label ?? "units"}`
-                                : ""}
+                              {uomUsesMiddleAsBase(uom)
+                                ? `1 ${uom.full_name} = ${uom.conversion_factor} ${uom.middle_packaging_label}`
+                                : `1 ${uom.full_name} = ${uom.conversion_factor} ${uom.small_packaging_label ?? uom.uom_type}${
+                                    uomHasMiddlePack(uom)
+                                      ? ` · 1 ${uom.middle_packaging_label} = ${uom.middle_factor} ${uom.small_packaging_label ?? "units"}`
+                                      : ""
+                                  }`}
                             </span>
                           ) : hotelCatalogue ? (
                             <span className="mt-0.5 block text-xs text-slate-500">
@@ -799,10 +803,10 @@ export function UomsScreen() {
         <p className="-mt-2 text-[11px] leading-relaxed text-slate-500">
           {hotelCatalogue
             ? "Turn off for items sold only as a whole case on Hotel POS — e.g. a sealed crate with no single-bottle breakout."
-            : "Turn off for wholesale-only products sold in full packages only — e.g. 20L jericans with no retail piece count."}
+            : "Turn off when there is no smaller sellable unit. You can still enable a middle package for retail sales, such as Outers within Cartons."}
         </p>
 
-        {fullPackageOnly ? (
+        {smallBreakdownDisabled ? (
           <>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {hotelCatalogue ? "Case / whole unit" : "Full package (stock unit)"}
@@ -829,9 +833,44 @@ export function UomsScreen() {
               </Field>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">
-              Stock is counted and sold in {form.full_name || "full packages"} only — each unit is 1{" "}
-              {form.full_name || "package"}.
+              {fullPackageOnly
+                ? `Stock is counted and sold in ${form.full_name || "full packages"} only.`
+                : `Stock and retail are counted in ${form.middle_packaging_label || "the middle package"}; wholesale is counted in ${form.full_name || "the full package"}.`}
             </p>
+            {!hotelCatalogue ? (
+              <>
+                <Toggle
+                  label="Use middle package (e.g. outers within cartons)"
+                  checked={form.has_middle_pack}
+                  onChange={(v) => updateField("has_middle_pack", v)}
+                />
+                {form.has_middle_pack ? (
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <Field label="Middle package name">
+                      <input
+                        type="text"
+                        value={form.middle_packaging_label}
+                        onChange={(e) => updateField("middle_packaging_label", e.target.value)}
+                        required
+                        className={inputClassName()}
+                        placeholder="e.g. outer"
+                      />
+                    </Field>
+                    <Field label={`${form.middle_packaging_label || "Middle packages"} per full package`}>
+                      <input
+                        type="number"
+                        value={form.conversion_factor}
+                        onChange={(e) => updateField("conversion_factor", e.target.value)}
+                        required
+                        min="2"
+                        step="1"
+                        className={`${inputClassName()} font-mono`}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </>
         ) : (
           <>

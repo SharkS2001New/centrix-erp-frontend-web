@@ -14,6 +14,7 @@ import {
   normalizeTierPriceMode,
   tierPriceModeLabel,
   uomMeasureLevels,
+  uomUsesMiddleAsBase,
 } from "@/lib/uom-packaging";
 
 export function defaultRetailPricingTier(productUom, priceMode = "retail") {
@@ -23,7 +24,10 @@ export function defaultRetailPricingTier(productUom, priceMode = "retail") {
       ? levels.find((l) => l.level === "full")?.level ??
         levels[levels.length - 1]?.level ??
         "small"
-      : "small";
+      : levels.find((l) => l.level === "small")?.level ??
+        levels.find((l) => l.level === "middle")?.level ??
+        levels[0]?.level ??
+        "small";
 
   return {
     ...EMPTY_PRICING_TIER,
@@ -35,14 +39,14 @@ export function defaultRetailPricingTier(productUom, priceMode = "retail") {
 
 function previewQtyForTier(tier, productUom) {
   const factor = uomConversionFactor(productUom);
-  const halfPack = factor >= 2 ? factor / 2 : 1;
+  const markupChunk = retailMarkupChunkSize(tier, productUom);
   const maxQty =
     tier.max_qty !== "" && tier.max_qty != null ? Number(tier.max_qty) : null;
-  if (factor >= 2 && maxQty != null && maxQty <= halfPack) {
+  if (factor >= 2 && maxQty != null && maxQty <= markupChunk) {
     return Math.max(1, Number(tier.min_qty) || 1);
   }
   if (factor >= 2) {
-    return halfPack;
+    return markupChunk;
   }
   return Math.max(1, Number(tier.min_qty) || 1);
 }
@@ -63,6 +67,7 @@ export function RetailPricingTiersEditor({
 }) {
   const levels = uomMeasureLevels(productUom);
   const smallLabel = levels[0]?.label ?? "small unit";
+  const middleIsBase = uomUsesMiddleAsBase(productUom);
   const wholesalePerSmall = productUom
     ? wholesalePricePerSmallUnit(Number(unitPrice) || 0, productUom)
     : null;
@@ -115,9 +120,9 @@ export function RetailPricingTiersEditor({
       <p className="theme-subtext text-xs leading-relaxed">
         Quantity ranges (From / To) are counted in <strong>{smallLabel}</strong>. Retail line
         total:{" "}
-        <strong>(catalog unit price ÷ conversion × qty) + tier markup</strong>. Small bands on
-        pack products apply markup per {smallLabel}; larger bands apply markup per half-bag chunk
-        (e.g. 25 {smallLabel} of a 50 {smallLabel} bag).
+        <strong>(catalog unit price ÷ conversion × qty) + tier markup</strong>. {middleIsBase
+          ? `Retail quantities use ${smallLabel}; wholesale quantities use the full package.`
+          : `Small bands on pack products apply markup per ${smallLabel}; larger bands apply markup per half-package chunk.`}
         {wholesalePerSmall != null && Number(unitPrice) > 0 ? (
           <>
             {" "}

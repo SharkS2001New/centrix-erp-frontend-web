@@ -8,6 +8,7 @@ import {
   uomHasMiddlePack,
   uomIsFullPackageOnly,
   uomStockTakeLevels,
+  uomUsesMiddleAsBase,
   uomUsesSmallPackaging,
 } from "./uom-packaging";
 
@@ -40,6 +41,9 @@ export function uomLabelFrom(uom) {
   if (uomIsFullPackageOnly(uom)) {
     return fullPackageLabel(uom);
   }
+  if (uomUsesMiddleAsBase(uom)) {
+    return middlePackagingLabel(uom);
+  }
   return (uom.full_name || uom.uom_type || "units").trim();
 }
 
@@ -49,7 +53,7 @@ export function normalizeDamageLevel(packageType, uom) {
   if (packageType === "full_package" || packageType === "partial" || packageType === "full") {
     level = uomHasFullPack(uom) ? "full" : "small";
   } else if (packageType === "pieces" || packageType === "small") {
-    level = "small";
+    level = uomUsesMiddleAsBase(uom) ? "middle" : "small";
   } else if (packageType === "middle") {
     level = "middle";
   } else {
@@ -78,6 +82,9 @@ function formatInventoryAdjustmentMeasureLabel(level, uom, { sellOnRetail = fals
   }
   if (level.key === "small") {
     return `Retail (${smallPackagingLabel(uom)})`;
+  }
+  if (level.key === "middle" && uomUsesMiddleAsBase(uom)) {
+    return `Retail (${middlePackagingLabel(uom)})`;
   }
   return level.label;
 }
@@ -137,7 +144,7 @@ export function stockAdjustmentCountLevels(uom, { sellOnRetail = false } = {}) {
  */
 export function uomForReceiveCount(uom) {
   if (!uom || typeof uom !== "object") return uom ?? null;
-  if (uomHasFullPack(uom) && !uomUsesSmallPackaging(uom)) {
+  if (uomIsFullPackageOnly(uom) && uomHasFullPack(uom)) {
     return { ...uom, uses_small_packaging: true };
   }
   return uom;
@@ -152,7 +159,7 @@ export function normalizeInventoryAdjustmentLevel(
   if (packageType === "full_package" || packageType === "partial" || packageType === "full") {
     level = uomHasFullPack(uom) ? "full" : "small";
   } else if (packageType === "pieces" || packageType === "small") {
-    level = "small";
+    level = uomUsesMiddleAsBase(uom) ? "middle" : "small";
   } else if (packageType === "middle") {
     level = "middle";
   } else {
@@ -171,7 +178,12 @@ export function defaultInventoryAdjustmentMeasure(
 ) {
   const levels = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail });
   if (sellOnRetail && stockLocation === "shop") {
-    return levels.find((l) => l.key === "small")?.key ?? levels[0]?.key ?? "small";
+    return (
+      levels.find((l) => l.key === "small")?.key ??
+      levels.find((l) => l.key === "middle")?.key ??
+      levels[0]?.key ??
+      "small"
+    );
   }
   return levels.find((l) => l.key === "full")?.key ?? defaultDamageMeasureLevel(uom);
 }
@@ -196,7 +208,7 @@ export function inventoryAdjustmentQtyToBase(
 
   if (level === "small") return qty;
   if (level === "middle") {
-    const mid = Number(uom?.middle_factor ?? 0);
+    const mid = uomUsesMiddleAsBase(uom) ? 1 : Number(uom?.middle_factor ?? 0);
     return mid > 0 ? qty * mid : qty;
   }
   return displayToBaseQty(qty, uomOrFactor);
@@ -220,7 +232,7 @@ export function damageQtyToBase(displayQty, packageType, uomOrFactor) {
 
   if (level === "small") return qty;
   if (level === "middle") {
-    const mid = Number(uom?.middle_factor ?? 0);
+    const mid = uomUsesMiddleAsBase(uom) ? 1 : Number(uom?.middle_factor ?? 0);
     return mid > 0 ? qty * mid : qty;
   }
   return displayToBaseQty(qty, uomOrFactor);
@@ -234,7 +246,7 @@ export function damageBaseToDisplay(baseQty, packageType, uomOrFactor) {
 
   if (level === "small") return formatDisplayQty(base);
   if (level === "middle") {
-    const mid = Number(uom?.middle_factor ?? 0);
+    const mid = uomUsesMiddleAsBase(uom) ? 1 : Number(uom?.middle_factor ?? 0);
     return formatDisplayQty(mid > 0 ? base / mid : base);
   }
   return formatDisplayQty(baseToDisplayQty(base, uomOrFactor));
@@ -283,8 +295,8 @@ export function splitBaseToHierarchy(baseQty, uomOrFactor) {
   }
 
   const middleLabel = middlePackagingLabel(uom);
-  const middleFactor = Number(uom?.middle_factor ?? 0);
-  if (middleLabel && middleFactor > 1) {
+  const middleFactor = uomUsesMiddleAsBase(uom) ? 1 : Number(uom?.middle_factor ?? 0);
+  if (middleLabel && (middleFactor > 1 || uomUsesMiddleAsBase(uom))) {
     const midCount = Math.floor(remaining / middleFactor);
     remaining = Math.round((remaining - midCount * middleFactor) * 10000) / 10000;
     if (midCount > 0) {
@@ -322,6 +334,9 @@ export function mixedToBase(packs, loose, conversionFactor) {
 export function hierarchyToBase(fullQty, middleQty, looseQty, uomOrFactor) {
   const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
   const factor = uomConversionFactor(uomOrFactor);
+  if (uomUsesMiddleAsBase(uom)) {
+    return Number(fullQty ?? 0) * factor + Number(middleQty ?? 0);
+  }
   if (factor <= 1) {
     return Number(looseQty ?? fullQty ?? 0);
   }
@@ -344,9 +359,9 @@ export function baseToHierarchyCounts(baseQty, uomOrFactor) {
   return {
     full: parts.find((p) => p.label === fullLabel)?.qty ?? 0,
     middle: midLabel ? parts.find((p) => p.label === midLabel)?.qty ?? 0 : 0,
-    small: parts.find((p) => p.label === smallLabel)?.qty ?? 0,
+    small: uomUsesMiddleAsBase(uom) ? 0 : parts.find((p) => p.label === smallLabel)?.qty ?? 0,
     /** @deprecated use small */
-    loose: parts.find((p) => p.label === smallLabel)?.qty ?? 0,
+    loose: uomUsesMiddleAsBase(uom) ? 0 : parts.find((p) => p.label === smallLabel)?.qty ?? 0,
   };
 }
 
@@ -354,6 +369,10 @@ export function baseToHierarchyCounts(baseQty, uomOrFactor) {
 export function stockTakeCountsToBase(countsByKey, uomOrFactor) {
   const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
   const factor = uomConversionFactor(uomOrFactor);
+
+  if (uomUsesMiddleAsBase(uom)) {
+    return Number(countsByKey.full ?? 0) * factor + Number(countsByKey.middle ?? 0);
+  }
 
   if (uomIsFullPackageOnly(uom)) {
     const full = Number(countsByKey.full ?? 0);
@@ -392,13 +411,17 @@ export function clampHierarchyCountsToMaxBase(byKey, changedLevelKey, uom, maxBa
   };
   const changedBase = stockTakeCountsToBase(changedOnly, uom);
   const factor = uomConversionFactor(uom);
-  const midFactor = Number(uom?.middle_factor ?? 0);
+  const midFactor = uomUsesMiddleAsBase(uom) ? 1 : Number(uom?.middle_factor ?? 0);
 
   if (changedBase > max + 0.0001) {
     const capped = { full: 0, middle: 0, small: 0 };
     if (changedLevelKey === "full" && factor > 1) {
       capped.full = Math.floor(max / factor + 0.0001);
-    } else if (changedLevelKey === "middle" && uomHasMiddlePack(uom) && midFactor > 1) {
+    } else if (
+      changedLevelKey === "middle" &&
+      uomHasMiddlePack(uom) &&
+      (midFactor > 1 || uomUsesMiddleAsBase(uom))
+    ) {
       capped.middle = Math.floor(max / midFactor + 0.0001);
     } else {
       capped.small = max;
@@ -415,7 +438,11 @@ export function clampHierarchyCountsToMaxBase(byKey, changedLevelKey, uom, maxBa
       const maxFull = Math.floor(budget / factor + 0.0001);
       result.full = Math.min(result.full, maxFull);
       budget -= result.full * factor;
-    } else if (key === "middle" && uomHasMiddlePack(uom) && midFactor > 1) {
+    } else if (
+      key === "middle" &&
+      uomHasMiddlePack(uom) &&
+      (midFactor > 1 || uomUsesMiddleAsBase(uom))
+    ) {
       const maxMiddle = Math.floor(budget / midFactor + 0.0001);
       result.middle = Math.min(result.middle, maxMiddle);
       budget -= result.middle * midFactor;

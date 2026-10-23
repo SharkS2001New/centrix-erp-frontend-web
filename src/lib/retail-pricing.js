@@ -8,6 +8,7 @@ import {
   normalizeTierPriceMode,
   smallPackagingLabel,
   uomHasMiddlePack,
+  uomUsesMiddleAsBase,
 } from "./uom-packaging";
 import { splitBaseToHierarchy, uomConversionFactor } from "./stock-uom";
 import {
@@ -148,6 +149,7 @@ export function wholesalePricePerSmallUnit(baseUnitPrice, uom) {
  * per half-bag when the tier is measured as middle/full.
  */
 export function resolvedMiddleFactor(uom) {
+  if (uomUsesMiddleAsBase(uom)) return 1;
   if (uomHasMiddlePack(uom)) {
     return Number(uom.middle_factor);
   }
@@ -222,6 +224,7 @@ export function unitPricePerSmallForTier(baseUnitPrice, tier, uom) {
 export function smallUnitsPerLevel(uom, level) {
   const factor = uomConversionFactor(uom);
   if (level === "full") return factor > 1 ? factor : 1;
+  if (level === "middle" && uomUsesMiddleAsBase(uom)) return 1;
   if (level === "middle") {
     return resolvedMiddleFactor(uom);
   }
@@ -250,6 +253,10 @@ export function retailMarkupChunkSize(tier, uom) {
   const level = tier?.measure_level || "small";
   const mode = normalizeTierPriceMode(tier);
   const factor = uomConversionFactor(uom);
+
+  if (uomUsesMiddleAsBase(uom)) {
+    return level === "full" ? factor : 1;
+  }
 
   // Per-kg / per-piece retail tiers.
   if (mode === "retail" && level === "small") {
