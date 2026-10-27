@@ -35,7 +35,7 @@ import { setStoredCompanyCode } from "@/lib/tenant-config";
 import { resolveGeneralSettings } from "@/lib/format";
 import { setActiveGeneralSettings } from "@/lib/general-settings";
 import { buildAccessContext, resolveHasPermission, resolveHasNavPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { resolvePostLoginPath } from "@/lib/workspace-navigation";
+import { normalizePurchasePlanReturnPath, resolvePostLoginPath } from "@/lib/workspace-navigation";
 import { workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
@@ -425,7 +425,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(
     async (companyCode, username, password, options = {}) => {
-      const { forceLogout = false } = options;
+      const { forceLogout = false, postLoginPath = null } = options;
 
       if (useCookieAuth && !forceLogout && hasAuthSession()) {
         await revokeServerAuthSession();
@@ -485,14 +485,14 @@ export function AuthProvider({ children }) {
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
-      router.replace(resolvePostLoginPath(ctx, caps));
+      router.replace(normalizePurchasePlanReturnPath(postLoginPath) || resolvePostLoginPath(ctx, caps));
       return caps;
     },
     [applyAuthPayload, router],
   );
 
   const finishAuthenticatedSession = useCallback(
-    async (res) => {
+    async (res, postLoginPath = null) => {
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
       clearLicenseWarningDismissed();
       if (res.must_change_password || res.user?.must_change_password) {
@@ -515,14 +515,14 @@ export function AuthProvider({ children }) {
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
-      router.replace(resolvePostLoginPath(ctx, caps));
+      router.replace(normalizePurchasePlanReturnPath(postLoginPath) || resolvePostLoginPath(ctx, caps));
       return caps;
     },
     [applyAuthPayload, router],
   );
 
   const completeTwoFactorLogin = useCallback(
-    async (challengeToken, code) => {
+    async (challengeToken, code, postLoginPath = null) => {
       const res = await apiRequest("/auth/2fa/verify", {
         method: "POST",
         body: {
@@ -531,14 +531,14 @@ export function AuthProvider({ children }) {
         },
         token: null,
       });
-      return finishAuthenticatedSession(res);
+      return finishAuthenticatedSession(res, postLoginPath);
     },
     [finishAuthenticatedSession],
   );
 
   const loginWithPasskey = useCallback(
     async (challengeToken, credential, options = {}) => {
-      const { forceLogout = false } = options;
+      const { forceLogout = false, postLoginPath = null } = options;
       const res = await apiRequest("/auth/passkeys/login", {
         method: "POST",
         body: {
@@ -550,13 +550,13 @@ export function AuthProvider({ children }) {
         },
         token: null,
       });
-      return finishAuthenticatedSession(res);
+      return finishAuthenticatedSession(res, postLoginPath);
     },
     [finishAuthenticatedSession],
   );
 
   const completeTwoFactorWithPasskey = useCallback(
-    async (passkeyChallengeToken, credential) => {
+    async (passkeyChallengeToken, credential, postLoginPath = null) => {
       const res = await apiRequest("/auth/2fa/passkey/verify", {
         method: "POST",
         body: {
@@ -565,14 +565,14 @@ export function AuthProvider({ children }) {
         },
         token: null,
       });
-      return finishAuthenticatedSession(res);
+      return finishAuthenticatedSession(res, postLoginPath);
     },
     [finishAuthenticatedSession],
   );
 
   const loginWithPin = useCallback(
     async (companyCode, username, pin, options = {}) => {
-      const { forceLogout = false } = options;
+      const { forceLogout = false, postLoginPath = null } = options;
 
       if (useCookieAuth && !forceLogout && hasAuthSession()) {
         await revokeServerAuthSession();
@@ -604,7 +604,7 @@ export function AuthProvider({ children }) {
         }
       }
 
-      return finishAuthenticatedSession(res);
+      return finishAuthenticatedSession(res, postLoginPath);
     },
     [finishAuthenticatedSession],
   );

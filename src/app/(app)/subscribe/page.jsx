@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -11,6 +11,9 @@ import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
 import { featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
+
+const EMPTY_PLANS = [];
+const DEFAULT_DISCOUNT = { percent: 0, min_months: 3 };
 
 function renewalCharge(license) {
   return {
@@ -29,11 +32,18 @@ function renewalCharge(license) {
 
 export default function SubscribePage() {
   const router = useRouter();
-  const forPos = useSearchParams().get("for") === "pos";
+  const searchParams = useSearchParams();
+  const forPos = searchParams.get("for") === "pos";
+  const requestedPlanId = /^[1-9]\d*$/.test(searchParams.get("plan_id") || "")
+    ? Number(searchParams.get("plan_id"))
+    : null;
+  const requestedBilling = ["monthly", "yearly", "prepaid"].includes(searchParams.get("billing"))
+    ? searchParams.get("billing")
+    : "monthly";
   const { organization, organizationLicense, capabilities, user, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
-  const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : [];
-  const discount = organizationLicense?.duration_discount ?? { percent: 0, min_months: 3 };
+  const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
+  const discount = organizationLicense?.duration_discount ?? DEFAULT_DISCOUNT;
   const renewOpen = canPay && yearlyRenewalOpen(organizationLicense);
   const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
   const [yearly, setYearly] = useState(false);
@@ -47,6 +57,35 @@ export default function SubscribePage() {
   const [notice, setNotice] = useState("");
   const [checkoutId, setCheckoutId] = useState(null);
   const [watching, setWatching] = useState(false);
+  const purchaseIntentHandled = useRef(false);
+
+  useEffect(() => {
+    if (!requestedPlanId || purchaseIntentHandled.current || !canPay || plans.length === 0) return;
+
+    const plan = plans.find((item) => Number(item.id) === requestedPlanId);
+    if (!plan) {
+      purchaseIntentHandled.current = true;
+      setNotice("That plan is not available for this organisation. Choose a plan below.");
+      return;
+    }
+
+    let offer = null;
+    if (requestedBilling === "prepaid" && Number(plan.monthly_price) > 0) {
+      offer = prepaidOffer(plan, discount);
+    } else if (requestedBilling === "yearly" && Number(plan.yearly_price) > 0) {
+      offer = onceOffer(plan);
+    } else if (requestedBilling === "monthly" && Number(plan.monthly_price) > 0) {
+      offer = monthOffer(plan);
+    }
+
+    purchaseIntentHandled.current = true;
+    if (offer) {
+      setCharge(offer);
+      setStep("checkout");
+    } else {
+      setNotice("That billing option is no longer available for this plan. Choose another option below.");
+    }
+  }, [canPay, discount, plans, requestedBilling, requestedPlanId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -483,6 +522,12 @@ function CheckoutStep({
   currency,
   paybill,
   account,
+  equityInstructions,
+  paymentMethod,
+  setPaymentMethod,
+  equityCheckout,
+  equityTransactionId,
+  setEquityTransactionId,
   phone,
   setPhone,
   code,
@@ -493,6 +538,8 @@ function CheckoutStep({
   onBack,
   backLabel = "‹ Configure your plan",
   onPay,
+  onStartEquity,
+  onVerifyEquity,
   onNotify,
   onCheck,
 }) {
@@ -509,6 +556,9 @@ function CheckoutStep({
         : "Monthly subscription";
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
+  const canPayByEquity = Boolean(
+    equityInstructions && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
+  );
               return (
     <div>
       <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
@@ -517,40 +567,113 @@ function CheckoutStep({
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
           <h2 className="theme-heading text-sm font-medium">Pay with</h2>
-          <div className="theme-inset-panel mt-3 inline-flex rounded-xl border px-4 py-3 text-sm font-semibold">
-            M-Pesa
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Payment method">
+            <button
+              type="button"
+              aria-pressed={paymentMethod === "mpesa"}
+              onClick={() => setPaymentMethod("mpesa")}
+              className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa" ? "theme-primary-btn" : "theme-inset-panel"}`}
+            >
+              M-Pesa STK
+            </button>
+            {canPayByEquity ? (
+              <button
+                type="button"
+                aria-pressed={paymentMethod === "equity"}
+                onClick={() => setPaymentMethod("equity")}
+                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "equity" ? "theme-primary-btn" : "theme-inset-panel"}`}
+              >
+                Equity transfer
+              </button>
+            ) : null}
           </div>
-          <label className="mt-4 block text-sm">
-            <span className="theme-subtext mb-1 block text-xs">M-Pesa phone</span>
-            <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07…" />
-          </label>
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className={fieldClass}>
-              <dt className="theme-subtext text-xs">Paybill</dt>
-              <dd className="theme-heading mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
-        </div>
-            <div className={fieldClass}>
-              <dt className="theme-subtext text-xs">Account</dt>
-              <dd className="theme-heading mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>
+          {paymentMethod === "mpesa" ? (
+            <>
+              <label className="mt-4 block text-sm">
+                <span className="theme-subtext mb-1 block text-xs">M-Pesa phone</span>
+                <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07…" />
+              </label>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Paybill</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
+                </div>
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Account</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>
+                </div>
+              </dl>
+              <label className="mt-4 block text-sm">
+                <span className="theme-subtext mb-1 block text-xs">M-Pesa code, after you pay</span>
+                <input
+                  className={`${inputClass} font-mono uppercase`}
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.toUpperCase())}
+                  placeholder="QLK1ABC234"
+                />
+              </label>
+              <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onCheck}>
+                  {busy === "check" ? "Checking…" : "I have paid — check again"}
+                </button>
+                <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onNotify}>
+                  {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <p className="theme-subtext text-sm">Transfer the exact amount and use your organisation code as the payment reference.</p>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Equity account</dt>
+                  <dd className="theme-heading mt-1 text-sm">{equityInstructions?.account_name}</dd>
+                </div>
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Paybill / account</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.paybill_number}</dd>
+                </div>
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Reference</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.reference}</dd>
+                </div>
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Account number</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
+                </div>
+              </dl>
+              {!equityCheckout ? (
+                <button
+                  type="button"
+                  disabled={busy !== ""}
+                  onClick={onStartEquity}
+                  className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                >
+                  {busy === "equity-start" ? "Preparing payment…" : "Continue with Equity"}
+                </button>
+              ) : (
+                <>
+                  <label className="block text-sm">
+                    <span className="theme-subtext mb-1 block text-xs">Equity transaction reference</span>
+                    <input
+                      className={`${inputClass} font-mono uppercase`}
+                      value={equityTransactionId}
+                      onChange={(event) => setEquityTransactionId(event.target.value.trim())}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={busy !== "" || !equityTransactionId.trim()}
+                    onClick={onVerifyEquity}
+                    className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {busy === "equity-check" ? "Verifying transfer…" : "Verify Equity payment"}
+                  </button>
+                </>
+              )}
             </div>
-          </dl>
-          <label className="mt-4 block text-sm">
-            <span className="theme-subtext mb-1 block text-xs">M-Pesa code, after you pay</span>
-            <input
-              className={`${inputClass} font-mono uppercase`}
-              value={code}
-              onChange={(event) => setCode(event.target.value.toUpperCase())}
-              placeholder="QLK1ABC234"
-            />
-          </label>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm">
-            <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onCheck}>
-              {busy === "check" ? "Checking…" : "I have paid — check again"}
-            </button>
-            <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onNotify}>
-              {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
-            </button>
-          </div>
+          )}
           {notice ? (
             <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${watching ? "theme-panel border" : "theme-alert-error"}`}>
               {notice}
@@ -584,18 +707,25 @@ function CheckoutStep({
               <dd>{formatBillingMoney(due, currency)}</dd>
             </div>
           </dl>
-          <button
-            type="button"
-            disabled={busy !== ""}
-            onClick={onPay}
-            className="theme-primary-btn mt-6 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
-          >
-            {busy === "stk" ? "Sending prompt…" : "Subscribe"}
-          </button>
-          <p className="theme-subtext mt-4 text-xs leading-5">
-            Pay {formatBillingMoney(due, currency)} to Paybill {paybill?.short_code || "—"} account {account || "your organisation code"}.
-            The prompt goes to the M-Pesa phone above. This does not renew by itself.
-          </p>
+          {paymentMethod === "mpesa" ? (
+            <>
+              <button
+                type="button"
+                disabled={busy !== ""}
+                onClick={onPay}
+                className="theme-primary-btn mt-6 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+              >
+                {busy === "stk" ? "Sending prompt…" : "Send M-Pesa STK prompt"}
+              </button>
+              <p className="theme-subtext mt-4 text-xs leading-5">
+                Pay {formatBillingMoney(due, currency)} to Paybill {paybill?.short_code || "—"} account {account || "your organisation code"}. This does not renew by itself.
+              </p>
+            </>
+          ) : (
+            <p className="theme-subtext mt-6 text-xs leading-5">
+              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the Equity callback confirms the payment.
+            </p>
+          )}
         </aside>
       </div>
     </div>

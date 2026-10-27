@@ -51,6 +51,7 @@ function previewPlan(plan, discount) {
     section_keys: Array.isArray(plan.section_keys) ? plan.section_keys : [],
     is_active: plan.is_active !== false,
     is_recommended: Boolean(plan.is_recommended),
+    cta_action: plan.cta_action || "buy_now",
     discount_percent: discount.percent,
     discount_min_months: discount.minMonths,
   };
@@ -99,6 +100,7 @@ function emptyForm() {
     section_keys: [],
     is_active: true,
     is_recommended: false,
+    cta_action: "buy_now",
   };
 }
 
@@ -127,6 +129,7 @@ function recordToForm(plan, catalog) {
     section_keys: Array.isArray(plan.section_keys) ? [...plan.section_keys] : [],
     is_active: plan.is_active !== false,
     is_recommended: Boolean(plan.is_recommended),
+    cta_action: plan.cta_action || "buy_now",
   };
 }
 
@@ -187,6 +190,7 @@ function formToPayload(form) {
     self_serve: true,
     is_active: form.is_active !== false,
     is_recommended: Boolean(form.is_recommended),
+    cta_action: form.cta_action || "buy_now",
   };
 }
 
@@ -845,6 +849,21 @@ export default function SelfServePlansPage() {
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Short description</span>
                 <input className={inputClass} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Sales, customers, and the reports that belong to them" />
+              </label>
+              <label className="block text-sm sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Website button</span>
+                <SearchableSelect
+                  value={form.cta_action}
+                  nativeEvent
+                  onChange={(e) => setForm((f) => ({ ...f, cta_action: e.target.value }))}
+                  options={[
+                    { value: 'buy_now', label: 'Buy Now' },
+                    { value: 'start_now', label: 'Start Now' },
+                    { value: 'view_details', label: 'View details' },
+                    { value: 'contact_sales', label: 'Contact sales' },
+                  ]}
+                  placeholder="Choose button"
+                />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>

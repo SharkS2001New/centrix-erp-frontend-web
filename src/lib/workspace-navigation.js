@@ -155,6 +155,19 @@ export function resolveAccessibleWorkspaces(ctx, capabilities) {
   });
 }
 
+export function purchasePlanReturnPath(planId, billing) {
+  const id = String(planId ?? "");
+  if (!/^[1-9]\d*$/.test(id) || !["monthly", "yearly", "prepaid"].includes(billing)) {
+    return null;
+  }
+  return `/subscribe?plan_id=${id}&billing=${billing}`;
+}
+
+export function normalizePurchasePlanReturnPath(path) {
+  const match = /^\/subscribe\?plan_id=([1-9]\d*)&billing=(monthly|yearly|prepaid)$/.exec(String(path ?? ""));
+  return match ? purchasePlanReturnPath(match[1], match[2]) : null;
+}
+
 /**
  * @param {object} ctx
  * @param {object} capabilities

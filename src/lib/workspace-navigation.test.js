@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { P } from "@/lib/permission-codes";
 import {
   BACKOFFICE_DEFAULT_LANDING_PATH,
+  normalizePurchasePlanReturnPath,
+  purchasePlanReturnPath,
   recallWorkspaceLandingPath,
   rememberWorkspacePath,
   resolveAccessibleWorkspaces,
@@ -67,6 +69,23 @@ function ctx(permissions, caps = capabilities) {
 }
 
 describe("workspace-navigation backoffice landing", () => {
+  describe("purchase plan return path", () => {
+    it("builds a return path only for a valid plan and billing choice", () => {
+      expect(purchasePlanReturnPath("42", "monthly")).toBe("/subscribe?plan_id=42&billing=monthly");
+      expect(purchasePlanReturnPath("42", "prepaid")).toBe("/subscribe?plan_id=42&billing=prepaid");
+      expect(purchasePlanReturnPath("0", "monthly")).toBeNull();
+      expect(purchasePlanReturnPath("42", "unknown")).toBeNull();
+    });
+
+    it("normalizes only the internal subscribe return path", () => {
+      expect(normalizePurchasePlanReturnPath("/subscribe?plan_id=42&billing=yearly")).toBe(
+        "/subscribe?plan_id=42&billing=yearly",
+      );
+      expect(normalizePurchasePlanReturnPath("https://example.com/subscribe?plan_id=42&billing=yearly")).toBeNull();
+      expect(normalizePurchasePlanReturnPath("/platform?plan_id=42&billing=yearly")).toBeNull();
+    });
+  });
+
   beforeEach(() => {
     getStoredWorkspace.mockReturnValue(null);
     installSessionStorageMock().clear();

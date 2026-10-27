@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/auth-storage";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
+import { purchasePlanReturnPath } from "@/lib/workspace-navigation";
 import { ApiError, apiRequest, isSessionConflictError, userFacingNetworkErrorMessage } from "@/lib/api";
 import {
   isLicenseExpiredApiError,
@@ -60,6 +61,7 @@ function LoginForm() {
     .replace(/[^A-Z0-9]/g, "");
   const signupUsername = String(searchParams.get("username") || searchParams.get("user") || "").trim();
   const fromFreeSignup = searchParams.get("from") === "free-signup";
+  const purchasePath = purchasePlanReturnPath(searchParams.get("plan_id"), searchParams.get("billing"));
 
   const [showOrgField, setShowOrgField] = useState(true);
   const [companyCode, setCompanyCode] = useState(() => getDefaultCompanyCode());
@@ -161,9 +163,9 @@ function LoginForm() {
             Boolean(storedUser?.is_super_admin || cached?.capabilities?.is_super_admin),
         }),
       );
-      router.replace(homePath);
+      router.replace(purchasePath || homePath);
     }
-  }, [router]);
+  }, [purchasePath, router]);
 
   useEffect(() => {
     return () => {
@@ -237,7 +239,10 @@ function LoginForm() {
     }
     startSignInProgress("login");
     try {
-      const result = await login(companyCode, username, password, { forceLogout });
+      const result = await login(companyCode, username, password, {
+        forceLogout,
+        postLoginPath: purchasePath,
+      });
       if (result?.mfa_required) {
         abortSignInProgress();
         setMfaChallenge(result);
@@ -290,7 +295,10 @@ function LoginForm() {
     }
     startSignInProgress("login");
     try {
-      await loginWithPin(bound.company_code, bound.username, digits, { forceLogout });
+      await loginWithPin(bound.company_code, bound.username, digits, {
+        forceLogout,
+        postLoginPath: purchasePath,
+      });
       completeSignInProgress();
     } catch (err) {
       abortSignInProgress();
@@ -371,7 +379,7 @@ function LoginForm() {
     setError(null);
     startSignInProgress("mfa");
     try {
-      await completeTwoFactorLogin(mfaChallenge.challenge_token, mfaCode);
+      await completeTwoFactorLogin(mfaChallenge.challenge_token, mfaCode, purchasePath);
       completeSignInProgress();
     } catch (err) {
       abortSignInProgress();
@@ -427,7 +435,7 @@ function LoginForm() {
       }
       const credential = await getPasskeyAssertion(begin.options);
       startSignInProgress("login");
-      await loginWithPasskey(begin.challenge_token, credential);
+      await loginWithPasskey(begin.challenge_token, credential, { postLoginPath: purchasePath });
       completeSignInProgress();
     } catch (err) {
       abortSignInProgress();
@@ -460,7 +468,7 @@ function LoginForm() {
       });
       const credential = await getPasskeyAssertion(begin.options);
       startSignInProgress("mfa");
-      await completeTwoFactorWithPasskey(mfaChallenge.challenge_token, credential);
+      await completeTwoFactorWithPasskey(mfaChallenge.challenge_token, credential, purchasePath);
       completeSignInProgress();
     } catch (err) {
       abortSignInProgress();
@@ -580,7 +588,9 @@ function LoginForm() {
             ? "This computer is locked to your hotel account. Enter your PIN."
             : signupHint
               ? "Your free Centrix workspace is ready. Enter the password you chose on Instant trial."
-              : "Sign in with your email or username and password."
+                : purchasePath
+                  ? "Sign in to continue to your selected plan's payment."
+                  : "Sign in with your email or username and password."
         }
       >
         <div className="relative">
