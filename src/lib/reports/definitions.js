@@ -1649,11 +1649,11 @@ export const REPORT_DEFINITIONS = {
     title: "KRA invoices",
     section: "Pricing & tax",
     apiPath: "/reports/kra-receipts",
-    dateColumn: "receipt_date",
+    dateColumn: "sale_date",
     showDateRange: true,
     variant: "kra-invoices",
     columns: [
-      { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
+      { key: "sale_date", label: "Sale date", accessor: (r) => r.sale_date ?? r.receipt_date },
       { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" },
       { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number },

@@ -181,7 +181,7 @@ export const REPORT_DATE_COLUMNS = {
   "invoice-payments": "date_paid",
   "ar-aging": "invoice_date",
   "kra-receipts": "receipt_date",
-  "kra-invoices": "receipt_date",
+  "kra-invoices": "sale_date",
   "kra-compliance-summary": "receipt_date",
   "kra-unfiscalized-sales": "sale_date",
   "till-sessions": "session_date",
