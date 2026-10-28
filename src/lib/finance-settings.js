@@ -268,10 +268,21 @@ export function kraAgentSettingsFingerprint(form) {
 export function canDownloadKraAgent(form, savedFingerprint) {
   if (!form?.enable_kra_device) return false;
   if (!String(form.kra_device_ip ?? "").trim()) return false;
+  if (!String(form.kra_comstore_api_key ?? "").trim()) return false;
   if (!String(form.kra_serial_number ?? "").trim()) return false;
   if (!String(form.kra_pin_number ?? "").trim()) return false;
   if (savedFingerprint == null || savedFingerprint === "") return false;
   return kraAgentSettingsFingerprint(form) === savedFingerprint;
+}
+
+export function kraAgentSupportsComstoreApiKey(version) {
+  const parts = String(version ?? "").split(".").map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part) || part < 0)) {
+    return false;
+  }
+
+  const [major, minor, patch] = parts;
+  return major > 1 || (major === 1 && (minor > 3 || (minor === 3 && patch >= 8)));
 }
 
 export function financeFormFromApi(res) {

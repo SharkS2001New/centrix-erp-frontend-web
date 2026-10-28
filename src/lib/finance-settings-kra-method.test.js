@@ -5,6 +5,7 @@ import {
   ensureKraAgentMode,
   financePayloadFromForm,
   financeFormFromApi,
+  kraAgentSupportsComstoreApiKey,
   kraAgentSettingsFingerprint,
 } from "./finance-settings";
 
@@ -87,6 +88,7 @@ describe("canDownloadKraAgent", () => {
   const base = {
     enable_kra_device: true,
     kra_device_ip: "http://localhost:4000",
+    kra_comstore_api_key: "test-comstore-key",
     kra_device_hardware_ip: "192.168.1.39",
     kra_serial_number: "SN1",
     kra_pin_number: "P123",
@@ -100,9 +102,19 @@ describe("canDownloadKraAgent", () => {
     expect(canDownloadKraAgent(base, null)).toBe(false);
   });
 
-  it("requires device, comstore URL, serial, and PIN", () => {
+  describe("kraAgentSupportsComstoreApiKey", () => {
+    it("requires agent version 1.3.8 or newer", () => {
+      expect(kraAgentSupportsComstoreApiKey("1.3.7")).toBe(false);
+      expect(kraAgentSupportsComstoreApiKey("1.3.8")).toBe(true);
+      expect(kraAgentSupportsComstoreApiKey("1.4.0")).toBe(true);
+      expect(kraAgentSupportsComstoreApiKey("invalid")).toBe(false);
+    });
+  });
+
+  it("requires device, comstore URL, API key, serial, and PIN", () => {
     const saved = kraAgentSettingsFingerprint(base);
     expect(canDownloadKraAgent({ ...base, enable_kra_device: false }, saved)).toBe(false);
     expect(canDownloadKraAgent({ ...base, kra_serial_number: "" }, saved)).toBe(false);
+    expect(canDownloadKraAgent({ ...base, kra_comstore_api_key: "" }, saved)).toBe(false);
   });
 });

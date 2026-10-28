@@ -75,6 +75,7 @@ app.MapGet("/api/status", (KraWorker worker, ConfigStore config) =>
         version = AgentConstants.Version,
         agent = AgentConstants.AgentName,
         comstore_base_url = cfg.ComstoreBaseUrl,
+        has_comstore_api_key = !string.IsNullOrWhiteSpace(cfg.ComstoreApiKey),
         centrix_api_url = cfg.CentrixApiUrl,
         long_poll_ms = cfg.LongPollMs,
         auto_start_comstore = cfg.AutoStartComstore,

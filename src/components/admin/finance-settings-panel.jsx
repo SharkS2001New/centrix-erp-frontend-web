@@ -7,6 +7,7 @@ import {
   financeFormFromApi,
   financePayloadFromForm,
   ensureKraAgentMode,
+  kraAgentSupportsComstoreApiKey,
   kraAgentSettingsFingerprint,
   canDownloadKraAgent,
   isPlatformKraIntegrationEnabled,
@@ -438,7 +439,7 @@ export function FinanceSettingsPanel({
 
   async function downloadKraAgent() {
     if (!canDownloadKraAgent(form, kraSavedFingerprint)) {
-      setError("Save KRA settings first (Comstore URL, serial, and PIN), then download the agent.");
+      setError("Save KRA settings first (Comstore URL, API key, serial, and PIN), then download the agent.");
       return;
     }
     setKraAgentDownloading(true);
@@ -628,12 +629,19 @@ export function FinanceSettingsPanel({
                       </button>
                       {!canDownloadKraAgent(form, kraSavedFingerprint) ? (
                         <p className="theme-subtext w-full text-xs">
-                          Save KRA settings (Comstore URL, serial, and PIN) before downloading Centrix KRA
-                          Agent.
+                          Save KRA settings (Comstore URL, API key, serial, and PIN) before downloading
+                          Centrix KRA Agent.
                         </p>
                       ) : null}
                       {kraAgentStatus ? (
                           <div className="w-full space-y-1">
+                            {kraAgentStatus.version &&
+                            !kraAgentSupportsComstoreApiKey(kraAgentStatus.version) ? (
+                              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                                KRA Agent v{kraAgentStatus.version} does not send the Comstore API key.
+                                Download the latest agent package and reinstall it on this PC.
+                              </div>
+                            ) : null}
                             <p className="text-xs">
                               <span
                                 className={

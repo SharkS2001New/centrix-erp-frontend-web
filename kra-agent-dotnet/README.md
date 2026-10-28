@@ -5,6 +5,7 @@ Windows service that bridges **Centrix cloud** to **local Comstore** on the shop
 ## Shop install
 
 Finance → KRA → **Download Centrix KRA Agent** zips this folder with a prefilled `config.json`.
+The generated config contains the organization's Comstore API key; keep it private.
 
 1. Unzip on the shop PC.
 2. Right-click **BUILD-AND-INSTALL.bat** → Run as administrator (.NET 8 SDK required once).

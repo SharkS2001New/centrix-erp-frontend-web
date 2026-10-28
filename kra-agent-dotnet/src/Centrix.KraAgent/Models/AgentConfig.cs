@@ -70,6 +70,7 @@ public sealed class AgentConfig
         if (string.IsNullOrWhiteSpace(CentrixApiUrl)) missing.Add("Centrix API URL");
         if (string.IsNullOrWhiteSpace(CentrixToken)) missing.Add("Centrix token");
         if (string.IsNullOrWhiteSpace(ComstoreBaseUrl)) missing.Add("Comstore base URL");
+        if (string.IsNullOrWhiteSpace(ComstoreApiKey)) missing.Add("Comstore API key");
         return missing;
     }
 

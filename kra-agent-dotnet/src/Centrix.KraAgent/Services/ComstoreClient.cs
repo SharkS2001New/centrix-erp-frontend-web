@@ -52,14 +52,29 @@ public sealed class ComstoreClient
             };
         }
 
+        if (string.IsNullOrWhiteSpace(config.ComstoreApiKey))
+        {
+            return new CommandResult
+            {
+                Success = false,
+                Status = 0,
+                Error = "Comstore API key is missing from the KRA Agent configuration.",
+            };
+        }
+
         if (!path.StartsWith('/')) path = "/" + path;
         var url = $"{config.ComstoreBaseUrl.TrimEnd('/')}{path}";
 
         using var req = new HttpRequestMessage(new HttpMethod(method), url);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        if (!string.IsNullOrWhiteSpace(config.ComstoreApiKey))
+        if (!req.Headers.TryAddWithoutValidation("X-API-KEY", config.ComstoreApiKey))
         {
-            req.Headers.TryAddWithoutValidation("X-API-KEY", config.ComstoreApiKey);
+            return new CommandResult
+            {
+                Success = false,
+                Status = 0,
+                Error = "Could not attach the required X-API-KEY header to the Comstore request.",
+            };
         }
 
         if (method is not ("GET" or "HEAD") && command.Body != null)

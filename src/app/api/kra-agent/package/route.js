@@ -29,7 +29,7 @@ Preconfigured from Centrix → Finance → KRA device.
 
 Comstore default: http://127.0.0.1:4000 (config.json comstoreBaseUrl).
 Start Comstore with Windows (startup / its own service). The agent keeps pinging Centrix and the fiscal device; it does not start Comstore.
-Keep this folder private — config.json includes a non-expiring Centrix API token.
+Keep this folder private — config.json includes a non-expiring Centrix API token and the Comstore API key.
 `;
 }
 
