@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBackgroundTasks } from "@/contexts/background-task-context";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -143,6 +144,7 @@ function isLiveReplayInProgress(row) {
 export function KraReceiptsReportScreen({ definition }) {
   const isInvoicesView = definition.variant === "kra-invoices";
   const confirm = useConfirm();
+  const { runBackgroundTask } = useBackgroundTasks();
   const { user, isOrgWide, capabilities, organization, hasPermission } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
@@ -182,7 +184,10 @@ export function KraReceiptsReportScreen({ definition }) {
   const [batchRetrying, setBatchRetrying] = useState(false);
   const [batchRetryProgress, setBatchRetryProgress] = useState(null);
   const [batchLiveReplay, setBatchLiveReplay] = useState(false);
-  const [liveReplayProgress, setLiveReplayProgress] = useState(null);
+  const [liveReplayAvailability, setLiveReplayAvailability] = useState({
+    key: null,
+    available: false,
+  });
   const [creditRow, setCreditRow] = useState(null);
   const [creditReasonCode, setCreditReasonCode] = useState("06");
   const [crediting, setCrediting] = useState(false);
@@ -195,6 +200,7 @@ export function KraReceiptsReportScreen({ definition }) {
     branchId: defaultBranch,
     queryFilters: { status: "", channel: "", document_type: "", q: "" },
   });
+  const screenMountedRef = useRef(false);
 
   const {
     selectedIds,
@@ -214,6 +220,13 @@ export function KraReceiptsReportScreen({ definition }) {
     if (!isInvoicesView) return;
     setOptionalColumnIds(readStoredOptionalColumnIds());
   }, [isInvoicesView]);
+
+  useEffect(() => {
+    screenMountedRef.current = true;
+    return () => {
+      screenMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isInvoicesView) return;
@@ -249,6 +262,59 @@ export function KraReceiptsReportScreen({ definition }) {
 
   const appliedKey = useMemo(() => JSON.stringify(applied), [applied]);
   const depsKey = `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
+
+  useEffect(() => {
+    let active = true;
+    setLiveReplayAvailability({ key: appliedKey, available: false });
+
+    const filters = applied.queryFilters ?? {};
+    if (
+      !isInvoicesView ||
+      !canCreditKraSale ||
+      !applied.fromDate ||
+      !applied.toDate ||
+      (filters.status && filters.status !== "success") ||
+      (filters.document_type && filters.document_type !== "sale")
+    ) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const searchParams = {
+      from_date: applied.fromDate,
+      to_date: applied.toDate,
+      per_page: 1,
+      page: 1,
+    };
+    if (applied.branchId) searchParams.branch_id = applied.branchId;
+    if (filters.channel) searchParams.channel = filters.channel;
+    if (filters.q) searchParams.q = filters.q;
+
+    apiRequest("/kra/live-replay-candidates", { searchParams, loading: false })
+      .then((response) => {
+        if (active) {
+          setLiveReplayAvailability({
+            key: appliedKey,
+            available: Array.isArray(response?.data) && response.data.length > 0,
+          });
+        }
+      })
+      .catch((e) => {
+        if (!active) return;
+        notifyError(
+          e instanceof ApiError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Could not check for test-mode invoices in the selected date range.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applied, appliedKey, canCreditKraSale, isInvoicesView]);
 
   function handlePageSizeChange(next) {
     setPageSize(next);
@@ -454,96 +520,78 @@ export function KraReceiptsReportScreen({ definition }) {
     }
 
     setBatchLiveReplay(true);
-    let submitted = false;
-    let succeeded = [];
-    let failed = [];
     try {
-      const targets = [];
-      let page = 1;
-      let lastPage = 1;
-      do {
-        const searchParams = {
-          from_date: applied.fromDate,
-          to_date: applied.toDate,
-          per_page: 200,
-          page,
-        };
-        if (applied.branchId) searchParams.branch_id = applied.branchId;
-        if (applied.queryFilters?.channel) searchParams.channel = applied.queryFilters.channel;
-        if (applied.queryFilters?.q) searchParams.q = applied.queryFilters.q;
-        const response = await apiRequest("/kra/live-replay-candidates", {
-          searchParams,
-          loading: false,
-        });
-        if (Array.isArray(response?.data)) targets.push(...response.data);
-        lastPage = Math.max(1, Number(response?.last_page ?? 1));
-        page += 1;
-      } while (page <= lastPage);
+      const searchParams = {
+        from_date: applied.fromDate,
+        to_date: applied.toDate,
+        per_page: 1,
+        page: 1,
+      };
+      if (applied.branchId) searchParams.branch_id = applied.branchId;
+      if (applied.queryFilters?.channel) searchParams.channel = applied.queryFilters.channel;
+      if (applied.queryFilters?.q) searchParams.q = applied.queryFilters.q;
+      const response = await apiRequest("/kra/live-replay-candidates", {
+        searchParams,
+        loading: false,
+      });
+      const targetCount = Math.max(
+        0,
+        Number(response?.total ?? (Array.isArray(response?.data) ? response.data.length : 0)),
+      );
 
-      if (targets.length === 0) {
+      if (targetCount === 0) {
         notifySuccess("No eligible test-mode invoices were found for the applied sale-date range.");
         return;
       }
 
       const confirmed = await confirm({
         title: "Re-fiscalize the date range as live invoices?",
-        message: `Submit all ${targets.length} eligible test-mode invoice(s) from ${applied.fromDate} through ${applied.toDate} to KRA in live mode? This is an irreversible tax submission. Successful test responses will be replaced in the report, with their original payloads retained in response history.`,
-        confirmLabel: `Submit ${targets.length} live invoices`,
+        message: `Submit all ${targetCount} eligible test-mode invoice(s) from ${applied.fromDate} through ${applied.toDate} to KRA in live mode? This is an irreversible tax submission. Successful test responses will be replaced in the report, with their original payloads retained in response history.`,
+        confirmLabel: `Submit ${targetCount} live invoices`,
         destructive: true,
       });
       if (!confirmed) return;
 
-      submitted = true;
-      setLiveReplayProgress({
-        done: 0,
-        total: targets.length,
-        percent: 0,
-        succeeded: 0,
-        failed: 0,
-        current: null,
-      });
-      ({ succeeded, failed } = await runSequentialActions({
-        items: targets,
-        onProgress: ({ index, total, item, succeeded: ok, failed: bad }) => {
-          const responseId = kraReportRowId(item);
-          setLiveReplayProgress({
-            done: index,
-            total,
-            percent: total > 0 ? Math.round((index / total) * 100) : 0,
-            succeeded: ok,
-            failed: bad,
-            current: formatKraReportOrderNo(item) ?? String(responseId ?? ""),
-          });
-        },
-        action: async (row) => {
-          await apiRequest(`/kra-responses/${kraReportRowId(row)}/re-fiscalize-live`, {
+      clearSelection();
+      await runBackgroundTask(
+        () =>
+          apiRequest("/kra/live-replay-tasks", {
             method: "POST",
-          });
+            body: {
+              from_date: applied.fromDate,
+              to_date: applied.toDate,
+              ...(applied.branchId ? { branch_id: applied.branchId } : {}),
+              ...(applied.queryFilters?.channel ? { channel: applied.queryFilters.channel } : {}),
+              ...(applied.queryFilters?.q ? { q: applied.queryFilters.q } : {}),
+            },
+          }),
+        {
+          label: `Re-fiscalizing ${targetCount} KRA invoices as live`,
+          message: "Queuing live re-fiscalization…",
+          onComplete: (result) => {
+            const succeeded = Number(result?.succeeded ?? 0);
+            const failed = Number(result?.failed ?? 0);
+            if (failed === 0) {
+              notifySuccess(
+                succeeded === 1
+                  ? "Invoice re-fiscalized in live mode."
+                  : `${succeeded} invoices re-fiscalized in live mode.`,
+              );
+            } else if (succeeded === 0) {
+              notifyError(`All ${failed} live re-fiscalizations failed. The test records were preserved.`);
+            } else {
+              notifySuccess(
+                `${succeeded} re-fiscalized live; ${failed} failed and their test records were preserved.`,
+              );
+            }
+            if (screenMountedRef.current) void loadReport();
+          },
         },
-      }));
-
-      if (failed.length === 0) {
-        notifySuccess(
-          succeeded.length === 1
-            ? "Invoice re-fiscalized in live mode."
-            : `${succeeded.length} invoices re-fiscalized in live mode.`,
-        );
-      } else if (succeeded.length === 0) {
-        notifyError(failed[0]?.message ?? `All ${failed.length} live re-fiscalizations failed.`);
-      } else {
-        notifySuccess(
-          `${succeeded.length} re-fiscalized live; ${failed.length} failed and their test records were preserved.`,
-        );
-      }
+      );
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Live re-fiscalization failed.");
     } finally {
-      setBatchLiveReplay(false);
-      setLiveReplayProgress(null);
-      if (submitted) {
-        clearSelection();
-        await loadReport();
-      }
+      if (screenMountedRef.current) setBatchLiveReplay(false);
     }
   }
 
@@ -778,7 +826,10 @@ export function KraReceiptsReportScreen({ definition }) {
           showBranchFilter={multiBranch}
         />
 
-        {isInvoicesView && canCreditKraSale ? (
+        {isInvoicesView &&
+        canCreditKraSale &&
+        liveReplayAvailability.key === appliedKey &&
+        liveReplayAvailability.available ? (
           <div className="mb-3 flex justify-end">
             <button
               type="button"
@@ -787,9 +838,7 @@ export function KraReceiptsReportScreen({ definition }) {
               className="rounded-full bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {batchLiveReplay
-                ? liveReplayProgress
-                  ? `Submitting live ${liveReplayProgress.done}/${liveReplayProgress.total} (${liveReplayProgress.percent}%)…`
-                  : "Finding eligible test invoices…"
+                ? "Re-fiscalization running in background…"
                 : "Re-fiscalize date range as live"}
             </button>
           </div>
