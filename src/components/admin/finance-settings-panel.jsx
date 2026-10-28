@@ -717,6 +717,23 @@ export function FinanceSettingsPanel({
                         <code className="text-[11px]">127.0.0.1</code> work.
                       </p>
                   </Field>
+                  <Field label="Comstore API key">
+                    <input
+                      className={inputClassName()}
+                      type="password"
+                      autoComplete="new-password"
+                      value={form.kra_comstore_api_key}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, kra_comstore_api_key: e.target.value }))
+                      }
+                      placeholder="Paste the key from Comstore’s API key setup"
+                    />
+                    <p className="theme-subtext mt-1 text-xs">
+                      Used by Centrix KRA Agent for protected Comstore requests. The saved key is masked;
+                      leave it unchanged to keep it, or clear the field to remove it. Download the agent
+                      again after changing the key.
+                    </p>
+                  </Field>
                   <Field label="Fiscal hardware IP (for agent)">
                     <input
                       className={inputClassName()}

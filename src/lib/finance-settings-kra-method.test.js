@@ -4,6 +4,7 @@ import {
   canDownloadKraAgent,
   ensureKraAgentMode,
   financePayloadFromForm,
+  financeFormFromApi,
   kraAgentSettingsFingerprint,
 } from "./finance-settings";
 
@@ -41,6 +42,7 @@ describe("financePayloadFromForm agent-only", () => {
         kra_device_ip: "http://localhost:4000",
         kra_direct_device_ip: "http://192.168.1.50:8010",
         kra_agent_comstore_url: "http://localhost:4000",
+        kra_comstore_api_key: "my-comstore-key",
         kra_device_hardware_ip: "",
         kra_serial_number: "SN1",
         kra_pin_number: "P123",
@@ -63,6 +65,21 @@ describe("financePayloadFromForm agent-only", () => {
     );
     expect(payload.enable_kra_agent).toBe(true);
     expect(payload.kra_device_ip).toBe("http://localhost:4000");
+    expect(payload.kra_comstore_api_key).toBe("my-comstore-key");
+  });
+
+  it("keeps a masked saved Comstore API key unchanged", () => {
+    const form = financeFormFromApi({ finance: { kra_comstore_api_key: "********" } });
+
+    expect(financePayloadFromForm(form)).not.toHaveProperty("kra_comstore_api_key");
+  });
+
+  it("restores the masked key after saving and fingerprints key changes", () => {
+    const saved = financeFormFromApi({ finance: { kra_comstore_api_key: "********" } });
+    const changed = { ...saved, kra_comstore_api_key: "replacement-key" };
+
+    expect(saved.kra_comstore_api_key).toBe("********");
+    expect(kraAgentSettingsFingerprint(changed)).not.toBe(kraAgentSettingsFingerprint(saved));
   });
 });
 

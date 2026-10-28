@@ -8,6 +8,7 @@ const FINANCE_DEFAULTS = {
   /** Legacy stash (direct Device IP); kept for older saved settings only. */
   kra_direct_device_ip: "",
   kra_agent_comstore_url: "",
+  kra_comstore_api_key: "",
   kra_device_hardware_ip: "",
   kra_serial_number: "",
   kra_pin_number: "",
@@ -255,6 +256,7 @@ export function kraAgentSettingsFingerprint(form) {
     enable_kra_device: Boolean(form.enable_kra_device),
     kra_device_ip: String(form.kra_device_ip ?? "").trim(),
     kra_device_hardware_ip: String(form.kra_device_hardware_ip ?? "").trim(),
+    kra_comstore_api_key: String(form.kra_comstore_api_key ?? "").trim(),
     kra_serial_number: String(form.kra_serial_number ?? "").trim(),
     kra_pin_number: String(form.kra_pin_number ?? "").trim(),
     kra_plu_register_path:
@@ -296,6 +298,7 @@ export function financeFormFromApi(res) {
     kra_device_ip: comstoreUrl,
     kra_direct_device_ip: legacyDirect,
     kra_agent_comstore_url: comstoreUrl || KRA_AGENT_COMSTORE_DEFAULT,
+    kra_comstore_api_key: String(finance.kra_comstore_api_key ?? ""),
     kra_device_hardware_ip: String(finance.kra_device_hardware_ip ?? ""),
     kra_serial_number: String(finance.kra_serial_number ?? ""),
     kra_pin_number: String(finance.kra_pin_number ?? ""),
@@ -423,6 +426,11 @@ export function financePayloadFromForm(form, options = {}) {
 
   if (kraPin && kraPin !== "********") {
     payload.kra_pin_number = kraPin;
+  }
+
+  const comstoreApiKey = String(form.kra_comstore_api_key ?? "").trim();
+  if (comstoreApiKey !== "********") {
+    payload.kra_comstore_api_key = comstoreApiKey;
   }
 
   if (includeMpesa) {
