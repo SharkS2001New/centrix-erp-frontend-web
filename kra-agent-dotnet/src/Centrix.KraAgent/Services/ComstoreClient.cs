@@ -57,6 +57,10 @@ public sealed class ComstoreClient
 
         using var req = new HttpRequestMessage(new HttpMethod(method), url);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (!string.IsNullOrWhiteSpace(config.ComstoreApiKey))
+        {
+            req.Headers.TryAddWithoutValidation("X-API-KEY", config.ComstoreApiKey);
+        }
 
         if (method is not ("GET" or "HEAD") && command.Body != null)
         {

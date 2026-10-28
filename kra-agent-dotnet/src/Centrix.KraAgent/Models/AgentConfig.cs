@@ -19,6 +19,9 @@ public sealed class AgentConfig
     [JsonPropertyName("comstoreBaseUrl")]
     public string ComstoreBaseUrl { get; set; } = "http://localhost:4000";
 
+    [JsonPropertyName("comstoreApiKey")]
+    public string ComstoreApiKey { get; set; } = "";
+
     [JsonPropertyName("pollIntervalSeconds")]
     public double PollIntervalSeconds { get; set; } = 0.25;
 
@@ -77,6 +80,7 @@ public sealed class AgentConfig
         CentrixApiUrl = CentrixApiUrl.Trim().TrimEnd('/');
         CentrixToken = CentrixToken.Trim();
         ComstoreBaseUrl = ComstoreBaseUrl.Trim().TrimEnd('/');
+        ComstoreApiKey = (ComstoreApiKey ?? "").Trim();
         if (string.IsNullOrWhiteSpace(ComstoreBaseUrl))
         {
             ComstoreBaseUrl = "http://localhost:4000";

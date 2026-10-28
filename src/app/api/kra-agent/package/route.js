@@ -42,6 +42,7 @@ function normalizeConfig(config) {
     comstoreBaseUrl: String(config.comstoreBaseUrl || "http://localhost:4000")
       .trim()
       .replace(/\/$/, ""),
+    comstoreApiKey: String(config.comstoreApiKey || "").trim(),
     longPollMs: Number(config.longPollMs) > 0 ? Number(config.longPollMs) : 2000,
     heartbeatIntervalSeconds:
       Number(config.heartbeatIntervalSeconds) > 0 ? Number(config.heartbeatIntervalSeconds) : 60,

@@ -4,6 +4,7 @@
   "organizationId": 0,
   "agentId": 0,
   "comstoreBaseUrl": "http://localhost:4000",
+  "comstoreApiKey": "",
   "longPollMs": 2000,
   "heartbeatIntervalSeconds": 60,
   "commandTimeoutSeconds": 25,

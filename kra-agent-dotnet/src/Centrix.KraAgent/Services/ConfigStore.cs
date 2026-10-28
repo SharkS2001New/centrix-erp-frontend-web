@@ -148,6 +148,7 @@ public sealed class ConfigStore
             OrganizationId = source.OrganizationId,
             AgentId = source.AgentId,
             ComstoreBaseUrl = source.ComstoreBaseUrl,
+            ComstoreApiKey = source.ComstoreApiKey,
             PollIntervalSeconds = source.PollIntervalSeconds,
             HeartbeatIntervalSeconds = source.HeartbeatIntervalSeconds,
             CommandTimeoutSeconds = source.CommandTimeoutSeconds,
