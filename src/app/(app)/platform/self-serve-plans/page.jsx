@@ -274,6 +274,22 @@ export default function SelfServePlansPage() {
   const [savingCardId, setSavingCardId] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [shortCode, setShortCode] = useState("");
+  const [paymentSettings, setPaymentSettings] = useState({
+    account_name_prefix: "",
+    manual_mpesa_account_name: "",
+    manual_mpesa_instructions: "",
+    stk_env: "sandbox",
+    stk_consumer_key: "",
+    stk_shortcode: "",
+    stk_callback_url: "",
+  });
+  const [savedStkCredentials, setSavedStkCredentials] = useState({
+    consumerKey: false,
+    consumerSecret: false,
+    passkey: false,
+  });
+  const [clearStkCredentials, setClearStkCredentials] = useState(false);
+  const [paymentSettingsBusy, setPaymentSettingsBusy] = useState(false);
   const [simulation, setSimulation] = useState(null);
   const [tokenBusy, setTokenBusy] = useState(false);
   const [freePlan, setFreePlan] = useState(null);
@@ -304,10 +320,25 @@ export default function SelfServePlansPage() {
         minMonths: Number(settings.data?.duration_discount_min_months ?? 3),
       });
       setShortCode(String(settings.data?.short_code ?? ""));
+      setPaymentSettings({
+        account_name_prefix: String(settings.data?.account_name_prefix ?? ""),
+        manual_mpesa_account_name: String(settings.data?.manual_mpesa_account_name ?? ""),
+        manual_mpesa_instructions: String(settings.data?.manual_mpesa_instructions ?? ""),
+        stk_env: settings.data?.stk_env === "live" ? "live" : "sandbox",
+        stk_consumer_key: "",
+        stk_shortcode: String(settings.data?.stk_shortcode ?? ""),
+        stk_callback_url: String(settings.data?.stk_callback_url ?? ""),
+      });
+      setSavedStkCredentials({
+        consumerKey: Boolean(settings.data?.has_stk_consumer_key),
+        consumerSecret: Boolean(settings.data?.has_stk_consumer_secret),
+        passkey: Boolean(settings.data?.has_stk_passkey),
+      });
       setPolicy(policyRes.data ?? null);
       setFreePlan(settings.data?.free_plan_access && typeof settings.data.free_plan_access === "object" ? settings.data.free_plan_access : null);
       setFreeCatalog(Array.isArray(settings.data?.free_plan_catalog) ? settings.data.free_plan_catalog : []);
-    } catch {
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not load platform payment settings.");
       setDiscount({ percent: 0, minMonths: 3 });
     }
   }, []);
@@ -564,6 +595,39 @@ export default function SelfServePlansPage() {
     }
   }
 
+  async function savePaymentSettings(event) {
+    event.preventDefault();
+    if (paymentSettingsBusy) return;
+    setPaymentSettingsBusy(true);
+    try {
+      const payload = {
+        short_code: shortCode,
+        ...paymentSettings,
+        clear_stk_credentials: clearStkCredentials,
+      };
+      await apiRequest("/admin/platform-paybill", { method: "PUT", body: payload });
+      const refreshed = await apiRequest("/admin/platform-paybill");
+      setShortCode(String(refreshed.data?.short_code ?? ""));
+      setSavedStkCredentials({
+        consumerKey: Boolean(refreshed.data?.has_stk_consumer_key),
+        consumerSecret: Boolean(refreshed.data?.has_stk_consumer_secret),
+        passkey: Boolean(refreshed.data?.has_stk_passkey),
+      });
+      setPaymentSettings((current) => ({
+        ...current,
+        stk_consumer_key: "",
+        stk_consumer_secret: "",
+        stk_passkey: "",
+      }));
+      setClearStkCredentials(false);
+      notifySuccess("Platform payment methods saved.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save platform payment settings.");
+    } finally {
+      setPaymentSettingsBusy(false);
+    }
+  }
+
   function previewTokenPayment() {
     if (!policy) return;
     setSimulation({
@@ -774,6 +838,158 @@ export default function SelfServePlansPage() {
           New plan
         </PrimaryButton>
       </div>
+
+      <form onSubmit={(event) => void savePaymentSettings(event)} className="theme-panel mb-4 rounded-2xl border p-5">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Subscription payment methods</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Configure manual M-Pesa instructions and Daraja STK credentials. Credentials are encrypted at rest and never returned by the API.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Manual M-Pesa Paybill / Till</span>
+            <input
+              className={inputClass}
+              value={shortCode}
+              onChange={(event) => setShortCode(event.target.value)}
+              placeholder="Paybill or till number"
+              autoComplete="off"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Account name shown to customers</span>
+            <input
+              className={inputClass}
+              value={paymentSettings.manual_mpesa_account_name}
+              onChange={(event) => setPaymentSettings((current) => ({ ...current, manual_mpesa_account_name: event.target.value }))}
+              placeholder="CentrixERP"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Account reference prefix (optional)</span>
+            <input
+              className={inputClass}
+              value={paymentSettings.account_name_prefix}
+              onChange={(event) => setPaymentSettings((current) => ({ ...current, account_name_prefix: event.target.value }))}
+              placeholder="For example, CENTRIX"
+            />
+          </label>
+          <label className="block text-sm md:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Manual M-Pesa instructions</span>
+            <textarea
+              className={`${inputClass} min-h-20`}
+              value={paymentSettings.manual_mpesa_instructions}
+              onChange={(event) => setPaymentSettings((current) => ({ ...current, manual_mpesa_instructions: event.target.value }))}
+              placeholder="Use the organisation code as the account/reference. Transfer the exact amount shown."
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 border-t border-slate-200 pt-5">
+          <h3 className="text-sm font-semibold text-slate-900">M-Pesa STK Push (Daraja)</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Use the public callback URL registered in Daraja. STK is offered only when all required fields are valid.
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Environment</span>
+              <select
+                className={inputClass}
+                value={paymentSettings.stk_env}
+                onChange={(event) => setPaymentSettings((current) => ({ ...current, stk_env: event.target.value }))}
+              >
+                <option value="sandbox">Sandbox</option>
+                <option value="live">Live</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">STK shortcode</span>
+              <input
+                className={inputClass}
+                value={paymentSettings.stk_shortcode}
+                onChange={(event) => setPaymentSettings((current) => ({ ...current, stk_shortcode: event.target.value }))}
+                placeholder="Daraja shortcode"
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Consumer key</span>
+              <input
+                className={inputClass}
+                value={paymentSettings.stk_consumer_key}
+                onChange={(event) => {
+                  setClearStkCredentials(false);
+                  setPaymentSettings((current) => ({ ...current, stk_consumer_key: event.target.value }));
+                }}
+                placeholder={savedStkCredentials.consumerKey ? "Saved — enter a new key to replace" : "Daraja consumer key"}
+                autoComplete="new-password"
+              />
+              {savedStkCredentials.consumerKey ? <span className="mt-1 block text-xs text-emerald-700">A key is saved.</span> : null}
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Consumer secret</span>
+              <input
+                className={inputClass}
+                type="password"
+                value={paymentSettings.stk_consumer_secret || ""}
+                onChange={(event) => {
+                  setClearStkCredentials(false);
+                  setPaymentSettings((current) => ({ ...current, stk_consumer_secret: event.target.value }));
+                }}
+                placeholder={savedStkCredentials.consumerSecret ? "Saved — enter a new secret to replace" : "Daraja consumer secret"}
+                autoComplete="new-password"
+              />
+              {savedStkCredentials.consumerSecret ? <span className="mt-1 block text-xs text-emerald-700">A secret is saved.</span> : null}
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Passkey</span>
+              <input
+                className={inputClass}
+                type="password"
+                value={paymentSettings.stk_passkey || ""}
+                onChange={(event) => {
+                  setClearStkCredentials(false);
+                  setPaymentSettings((current) => ({ ...current, stk_passkey: event.target.value }));
+                }}
+                placeholder={savedStkCredentials.passkey ? "Saved — enter a new passkey to replace" : "Daraja STK passkey"}
+                autoComplete="new-password"
+              />
+              {savedStkCredentials.passkey ? <span className="mt-1 block text-xs text-emerald-700">A passkey is saved.</span> : null}
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-slate-600">STK callback URL</span>
+              <input
+                className={inputClass}
+                type="url"
+                value={paymentSettings.stk_callback_url}
+                onChange={(event) => setPaymentSettings((current) => ({ ...current, stk_callback_url: event.target.value }))}
+                placeholder="https://api.example.com/api/v1/payments/stk/callback"
+                autoComplete="url"
+              />
+            </label>
+          </div>
+          {(savedStkCredentials.consumerKey || savedStkCredentials.consumerSecret || savedStkCredentials.passkey) ? (
+            <label className="mt-4 flex items-center gap-2 text-sm text-red-700">
+              <input
+                type="checkbox"
+                checked={clearStkCredentials}
+                onChange={(event) => setClearStkCredentials(event.target.checked)}
+              />
+              Clear saved STK credentials and disable STK
+            </label>
+          ) : null}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            Equity uses an active platform Equity account configured under platform organization payment accounts.
+          </p>
+          <PrimaryButton type="submit" showIcon={false} disabled={paymentSettingsBusy}>
+            {paymentSettingsBusy ? "Saving…" : "Save payment settings"}
+          </PrimaryButton>
+        </div>
+      </form>
 
       <div className="theme-panel mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4">
         <div>

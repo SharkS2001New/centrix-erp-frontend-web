@@ -56,6 +56,12 @@ export default function SubscribePage() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [checkoutId, setCheckoutId] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("mpesa_stk");
+  const [paymentMethods, setPaymentMethods] = useState({});
+  const [equityInstructions, setEquityInstructions] = useState(null);
+  const [equityCheckout, setEquityCheckout] = useState(null);
+  const [equityTransactionId, setEquityTransactionId] = useState("");
+  const [manualPaybill, setManualPaybill] = useState(null);
   const [watching, setWatching] = useState(false);
   const purchaseIntentHandled = useRef(false);
 
@@ -94,17 +100,34 @@ export default function SubscribePage() {
         if (cancelled) return;
         const policy = res.data?.policy ?? {};
         setTokensEnabled(policy.tokens_enabled !== false);
+        const availableMethods = res.data?.payment_methods ?? {};
+        setPaymentMethods(availableMethods);
+        setEquityInstructions(res.data?.equity ?? null);
+        setManualPaybill(res.data?.paybill ?? organizationLicense?.paybill ?? null);
+        setPaymentMethod(
+          availableMethods.mpesa_stk
+            ? "mpesa_stk"
+            : availableMethods.mpesa_manual
+              ? "mpesa_manual"
+              : availableMethods.equity
+                ? "equity"
+                : "",
+        );
         setTokenPack({
           tokens: Number(policy.token_pack_tokens) || 0,
           price: Number(policy.token_pack_price_kes) || 0,
           saleTokens: Number(policy.sale_tokens) || 1,
         });
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!cancelled) {
+          setNotice(err instanceof ApiError ? err.message : "Could not load payment options.");
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organizationLicense?.paybill]);
 
   const due = Number(charge?.amount) || 0;
   const paybill = organizationLicense?.paybill;
@@ -221,6 +244,10 @@ export default function SubscribePage() {
   }, [checkoutId, watching]);
 
   async function payNow() {
+    if (!paymentMethods.mpesa_stk) {
+      setNotice("M-Pesa STK is unavailable. Choose manual M-Pesa or Equity transfer.");
+      return;
+    }
     if (charge?.kind === "token" && (forPos || !tokensEnabled)) {
       setNotice(forPos
         ? "External POS needs a monthly or yearly subscription."
@@ -251,6 +278,91 @@ export default function SubscribePage() {
       setNotice(res.message || "Check your phone for the M-Pesa prompt.");
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not start M-Pesa.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function selectPaymentMethod(method) {
+    setPaymentMethod(method);
+    setNotice("");
+    setCode("");
+    setCheckoutId(null);
+    setEquityCheckout(null);
+    setEquityTransactionId("");
+
+    if (method !== "mpesa_manual" || !charge || charge.kind === "token" || charge.kind === "renew") {
+      return;
+    }
+    if (!paymentMethods.mpesa_manual) {
+      setNotice("Manual M-Pesa payment is not configured. Contact Centrix support.");
+      return;
+    }
+
+    setBusy("manual-checkout");
+    try {
+      const res = await apiRequest("/erp/organization/licence/checkout", {
+        method: "POST",
+        body: {
+          plan_id: charge.plan.id,
+          months: charge.months,
+          billing: charge.billing === "yearly" ? "yearly" : "monthly",
+        },
+      });
+      setCheckoutId(res.checkout?.id ?? null);
+      setManualPaybill(res.paybill ?? manualPaybill);
+      setNotice(res.message || "Use the Paybill details below to complete your transfer.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Could not prepare manual M-Pesa payment.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function startEquity() {
+    if (!charge?.plan?.id || charge.kind === "token" || charge.kind === "renew") return;
+    setBusy("equity-start");
+    setNotice("");
+    try {
+      const res = await apiRequest("/erp/organization/licence/equity/checkout", {
+        method: "POST",
+        body: {
+          plan_id: charge.plan.id,
+          months: charge.months,
+          billing: charge.billing === "yearly" ? "yearly" : "monthly",
+        },
+      });
+      setEquityCheckout(res.checkout ?? null);
+      setCheckoutId(res.checkout?.id ?? null);
+      setEquityInstructions(res.equity ?? equityInstructions);
+      setNotice("Transfer the exact amount using your organisation code as the reference.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Could not prepare Equity payment.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function verifyEquity() {
+    if (!equityCheckout?.id || !equityTransactionId.trim()) return;
+    setBusy("equity-check");
+    setNotice("");
+    try {
+      const res = await apiRequest("/erp/organization/licence/equity/verify", {
+        method: "POST",
+        body: {
+          checkout_id: equityCheckout.id,
+          transaction_id: equityTransactionId.trim(),
+        },
+      });
+      if (res.confirmed) {
+        if (await leaveIfPaid(res.license)) return;
+        const next = await refreshCapabilities({ force: true });
+        if (await leaveIfPaid(next?.license ?? next?.subscription)) return;
+      }
+      setNotice(res.message || "Equity payment has not been confirmed yet.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Could not verify the Equity transfer.");
     } finally {
       setBusy("");
     }
@@ -296,10 +408,10 @@ export default function SubscribePage() {
       const res = await apiRequest("/erp/organization/licence/verify", {
         method: "POST",
         body: charge?.kind === "token"
-          ? { mpesa_code: code.trim(), billing: "token" }
+          ? { mpesa_code: code.trim(), billing: "token", checkout_id: checkoutId || undefined }
           : charge?.kind === "renew"
-            ? { mpesa_code: code.trim(), billing: "renew" }
-            : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing },
+            ? { mpesa_code: code.trim(), billing: "renew", checkout_id: checkoutId || undefined }
+            : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing, checkout_id: checkoutId || undefined },
       });
       if (await leaveIfPaid(res.license)) return;
       const next = await refreshCapabilities({ force: true });
@@ -351,6 +463,16 @@ export default function SubscribePage() {
             currency={currency}
             paybill={paybill}
             account={account}
+            manualPaybill={manualPaybill}
+            equityInstructions={equityInstructions}
+            paymentMethods={paymentMethods}
+            paymentMethod={paymentMethod}
+            checkoutId={checkoutId}
+            setPaymentMethod={(method) => void selectPaymentMethod(method)}
+            onStartManual={() => void selectPaymentMethod("mpesa_manual")}
+            equityCheckout={equityCheckout}
+            equityTransactionId={equityTransactionId}
+            setEquityTransactionId={setEquityTransactionId}
             phone={phone}
             setPhone={setPhone}
             code={code}
@@ -361,6 +483,8 @@ export default function SubscribePage() {
             onBack={charge.kind === "renew" ? closeForLater : () => setStep("plans")}
             backLabel={charge.kind === "renew" ? "Close" : "‹ Configure your plan"}
             onPay={() => void payNow()}
+            onStartEquity={() => void startEquity()}
+            onVerifyEquity={() => void verifyEquity()}
             onNotify={() => void notifyAdmin()}
             onCheck={() => void checkNow()}
           />
@@ -522,9 +646,13 @@ function CheckoutStep({
   currency,
   paybill,
   account,
+  manualPaybill,
   equityInstructions,
+  paymentMethods,
   paymentMethod,
+  checkoutId,
   setPaymentMethod,
+  onStartManual,
   equityCheckout,
   equityTransactionId,
   setEquityTransactionId,
@@ -557,9 +685,13 @@ function CheckoutStep({
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
   const canPayByEquity = Boolean(
-    equityInstructions && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
+    paymentMethods?.equity && equityInstructions && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
   );
-              return (
+  const canPayByManual = Boolean(
+    paymentMethods?.mpesa_manual && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
+  );
+
+  return (
     <div>
       <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
         {backLabel}
@@ -568,14 +700,16 @@ function CheckoutStep({
         <section>
           <h2 className="theme-heading text-sm font-medium">Pay with</h2>
           <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Payment method">
-            <button
-              type="button"
-              aria-pressed={paymentMethod === "mpesa"}
-              onClick={() => setPaymentMethod("mpesa")}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa" ? "theme-primary-btn" : "theme-inset-panel"}`}
-            >
-              M-Pesa STK
-            </button>
+            {paymentMethods?.mpesa_stk ? (
+              <button
+                type="button"
+                aria-pressed={paymentMethod === "mpesa_stk"}
+                onClick={() => setPaymentMethod("mpesa_stk")}
+                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa_stk" ? "theme-primary-btn" : "theme-inset-panel"}`}
+              >
+                M-Pesa STK
+              </button>
+            ) : null}
             {canPayByEquity ? (
               <button
                 type="button"
@@ -583,45 +717,92 @@ function CheckoutStep({
                 onClick={() => setPaymentMethod("equity")}
                 className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "equity" ? "theme-primary-btn" : "theme-inset-panel"}`}
               >
-                Equity transfer
+                Equity
+              </button>
+            ) : null}
+            {canPayByManual ? (
+              <button
+                type="button"
+                aria-pressed={paymentMethod === "mpesa_manual"}
+                onClick={() => setPaymentMethod("mpesa_manual")}
+                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa_manual" ? "theme-primary-btn" : "theme-inset-panel"}`}
+              >
+                M-Pesa manual
               </button>
             ) : null}
           </div>
-          {paymentMethod === "mpesa" ? (
+          {!paymentMethods?.mpesa_stk && !canPayByEquity && !canPayByManual ? (
+            <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm" role="alert">
+              No online payment methods are configured. Contact the Centrix administrator.
+            </p>
+          ) : null}
+          {paymentMethod === "mpesa_stk" && paymentMethods?.mpesa_stk ? (
             <>
               <label className="mt-4 block text-sm">
                 <span className="theme-subtext mb-1 block text-xs">M-Pesa phone</span>
                 <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07…" />
               </label>
-              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Paybill</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{paybill?.short_code || "Ask your Centrix administrator"}</dd>
-                </div>
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Account</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{account || "Your organisation code"}</dd>
-                </div>
-              </dl>
-              <label className="mt-4 block text-sm">
-                <span className="theme-subtext mb-1 block text-xs">M-Pesa code, after you pay</span>
-                <input
-                  className={`${inputClass} font-mono uppercase`}
-                  value={code}
-                  onChange={(event) => setCode(event.target.value.toUpperCase())}
-                  placeholder="QLK1ABC234"
-                />
-              </label>
-              <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onCheck}>
-                  {busy === "check" ? "Checking…" : "I have paid — check again"}
-                </button>
-                <button type="button" className="theme-link disabled:opacity-50" disabled={busy !== ""} onClick={onNotify}>
-                  {busy === "manual" ? "Notifying…" : "Notify admin on WhatsApp"}
-                </button>
-              </div>
+              <p className="theme-subtext mt-3 text-sm">We’ll send a secure payment prompt to your phone.</p>
             </>
-          ) : (
+          ) : null}
+          {paymentMethod === "mpesa_manual" && canPayByManual ? (
+            <div className="mt-4 space-y-4">
+              <p className="theme-subtext text-sm">
+                Transfer the exact amount and use your organisation code as the payment reference.
+              </p>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Paybill / Till</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.short_code}</dd>
+                </div>
+                <div className={fieldClass}>
+                  <dt className="theme-subtext text-xs">Account / reference</dt>
+                  <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.account_number || account}</dd>
+                </div>
+                {manualPaybill?.account_name ? (
+                  <div className={fieldClass}>
+                    <dt className="theme-subtext text-xs">Account name</dt>
+                    <dd className="theme-heading mt-1 text-sm">{manualPaybill.account_name}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {manualPaybill?.instructions ? (
+                <p className="theme-subtext text-sm">{manualPaybill.instructions}</p>
+              ) : null}
+              {!checkoutId ? (
+                <button
+                  type="button"
+                  className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                  disabled={busy !== ""}
+                  onClick={onStartManual}
+                >
+                  {busy === "manual-checkout" ? "Preparing payment…" : "Prepare manual payment"}
+                </button>
+              ) : (
+                <>
+                  <label className="block text-sm">
+                    <span className="theme-subtext mb-1 block text-xs">M-Pesa transaction code</span>
+                    <input
+                      className={`${inputClass} font-mono uppercase`}
+                      value={code}
+                      onChange={(event) => setCode(event.target.value.toUpperCase())}
+                      placeholder="QLK1ABC234"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                    disabled={busy !== "" || !code.trim()}
+                    onClick={onCheck}
+                  >
+                    {busy === "check" ? "Verifying payment…" : "Verify M-Pesa payment"}
+                  </button>
+                </>
+              )}
+            </div>
+          ) : null}
+          {paymentMethod === "equity" && canPayByEquity ? (
             <div className="mt-4 space-y-4">
               <p className="theme-subtext text-sm">Transfer the exact amount and use your organisation code as the payment reference.</p>
               <dl className="grid gap-3 sm:grid-cols-2">
@@ -673,7 +854,7 @@ function CheckoutStep({
                 </>
               )}
             </div>
-          )}
+          ) : null}
           {notice ? (
             <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${watching ? "theme-panel border" : "theme-alert-error"}`}>
               {notice}
@@ -707,7 +888,7 @@ function CheckoutStep({
               <dd>{formatBillingMoney(due, currency)}</dd>
             </div>
           </dl>
-          {paymentMethod === "mpesa" ? (
+          {paymentMethod === "mpesa_stk" && paymentMethods?.mpesa_stk ? (
             <>
               <button
                 type="button"
@@ -721,10 +902,16 @@ function CheckoutStep({
                 Pay {formatBillingMoney(due, currency)} to Paybill {paybill?.short_code || "—"} account {account || "your organisation code"}. This does not renew by itself.
               </p>
             </>
-          ) : (
+          ) : paymentMethod === "equity" ? (
             <p className="theme-subtext mt-6 text-xs leading-5">
-              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the Equity callback confirms the payment.
+              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the Equity payment is confirmed.
             </p>
+          ) : paymentMethod === "mpesa_manual" ? (
+            <p className="theme-subtext mt-6 text-xs leading-5">
+              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the M-Pesa transaction code is confirmed.
+            </p>
+          ) : (
+            <p className="theme-subtext mt-6 text-xs leading-5">Choose a payment method to continue.</p>
           )}
         </aside>
       </div>
