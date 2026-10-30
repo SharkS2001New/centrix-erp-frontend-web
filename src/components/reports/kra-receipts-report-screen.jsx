@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
-import { useBackgroundTasks } from "@/contexts/background-task-context";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -144,7 +143,6 @@ function isLiveReplayInProgress(row) {
 export function KraReceiptsReportScreen({ definition }) {
   const isInvoicesView = definition.variant === "kra-invoices";
   const confirm = useConfirm();
-  const { runBackgroundTask } = useBackgroundTasks();
   const { user, isOrgWide, capabilities, organization, hasPermission } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
@@ -184,6 +182,7 @@ export function KraReceiptsReportScreen({ definition }) {
   const [batchRetrying, setBatchRetrying] = useState(false);
   const [batchRetryProgress, setBatchRetryProgress] = useState(null);
   const [batchLiveReplay, setBatchLiveReplay] = useState(false);
+  const [liveReplayProgress, setLiveReplayProgress] = useState(null);
   const [liveReplayAvailability, setLiveReplayAvailability] = useState({
     key: null,
     available: false,
@@ -553,45 +552,110 @@ export function KraReceiptsReportScreen({ definition }) {
       if (!confirmed) return;
 
       clearSelection();
-      await runBackgroundTask(
-        () =>
-          apiRequest("/kra/live-replay-tasks", {
-            method: "POST",
-            body: {
-              from_date: applied.fromDate,
-              to_date: applied.toDate,
-              ...(applied.branchId ? { branch_id: applied.branchId } : {}),
-              ...(applied.queryFilters?.channel ? { channel: applied.queryFilters.channel } : {}),
-              ...(applied.queryFilters?.q ? { q: applied.queryFilters.q } : {}),
-            },
-          }),
-        {
-          label: `Re-fiscalizing ${targetCount} KRA invoices as live`,
-          message: "Queuing live re-fiscalization…",
-          onComplete: (result) => {
-            const succeeded = Number(result?.succeeded ?? 0);
-            const failed = Number(result?.failed ?? 0);
-            if (failed === 0) {
-              notifySuccess(
-                succeeded === 1
-                  ? "Invoice re-fiscalized in live mode."
-                  : `${succeeded} invoices re-fiscalized in live mode.`,
-              );
-            } else if (succeeded === 0) {
-              notifyError(`All ${failed} live re-fiscalizations failed. The test records were preserved.`);
-            } else {
-              notifySuccess(
-                `${succeeded} re-fiscalized live; ${failed} failed and their test records were preserved.`,
+      setBatchLiveReplay(true);
+      setLiveReplayProgress({
+        done: 0,
+        total: targetCount,
+        percent: 0,
+        succeeded: 0,
+        failed: 0,
+        current: null,
+      });
+
+      const candidates = [];
+      const pageSize = 200;
+      const firstPage = await apiRequest("/kra/live-replay-candidates", {
+        searchParams: { ...searchParams, per_page: pageSize },
+        loading: false,
+      });
+      candidates.push(...(Array.isArray(firstPage?.data) ? firstPage.data : []));
+      const lastPage = Math.max(1, Number(firstPage?.last_page ?? 1));
+      for (let pageNumber = 2; pageNumber <= lastPage; pageNumber += 1) {
+        const pageResult = await apiRequest("/kra/live-replay-candidates", {
+          searchParams: { ...searchParams, per_page: pageSize, page: pageNumber },
+          loading: false,
+        });
+        candidates.push(...(Array.isArray(pageResult?.data) ? pageResult.data : []));
+      }
+
+      if (candidates.length === 0) {
+        notifySuccess("No eligible test-mode invoices remain in the applied sale-date range.");
+        return;
+      }
+
+      setLiveReplayProgress((progress) => ({
+        ...progress,
+        total: candidates.length,
+      }));
+      const { succeeded, failed } = await runSequentialActions({
+        items: candidates,
+        onProgress: ({ index, total, item, succeeded: ok, failed: bad }) => {
+          setLiveReplayProgress({
+            done: index,
+            total,
+            percent: total > 0 ? Math.round((index / total) * 100) : 0,
+            succeeded: ok,
+            failed: bad,
+            current: formatKraReportOrderNo(item) ?? String(item?.kra_response_id ?? ""),
+          });
+        },
+        action: async (candidate) => {
+          const responseId = Number(candidate?.kra_response_id);
+          if (!Number.isInteger(responseId) || responseId <= 0) {
+            throw new Error("Candidate invoice is missing a valid KRA response ID.");
+          }
+          try {
+            await apiRequest(`/kra-responses/${responseId}/re-fiscalize-live`, {
+              method: "POST",
+            });
+          } catch (error) {
+            if (
+              error instanceof ApiError &&
+              (error.body?.code === "network_unavailable" ||
+                [502, 503, 504, 520, 522, 524].includes(error.status))
+            ) {
+              throw new Error(
+                "The connection to the server was interrupted while waiting for KRA/Comstore. This does not necessarily mean your internet is offline. Check this invoice's status before retrying; the live submission may already have completed.",
               );
             }
-            if (screenMountedRef.current) void loadReport();
-          },
+            throw error;
+          }
         },
-      );
+      });
+
+      if (failed.length === 0) {
+        notifySuccess(
+          succeeded.length === 1
+            ? "Invoice re-fiscalized in live mode."
+            : `${succeeded.length} invoices re-fiscalized in live mode.`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(
+          `All ${failed.length} live re-fiscalizations failed. The test records were preserved. ${failed[0]?.message ?? ""}`,
+        );
+      } else {
+        const interrupted = failed.find(({ message }) =>
+          String(message ?? "").startsWith("The connection to the server was interrupted"),
+        );
+        if (interrupted) {
+          notifyError(
+            `${succeeded.length} succeeded; ${failed.length} response(s) failed or were interrupted. ${interrupted.message}`,
+          );
+        } else {
+          notifySuccess(
+            `${succeeded.length} re-fiscalized live; ${failed.length} failed and their test records were preserved.`,
+          );
+        }
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Live re-fiscalization failed.");
     } finally {
-      if (screenMountedRef.current) setBatchLiveReplay(false);
+      if (screenMountedRef.current) {
+        setBatchLiveReplay(false);
+        setLiveReplayProgress(null);
+        clearSelection();
+        await loadReport();
+      }
     }
   }
 
@@ -830,7 +894,7 @@ export function KraReceiptsReportScreen({ definition }) {
         canCreditKraSale &&
         liveReplayAvailability.key === appliedKey &&
         liveReplayAvailability.available ? (
-          <div className="mb-3 flex justify-end">
+          <div className="mb-3 flex flex-col items-end">
             <button
               type="button"
               disabled={batchLiveReplay || batchRetrying || printing}
@@ -838,9 +902,32 @@ export function KraReceiptsReportScreen({ definition }) {
               className="rounded-full bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {batchLiveReplay
-                ? "Re-fiscalization running in background…"
+                ? liveReplayProgress
+                  ? `Re-fiscalizing live ${liveReplayProgress.done}/${liveReplayProgress.total} (${liveReplayProgress.percent}%)…`
+                  : "Preparing live re-fiscalization…"
                 : "Re-fiscalize date range as live"}
             </button>
+            {batchLiveReplay && liveReplayProgress ? (
+              <div className="mt-2 flex flex-col items-end gap-1">
+                <div
+                  className="h-1.5 w-56 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={liveReplayProgress.percent}
+                  aria-label="Live re-fiscalization progress"
+                >
+                  <div
+                    className="h-full rounded-full bg-red-700 transition-[width] duration-200"
+                    style={{ width: `${liveReplayProgress.percent}%` }}
+                  />
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {liveReplayProgress.succeeded} succeeded · {liveReplayProgress.failed} failed
+                  {liveReplayProgress.current ? ` · Order ${liveReplayProgress.current}` : ""}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
