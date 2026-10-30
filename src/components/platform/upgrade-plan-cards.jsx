@@ -478,9 +478,6 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
       ) : (
         <p className="mt-1 text-sm">&nbsp;</p>
       )}
-      {Number(offer.plan.seat_limit) > 0 ? (
-        <p className="theme-subtext mt-1 text-sm">{offer.plan.seat_limit} seat{Number(offer.plan.seat_limit) === 1 ? "" : "s"}</p>
-      ) : null}
       {preview || canPay ? (
       <button
         type="button"

@@ -22,7 +22,7 @@ const TABS = [
   { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
   { id: "payroll", label: "Payroll" },
-  { id: "paybill", label: "Licence Paybill" },
+  { id: "paybill", label: "Subscription payments" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -89,7 +89,7 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
               : activeTab === "payroll"
                 ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
                 : activeTab === "paybill"
-                  ? "Centrix M-Pesa Paybill for monthly, yearly, and token licence payments."
+                    ? "Manual M-Pesa and Daraja STK settings for subscription payments."
                 : "Email digest, instant WhatsApp/email, and test sends for System errors & reports.";
 
   return (

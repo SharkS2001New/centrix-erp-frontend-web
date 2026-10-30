@@ -61,6 +61,7 @@ export default function SubscribePage() {
   const [equityInstructions, setEquityInstructions] = useState(null);
   const [equityCheckout, setEquityCheckout] = useState(null);
   const [equityTransactionId, setEquityTransactionId] = useState("");
+  const [equityNotified, setEquityNotified] = useState(false);
   const [manualPaybill, setManualPaybill] = useState(null);
   const [watching, setWatching] = useState(false);
   const purchaseIntentHandled = useRef(false);
@@ -290,6 +291,7 @@ export default function SubscribePage() {
     setCheckoutId(null);
     setEquityCheckout(null);
     setEquityTransactionId("");
+    setEquityNotified(false);
 
     if (method !== "mpesa_manual" || !charge || charge.kind === "token" || charge.kind === "renew") {
       return;
@@ -335,6 +337,7 @@ export default function SubscribePage() {
       setEquityCheckout(res.checkout ?? null);
       setCheckoutId(res.checkout?.id ?? null);
       setEquityInstructions(res.equity ?? equityInstructions);
+      setEquityNotified(false);
       setNotice("Transfer the exact amount using your organisation code as the reference.");
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not prepare Equity payment.");
@@ -346,6 +349,7 @@ export default function SubscribePage() {
   async function verifyEquity() {
     if (!equityCheckout?.id || !equityTransactionId.trim()) return;
     setBusy("equity-check");
+    setEquityNotified(false);
     setNotice("");
     try {
       const res = await apiRequest("/erp/organization/licence/equity/verify", {
@@ -363,6 +367,27 @@ export default function SubscribePage() {
       setNotice(res.message || "Equity payment has not been confirmed yet.");
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not verify the Equity transfer.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function notifyEquityAdmin() {
+    if (!equityCheckout?.id || !equityTransactionId.trim()) return;
+    setBusy("equity-notify");
+    setNotice("");
+    try {
+      const res = await apiRequest("/erp/organization/licence/equity/notify", {
+        method: "POST",
+        body: {
+          checkout_id: equityCheckout.id,
+          transaction_id: equityTransactionId.trim(),
+        },
+      });
+      setEquityNotified(Boolean(res.admin_notified));
+      setNotice(res.message || "Your payment reference was sent to the platform administrator for review.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Could not notify the platform administrator.");
     } finally {
       setBusy("");
     }
@@ -472,7 +497,11 @@ export default function SubscribePage() {
             onStartManual={() => void selectPaymentMethod("mpesa_manual")}
             equityCheckout={equityCheckout}
             equityTransactionId={equityTransactionId}
-            setEquityTransactionId={setEquityTransactionId}
+            equityNotified={equityNotified}
+            setEquityTransactionId={(value) => {
+              setEquityTransactionId(value);
+              setEquityNotified(false);
+            }}
             phone={phone}
             setPhone={setPhone}
             code={code}
@@ -485,6 +514,7 @@ export default function SubscribePage() {
             onPay={() => void payNow()}
             onStartEquity={() => void startEquity()}
             onVerifyEquity={() => void verifyEquity()}
+            onNotifyEquityAdmin={() => void notifyEquityAdmin()}
             onNotify={() => void notifyAdmin()}
             onCheck={() => void checkNow()}
           />
@@ -656,6 +686,7 @@ function CheckoutStep({
   equityCheckout,
   equityTransactionId,
   setEquityTransactionId,
+  equityNotified,
   phone,
   setPhone,
   code,
@@ -668,6 +699,7 @@ function CheckoutStep({
   onPay,
   onStartEquity,
   onVerifyEquity,
+  onNotifyEquityAdmin,
   onNotify,
   onCheck,
 }) {
@@ -823,6 +855,9 @@ function CheckoutStep({
                   <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
                 </div>
               </dl>
+              {equityInstructions?.instructions ? (
+                <p className="theme-subtext text-sm">{equityInstructions.instructions}</p>
+              ) : null}
               {!equityCheckout ? (
                 <button
                   type="button"
@@ -851,12 +886,27 @@ function CheckoutStep({
                   >
                     {busy === "equity-check" ? "Verifying transfer…" : "Verify Equity payment"}
                   </button>
+                  <button
+                    type="button"
+                    disabled={busy !== "" || !equityTransactionId.trim() || equityNotified}
+                    onClick={onNotifyEquityAdmin}
+                    className="theme-inset-panel w-full rounded-lg border py-3 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {busy === "equity-notify"
+                      ? "Notifying platform admin…"
+                      : equityNotified
+                        ? "Payment sent for admin review"
+                        : "I’ve paid — notify platform admin"}
+                  </button>
+                  <p className="theme-subtext text-xs leading-5">
+                    For a manual transfer, submit its transaction reference. A platform administrator will verify it before activating your plan.
+                  </p>
                 </>
               )}
             </div>
           ) : null}
           {notice ? (
-            <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${watching ? "theme-panel border" : "theme-alert-error"}`}>
+            <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${equityNotified ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : watching ? "theme-panel border" : "theme-alert-error"}`}>
               {notice}
             </p>
           ) : null}
@@ -904,7 +954,7 @@ function CheckoutStep({
             </>
           ) : paymentMethod === "equity" ? (
             <p className="theme-subtext mt-6 text-xs leading-5">
-              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the Equity payment is confirmed.
+              Transfer exactly {formatBillingMoney(due, currency)}. Your plan activates after the Equity payment is verified by a platform administrator.
             </p>
           ) : paymentMethod === "mpesa_manual" ? (
             <p className="theme-subtext mt-6 text-xs leading-5">
