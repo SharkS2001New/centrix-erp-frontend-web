@@ -16,6 +16,7 @@ import {
   clearStoredCompanyCode,
   getDefaultCompanyCode,
   getStoredCompanyCode,
+  setStoredCompanyCode,
 } from "@/lib/tenant-config";
 import {
   AuthError,
@@ -239,6 +240,7 @@ function LoginForm() {
     }
     startSignInProgress("login");
     try {
+      setStoredCompanyCode(companyCode);
       const result = await login(companyCode, username, password, {
         forceLogout,
         postLoginPath: purchasePath,
@@ -295,6 +297,7 @@ function LoginForm() {
     }
     startSignInProgress("login");
     try {
+      setStoredCompanyCode(bound.company_code);
       await loginWithPin(bound.company_code, bound.username, digits, {
         forceLogout,
         postLoginPath: purchasePath,
@@ -419,6 +422,7 @@ function LoginForm() {
         abortSignInProgress();
         return;
       }
+      setStoredCompanyCode(org);
       const begin = await apiRequest("/auth/passkeys/login/options", {
         method: "POST",
         body: {

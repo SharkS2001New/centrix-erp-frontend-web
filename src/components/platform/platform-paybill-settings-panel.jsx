@@ -26,6 +26,8 @@ export function PlatformPaybillSettingsPanel() {
     stk_shortcode: "",
     stk_passkey: "",
     stk_callback_url: "",
+    c2b_confirmation_url: "",
+    c2b_validation_url: "",
     duration_discount_percent: "0",
     duration_discount_min_months: "3",
   });
@@ -42,6 +44,7 @@ export function PlatformPaybillSettingsPanel() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [registeringC2b, setRegisteringC2b] = useState(false);
 
   const applySettings = useCallback((settings) => {
     setForm({
@@ -59,6 +62,8 @@ export function PlatformPaybillSettingsPanel() {
       stk_shortcode: settings.data?.stk_shortcode ?? "",
       stk_passkey: "",
       stk_callback_url: settings.data?.stk_callback_url ?? "",
+      c2b_confirmation_url: settings.data?.c2b_confirmation_url ?? "",
+      c2b_validation_url: settings.data?.c2b_validation_url ?? "",
       duration_discount_percent: String(settings.data?.duration_discount_percent ?? 0),
       duration_discount_min_months: String(settings.data?.duration_discount_min_months ?? 3),
     });
@@ -85,8 +90,7 @@ export function PlatformPaybillSettingsPanel() {
     void load();
   }, [load]);
 
-  async function save(e) {
-    e.preventDefault();
+  async function saveSettings() {
     setSaving(true);
     try {
       const settings = await apiRequest("/admin/platform-paybill", {
@@ -106,6 +110,8 @@ export function PlatformPaybillSettingsPanel() {
           stk_shortcode: form.stk_shortcode.trim(),
           stk_passkey: form.stk_passkey,
           stk_callback_url: form.stk_callback_url.trim(),
+          c2b_confirmation_url: form.c2b_confirmation_url.trim(),
+          c2b_validation_url: form.c2b_validation_url.trim(),
           clear_stk_credentials: clearStkCredentials,
           duration_discount_percent: Number(form.duration_discount_percent) || 0,
           duration_discount_min_months: Number(form.duration_discount_min_months) || 3,
@@ -114,10 +120,34 @@ export function PlatformPaybillSettingsPanel() {
       applySettings(settings);
       setClearStkCredentials(false);
       notifySuccess("Subscription payment settings saved.");
+      return true;
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save subscription payment settings.");
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    await saveSettings();
+  }
+
+  async function saveAndRegisterC2bUrls() {
+    setRegisteringC2b(true);
+    try {
+      if (!await saveSettings()) return;
+      const result = await apiRequest("/admin/platform-paybill/register-c2b-urls", {
+        method: "POST",
+        loading: false,
+        reportIssues: false,
+      });
+      notifySuccess(result.message || "Platform C2B URLs registered successfully with Daraja.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not register platform C2B URLs with Daraja.");
+    } finally {
+      setRegisteringC2b(false);
     }
   }
 
@@ -333,6 +363,41 @@ export function PlatformPaybillSettingsPanel() {
                 autoComplete="url"
               />
             </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Platform C2B confirmation URL</span>
+              <input
+                className={inputClass}
+                type="url"
+                value={form.c2b_confirmation_url}
+                onChange={(e) => setForm((f) => ({ ...f, c2b_confirmation_url: e.target.value }))}
+                placeholder="https://api.example.com/api/v1/payments/c2b/confirmation"
+                autoComplete="url"
+              />
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Platform C2B validation URL</span>
+              <input
+                className={inputClass}
+                type="url"
+                value={form.c2b_validation_url}
+                onChange={(e) => setForm((f) => ({ ...f, c2b_validation_url: e.target.value }))}
+                placeholder="https://api.example.com/api/v1/payments/c2b/validation"
+                autoComplete="url"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={saving || loading || registeringC2b}
+              onClick={() => void saveAndRegisterC2bUrls()}
+            >
+              {registeringC2b ? "Registering…" : "Save & register platform C2B URLs"}
+            </PrimaryButton>
+            <span className="text-xs text-slate-500">
+              Registers the manual M-Pesa shortcode above with these C2B callback URLs.
+            </span>
           </div>
           {(savedStkCredentials.consumerKey || savedStkCredentials.consumerSecret || savedStkCredentials.passkey) ? (
             <label className="mt-4 flex items-center gap-2 text-sm text-red-700">

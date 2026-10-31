@@ -214,6 +214,7 @@ export function FinanceSettingsPanel({
   const [paybillRoutes, setPaybillRoutes] = useState([]);
   const [paybillTills, setPaybillTills] = useState([]);
   const [accountsRefreshKey, setAccountsRefreshKey] = useState(0);
+  const [c2bRegistering, setC2bRegistering] = useState(false);
 
   const needsFinanceForm = mode !== "paybills";
   const needsPaybillRefs = mode === "all" || mode === "mpesa" || mode === "paybills" || mode === "equity";
@@ -522,10 +523,30 @@ export function FinanceSettingsPanel({
               : "Finance settings saved.";
       notifySuccess(successLabel);
       setMessage?.(successLabel);
+      return true;
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save finance settings");
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveAndRegisterDefaultC2bUrls() {
+    setC2bRegistering(true);
+    setError(null);
+    try {
+      if (!await saveFinanceSettings()) return;
+      const result = await apiRequest("/mpesa-paybill-accounts/register-default-c2b-urls", {
+        method: "POST",
+        loading: false,
+        reportIssues: false,
+      });
+      notifySuccess(result.message || "C2B URLs registered successfully with Daraja.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to register C2B URLs with Daraja");
+    } finally {
+      setC2bRegistering(false);
     }
   }
 
@@ -1119,6 +1140,18 @@ export function FinanceSettingsPanel({
                 onChange={(v) => setMpesa("stk_callback_url", v)}
                 placeholder="https://your-api.example.com/api/v1/payments/stk/callback"
               />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <PrimaryButton
+                type="button"
+                onClick={() => void saveAndRegisterDefaultC2bUrls()}
+                disabled={saving || c2bRegistering}
+              >
+                {c2bRegistering ? "Registering…" : "Save & register C2B URLs"}
+              </PrimaryButton>
+              <span className="theme-subtext text-xs">
+                Saves these settings, then registers the default shortcode and callback URLs with Daraja.
+              </span>
             </div>
 
             {mpesaStatus?.issues?.length ? (

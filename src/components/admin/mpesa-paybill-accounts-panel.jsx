@@ -120,6 +120,7 @@ export function MpesaPaybillAccountsPanel({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
+  const [registeringId, setRegisteringId] = useState(null);
 
   const scopeMaps = useMemo(() => ({ routes, tills }), [routes, tills]);
 
@@ -237,6 +238,23 @@ export function MpesaPaybillAccountsPanel({
     }
   }
 
+  async function registerC2bUrls(row) {
+    setRegisteringId(row.id);
+    setError?.(null);
+    try {
+      const result = await apiRequest(`/mpesa-paybill-accounts/${row.id}/register-c2b-urls`, {
+        method: "POST",
+        loading: false,
+        reportIssues: false,
+      });
+      notifySuccess(result.message || "C2B URLs registered successfully with Daraja.");
+    } catch (e) {
+      setError?.(e instanceof ApiError ? e.message : "Failed to register C2B URLs with Daraja");
+    } finally {
+      setRegisteringId(null);
+    }
+  }
+
   const branchOptions = branches.map((b) => ({
     value: String(b.id),
     label: b.branch_name || b.branch_code || `Branch #${b.id}`,
@@ -335,6 +353,15 @@ export function MpesaPaybillAccountsPanel({
                       {row.is_active === false ? "Inactive" : "Active"}
                     </td>
                     <td className="px-3 py-2 text-right">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[#185FA5]"
+                    disabled={saving || registeringId !== null || row.is_active === false}
+                    onClick={() => void registerC2bUrls(row)}
+                  >
+                    {registeringId === row.id ? "Registering…" : "Register C2B"}
+                  </button>
+                  <span className="mx-1 text-slate-300">·</span>
                   <button
                     type="button"
                     className="text-xs font-medium text-[#185FA5]"
