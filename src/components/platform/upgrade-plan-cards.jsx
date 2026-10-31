@@ -122,6 +122,18 @@ function CurrentBadge() {
   );
 }
 
+function planCtaLabel(plan, fallbackAction = "buy_now") {
+  const custom = String(plan?.cta_label ?? "").trim();
+  if (custom) return custom;
+  const action = plan?.cta_action || fallbackAction;
+  return {
+    buy_now: "Pay Now",
+    start_now: "Subscribe Now",
+    view_details: "View details",
+    contact_sales: "Contact sales",
+  }[action] || "Subscribe Now";
+}
+
 export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, onMove, moving = false, manage = null, leading = null, trailing = null }) {
   const trail = Array.isArray(trailing) ? trailing.filter(Boolean) : (trailing ? [trailing] : []);
   const count = (leading ? 1 : 0) + offers.length + trail.length;
@@ -373,7 +385,7 @@ export function TokenPackCard({
             preview ? "pointer-events-none" : ""
           } ${current ? "theme-secondary-btn" : "theme-primary-btn"}`}
         >
-          {current ? "Your current plan" : "Get started"}
+          {current ? "Your current plan" : "Pay Now"}
         </button>
       ) : null}
       <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
@@ -489,7 +501,7 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
           preview ? "pointer-events-none" : ""
         } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
       >
-        {current ? "Your current plan" : "Get started"}
+        {current ? "Your current plan" : planCtaLabel(offer.plan)}
       </button>
       ) : null}
       {features.length > 0 ? (
@@ -532,6 +544,8 @@ function cardDraft(offer, modules = []) {
     features,
     is_active: offer.plan.is_active !== false,
     is_recommended: Boolean(offer.plan.is_recommended),
+    cta_action: offer.plan.cta_action || "buy_now",
+    cta_label: offer.plan.cta_label ?? "",
     workspace_keys: access.workspace_keys,
     feature_keys: access.feature_keys,
     section_keys: Array.isArray(offer.plan.section_keys) ? [...offer.plan.section_keys] : [],
@@ -576,6 +590,8 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
     offer.plan.yearly_billing,
     offer.plan.is_active,
     offer.plan.is_recommended,
+    offer.plan.cta_action,
+    offer.plan.cta_label,
     offer.kind,
     featureKey,
     workspaceKey,
@@ -694,6 +710,17 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
         />
         <span className="theme-subtext mt-1 block text-xs">When a shop is put on trial of this package, the trial cannot exceed this many days. After that they move to the free plan.</span>
       </label>
+      <label className="mt-3 block">
+        <span className="theme-subtext text-xs">Plan card button text</span>
+        <input
+          className={`${fieldClass} mt-1 text-sm font-medium`}
+          maxLength={48}
+          value={draft.cta_label}
+          placeholder={planCtaLabel({ cta_action: draft.cta_action })}
+          aria-label="Plan card button text"
+          onChange={(event) => setDraft((current) => ({ ...current, cta_label: event.target.value }))}
+        />
+      </label>
       <label className="mt-4 flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -775,7 +802,7 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
           draft.is_recommended ? "theme-primary-btn" : "theme-secondary-btn"
         }`}
       >
-        Get started
+        {planCtaLabel(draft, draft.cta_action)}
       </button>
       <button
         type="button"

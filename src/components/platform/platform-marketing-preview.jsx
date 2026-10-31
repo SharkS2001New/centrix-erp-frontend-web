@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { illustrationStyle } from "@/lib/platform-marketing";
+import { resolveCustomerMediaUrl } from "@/lib/api";
 
 /** Simple SVG scenes so portfolios look illustrated without photo assets. */
 const ILLUSTRATION_SVG = {
@@ -124,21 +126,27 @@ function IllustrationArt({ imageKey }) {
   return ILLUSTRATION_SVG[imageKey] || ILLUSTRATION_SVG.ill_manager;
 }
 
-export function PortfolioIllustration({ meta, imageKey, className = "" }) {
+export function PortfolioIllustration({ meta, imageKey, imageUrl, className = "" }) {
   const style = illustrationStyle(meta, imageKey);
   const key = imageKey || "ill_manager";
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl text-white shadow-sm ${className}`}
+      className={`relative overflow-hidden rounded-2xl text-white ${className}`}
       style={{ background: style.background, minHeight: 140 }}
     >
-      <div className="absolute inset-0 opacity-25" style={dotPattern} />
-      <IllustrationArt imageKey={key} />
-      <div className="relative flex h-full min-h-[140px] flex-col justify-end p-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80">Centrix</p>
-        <p className="mt-1 text-lg font-semibold leading-snug">{style.label}</p>
-        {style.hint ? <p className="mt-1 text-sm text-white/85">{style.hint}</p> : null}
-      </div>
+      {imageUrl ? (
+        <Image src={imageUrl} alt="" fill sizes="100vw" unoptimized className="object-cover" />
+      ) : (
+        <>
+          <div className="absolute inset-0 opacity-25" style={dotPattern} />
+          <IllustrationArt imageKey={key} />
+          <div className="relative flex h-full min-h-[140px] flex-col justify-end p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80">Centrix</p>
+            <p className="mt-1 text-lg font-semibold leading-snug">{style.label}</p>
+            {style.hint ? <p className="mt-1 text-sm text-white/85">{style.hint}</p> : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -151,19 +159,31 @@ const dotPattern = {
 export function PortfolioPreview({ portfolio, meta, className = "" }) {
   const sections = Array.isArray(portfolio?.sections) ? portfolio.sections : [];
   const biz = portfolio?.business_name || portfolio?.prospect_name || "Prospect";
+  const template = portfolio?.template_key || "modern";
+  const colors = template === "editorial"
+    ? { accent: "#173B3F", secondary: "#A66B42", paper: "#F6F4EF" }
+    : template === "bold"
+      ? { accent: "#382274", secondary: "#E86A33", paper: "#F4F1FA" }
+      : { accent: "#185FA5", secondary: "#16A085", paper: "#F3F7FA" };
+  const cover = sections.find((section) => section.key === "cover");
+  const coverUrl = resolveCustomerMediaUrl(cover?.image_path) || resolveCustomerMediaUrl(cover?.image_url);
 
   return (
-    <div className={`space-y-6 ${className}`}>
-      <header className="space-y-3">
+    <article
+      className={`mx-auto max-w-5xl space-y-5 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-8 ${className}`}
+      style={{ "--portfolio-accent": colors.accent, "--portfolio-secondary": colors.secondary }}
+    >
+      <header className="overflow-hidden rounded-2xl" style={{ backgroundColor: colors.paper }}>
         <PortfolioIllustration
           meta={meta}
-          imageKey={portfolio?.hero_image_key || sections[0]?.image_key || "hero_retail"}
-          className="min-h-[200px]"
+          imageKey={cover?.image_key || portfolio?.hero_image_key || "hero_retail"}
+          imageUrl={coverUrl}
+          className="min-h-[280px] rounded-none sm:min-h-[340px]"
         />
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600">Centrix portfolio</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">{portfolio?.title}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+        <div className="px-5 py-5 sm:px-8 sm:py-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: colors.accent }}>Centrix ERP · Business portfolio</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{portfolio?.title}</h1>
+          <p className="mt-2 text-sm text-slate-600">
             Prepared for {biz}
             {portfolio?.location ? ` · ${portfolio.location}` : ""}
             {" · Kenyan Shillings (KES)"}
@@ -171,25 +191,32 @@ export function PortfolioPreview({ portfolio, meta, className = "" }) {
         </div>
       </header>
 
-      {sections.map((section) => (
+      {sections.filter((section) => section.key !== "cover").map((section, index) => (
         <section
           key={section.key || section.title}
-          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+          className={`overflow-hidden rounded-2xl border border-slate-200 ${template === "bold" ? "border-l-4" : ""}`}
+          style={{ background: template === "editorial" ? "#fff" : colors.paper, borderLeftColor: colors.accent }}
         >
-          <div className="grid gap-0 md:grid-cols-[1.1fr_0.9fr]">
-            <div className="p-5 md:p-6">
-              <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
+          <div className={`grid gap-5 p-5 md:items-center md:gap-8 md:p-7 ${index % 2 ? "md:grid-cols-[0.9fr_1.1fr]" : "md:grid-cols-[1.1fr_0.9fr]"}`}>
+            <div className={index % 2 ? "md:order-2" : ""}>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: colors.secondary }}>
+                {String(index + 1).padStart(2, "0")}
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{section.title}</h2>
               {section.body ? (
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
                   {section.body}
                 </div>
               ) : (
                 <p className="mt-3 text-sm italic text-slate-400">Generate with AI to fill this section.</p>
               )}
               {Array.isArray(section.bullets) && section.bullets.length > 0 ? (
-                <ul className="mt-4 list-disc space-y-1.5 pl-5 text-sm text-slate-700">
+                <ul className="mt-4 space-y-2 text-sm text-slate-700">
                   {section.bullets.map((b) => (
-                    <li key={b}>{b}</li>
+                    <li key={b} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: colors.secondary }} />
+                      <span>{b}</span>
+                    </li>
                   ))}
                 </ul>
               ) : null}
@@ -197,11 +224,15 @@ export function PortfolioPreview({ portfolio, meta, className = "" }) {
             <PortfolioIllustration
               meta={meta}
               imageKey={section.image_key || portfolio?.hero_image_key || "ill_manager"}
-              className="rounded-none md:min-h-full"
+              imageUrl={resolveCustomerMediaUrl(section.image_path) || resolveCustomerMediaUrl(section.image_url)}
+              className={`min-h-[220px] md:min-h-[260px] ${index % 2 ? "md:order-1" : ""}`}
             />
           </div>
         </section>
       ))}
-    </div>
+      <footer className="border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+        Centrix ERP · Kenya · Prepared for {biz}
+      </footer>
+    </article>
   );
 }

@@ -303,6 +303,7 @@ export function emptyPlanForm(overrides = {}) {
     section_keys: [],
     feature_details: [],
     is_active: true,
+    cta_label: "",
     auto_invoice_template_id: "",
     ...overrides,
   };
@@ -342,6 +343,7 @@ export function planRecordToForm(record) {
         }))
       : [],
     is_active: record.is_active !== false,
+    cta_label: record.cta_label ?? "",
     auto_invoice_template_id: record.auto_invoice_template_id
       ? String(record.auto_invoice_template_id)
       : "",
@@ -394,6 +396,7 @@ export function planFormToPayload(form) {
       }))
       .filter((row) => row.label !== ""),
     is_active: form.is_active !== false,
+    cta_label: String(form.cta_label ?? "").trim() || null,
     auto_invoice_template_id: form.auto_invoice_template_id
       ? Number(form.auto_invoice_template_id)
       : null,

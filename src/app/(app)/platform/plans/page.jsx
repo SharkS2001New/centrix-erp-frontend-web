@@ -43,7 +43,7 @@ export default function PlatformPlansPage() {
         apiRequest("/admin/platform-plans"),
         apiRequest("/admin/platform-invoices/saved-templates").catch(() => ({ data: [] })),
       ]);
-      setPlans(plansRes.data ?? []);
+      setPlans((plansRes.data ?? []).filter((plan) => !plan.self_serve));
       setTemplates(tplRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load plans.");
@@ -104,7 +104,7 @@ export default function PlatformPlansPage() {
     }
     setSaving(true);
     try {
-      const payload = planFormToPayload(form);
+      const payload = { ...planFormToPayload(form), self_serve: false };
       if (editingId) {
         await apiRequest(`/admin/platform-plans/${editingId}`, { method: "PATCH", body: payload });
         notifySuccess("Plan updated.");
@@ -431,6 +431,19 @@ export default function PlatformPlansPage() {
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Description</span>
                 <textarea className={inputClass} rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Plan card button text</span>
+                <input
+                  className={inputClass}
+                  maxLength={48}
+                  value={form.cta_label}
+                  onChange={(e) => setForm((f) => ({ ...f, cta_label: e.target.value }))}
+                  placeholder="Pay Now"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Optional, up to 48 characters. Leave blank to use “Pay Now”.
+                </span>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Auto-draft invoice template</span>

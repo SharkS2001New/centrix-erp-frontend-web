@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { dismissLicenseWarning, freePlanHome, isFreePlanPath, isYearlyLicence, licenceNeedsPayment, licenseAccessMode, takeLicenceReturnPath, yearlyRenewalOpen } from "@/lib/organization-license";
+import { dismissLicenseWarning, freePlanHome, isFreePlanPath, licenceNeedsPayment, licenseAccessMode, subscriptionRenewalOpen, takeLicenceReturnPath } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
@@ -16,16 +16,17 @@ const EMPTY_PLANS = [];
 const DEFAULT_DISCOUNT = { percent: 0, min_months: 3 };
 
 function renewalCharge(license) {
+  const yearly = license?.billing_cycle === "yearly";
   return {
     kind: "renew",
     billing: "renew",
-    months: 12,
+    months: yearly ? 12 : 1,
     amount: Number(license?.renewal_amount) || 0,
-    currency: "KES",
+    currency: license?.currency || "KES",
     plan: {
       id: license?.plan_id,
-      name: license?.plan_name || "Yearly plan",
-      features: ["Another year on the current plan"],
+      name: license?.plan_name || (yearly ? "Yearly plan" : "Monthly plan"),
+      features: [yearly ? "Another year on the current plan" : "Another month on the current plan"],
     },
   };
 }
@@ -44,7 +45,7 @@ export default function SubscribePage() {
   const canPay = Boolean(isOrgAdmin?.());
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
   const discount = organizationLicense?.duration_discount ?? DEFAULT_DISCOUNT;
-  const renewOpen = canPay && yearlyRenewalOpen(organizationLicense);
+  const renewOpen = canPay && subscriptionRenewalOpen(organizationLicense);
   const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
   const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
@@ -173,8 +174,7 @@ export default function SubscribePage() {
   }, [capabilities, forPos, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
-    if (!canPay || !isYearlyLicence(organizationLicense)) return;
-    if (!yearlyRenewalOpen(organizationLicense)) {
+    if (!canPay || !subscriptionRenewalOpen(organizationLicense)) {
       closeForLater();
       return;
     }
@@ -708,7 +708,7 @@ function CheckoutStep({
   const product = token
     ? "Token pack"
     : charge?.kind === "renew"
-      ? "Yearly renewal"
+      ? `${charge.months === 12 ? "Yearly" : "Monthly"} renewal`
     : charge?.kind === "once"
       ? "Yearly subscription"
       : charge?.kind === "prepaid"

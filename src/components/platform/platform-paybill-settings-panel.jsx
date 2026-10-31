@@ -253,8 +253,24 @@ export function PlatformPaybillSettingsPanel() {
         <div className="border-t border-slate-200 pt-5">
           <h3 className="text-sm font-semibold text-slate-900">M-Pesa STK Push (Daraja)</h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Use the public callback URL registered in Daraja. STK is offered only when all required fields are valid.
+            STK is offered only when all required fields are valid. The callback URL is sent with each STK request.
           </p>
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-700">STK callback URL</span>
+              <input
+                className={inputClass}
+                type="url"
+                value={form.stk_callback_url}
+                onChange={(e) => setForm((f) => ({ ...f, stk_callback_url: e.target.value }))}
+                placeholder="https://api.example.com/api/v1/payments/stk/callback"
+                autoComplete="url"
+              />
+            </label>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Daraja receives this URL in every STK Push request; it is not registered through Daraja&apos;s C2B Register URL API.
+            </p>
+          </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block text-xs font-medium text-slate-600">Environment</span>
@@ -352,17 +368,12 @@ export function PlatformPaybillSettingsPanel() {
               </div>
               {savedStkCredentials.passkey ? <span className="mt-1 block text-xs text-emerald-700">A passkey is saved.</span> : null}
             </label>
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">STK callback URL</span>
-              <input
-                className={inputClass}
-                type="url"
-                value={form.stk_callback_url}
-                onChange={(e) => setForm((f) => ({ ...f, stk_callback_url: e.target.value }))}
-                placeholder="https://api.example.com/api/v1/payments/stk/callback"
-                autoComplete="url"
-              />
-            </label>
+            <div className="border-t border-slate-200 pt-3 md:col-span-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Daraja C2B callback registration</h4>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                These confirmation and validation URLs are registered with Daraja for the platform paybill.
+              </p>
+            </div>
             <label className="block text-sm md:col-span-2">
               <span className="mb-1 block text-xs font-medium text-slate-600">Platform C2B confirmation URL</span>
               <input
@@ -396,7 +407,7 @@ export function PlatformPaybillSettingsPanel() {
               {registeringC2b ? "Registering…" : "Save & register platform C2B URLs"}
             </PrimaryButton>
             <span className="text-xs text-slate-500">
-              Registers the manual M-Pesa shortcode above with these C2B callback URLs.
+              Registers only the C2B confirmation and validation URLs for the manual M-Pesa shortcode above. STK callback is sent per push.
             </span>
           </div>
           {(savedStkCredentials.consumerKey || savedStkCredentials.consumerSecret || savedStkCredentials.passkey) ? (

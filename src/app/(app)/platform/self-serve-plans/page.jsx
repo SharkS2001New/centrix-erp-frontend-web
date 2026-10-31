@@ -52,6 +52,7 @@ function previewPlan(plan, discount) {
     is_active: plan.is_active !== false,
     is_recommended: Boolean(plan.is_recommended),
     cta_action: plan.cta_action || "buy_now",
+    cta_label: plan.cta_label ?? "",
     discount_percent: discount.percent,
     discount_min_months: discount.minMonths,
   };
@@ -101,6 +102,7 @@ function emptyForm() {
     is_active: true,
     is_recommended: false,
     cta_action: "buy_now",
+    cta_label: "",
   };
 }
 
@@ -130,6 +132,7 @@ function recordToForm(plan, catalog) {
     is_active: plan.is_active !== false,
     is_recommended: Boolean(plan.is_recommended),
     cta_action: plan.cta_action || "buy_now",
+    cta_label: plan.cta_label ?? "",
   };
 }
 
@@ -191,12 +194,13 @@ function formToPayload(form) {
     is_active: form.is_active !== false,
     is_recommended: Boolean(form.is_recommended),
     cta_action: form.cta_action || "buy_now",
+    cta_label: String(form.cta_label ?? "").trim() || null,
   };
 }
 
 function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearly, ordering, onMove, manage, loading, policy, freePlan = null }) {
   const published = byCardOrder(
-    plans.filter((plan) => industryFilter === "all" || (plan.industry || "commerce") === industryFilter),
+    plans.filter((plan) => (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
   const monthlyPlans = published.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = published.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
@@ -235,7 +239,7 @@ function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearl
             offers={offers}
             preview
             moving={ordering}
-            onMove={industryFilter === "all" ? undefined : onMove}
+            onMove={onMove}
             manage={manage}
             trailing={[tokenCard, quoteCard].filter(Boolean)}
           />
@@ -267,7 +271,7 @@ export default function SelfServePlansPage() {
   const [aiEdit, setAiEdit] = useState(null);
   const [revising, setRevising] = useState(false);
   const [created, setCreated] = useState(null);
-  const [industryFilter, setIndustryFilter] = useState("all");
+  const [industryFilter, setIndustryFilter] = useState("commerce");
   const [discount, setDiscount] = useState({ percent: 0, minMonths: 3 });
   const [previewYearly, setPreviewYearly] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -277,10 +281,9 @@ export default function SelfServePlansPage() {
   const [simulation, setSimulation] = useState(null);
   const [tokenBusy, setTokenBusy] = useState(false);
   const [freePlan, setFreePlan] = useState(null);
-  const [freeCatalog, setFreeCatalog] = useState([]);
-  const [freeIndustry, setFreeIndustry] = useState("commerce");
   const [freeBusy, setFreeBusy] = useState(false);
   const [packageCatalog, setPackageCatalog] = useState({});
+  const [aiComposeOpen, setAiComposeOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,7 +309,6 @@ export default function SelfServePlansPage() {
       setShortCode(String(settings.data?.short_code ?? ""));
       setPolicy(policyRes.data ?? null);
       setFreePlan(settings.data?.free_plan_access && typeof settings.data.free_plan_access === "object" ? settings.data.free_plan_access : null);
-      setFreeCatalog(Array.isArray(settings.data?.free_plan_catalog) ? settings.data.free_plan_catalog : []);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not load platform payment settings.");
       setDiscount({ percent: 0, minMonths: 3 });
@@ -389,6 +391,7 @@ export default function SelfServePlansPage() {
       setCreated({ summary: res.summary ?? null, plan: res.data ?? null });
       notifySuccess(res.message || "Centrix AI created this plan.");
       setWords("");
+      setAiComposeOpen(false);
       await load();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Centrix AI could not create this plan.");
@@ -473,6 +476,8 @@ export default function SelfServePlansPage() {
         feature_details: draft.features,
         is_active: draft.is_active,
         is_recommended: Boolean(draft.is_recommended),
+        cta_action: draft.cta_action || source.cta_action || "buy_now",
+        cta_label: String(draft.cta_label ?? "").trim() || null,
         workspace_keys: draft.workspace_keys,
         feature_keys: draft.feature_keys,
         section_keys: draft.section_keys,
@@ -610,52 +615,6 @@ export default function SelfServePlansPage() {
       <div className="flex min-h-[calc(100dvh-11rem)] flex-col md:min-h-[calc(100dvh-12rem)] lg:min-h-[calc(100dvh-13rem)]">
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Self-serve plans" }]} />
 
-      <form onSubmit={(event) => void handleCompose(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Choose the industry and how many card points to create. Then write what the plan includes and the price in KES. A short line such as “Small shop, 2000 a month” is enough. Centrix AI writes the card points and fills in the applications.
-        </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
-            <SearchableSelect
-              value={composeIndustry}
-              onChange={(industry) => {
-                if (!industry) return;
-                setComposeIndustry(industry);
-                setIndustryFilter(industry);
-              }}
-              options={industryOptions}
-              placeholder="Select industry"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Card points</span>
-            <input
-              className={inputClass}
-              type="number"
-              min={MIN_PLAN_POINTS}
-              max={MAX_PLAN_POINTS}
-              step={1}
-              value={points}
-              onChange={(e) => setPoints(e.target.value)}
-            />
-            <span className="mt-1 block text-xs text-slate-500">Minimum {MIN_PLAN_POINTS}. Centrix AI creates this many lines on the plan card.</span>
-          </label>
-        </div>
-        <textarea
-          className={`${inputClass} mt-3 min-h-28`}
-          value={words}
-          onChange={(e) => setWords(e.target.value)}
-          placeholder={"Shop\n\nTill and products — Sell at the counter, with prices, tax, and a receipt.\nStock on hand — See what is left and receive goods from suppliers.\nDaily sales — Customers, today's takings, and a simple sales report.\n\nat 2000 Ksh"}
-        />
-        <div className="mt-3 flex justify-end">
-          <PrimaryButton type="submit" showIcon={false} disabled={drafting}>
-            {drafting ? "Creating…" : "Create plan"}
-          </PrimaryButton>
-        </div>
-      </form>
-
       {created?.summary ? (
         <div className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">This plan includes</p>
@@ -684,10 +643,11 @@ export default function SelfServePlansPage() {
       ) : null}
 
       {aiEdit ? (
-        <form onSubmit={(event) => void handleRevise(event)} className="theme-panel mb-4 shrink-0 rounded-xl border p-5 shadow-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-ai-plan-title">
+        <form onSubmit={(event) => void handleRevise(event)} className="theme-modal my-8 w-full max-w-2xl rounded-xl border p-5 shadow-2xl">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Edit {aiEdit.plan?.name || "plan"}</h2>
+              <h2 id="edit-ai-plan-title" className="text-sm font-semibold text-slate-900">Edit {aiEdit.plan?.name || "plan"}</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Change the plan text, or write what should change. Centrix AI updates this package and writes the number of card points you set.
               </p>
@@ -738,42 +698,48 @@ export default function SelfServePlansPage() {
             </PrimaryButton>
           </div>
         </form>
+        </div>
       ) : null}
 
       <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={`rounded-full px-3 py-1 text-xs font-medium ${industryFilter === "all" ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
-            onClick={() => setIndustryFilter("all")}
-          >
-            All industries
-          </button>
           {INDUSTRIES.map((item) => (
             <button
               key={item.id}
               type="button"
               className={`rounded-full px-3 py-1 text-xs font-medium ${industryFilter === item.id ? "bg-[#185FA5] text-white" : "bg-slate-100 text-slate-700"}`}
               onClick={() => {
-              setIndustryFilter(item.id);
-              setComposeIndustry(item.id);
-            }}
+                setIndustryFilter(item.id);
+                setComposeIndustry(item.id);
+              }}
             >
               {item.label}
             </button>
           ))}
         </div>
-        <PrimaryButton
-          type="button"
-          showIcon={false}
-          onClick={() => {
-            setEditingId(null);
-            setForm({ ...emptyForm(), industry: industryFilter === "all" ? composeIndustry : industryFilter });
-            setFormOpen(true);
-          }}
-        >
-          New plan
-        </PrimaryButton>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-medium"
+            onClick={() => {
+              setComposeIndustry(industryFilter);
+              setAiComposeOpen(true);
+            }}
+          >
+            Create with Centrix AI
+          </button>
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            onClick={() => {
+              setEditingId(null);
+              setForm({ ...emptyForm(), industry: industryFilter });
+              setFormOpen(true);
+            }}
+          >
+            New plan
+          </PrimaryButton>
+        </div>
       </div>
 
       <div className="theme-panel mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4">
@@ -820,15 +786,14 @@ export default function SelfServePlansPage() {
         policy={policy}
         freePlan={(
           <ManagedFreePlanCard
-            modules={modulesForPlan(packageCatalog, { industry: industryFilter === "all" ? freeIndustry : industryFilter })}
-            access={freePlan?.[industryFilter === "all" ? freeIndustry : industryFilter] ?? { workspace_keys: [], feature_keys: {} }}
+            modules={modulesForPlan(packageCatalog, { industry: industryFilter })}
+            access={freePlan?.[industryFilter] ?? { workspace_keys: [], feature_keys: {} }}
             name={freePlan?.name || "Package 1"}
             onNameChange={setFreePlanName}
-            industries={industryFilter === "all" ? (freeCatalog ?? []) : []}
-            industry={industryFilter === "all" ? freeIndustry : industryFilter}
-            onIndustry={setFreeIndustry}
+            industries={[]}
+            industry={industryFilter}
             busy={freeBusy}
-            onChange={(access) => setFreeAccess(industryFilter === "all" ? freeIndustry : industryFilter, access)}
+            onChange={(access) => setFreeAccess(industryFilter, access)}
             onSave={freePlan ? () => void saveFreePlan() : undefined}
             allowUnpaidLogin={policy?.allow_unpaid_login !== false}
             unpaidLoginBusy={freeBusy || !policy}
@@ -837,6 +802,58 @@ export default function SelfServePlansPage() {
         )}
       />
       </div>
+
+      {aiComposeOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="create-ai-plan-title">
+          <form onSubmit={(event) => void handleCompose(event)} className="theme-modal my-8 w-full max-w-2xl rounded-xl border p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="create-ai-plan-title" className="text-sm font-semibold text-slate-900">Create with Centrix AI</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Describe the plan and price. Centrix AI drafts the card points and applications for the selected industry.
+                </p>
+              </div>
+              <button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={() => setAiComposeOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+                <SearchableSelect
+                  value={composeIndustry}
+                  onChange={(industry) => {
+                    if (!industry) return;
+                    setComposeIndustry(industry);
+                    setIndustryFilter(industry);
+                  }}
+                  options={industryOptions}
+                  placeholder="Select industry"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Card points</span>
+                <input className={inputClass} type="number" min={MIN_PLAN_POINTS} max={MAX_PLAN_POINTS} step={1} value={points} onChange={(e) => setPoints(e.target.value)} />
+                <span className="mt-1 block text-xs text-slate-500">Minimum {MIN_PLAN_POINTS}; maximum {MAX_PLAN_POINTS}.</span>
+              </label>
+            </div>
+            <textarea
+              className={`${inputClass} mt-3 min-h-40`}
+              value={words}
+              onChange={(e) => setWords(e.target.value)}
+              placeholder={"Shop\n\nTill and products — Sell at the counter, with prices, tax, and a receipt.\nStock on hand — See what is left and receive goods from suppliers.\nDaily sales — Customers, today's takings, and a simple sales report.\n\nat 2000 Ksh"}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="theme-secondary-btn rounded-lg px-4 py-2 text-sm" onClick={() => setAiComposeOpen(false)}>
+                Cancel
+              </button>
+              <PrimaryButton type="submit" showIcon={false} disabled={drafting}>
+                {drafting ? "Creating…" : "Create plan"}
+              </PrimaryButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {formOpen ? (
         <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/40 p-4">
@@ -858,13 +875,26 @@ export default function SelfServePlansPage() {
                   nativeEvent
                   onChange={(e) => setForm((f) => ({ ...f, cta_action: e.target.value }))}
                   options={[
-                    { value: 'buy_now', label: 'Buy Now' },
-                    { value: 'start_now', label: 'Start Now' },
+                    { value: 'buy_now', label: 'Pay Now' },
+                    { value: 'start_now', label: 'Subscribe Now' },
                     { value: 'view_details', label: 'View details' },
                     { value: 'contact_sales', label: 'Contact sales' },
                   ]}
                   placeholder="Choose button"
                 />
+              </label>
+              <label className="block text-sm sm:max-w-md">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Custom button text (optional)</span>
+                <input
+                  className={inputClass}
+                  maxLength={48}
+                  value={form.cta_label}
+                  onChange={(e) => setForm((f) => ({ ...f, cta_label: e.target.value }))}
+                  placeholder="Pay Now or Subscribe Now"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Overrides the selected website button label on this plan card.
+                </span>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>

@@ -6,6 +6,7 @@ import {
   isFreePlanPath,
   isLimitedLicencePath,
   isYearlyLicence,
+  subscriptionRenewalOpen,
   yearlyRenewalOpen,
   freePlanHome,
   licencePlanPath,
@@ -36,6 +37,37 @@ describe("organization license", () => {
     });
     expect(isLicenseExpired(license)).toBe(false);
     expect(isLicenseExpiringSoon(license)).toBe(true);
+  });
+
+  it("opens renewal during the final 30 days for a paid monthly subscription", () => {
+    const expires = new Date(Date.now() + 25 * 86400000).toISOString();
+    const license = resolveOrganizationLicense({
+      status: "active",
+      plan_id: 42,
+      renewal_amount: 1500,
+      billing_cycle: "monthly",
+      current_period_end: expires,
+    });
+    expect(subscriptionRenewalOpen(license)).toBe(true);
+
+    const notDue = resolveOrganizationLicense({
+      status: "active",
+      plan_id: 42,
+      renewal_amount: 1500,
+      current_period_end: new Date(Date.now() + 31 * 86400000).toISOString(),
+    });
+    expect(subscriptionRenewalOpen(notDue)).toBe(false);
+  });
+
+  it("does not offer paid renewal for a trial", () => {
+    const trial = resolveOrganizationLicense({
+      status: "trialing",
+      is_trial: true,
+      plan_id: 42,
+      renewal_amount: 1500,
+      current_period_end: new Date(Date.now() + 5 * 86400000).toISOString(),
+    });
+    expect(subscriptionRenewalOpen(trial)).toBe(false);
   });
 
   it("closes at the saved hour and stays open before that hour", () => {

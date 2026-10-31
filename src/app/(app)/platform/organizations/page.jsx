@@ -77,6 +77,7 @@ export default function PlatformOrganizationsPage() {
                   <th className="px-5 py-3">Organization</th>
                   <th className="px-5 py-3">Industry</th>
                   <th className="px-5 py-3">Setup type</th>
+                  <th className="px-5 py-3">Registration</th>
                   <th className="px-5 py-3">Created</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Administration</th>
@@ -93,6 +94,19 @@ export default function PlatformOrganizationsPage() {
                         (org.industry === "hospitality" ? "Hotel & Hospitality" : "Retail & Distribution")}
                     </td>
                     <td className="px-5 py-3 text-slate-600">{org.deployment_profile ?? "—"}</td>
+                    <td className="px-5 py-3">
+                      {org.registration_source === "self_registered" ? (
+                        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">
+                          Self-registered
+                        </span>
+                      ) : org.registration_source === "platform_created" ? (
+                        <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-800">
+                          Platform-created
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">Source not recorded</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">
                       {org.created_at ? new Date(org.created_at).toLocaleDateString() : "—"}
                     </td>

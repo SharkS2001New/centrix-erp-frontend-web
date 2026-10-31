@@ -1,4 +1,4 @@
-import { apiFetchBlob, apiRequest } from "@/lib/api";
+import { apiFetchBlob, apiRequest, apiUploadForm } from "@/lib/api";
 
 const BASE = "/admin/platform-marketing-portfolios";
 
@@ -66,7 +66,7 @@ export async function shareMarketingPortfolio(id) {
 }
 
 export async function downloadMarketingPortfolioPdf(id, filename = "Centrix-Portfolio.pdf") {
-  const blob = await apiFetchBlob(`${BASE}/${id}/pdf`);
+  const blob = await fetchMarketingPortfolioPdf(id);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -74,7 +74,20 @@ export async function downloadMarketingPortfolioPdf(id, filename = "Centrix-Port
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function fetchMarketingPortfolioPdf(id) {
+  return apiFetchBlob(`${BASE}/${id}/pdf`);
+}
+
+export async function uploadMarketingPortfolioImage(id, image) {
+  return apiUploadForm(`${BASE}/${id}/images`, { image });
+}
+
+export async function fetchMarketingPortfolioImage(id, path) {
+  const params = new URLSearchParams({ path });
+  return apiFetchBlob(`${BASE}/${id}/image?${params.toString()}`);
 }
 
 export async function fetchSharedMarketingPortfolio(token) {

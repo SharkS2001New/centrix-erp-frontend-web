@@ -109,6 +109,81 @@ function LiveSpeedProbeModal({
                 ))}
               </ul>
             ) : null}
+
+            {tab === "health" ? (
+              <div className="space-y-4">
+                <Panel
+                  title="Infrastructure health"
+                  action={
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={reverbBusy}
+                        onClick={() => void sendReverbNotification()}
+                        className={`${SECONDARY_BTN_CLASS} px-4 py-2 disabled:opacity-50`}
+                      >
+                        {reverbBusy ? "Sending…" : "Send Reverb test"}
+                      </button>
+                      <PrimaryButton type="button" showIcon={false} onClick={() => void loadTab("health")} disabled={healthBusy}>
+                        {healthBusy ? "Running…" : "Run tests"}
+                      </PrimaryButton>
+                    </div>
+                  }
+                >
+                  <p className="mb-3 text-sm text-slate-600">
+                    Test this app pod, Reverb realtime, scheduler, queue workers, and sibling pods. Scheduler needs{" "}
+                    <code className="rounded bg-slate-100 px-1">schedule:run</code> every minute; queues need{" "}
+                    <code className="rounded bg-slate-100 px-1">queue:work</code> unless using the sync driver.
+                    Optional peer API bases are configured with <code className="rounded bg-slate-100 px-1">PLATFORM_PEER_HEALTH_URLS</code>.
+                  </p>
+                  {reverbTest ? (
+                    <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${reverbTest.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>
+                      <p className="font-medium">{reverbTest.ok ? "Reverb broadcast sent" : "Reverb test failed"}</p>
+                      <p className="mt-1">{reverbTest.message}</p>
+                      {reverbTest.notification_id ? <p className="mt-1 text-xs opacity-80">Notification #{reverbTest.notification_id}</p> : null}
+                    </div>
+                  ) : null}
+                  {tabData?.checks ? (
+                    <>
+                      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                        <StatusBadge status={tabData.ok ? "ok" : "critical"} />
+                        <span>Overall: <strong className="text-slate-900">{tabData.ok ? "Healthy" : "Issues found"}</strong></span>
+                        {tabData.centrix_version_label || tabData.centrix_version ? (
+                          <span>Centrix <strong className="text-slate-900">{tabData.centrix_version_label || `v${tabData.centrix_version}`}</strong></span>
+                        ) : null}
+                        <span>Host: {tabData.hostname ?? "—"}</span>
+                        <span>Checked: {tabData.checked_at ? new Date(tabData.checked_at).toLocaleString() : "—"}</span>
+                      </div>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              <th className="px-4 py-2.5">Check</th>
+                              <th className="px-4 py-2.5">Status</th>
+                              <th className="px-4 py-2.5">Detail</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tabData.checks.map((check) => (
+                              <tr key={check.id} className="border-b border-slate-50 last:border-0">
+                                <td className="px-4 py-3 font-medium text-slate-900">{check.label}</td>
+                                <td className="px-4 py-3"><StatusBadge status={check.ok === true ? "ok" : check.ok === false ? "critical" : null} /></td>
+                                <td className="px-4 py-3 text-slate-600">{check.detail}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-500">{healthBusy ? "Running infrastructure checks…" : "Run tests to probe this environment."}</p>
+                  )}
+                </Panel>
+                <p className="text-xs text-slate-500">
+                  Send Reverb test creates an in-app notification and broadcasts it to your private channel. Check that the bell updates without refreshing.
+                </p>
+              </div>
+            ) : null}
             {(advice.actions ?? []).length > 0 ? (
               <>
                 <p className="mt-3 text-xs font-semibold text-slate-400">Suggested actions</p>
@@ -129,13 +204,9 @@ function LiveSpeedProbeModal({
 
 const TABS = [
   { id: "overview", label: "Overview" },
-  { id: "api", label: "API Endpoints" },
-  { id: "database", label: "Database" },
-  { id: "infrastructure", label: "Infrastructure" },
-  { id: "frontend", label: "Frontend" },
+  { id: "api", label: "Slow API Endpoints" },
   { id: "queues", label: "Queues & Jobs" },
-  { id: "synthetic", label: "Synthetic Tests" },
-  { id: "diagnostics", label: "Diagnostics" },
+  { id: "health", label: "Infrastructure Health" },
 ];
 
 const RANGES = [
@@ -148,11 +219,6 @@ const RANGES = [
 function formatMs(value) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
   return `${Math.round(Number(value))} ms`;
-}
-
-function formatSec(value) {
-  if (value == null || !Number.isFinite(Number(value))) return "—";
-  return `${Number(value).toFixed(2)} s`;
 }
 
 function StatusBadge({ status }) {
@@ -217,12 +283,6 @@ function LatencyTrend({ points }) {
   );
 }
 
-function truncateSql(sql, max = 100) {
-  const text = String(sql ?? "").replace(/\s+/g, " ").trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
-}
-
 function Panel({ title, children, action }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -242,13 +302,17 @@ export default function PlatformSpeedPage() {
   const [result, setResult] = useState(null);
   const [tabData, setTabData] = useState(null);
   const [clientProbe, setClientProbe] = useState(null);
-  const [synthBusy, setSynthBusy] = useState(false);
   const [probeOpen, setProbeOpen] = useState(false);
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeAdvising, setProbeAdvising] = useState(false);
   const [probeLogs, setProbeLogs] = useState([]);
   const [probeAdvice, setProbeAdvice] = useState(null);
   const [probeSummary, setProbeSummary] = useState(null);
+  const [selectedFailedJobId, setSelectedFailedJobId] = useState(null);
+  const [failedJobsPage, setFailedJobsPage] = useState(1);
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [reverbBusy, setReverbBusy] = useState(false);
+  const [reverbTest, setReverbTest] = useState(null);
   const probeLogEndRef = useRef(null);
 
   const appendProbeLog = useCallback((message, tone = "info") => {
@@ -275,25 +339,62 @@ export default function PlatformSpeedPage() {
     }
   }, [range]);
 
-  const loadTab = useCallback(async (id) => {
+  const sendReverbNotification = useCallback(async () => {
+    setReverbBusy(true);
+    setReverbTest(null);
+    try {
+      const res = await apiRequest("/admin/platform-health/reverb-test", {
+        method: "POST",
+        loading: false,
+      });
+      setReverbTest(res);
+      if (res?.ok) {
+        notifySuccess("Test notification sent over Reverb — watch the bell badge update without refreshing.");
+      } else {
+        notifyError(res?.message || "Reverb test failed");
+      }
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Reverb test failed";
+      setReverbTest({ ok: false, message });
+      notifyError(message);
+    } finally {
+      setReverbBusy(false);
+    }
+  }, []);
+
+  const loadTab = useCallback(async (id, page = 1) => {
     if (id === "overview") {
       setTabData(null);
       return;
     }
-    const path =
-      id === "api"
-        ? `/admin/platform-speed/api?range=${range}`
-        : id === "database"
-          ? `/admin/platform-speed/database?range=${range}`
-          : id === "infrastructure"
-            ? "/admin/platform-speed/infrastructure"
-            : id === "queues"
-              ? "/admin/platform-speed/queues"
-              : id === "frontend"
-                ? "/admin/platform-speed/frontend"
-                : id === "synthetic"
-                  ? "/admin/platform-speed/synthetic"
-                  : `/admin/platform-speed/diagnostics?range=${range}`;
+    if (id === "health") {
+      setHealthBusy(true);
+      try {
+        const res = await apiRequest("/admin/platform-health", { loading: false });
+        setTabData(res);
+      } catch (e) {
+        notifyError(e instanceof ApiError ? e.message : "Infrastructure health check failed");
+        setTabData(null);
+      } finally {
+        setHealthBusy(false);
+      }
+      return;
+    }
+    if (id === "queues") {
+      try {
+        const [queue, failedJobs] = await Promise.all([
+          apiRequest("/admin/platform-speed/queues", { loading: false }),
+          apiRequest(`/admin/platform-speed/failed-jobs?page=${page}`, { loading: false }),
+        ]);
+        setTabData({ ...queue, failed_jobs: failedJobs });
+        setFailedJobsPage(page);
+      } catch (e) {
+        notifyError(e instanceof ApiError ? e.message : "Failed to load queue details");
+        setTabData(null);
+      }
+      return;
+    }
+    const path = `/admin/platform-speed/api?range=${range}`;
     try {
       const res = await apiRequest(path, { loading: false });
       setTabData(res);
@@ -319,19 +420,6 @@ export default function PlatformSpeedPage() {
     () => (Array.isArray(result?.health?.checks) ? result.health.checks : []),
     [result],
   );
-
-  async function runSyntheticNow() {
-    setSynthBusy(true);
-    try {
-      await apiRequest("/admin/platform-speed/synthetic/run", { method: "POST", body: {} });
-      notifySuccess("Synthetic checks ran.");
-      await loadTab("synthetic");
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Synthetic run failed");
-    } finally {
-      setSynthBusy(false);
-    }
-  }
 
   useEffect(() => {
     if (probeOpen && probeLogEndRef.current) {
@@ -414,7 +502,7 @@ export default function PlatformSpeedPage() {
   return (
     <CatalogPageShell
       title="ERP Speed"
-      subtitle="Monitor API latency, database queries, infrastructure, queues, and synthetic checks — real data only."
+      subtitle="Track API latency and reported slow endpoints, review failed jobs, and run live checks."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -513,8 +601,15 @@ export default function PlatformSpeedPage() {
             />
             <KpiCard
               label="DB query latency"
-              value={formatMs(result?.database?.app_fingerprints?.query_latency_ms)}
-              hint="App listener avg"
+              value={formatMs(
+                result?.database?.app_fingerprints?.query_latency_ms ??
+                  result?.latency_probe?.db_ms,
+              )}
+              hint={
+                result?.database?.app_fingerprints?.query_latency_ms != null
+                  ? "Average observed query"
+                  : "Live database ping (SELECT 1)"
+              }
             />
             <KpiCard
               label="Memory (PHP)"
@@ -543,7 +638,6 @@ export default function PlatformSpeedPage() {
               value={infra?.queue?.pending != null ? String(infra.queue.pending) : "—"}
               hint={infra?.queue?.note}
             />
-            <KpiCard label="DB probe" value={formatMs(result?.latency_probe?.db_ms)} hint="Live SELECT 1" />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -564,26 +658,26 @@ export default function PlatformSpeedPage() {
                   <thead className="text-slate-500">
                     <tr>
                       <th className="py-1 pr-2">Route</th>
-                      <th className="py-1 pr-2">Avg</th>
-                      <th className="py-1 pr-2">p95</th>
-                      <th className="py-1">Req</th>
+                      <th className="py-1 pr-2">Max latency</th>
+                      <th className="py-1 pr-2">Reports</th>
+                      <th className="py-1">Tenants</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(api.slowest || []).slice(0, 5).map((row) => (
+                    {(api.slow_endpoints || []).slice(0, 5).map((row) => (
                       <tr key={`${row.method}-${row.route_key}`} className="border-t border-slate-100">
                         <td className="max-w-[12rem] truncate py-1.5 pr-2 font-mono text-[11px]">
                           {row.method} {row.route_key}
                         </td>
-                        <td className="py-1.5 pr-2">{formatMs(row.avg_ms)}</td>
-                        <td className="py-1.5 pr-2">{formatMs(row.p95_ms)}</td>
-                        <td className="py-1.5">{row.count}</td>
+                        <td className="py-1.5 pr-2">{formatMs(row.reported_max_ms ?? row.max_ms)}</td>
+                        <td className="py-1.5 pr-2">{row.report_count || 0}</td>
+                        <td className="py-1.5">{row.reported_organizations?.length || 0}</td>
                       </tr>
                     ))}
-                    {(api.slowest || []).length === 0 ? (
+                    {(api.slow_endpoints || []).length === 0 ? (
                       <tr>
                         <td colSpan={4} className="py-3 text-slate-500">
-                          No endpoint aggregates yet.
+                          No active slow reports or endpoints above the latency threshold.
                         </td>
                       </tr>
                     ) : null}
@@ -606,35 +700,13 @@ export default function PlatformSpeedPage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/platform/health" className="mt-3 inline-block text-xs font-medium text-[#185FA5] hover:underline">
+              <button type="button" className="mt-3 inline-block text-xs font-medium text-[#185FA5] hover:underline" onClick={() => setTab("health")}>
                 Open Infrastructure Health →
-              </Link>
+              </button>
             </Panel>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel
-              title="Top database queries"
-              action={
-                <Link href="/platform/slow-queries" className="text-xs font-medium text-[#185FA5] hover:underline">
-                  Slow queries
-                </Link>
-              }
-            >
-              <ul className="space-y-2 text-xs">
-                {(result?.slow_queries?.queries || []).slice(0, 5).map((q, i) => (
-                  <li key={i} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-mono text-[11px] text-slate-700">{truncateSql(q.sql || q.digest_text)}</p>
-                    <p className="mt-1 text-slate-500">
-                      avg {formatSec(q.avg_sec)} · max {formatSec(q.max_sec)} · n {q.count ?? "—"}
-                    </p>
-                  </li>
-                ))}
-                {(result?.slow_queries?.queries || []).length === 0 ? (
-                  <li className="text-slate-500">{result?.slow_queries?.empty_hint || "No digests."}</li>
-                ) : null}
-              </ul>
-            </Panel>
+          <div>
             <Panel title="Recent alerts">
               <ul className="space-y-2 text-sm">
                 {(result?.diagnostics || []).slice(0, 6).map((d, i) => (
@@ -660,219 +732,161 @@ export default function PlatformSpeedPage() {
       ) : null}
 
       {tab === "api" ? (
-        <Panel title="API endpoints">
+        <Panel
+          title="Slow API endpoints"
+          action={
+            <Link href="/platform/system-issues?kind=slow" className="text-xs font-medium text-[#185FA5] hover:underline">
+              Open System Errors & Reports
+            </Link>
+          }
+        >
+          <p className="mb-3 text-sm text-slate-600">
+            Routes are included when they have an active slow report or measured p95 latency above the configured threshold.
+            Reports are grouped by method and endpoint.
+          </p>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead className="text-xs uppercase text-slate-500">
                 <tr>
                   <th className="py-2 pr-3">Route</th>
-                  <th className="py-2 pr-3">Count</th>
-                  <th className="py-2 pr-3">Errors</th>
-                  <th className="py-2 pr-3">Avg</th>
-                  <th className="py-2 pr-3">p95</th>
-                  <th className="py-2">Max</th>
+                  <th className="py-2 pr-3">Slow reports</th>
+                  <th className="py-2 pr-3">Reported max</th>
+                  <th className="py-2 pr-3">Measured p95</th>
+                  <th className="py-2">Tenant(s)</th>
                 </tr>
               </thead>
               <tbody>
-                {(tabData?.slowest || api.slowest || []).map((row) => (
+                {(tabData?.slow_endpoints || api.slow_endpoints || []).map((row) => (
                   <tr key={`${row.method}-${row.route_key}`} className="border-t border-slate-100">
                     <td className="py-2 pr-3 font-mono text-xs">
                       {row.method} {row.route_key}
                     </td>
-                    <td className="py-2 pr-3">{row.count}</td>
-                    <td className="py-2 pr-3">{row.error_count}</td>
-                    <td className="py-2 pr-3">{formatMs(row.avg_ms)}</td>
+                    <td className="py-2 pr-3">
+                      {row.report_count ? (
+                        <span className="font-medium text-amber-800">{row.report_count}</span>
+                      ) : "—"}
+                    </td>
+                    <td className="py-2 pr-3">{formatMs(row.reported_max_ms)}</td>
                     <td className="py-2 pr-3">{formatMs(row.p95_ms)}</td>
-                    <td className="py-2">{formatMs(row.max_ms)}</td>
+                    <td className="py-2">
+                      {row.reported_organizations?.length
+                        ? row.reported_organizations.map((org) => org.company_code || org.name).join(", ")
+                        : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {(tabData?.slowest || api.slowest || []).length === 0 ? (
+            {(tabData?.slow_endpoints || api.slow_endpoints || []).length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">
-                No aggregates yet. Traffic is recorded per request and flushed every minute (
-                <code className="text-xs">erp:flush-speed-metrics</code>).
+                No active slow reports or measured endpoints above the configured threshold.
               </p>
             ) : null}
           </div>
+          {(tabData?.slow_endpoints || api.slow_endpoints || []).some((endpoint) => endpoint.reports?.length) ? (
+            <div className="mt-4 space-y-3">
+              {(tabData?.slow_endpoints || api.slow_endpoints || [])
+                .filter((endpoint) => endpoint.reports?.length)
+                .map((endpoint) => (
+                  <div key={`${endpoint.method}-${endpoint.route_key}-reports`} className="rounded-lg border border-slate-200 p-3">
+                    <p className="font-mono text-xs font-semibold">{endpoint.method} {endpoint.route_key}</p>
+                    <ul className="mt-2 space-y-2">
+                      {endpoint.reports.map((report) => (
+                        <li key={report.id} className="text-xs text-slate-600">
+                          <span className="font-medium text-slate-800">
+                            {report.organization?.company_code || report.organization?.name || "Tenant"}
+                          </span>
+                          {" · "}{formatMs(report.duration_ms)}{" · "}{report.status}
+                          {report.message ? <span> · {report.message}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </div>
+          ) : null}
           <LatencyTrend points={tabData?.trend || api.trend} />
         </Panel>
       ) : null}
 
-      {tab === "database" ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="App query fingerprints">
-            <ul className="space-y-2 text-xs">
-              {(tabData?.app_fingerprints?.fingerprints || []).map((q) => (
-                <li key={q.fingerprint} className="rounded-lg bg-slate-50 px-2 py-2">
-                  <p className="font-mono">{truncateSql(q.sql_preview, 140)}</p>
-                  <p className="mt-1 text-slate-500">
-                    avg {formatMs(q.avg_ms)} · slow {q.slow_count} · n+1 hits {q.n_plus_one_hits}
-                  </p>
-                </li>
-              ))}
-              {(tabData?.app_fingerprints?.fingerprints || []).length === 0 ? (
-                <li className="text-slate-500">No fingerprints yet (DB listen aggregates after traffic + flush).</li>
-              ) : null}
-            </ul>
-          </Panel>
-          <Panel
-            title="MySQL performance_schema digests"
-            action={
-              <Link href="/platform/slow-queries" className="text-xs font-medium text-[#185FA5]">
-                Open tool
-              </Link>
-            }
-          >
-            <ul className="space-y-2 text-xs">
-              {(tabData?.mysql_digests?.queries || result?.slow_queries?.queries || []).map((q, i) => (
-                <li key={i} className="rounded-lg bg-slate-50 px-2 py-2 font-mono">
-                  {truncateSql(q.sql || q.digest_text, 140)}
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </div>
-      ) : null}
-
-      {tab === "infrastructure" ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { label: "CPU %", data: tabData?.cpu || infra.cpu },
-            { label: "Memory", data: tabData?.memory || infra.memory, valueKey: "php_memory_mb", suffix: " MB" },
-            { label: "Load", data: tabData?.load || infra.load, valueKey: "load_1" },
-            { label: "Disk", data: tabData?.disk || infra.disk, valueKey: "used_percent", suffix: "%" },
-            { label: "Redis", data: tabData?.redis || infra.redis, valueKey: "ping_ms", suffix: " ms ping" },
-            { label: "MySQL", data: tabData?.mysql || infra.mysql, valueKey: "ping_ms", suffix: " ms ping" },
-          ].map((card) => (
-            <KpiCard
-              key={card.label}
-              label={card.label}
-              unavailable={card.data && card.data.available === false}
-              value={
-                card.data?.available === false
-                  ? "—"
-                  : card.valueKey && card.data?.[card.valueKey] != null
-                    ? `${card.data[card.valueKey]}${card.suffix || ""}`
-                    : "—"
-              }
-              hint={card.data?.note}
-            />
-          ))}
-          <Panel title="Dependency checks">
-            <ul className="space-y-1 text-sm">
-              {((tabData?.health || infra.health)?.checks || healthChecks).map((c) => (
-                <li key={c.id} className="flex justify-between gap-2">
-                  <span>{c.label || c.id}</span>
-                  <span className="text-xs font-semibold">{c.ok === true ? "Good" : c.ok === false ? "Fail" : "N/A"}</span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </div>
-      ) : null}
-
-      {tab === "frontend" ? (
-        <Panel title="Client slow reports">
-          <p className="mb-3 text-sm text-slate-600">
-            {(tabData?.note || result?.slow_issues) &&
-              "Browser reports when server-side work looks slow (≥5s X-Response-Time). Not Core Web Vitals."}
-          </p>
-          <ul className="space-y-2 text-sm">
-            {(tabData?.slow_issues?.recent || result?.slow_issues?.recent || []).map((issue) => (
-              <li key={issue.id} className="rounded-lg border border-slate-100 px-3 py-2">
-                <span className="font-mono text-xs">
-                  {issue.http_method} {issue.api_path}
-                </span>
-                <span className="ml-2 text-slate-500">{formatMs(issue.duration_ms)}</span>
-              </li>
-            ))}
-          </ul>
-          <Link href="/platform/system-issues?kind=slow" className="mt-3 inline-block text-sm font-medium text-[#185FA5]">
-            Open system issues →
-          </Link>
-        </Panel>
-      ) : null}
-
       {tab === "queues" ? (
-        <Panel title="Queues & jobs">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard label="Driver" value={tabData?.queue?.driver || infra?.queue?.driver || "—"} />
-            <KpiCard label="Pending" value={String(tabData?.queue?.pending ?? infra?.queue?.pending ?? "—")} />
-            <KpiCard label="Failed" value={String(tabData?.queue?.failed ?? infra?.queue?.failed ?? "—")} />
-          </div>
-          <p className="mt-3 text-sm text-slate-600">{tabData?.note}</p>
-          <Link href="/platform/health" className="mt-2 inline-block text-sm font-medium text-[#185FA5]">
-            Run live worker probe on Health →
-          </Link>
-        </Panel>
-      ) : null}
-
-      {tab === "synthetic" ? (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <PrimaryButton type="button" showIcon={false} disabled={synthBusy} onClick={() => void runSyntheticNow()}>
-              {synthBusy ? "Running…" : "Run due checks now"}
-            </PrimaryButton>
-            <span className="text-sm text-slate-500">
-              {tabData?.enabled === false ? "Synthetic disabled in config" : "Safe GET/HEAD checks only"}
-            </span>
-          </div>
-          <Panel title="Configured checks">
-            <ul className="space-y-2 text-sm">
-              {(tabData?.checks || []).map((c) => (
-                <li key={c.id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
-                  <span>
-                    <span className="font-semibold">{c.name}</span>{" "}
-                    <span className="font-mono text-xs text-slate-600">
-                      {c.method} {c.path}
-                    </span>
-                  </span>
-                  <span className="text-xs text-slate-500">every {c.interval_seconds}s</span>
-                </li>
-              ))}
-            </ul>
+          <Panel title="Queues & jobs">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <KpiCard label="Driver" value={tabData?.queue?.driver || infra?.queue?.driver || "—"} />
+              <KpiCard label="Pending" value={String(tabData?.queue?.pending ?? infra?.queue?.pending ?? "—")} />
+              <KpiCard label="Failed" value={String(tabData?.queue?.failed ?? infra?.queue?.failed ?? "—")} />
+            </div>
+            <p className="mt-3 text-sm text-slate-600">{tabData?.note}</p>
+            <button type="button" className="mt-2 inline-block text-left text-sm font-medium text-[#185FA5]" onClick={() => setTab("health")}>
+              Run live worker probe in Infrastructure Health →
+            </button>
           </Panel>
-          <Panel title="Recent results">
-            <ul className="space-y-1 text-xs">
-              {(tabData?.results || []).map((r) => (
-                <li key={r.id} className="flex justify-between gap-2 border-t border-slate-50 py-1.5">
-                  <span className={r.ok ? "text-emerald-700" : "text-red-700"}>{r.ok ? "OK" : "Fail"}</span>
-                  <span className="font-mono">#{r.check_id}</span>
-                  <span>{formatMs(r.total_ms)}</span>
-                  <span className="text-slate-500">{r.status_code ?? r.error}</span>
-                </li>
-              ))}
-            </ul>
+          <Panel title={`Failed jobs (${tabData?.failed_jobs?.total ?? 0})`}>
+            {tabData?.failed_jobs?.data?.length ? (
+              <div className="space-y-2">
+                {tabData.failed_jobs.data.map((job) => (
+                  <div key={job.id} className="rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left"
+                      onClick={() =>
+                        setSelectedFailedJobId((current) => current === job.id ? null : job.id)
+                      }
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-slate-900">
+                          {job.display_name || job.job_name || `Failed job #${job.id}`}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          Queue: {job.queue || "—"} · {job.connection || "—"} ·{" "}
+                          {job.failed_at ? new Date(job.failed_at).toLocaleString() : "—"}
+                        </span>
+                      </span>
+                      <span className="text-xs font-medium text-[#185FA5]">
+                        {selectedFailedJobId === job.id ? "Hide details" : "Read error"}
+                      </span>
+                    </button>
+                    {selectedFailedJobId === job.id ? (
+                      <pre className="max-h-96 overflow-auto border-t border-slate-200 bg-slate-950 p-3 text-xs leading-relaxed text-rose-100">
+                        {job.exception || "No exception details were recorded."}
+                      </pre>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No failed jobs were found.</p>
+            )}
+            {tabData?.failed_jobs?.last_page > 1 ? (
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-xs text-slate-500">
+                  Page {failedJobsPage} of {tabData.failed_jobs.last_page}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={failedJobsPage <= 1}
+                    onClick={() => void loadTab("queues", failedJobsPage - 1)}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={failedJobsPage >= tabData.failed_jobs.last_page}
+                    onClick={() => void loadTab("queues", failedJobsPage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </Panel>
         </div>
       ) : null}
 
-      {tab === "diagnostics" ? (
-        <Panel title="Recommendations">
-          <ul className="space-y-3">
-            {(tabData?.items || result?.diagnostics || []).map((d, i) => (
-              <li key={i} className="rounded-xl border border-slate-200 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{d.severity}</p>
-                <p className="font-semibold text-slate-900">{d.title}</p>
-                <p className="text-sm text-slate-600">{d.detail}</p>
-                {d.href ? (
-                  <Link href={d.href} className="mt-1 inline-block text-sm font-medium text-[#185FA5]">
-                    Open →
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Flush: <code>php artisan erp:flush-speed-metrics</code> · Synthetic:{" "}
-            <code>php artisan erp:run-speed-synthetic</code>
-          </div>
-          <button type="button" className={`${SECONDARY_BTN_CLASS} mt-3`} onClick={() => void loadOverview()}>
-            Refresh overview
-          </button>
-        </Panel>
-      ) : null}
     </CatalogPageShell>
   );
 }

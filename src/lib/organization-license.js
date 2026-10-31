@@ -165,6 +165,7 @@ export function resolveOrganizationLicense(source = null) {
     billing_cycle: raw.billing_cycle === "yearly" || raw.billing_cycle === "monthly" ? raw.billing_cycle : null,
     plan_id: raw.plan_id != null ? Number(raw.plan_id) : null,
     renewal_amount: raw.renewal_amount != null && Number(raw.renewal_amount) > 0 ? Number(raw.renewal_amount) : null,
+    currency: raw.currency ? String(raw.currency) : null,
   };
 }
 
@@ -180,6 +181,15 @@ export function yearlyRenewalOpen(license) {
   const mode = licenseAccessMode(license);
   if (mode === "trial" || mode === "free" || mode === "token") return false;
   return isLicenseExpiringSoon(license) || mode === "expired";
+}
+
+/** Paid subscriptions can renew during the final month or after expiry. */
+export function subscriptionRenewalOpen(license, windowDays = 30) {
+  if (!license || license.is_trial || license.status === "trialing") return false;
+  if (!license.plan_id || !(Number(license.renewal_amount) > 0)) return false;
+  const mode = licenseAccessMode(license);
+  if (mode === "trial" || mode === "free" || mode === "token") return false;
+  return license.days_remaining != null && license.days_remaining <= windowDays;
 }
 
 /** Extract licence from capabilities and/or organization objects. */

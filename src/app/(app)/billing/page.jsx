@@ -6,7 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { formatBillingDate, formatBillingMoney, planModuleLabels } from "@/lib/platform-billing";
-import { licenseAccessMode, rememberLicenceReturn } from "@/lib/organization-license";
+import { licenseAccessMode, rememberLicenceReturn, subscriptionRenewalOpen } from "@/lib/organization-license";
 
 function money(amount, currency = "KES") {
   if (amount == null || amount === "") return "Price not published";
@@ -14,7 +14,7 @@ function money(amount, currency = "KES") {
 }
 
 export default function OrganizationBillingPage() {
-  const { organizationLicense } = useAuth();
+  const { organizationLicense, isOrgAdmin } = useAuth();
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -51,19 +51,31 @@ export default function OrganizationBillingPage() {
   const activeModel =
     mode === "token" ? "token" : subscription?.interval === "yearly" ? "annual" : mode === "full" || mode === "trial" ? "monthly" : null;
   const features = subscription?.plan_name
-    ? (plans.find((plan) => plan.name === subscription.plan_name)?.features ?? [])
+    ? (subscription.plan?.features ?? plans.find((plan) => plan.name === subscription.plan_name)?.features ?? [])
     : [];
   const modules = planModuleLabels(subscription?.modules ?? license?.modules ?? []);
+  const managedPlan = subscription?.plan && subscription.plan.self_serve === false;
 
   return (
     <CatalogPageShell
       title="Billing & subscription"
-      subtitle="Choose how this organisation pays for Centrix. Prices come from the plans and token policy a platform administrator has published."
+      subtitle={managedPlan
+        ? "View the plan and renewal details configured for your organization."
+        : "Choose how this organisation pays for Centrix. Prices come from the plans and token policy a platform administrator has published."}
     >
       {loading ? <p className="text-sm text-slate-500">Loading billing…</p> : null}
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
       {!loading && !error ? (
+        managedPlan ? (
+          <ManagedPlanSummary
+            subscription={subscription}
+            license={license}
+            features={features}
+            modules={modules}
+            renewOpen={Boolean(isOrgAdmin?.()) && subscriptionRenewalOpen(license)}
+          />
+        ) : (
         <div className="space-y-6">
           <section className={`grid gap-4 ${policy.tokens_enabled === false ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
             {policy.tokens_enabled === false ? null : (
@@ -172,8 +184,82 @@ export default function OrganizationBillingPage() {
             />
           </section>
         </div>
+        )
       ) : null}
     </CatalogPageShell>
+  );
+}
+
+function ManagedPlanSummary({ subscription, license, features, modules, renewOpen }) {
+  const plan = subscription.plan;
+  const endDate = subscription.current_period_end || license?.expires_at;
+  const interval = subscription.billing_cycle || (plan.interval === "yearly" || plan.interval === "annual" ? "yearly" : "monthly");
+  const cycle = interval === "yearly" ? "year" : "month";
+  const price = subscription.renewal_price ?? subscription.amount;
+  const status = subscription.status || license?.status;
+  const daysRemaining = license?.days_remaining;
+
+  return (
+    <section className="theme-panel max-w-3xl rounded-xl border p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current organization plan</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">{plan.name}</h2>
+          {plan.description ? <p className="mt-2 max-w-2xl text-sm text-slate-600">{plan.description}</p> : null}
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium capitalize text-emerald-800">
+          {String(status || "active").replaceAll("_", " ")}
+        </span>
+      </div>
+
+      <dl className="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+        <PlanDetail label="Renewal amount" value={`${money(price, subscription.currency || plan.currency)} / ${cycle}`} />
+        <PlanDetail label="Subscription ends" value={formatBillingDate(endDate)} />
+        <PlanDetail label="Billing cycle" value={interval === "yearly" ? "Yearly" : "Monthly"} />
+        {subscription.seat_count != null ? (
+          <PlanDetail label="Licensed seats" value={String(subscription.seat_count)} />
+        ) : null}
+        {plan.seat_limit != null ? <PlanDetail label="Seat limit" value={String(plan.seat_limit)} /> : null}
+      </dl>
+
+      {features.length || modules.length ? (
+        <div className="mt-5 border-t border-slate-100 pt-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Included in this plan</h3>
+          <ul className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+            {(features.length ? features : modules).map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+
+      {renewOpen ? (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div>
+            <p className="font-semibold text-amber-950">Renew Your License Now</p>
+            <p className="mt-1 text-sm text-amber-900">
+              {daysRemaining < 0
+                ? "Your subscription has expired. Renew to continue on this plan."
+                : `Your subscription expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Renew to keep this plan active.`}
+            </p>
+          </div>
+          <Link
+            href="/subscribe?renew=1"
+            onClick={() => rememberLicenceReturn("/billing")}
+            className="theme-primary-btn inline-flex items-center rounded-lg px-4 py-2 text-sm font-semibold"
+          >
+            Renew Your License Now
+          </Link>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function PlanDetail({ label, value }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-1 text-sm font-medium text-slate-900">{value || "—"}</dd>
+    </div>
   );
 }
 

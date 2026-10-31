@@ -552,8 +552,8 @@ export default function PlatformDataRetentionPage() {
               <strong>{scheduleTime}</strong> ({scheduleTz}) using the timers below.
             </p>
           </div>
-          <Link href="/platform/health" className="text-sm font-medium text-[#185FA5] hover:underline">
-            Infra health →
+          <Link href="/platform/speed" className="text-sm font-medium text-[#185FA5] hover:underline">
+            ERP Speed →
           </Link>
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -594,8 +594,8 @@ export default function PlatformDataRetentionPage() {
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
             Cron must call <code className="rounded bg-white px-1">php artisan schedule:run</code> every
             minute, or the nightly prune will never start. Check{" "}
-            <Link href="/platform/health" className="font-medium underline">
-              Infrastructure health
+            <Link href="/platform/speed" className="font-medium underline">
+              ERP Speed
             </Link>
             .
           </p>

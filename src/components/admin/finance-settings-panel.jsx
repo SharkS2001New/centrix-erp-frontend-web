@@ -1122,20 +1122,24 @@ export function FinanceSettingsPanel({
             </div>
 
             <div className="mt-4 space-y-3">
+              <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
+                <strong>C2B callback registration.</strong> Save and send the confirmation and validation URLs
+                below to Safaricom Daraja for this organization&apos;s default shortcode.
+              </div>
               <UrlField
-                  label="Default C2B confirmation URL (register on Daraja)"
+                label="Default C2B confirmation callback URL"
                 value={mpesa.c2b_confirmation_url ?? ""}
                 onChange={(v) => setMpesa("c2b_confirmation_url", v)}
                 placeholder="https://your-api.example.com/api/v1/payments/c2b/confirmation"
               />
               <UrlField
-                  label="Default C2B validation URL (register on Daraja)"
+                label="Default C2B validation callback URL"
                 value={mpesa.c2b_validation_url ?? ""}
                 onChange={(v) => setMpesa("c2b_validation_url", v)}
                 placeholder="https://your-api.example.com/api/v1/payments/c2b/validation"
               />
               <UrlField
-                  label="Default STK push callback URL"
+                label="STK push callback URL (sent with each STK request)"
                 value={mpesa.stk_callback_url ?? ""}
                 onChange={(v) => setMpesa("stk_callback_url", v)}
                 placeholder="https://your-api.example.com/api/v1/payments/stk/callback"
@@ -1147,10 +1151,11 @@ export function FinanceSettingsPanel({
                 onClick={() => void saveAndRegisterDefaultC2bUrls()}
                 disabled={saving || c2bRegistering}
               >
-                {c2bRegistering ? "Registering…" : "Save & register C2B URLs"}
+                {c2bRegistering ? "Registering with Daraja…" : "Save & register C2B callbacks with Daraja"}
               </PrimaryButton>
               <span className="theme-subtext text-xs">
-                Saves these settings, then registers the default shortcode and callback URLs with Daraja.
+                Sends a C2B Register URL request using this organization&apos;s saved Daraja credentials. STK
+                callback URLs are sent separately with each STK push.
               </span>
             </div>
 

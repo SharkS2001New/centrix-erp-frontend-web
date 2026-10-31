@@ -23,6 +23,7 @@ const emptyForm = {
   till_count: "",
   vertical: "small_shop",
   tone: "professional",
+  template_key: "modern",
   pain_points: "",
   focus_modules: [],
   title: "",
@@ -81,6 +82,7 @@ export default function NewMarketingPortfolioPage() {
         till_count: form.till_count === "" ? null : Number(form.till_count),
         industry: vertical?.industry || "commerce",
         hero_image_key: vertical?.hero_image_key || undefined,
+        template_key: form.template_key,
         instruction: form.instruction.trim() || undefined,
         generate_now: Boolean(generateNow),
       };
@@ -123,6 +125,29 @@ export default function NewMarketingPortfolioPage() {
               No photo assets needed; illustrated panels are included automatically.
             </p>
           </div>
+
+          <fieldset>
+            <legend className="mb-2 block text-sm font-medium text-slate-700">Choose a portfolio template</legend>
+            <div className="grid gap-3 md:grid-cols-3">
+              {(meta?.templates || []).map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  aria-pressed={form.template_key === template.id}
+                  onClick={() => setField("template_key", template.id)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    form.template_key === template.id
+                      ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                      : "border-slate-200 bg-white hover:border-slate-400"
+                  }`}
+                >
+                  <TemplateSwatch template={template.id} />
+                  <span className="mt-2 block text-sm font-semibold text-slate-900">{template.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-600">{template.description}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
@@ -295,5 +320,25 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
+  );
+}
+
+function TemplateSwatch({ template }) {
+  const colors = template === "editorial"
+    ? ["#173B3F", "#A66B42", "#F6F4EF"]
+    : template === "bold"
+      ? ["#382274", "#E86A33", "#F4F1FA"]
+      : ["#185FA5", "#16A085", "#F3F7FA"];
+
+  return (
+    <span className="flex h-16 overflow-hidden rounded-lg" aria-hidden="true">
+      <span className="w-1/3" style={{ background: colors[0] }} />
+      <span className="flex flex-1 flex-col justify-center gap-1 p-2" style={{ background: colors[2] }}>
+        <span className="h-1 w-2/3 rounded" style={{ background: colors[0] }} />
+        <span className="h-1 w-full rounded bg-slate-300" />
+        <span className="h-1 w-4/5 rounded bg-slate-200" />
+        <span className="mt-1 h-2 w-1/2 rounded" style={{ background: colors[1] }} />
+      </span>
+    </span>
   );
 }
