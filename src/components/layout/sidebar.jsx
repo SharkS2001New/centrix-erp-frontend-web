@@ -128,7 +128,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
     <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
-      data-guide-target={guideTargetForHref(item.href)}
+      data-guide-target={guideTargetForHref(item.href) || sectionId}
       onClick={onNavigate}
       className={`app-sidebar-link flex items-center transition ${
         prominent

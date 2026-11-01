@@ -31,12 +31,225 @@ const GUIDE_STEPS = [
   {
     title: "Purchasing and stock",
     description: "Manage purchasing activity and keep stock levels up to date as your business operates.",
-    target: "purchases",
+    target: "suppliers",
   },
   {
     title: "Reports",
     description: "Review reports to understand sales and organisation activity.",
     target: "reports",
+  },
+  {
+    title: "Need a hand?",
+    description: "You can reopen this guide any time from Help in the top bar, or watch the optional product demo.",
+    target: null,
+  },
+];
+
+const MODULE_TIPS = [
+  {
+    title: "Platform administration",
+    description: "Manage platform-wide settings, plans, payment integrations, and tenant support from the platform workspace.",
+    target: "platform",
+  },
+  {
+    title: "Your dashboard",
+    description: "A quick look at revenue, invoices, and what needs your attention today.",
+    target: "dashboard",
+  },
+  {
+    title: "Products and services",
+    description: "Create products, set selling prices, organize categories, and maintain units of measure.",
+    target: "products",
+  },
+  {
+    title: "Till operations",
+    description: "Open a till session, record in-person sales, and balance cash at the end of the day.",
+    target: "pos",
+  },
+  {
+    title: "Pricing and tax",
+    description: "Review tax rates and price changes so products are charged consistently.",
+    target: "pricing_tax",
+  },
+  {
+    title: "Sales and orders",
+    description: "Track customer orders from creation through fulfilment, payment, and completion.",
+    target: "sales_orders",
+  },
+  {
+    title: "Shop debtors",
+    description: "Review customer credit balances, follow up outstanding amounts, and record repayments.",
+    target: "shop_debtors",
+  },
+  {
+    title: "Field sales",
+    description: "Coordinate field teams, assigned routes, and orders captured away from the till.",
+    target: "field_sales",
+  },
+  {
+    title: "After sales",
+    description: "Handle returns and customer follow-ups while keeping the original sale easy to trace.",
+    target: "after_sales",
+  },
+  {
+    title: "Promotions and loyalty",
+    description: "Configure promotions and customer rewards, then monitor their use during sales.",
+    target: "promotions",
+  },
+  {
+    title: "Customers",
+    description: "Keep customer contacts and account activity together to support service and follow-up.",
+    target: "customers",
+  },
+  {
+    title: "Expenses",
+    description: "Record business expenses with categories and supporting details for review and reporting.",
+    target: "expenses",
+  },
+  {
+    title: "Investors",
+    description: "Maintain investor records and review the related contributions and account activity.",
+    target: "investors",
+  },
+  {
+    title: "Inventory",
+    description: "Check stock on hand, investigate low-stock items, and keep product availability current.",
+    target: "inventory",
+  },
+  {
+    title: "Stock movements",
+    description: "Trace stock transfers and adjustments to understand where inventory changed and why.",
+    target: "stock_movements",
+  },
+  {
+    title: "Suppliers and purchasing",
+    description: "Maintain supplier details and use purchase workflows to replenish stock and track costs.",
+    target: "suppliers",
+  },
+  {
+    title: "Accounting and finance",
+    description: "Review accounts, journals, and reconciliations to keep financial records complete.",
+    target: "accounting",
+  },
+  {
+    title: "People",
+    description: "Set up employee profiles and organize your team before assigning HR workflows.",
+    target: "hr_people",
+  },
+  {
+    title: "Time and attendance",
+    description: "Record attendance and review time entries to keep staff schedules and attendance accurate.",
+    target: "hr_time_attendance",
+  },
+  {
+    title: "Payroll",
+    description: "Prepare payroll using employee pay details, then review the run before finalizing it.",
+    target: "hr_payroll",
+  },
+  {
+    title: "Performance",
+    description: "Set performance goals and review progress to keep employee feedback and evaluations organized.",
+    target: "hr_performance",
+  },
+  {
+    title: "Fleet and routes",
+    description: "Manage vehicles and routes, and monitor assignments that support distribution work.",
+    target: "distribution_fleet",
+  },
+  {
+    title: "Distribution orders",
+    description: "Follow distribution orders through picking, dispatch, delivery, and completion.",
+    target: "distribution_orders",
+  },
+  {
+    title: "Distribution operations",
+    description: "Coordinate day-to-day distribution tasks and check operational progress in one place.",
+    target: "distribution_ops",
+  },
+  {
+    title: "Reports",
+    description: "Choose a report, set the relevant date range and filters, then export or share the results.",
+    target: "reports",
+  },
+  {
+    title: "Hospitality dashboard",
+    description: "Review hospitality activity and use the dashboard to spot service or sales tasks needing attention.",
+    target: "hospitality_dashboard",
+  },
+  {
+    title: "Rooms and guests",
+    description: "Manage room availability and guest details throughout the stay.",
+    target: "hospitality_rooms",
+  },
+  {
+    title: "Hospitality sales",
+    description: "Record guest orders and payments, and follow hospitality sales through to settlement.",
+    target: "hospitality_sales",
+  },
+  {
+    title: "Hospitality operations",
+    description: "Coordinate service tasks and monitor operational activity across the venue.",
+    target: "hospitality_ops",
+  },
+  {
+    title: "Menu and products",
+    description: "Maintain menu items, prices, and product details used by hospitality sales.",
+    target: "hospitality_catalogue",
+  },
+  {
+    title: "Hospitality stock",
+    description: "Receive stock and monitor ingredient or product levels used in hospitality operations.",
+    target: "hospitality_stock",
+  },
+  {
+    title: "Hospitality purchasing",
+    description: "Manage supplier purchasing for the venue and keep incoming stock traceable.",
+    target: "hospitality_purchasing",
+  },
+  {
+    title: "Driving school",
+    description: "Manage student activity and driving lesson workflows from the school workspace.",
+    target: "driving_front",
+  },
+  {
+    title: "Driving school people and vehicles",
+    description: "Maintain instructor, learner, and vehicle details used to schedule lessons.",
+    target: "driving_fleet",
+  },
+  {
+    title: "Driving school fees and reports",
+    description: "Track fee payments and use reports to review learner and school activity.",
+    target: "driving_money",
+  },
+  {
+    title: "SPA and Kinyozi",
+    description: "Manage appointments, services, and customer sales for your salon or spa.",
+    target: "spa",
+  },
+  {
+    title: "Organization dashboard",
+    description: "Review organization-level activity and use the admin workspace to manage operations.",
+    target: "admin_dashboard",
+  },
+  {
+    title: "Organization settings",
+    description: "Keep organization details, business preferences, and operational settings up to date.",
+    target: "admin_organization",
+  },
+  {
+    title: "User management",
+    description: "Invite users, assign roles, and grant only the permissions each person needs.",
+    target: "admin_users",
+  },
+  {
+    title: "Organization finance",
+    description: "Review organization payment and finance settings, and check account activity.",
+    target: "admin_finance",
+  },
+  {
+    title: "Tax administration",
+    description: "Review tax settings and compliance details before processing taxable transactions.",
+    target: "admin_tax",
   },
   {
     title: "Need a hand?",
@@ -63,6 +276,12 @@ function saveGuideCompletion(key) {
   }
 }
 
+function getAvailableModuleTips() {
+  return MODULE_TIPS.filter((item) =>
+    item.target && document.querySelector(`[data-guide-target="${item.target}"]`),
+  );
+}
+
 export function FirstLoginGuide() {
   const { user, organization, loading, isSuperAdmin } = useAuth();
   const pathname = usePathname();
@@ -74,19 +293,22 @@ export function FirstLoginGuide() {
   const [cardPosition, setCardPosition] = useState(null);
   const [videoEmbedUrl, setVideoEmbedUrl] = useState("");
   const [videoSettingsError, setVideoSettingsError] = useState("");
+  const [selectedModuleTip, setSelectedModuleTip] = useState(null);
+  const [availableModuleTips, setAvailableModuleTips] = useState([]);
   const storageKey = onboardingGuideStorageKey(user?.id, organization?.id);
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||
     pathname === "/billing" ||
     pathname.startsWith("/billing/");
-  const step = GUIDE_STEPS[stepIndex];
+  const step = selectedModuleTip || GUIDE_STEPS[stepIndex];
 
   const finishGuide = useCallback(() => {
     if (storageKey && view !== "chooser") saveGuideCompletion(storageKey);
     setOpen(false);
     setView("tips");
     setReturnToChooser(false);
+    setSelectedModuleTip(null);
   }, [storageKey, view]);
 
   useEffect(() => {
@@ -97,6 +319,7 @@ export function FirstLoginGuide() {
     if (loading || !storageKey || isSuperAdmin?.()) return;
     if (!wasGuideCompleted(storageKey)) {
       setStepIndex(0);
+      setSelectedModuleTip(null);
       setView("tips");
       setOpen(true);
     }
@@ -105,7 +328,9 @@ export function FirstLoginGuide() {
   useEffect(() => {
     function openGuide(event) {
       setStepIndex(0);
-      setView(event.detail === "tips" ? "tips" : "chooser");
+      setSelectedModuleTip(null);
+      setView(event.detail === "tips" ? "modules" : "chooser");
+      setAvailableModuleTips(getAvailableModuleTips());
       setReturnToChooser(false);
       setOpen(true);
     }
@@ -161,8 +386,8 @@ export function FirstLoginGuide() {
           : null;
         setTargetRect(nextRect);
 
-        const cardWidth = Math.min(600, window.innerWidth - 32);
-        const cardHeight = Math.min(330, window.innerHeight - 32);
+        const cardWidth = Math.min(420, window.innerWidth - 32);
+        const cardHeight = Math.min(240, window.innerHeight - 32);
         let left = (window.innerWidth - cardWidth) / 2;
         let top = (window.innerHeight - cardHeight) / 2;
         if (nextRect && window.innerWidth >= 760) {
@@ -246,7 +471,7 @@ export function FirstLoginGuide() {
         />
       ) : null}
       <section
-        className={`theme-modal absolute w-[min(600px,calc(100vw-32px))] overflow-hidden rounded-[24px] border border-slate-700/80 shadow-2xl ${
+        className={`theme-modal absolute w-[min(420px,calc(100vw-32px))] overflow-hidden rounded-[18px] border border-slate-700/80 shadow-2xl ${
           view === "tips" && cardPosition
             ? ""
             : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
@@ -266,7 +491,7 @@ export function FirstLoginGuide() {
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="p-6 sm:p-8">
+        <div className="p-5">
           {view === "chooser" ? (
             <>
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">Help & guidance</p>
@@ -295,7 +520,9 @@ export function FirstLoginGuide() {
                   type="button"
                   onClick={() => {
                     setStepIndex(0);
-                    setView("tips");
+                    setSelectedModuleTip(null);
+                    setAvailableModuleTips(getAvailableModuleTips());
+                    setView("modules");
                   }}
                   className="theme-inset-panel flex items-start gap-3 rounded-xl border p-4 text-left hover:border-[var(--theme-primary)]"
                 >
@@ -315,6 +542,42 @@ export function FirstLoginGuide() {
                   Close
                 </button>
               </div>
+            </>
+          ) : view === "modules" ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">Usage tips</p>
+              <h2 id="first-login-guide-title" className="theme-heading mt-1 text-lg font-semibold">
+                Choose a module
+              </h2>
+              <p className="theme-subtext mt-1 text-sm">
+                Select a module to see its own quick tip.
+              </p>
+              <div className="mt-4 grid max-h-[45vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                {availableModuleTips.length ? availableModuleTips.map((item) => (
+                  <button
+                    key={item.target}
+                    type="button"
+                    onClick={() => {
+                      setSelectedModuleTip(item);
+                      setView("tips");
+                    }}
+                    className="theme-inset-panel rounded-lg border px-3 py-2 text-left text-sm font-medium hover:border-[var(--theme-primary)]"
+                  >
+                    {item.title}
+                  </button>
+                )) : (
+                  <p className="theme-subtext col-span-full py-3 text-sm">
+                    No module tips are available for this workspace.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setView("chooser")}
+                className="theme-secondary-btn mt-4 rounded-lg px-3 py-2 text-sm font-semibold"
+              >
+                Back
+              </button>
             </>
           ) : view === "demo" ? (
             <>
@@ -349,25 +612,26 @@ export function FirstLoginGuide() {
             </>
           ) : (
             <>
-              <div className="flex items-center gap-1.5" aria-label={`Step ${stepIndex + 1} of ${GUIDE_STEPS.length}`}>
-                {GUIDE_STEPS.map((item, index) => (
-                  <span
-                    key={item.title}
-                    className={`h-3 w-3 rounded-full transition-all ${
-                      index === stepIndex
-                        ? "w-8 bg-blue-400"
-                        : index < stepIndex
-                          ? "bg-blue-400/65"
-                          : "bg-slate-500/60"
-                    }`}
-                  />
-                ))}
-              </div>
-              <h2 id="first-login-guide-title" className="theme-heading mt-6 text-2xl font-semibold">
+              {selectedModuleTip ? (
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">
+                  {selectedModuleTip.title} tip
+                </p>
+              ) : (
+                <div className="flex items-center gap-2" aria-label={`Tip ${stepIndex + 1} of ${GUIDE_STEPS.length}`}>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-500/30">
+                    <span
+                      className="block h-full rounded-full bg-blue-400"
+                      style={{ width: `${((stepIndex + 1) / GUIDE_STEPS.length) * 100}%` }}
+                    />
+                  </span>
+                  <span className="theme-subtext text-xs">{stepIndex + 1}/{GUIDE_STEPS.length}</span>
+                </div>
+              )}
+              <h2 id="first-login-guide-title" className="theme-heading mt-3 text-lg font-semibold">
                 {step.title}
               </h2>
-              <p className="theme-subtext mt-3 text-base leading-7">{step.description}</p>
-              {stepIndex === GUIDE_STEPS.length - 1 ? (
+              <p className="theme-subtext mt-2 text-sm leading-5">{step.description}</p>
+              {!selectedModuleTip && stepIndex === GUIDE_STEPS.length - 1 ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -380,7 +644,29 @@ export function FirstLoginGuide() {
                   View Demo
                 </button>
               ) : null}
-              <div className="mt-7 flex items-center justify-between">
+              {selectedModuleTip ? (
+                <div className="mt-4 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedModuleTip(null);
+                      setView("modules");
+                    }}
+                    className="theme-secondary-btn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    All module tips
+                  </button>
+                  <button
+                    type="button"
+                    onClick={finishGuide}
+                    className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+              <div className="mt-4 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={finishGuide}
@@ -393,7 +679,7 @@ export function FirstLoginGuide() {
                     <button
                       type="button"
                       onClick={() => setStepIndex((index) => index - 1)}
-                      className="theme-secondary-btn inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="theme-secondary-btn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold"
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Back
@@ -403,7 +689,7 @@ export function FirstLoginGuide() {
                     <button
                       type="button"
                       onClick={() => setStepIndex((index) => index + 1)}
-                      className="theme-primary-btn inline-flex items-center gap-1 rounded-xl px-5 py-2.5 text-base font-semibold"
+                      className="theme-primary-btn inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-semibold"
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />
@@ -412,13 +698,14 @@ export function FirstLoginGuide() {
                     <button
                       type="button"
                       onClick={finishGuide}
-                      className="theme-primary-btn rounded-xl px-5 py-2.5 text-base font-semibold"
+                      className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
                     >
                       Finish
                     </button>
                   )}
                 </div>
               </div>
+              )}
             </>
           )}
         </div>
