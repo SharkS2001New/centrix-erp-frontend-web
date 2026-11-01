@@ -8,6 +8,8 @@ import { GlobalModuleSearch } from "@/components/layout/global-module-search";
 import { BackgroundTaskHeaderBar } from "@/components/shared/background-task-header-bar";
 import { AccountingHelpTopbarButton } from "@/components/accounting/accounting-help";
 import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribution-help";
+import { BookOpen } from "lucide-react";
+import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
@@ -81,6 +83,16 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
           ) : null}
           <AccountingHelpTopbarButton />
           <DistributionHelpTopbarButton />
+          <button
+            type="button"
+            onClick={openFirstLoginGuide}
+            className="app-topbar-icon-btn inline-flex items-center gap-2 px-2"
+            aria-label="Open help and guides"
+            title="Help & guides"
+          >
+            <BookOpen className="h-5 w-5" aria-hidden />
+            <span className="hidden text-sm font-medium sm:inline">Help</span>
+          </button>
           <NotificationBell />
           <WorkspaceSwitcher />
           <ThemeToggle compact className="hidden sm:inline-flex" />

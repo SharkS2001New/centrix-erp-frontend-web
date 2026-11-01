@@ -39,6 +39,7 @@ Login: **admin** / **password** (demo seeder).
 | `NEXT_PUBLIC_USE_COOKIE_AUTH` | `false` locally; set `true` in production with API `WEB_COOKIE_AUTH=true` |
 | `NEXT_PUBLIC_COMPANY_CODE` | `DEMO` (organization for this install) |
 | `NEXT_PUBLIC_COMPANY_NAME` | Optional display name on login screen |
+| `NEXT_PUBLIC_ONBOARDING_DEMO_VIDEO_URL` | Optional HTTPS YouTube or Vimeo URL shown in the first-login guide |
 | `NEXT_PUBLIC_REVERB_APP_KEY` | Reverb app key (must match API `REVERB_APP_KEY`) |
 | `NEXT_PUBLIC_REVERB_HOST` | WebSocket host (e.g. `localhost` or your API host) |
 | `NEXT_PUBLIC_REVERB_PORT` | WebSocket port (default `8080` local, `443` HTTPS) |

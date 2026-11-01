@@ -30,6 +30,7 @@ export function LicenseExpiryBanner({ className = "" }) {
   const mode = licenseAccessMode(organizationLicense);
   const renew = yearlyRenewalOpen(organizationLicense);
   if (!limited && !soon && mode !== "token" && mode !== "trial") return null;
+  if (limited) return null;
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
     mode === "trial"

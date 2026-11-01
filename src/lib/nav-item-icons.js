@@ -27,7 +27,6 @@ export const NAV_HREF_ICONS = {
   "/platform/speed": "chart",
   "/platform/system-issues": "alert",
   "/platform/database-backups": "database",
-  "/platform/slow-queries": "chart",
   "/platform/data-retention": "database",
   "/platform/health": "alert",
   "/platform/whats-new": "star",

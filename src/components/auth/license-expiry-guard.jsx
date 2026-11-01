@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
@@ -26,9 +26,10 @@ import { PrimaryButton } from "@/components/catalog/catalog-shared";
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { organizationLicense, loading, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
+  const { organization, organizationLicense, loading, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
   const [promptOpen, setPromptOpen] = useState(false);
+  const planPromptOpenedFor = useRef(null);
   const posNeedsSubscription =
     !loading &&
     hasAuthSession() &&
@@ -74,6 +75,25 @@ export function LicenseExpiryGuard({ children }) {
     rememberLicenceReturn(pathname);
     router.replace("/subscribe?for=pos");
   }, [canPay, pathname, posNeedsSubscription, router]);
+
+  useEffect(() => {
+    if (
+      planPromptOpenedFor.current === organization?.id ||
+      loading ||
+      !hasAuthSession() ||
+      isSuperAdmin() ||
+      !limited ||
+      !canPay ||
+      !organization?.id ||
+      choosingPlan
+    ) {
+      return;
+    }
+
+    planPromptOpenedFor.current = organization.id;
+    rememberLicenceReturn(pathname);
+    router.replace(planPath);
+  }, [canPay, choosingPlan, isSuperAdmin, limited, loading, organization?.id, pathname, planPath, router]);
 
   useEffect(() => {
     if (!limited || allowed || !canPay) return;

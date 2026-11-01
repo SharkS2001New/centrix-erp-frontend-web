@@ -102,12 +102,6 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Backup status and restore operations.",
       },
       {
-        href: "/platform/slow-queries",
-        label: "Slow queries",
-        icon: "chart",
-        description: "Detailed MySQL digests, table sizes, and AI query/API analysis.",
-      },
-      {
         href: "/platform/data-retention",
         label: "Data retention",
         icon: "database",

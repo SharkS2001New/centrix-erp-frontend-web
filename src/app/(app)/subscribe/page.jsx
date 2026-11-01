@@ -59,6 +59,7 @@ export default function SubscribePage() {
   const [checkoutId, setCheckoutId] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("mpesa_stk");
   const [paymentMethods, setPaymentMethods] = useState({});
+  const [paymentOptionsLoading, setPaymentOptionsLoading] = useState(true);
   const [equityInstructions, setEquityInstructions] = useState(null);
   const [equityCheckout, setEquityCheckout] = useState(null);
   const [equityTransactionId, setEquityTransactionId] = useState("");
@@ -100,12 +101,20 @@ export default function SubscribePage() {
     apiRequest("/erp/organization/billing")
       .then((res) => {
         if (cancelled) return;
-        const policy = res.data?.policy ?? {};
+        const billing = res.data ?? {};
+        const policy = billing.policy ?? {};
         setTokensEnabled(policy.tokens_enabled !== false);
-        const availableMethods = res.data?.payment_methods ?? {};
+        const paybillDetails = billing.paybill ?? organizationLicense?.paybill ?? null;
+        const equityDetails = billing.equity ?? null;
+        const configuredMethods = billing.payment_methods ?? {};
+        const availableMethods = {
+          mpesa_stk: Boolean(configuredMethods.mpesa_stk),
+          mpesa_manual: Boolean(configuredMethods.mpesa_manual || paybillDetails?.short_code),
+          equity: Boolean(configuredMethods.equity || equityDetails),
+        };
         setPaymentMethods(availableMethods);
-        setEquityInstructions(res.data?.equity ?? null);
-        setManualPaybill(res.data?.paybill ?? organizationLicense?.paybill ?? null);
+        setEquityInstructions(equityDetails);
+        setManualPaybill(paybillDetails);
         setPaymentMethod(
           availableMethods.mpesa_stk
             ? "mpesa_stk"
@@ -120,10 +129,17 @@ export default function SubscribePage() {
           price: Number(policy.token_pack_price_kes) || 0,
           saleTokens: Number(policy.sale_tokens) || 1,
         });
+        setPaymentOptionsLoading(false);
       })
       .catch((err) => {
         if (!cancelled) {
           setNotice(err instanceof ApiError ? err.message : "Could not load payment options.");
+          setPaymentMethods({
+            mpesa_manual: Boolean(organizationLicense?.paybill?.short_code),
+          });
+          setManualPaybill(organizationLicense?.paybill ?? null);
+          setPaymentMethod(organizationLicense?.paybill?.short_code ? "mpesa_manual" : "");
+          setPaymentOptionsLoading(false);
         }
       });
     return () => {
@@ -174,13 +190,10 @@ export default function SubscribePage() {
   }, [capabilities, forPos, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
-    if (!canPay || !subscriptionRenewalOpen(organizationLicense)) {
-      closeForLater();
-      return;
-    }
+    if (!canPay || !subscriptionRenewalOpen(organizationLicense)) return;
     setCharge(renewalCharge(organizationLicense));
     setStep("checkout");
-  }, [canPay, closeForLater, organizationLicense]);
+  }, [canPay, organizationLicense]);
 
   useEffect(() => {
     function onKey(event) {
@@ -763,7 +776,10 @@ function CheckoutStep({
               </button>
             ) : null}
           </div>
-          {!paymentMethods?.mpesa_stk && !canPayByEquity && !canPayByManual ? (
+          {paymentOptionsLoading ? (
+            <p className="theme-subtext mt-4 text-sm" role="status">Loading payment methods…</p>
+          ) : null}
+          {!paymentOptionsLoading && !paymentMethods?.mpesa_stk && !canPayByEquity && !canPayByManual ? (
             <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm" role="alert">
               No online payment methods are configured. Contact the Centrix administrator.
             </p>
