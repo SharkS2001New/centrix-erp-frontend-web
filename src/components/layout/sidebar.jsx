@@ -109,6 +109,17 @@ function groupNavItemsByLabel(items) {
   return blocks;
 }
 
+function guideTargetForHref(href) {
+  const path = String(href || "").split("?")[0];
+  if (path === "/dashboard") return "dashboard";
+  if (path === "/customers") return "customers";
+  if (path === "/products") return "products";
+  if (path === "/sales" || path === "/sales/pos") return "sales";
+  if (path === "/lpo" || path === "/purchases") return "purchases";
+  if (path === "/reports") return "reports";
+  return undefined;
+}
+
 function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0 }) {
   const active = isNavItemActive(item, pathname);
   const showBadge = Number(badgeCount) > 0;
@@ -117,6 +128,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
     <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
+      data-guide-target={guideTargetForHref(item.href)}
       onClick={onNavigate}
       className={`app-sidebar-link flex items-center transition ${
         prominent

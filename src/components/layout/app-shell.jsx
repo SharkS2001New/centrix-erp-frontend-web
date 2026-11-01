@@ -42,7 +42,7 @@ function readSidebarCollapsed() {
   }
 }
 
-export function AppShell({ children }) {
+export function AppShell({ children, modal = null }) {
   const pathname = usePathname();
   const navigationBusy = useNavigationBusy();
   const pendingHref = usePendingNavigationHref();
@@ -169,6 +169,7 @@ export function AppShell({ children }) {
             <AccountingHelpDialog />
             <WhatsNewLoginModal />
             <FirstLoginGuide />
+            {modal}
           </div>
           </TabWorkspaceProvider>
           </BackgroundTaskProvider>

@@ -31,7 +31,7 @@ function renewalCharge(license) {
   };
 }
 
-export default function SubscribePage() {
+export default function SubscribePage({ presentation = "page", locked = false }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const forPos = searchParams.get("for") === "pos";
@@ -151,6 +151,8 @@ export default function SubscribePage() {
   const paybill = organizationLicense?.paybill;
   const account = paybill?.account_number || organization?.company_code || "";
   const mode = licenseAccessMode(organizationLicense);
+  const isLocked = locked || searchParams.get("locked") === "1" || mode === "expired";
+  const isModal = presentation === "modal" && !isLocked;
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
@@ -197,7 +199,7 @@ export default function SubscribePage() {
 
   useEffect(() => {
     function onKey(event) {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isLocked) return;
       if (step === "checkout") {
         if (charge?.kind === "renew") closeForLater();
         else setStep("plans");
@@ -207,7 +209,7 @@ export default function SubscribePage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [closeForLater, step]);
+  }, [charge?.kind, closeForLater, isLocked, step]);
 
   async function leaveIfPaid(license) {
     const nextMode = licenseAccessMode(license);
@@ -485,15 +487,24 @@ export default function SubscribePage() {
   const currency = charge?.currency || "KES";
 
   return (
-    <div className="theme-page fixed inset-0 z-[80] overflow-y-auto">
-      <button
-        type="button"
-        onClick={closeForLater}
-        className="fixed right-4 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-      >
-        Close
-      </button>
-      <div className="mx-auto min-h-full max-w-[96rem] px-4 pb-16 pt-16 sm:px-8">
+    <div className={isModal
+      ? "fixed inset-0 z-[230] flex items-center justify-center bg-slate-950/65 p-3 sm:p-6"
+      : "theme-page fixed inset-0 z-[80] overflow-y-auto"}>
+      <div className={isModal
+        ? "theme-page relative max-h-[94vh] w-full max-w-[96rem] overflow-y-auto rounded-2xl border border-[var(--theme-border)] shadow-2xl"
+        : "min-h-full"}>
+      {!isLocked ? (
+        <button
+          type="button"
+          onClick={closeForLater}
+          className={isModal
+            ? "absolute right-4 top-4 z-10 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
+            : "fixed right-4 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
+        >
+          Close
+        </button>
+      ) : null}
+      <div className={`mx-auto max-w-[96rem] px-4 pb-16 sm:px-8 ${isModal ? "pt-12" : "min-h-full pt-16"}`}>
         {step === "checkout" && charge ? (
           <CheckoutStep
             charge={charge}
@@ -504,6 +515,7 @@ export default function SubscribePage() {
             manualPaybill={manualPaybill}
             equityInstructions={equityInstructions}
             paymentMethods={paymentMethods}
+            paymentOptionsLoading={paymentOptionsLoading}
             paymentMethod={paymentMethod}
             checkoutId={checkoutId}
             setPaymentMethod={(method) => void selectPaymentMethod(method)}
@@ -522,8 +534,16 @@ export default function SubscribePage() {
             busy={busy}
             notice={notice}
             watching={watching}
-            onBack={charge.kind === "renew" ? closeForLater : () => setStep("plans")}
-            backLabel={charge.kind === "renew" ? "Close" : "‹ Configure your plan"}
+            onBack={isLocked
+              ? () => setStep("plans")
+              : charge.kind === "renew"
+                ? closeForLater
+                : () => setStep("plans")}
+            backLabel={isLocked
+              ? "‹ Choose a plan"
+              : charge.kind === "renew"
+                ? "Close"
+                : "‹ Configure your plan"}
             onPay={() => void payNow()}
             onStartEquity={() => void startEquity()}
             onVerifyEquity={() => void verifyEquity()}
@@ -555,6 +575,7 @@ export default function SubscribePage() {
             quoteNotice={quoteNotice}
           />
         )}
+      </div>
       </div>
     </div>
   );
@@ -692,6 +713,7 @@ function CheckoutStep({
   manualPaybill,
   equityInstructions,
   paymentMethods,
+  paymentOptionsLoading = false,
   paymentMethod,
   checkoutId,
   setPaymentMethod,

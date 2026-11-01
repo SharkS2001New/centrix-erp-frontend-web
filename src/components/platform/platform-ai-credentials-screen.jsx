@@ -544,6 +544,10 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   Defaults to OpenAI. For Groq, OpenRouter, Together, or any OpenAI-compatible API, paste that
                   provider&apos;s base URL with the key (and a model that provider supports).
                 </p>
+                <p className="mt-1 text-xs theme-subtext">
+                  Marketing image generation also uses this key and base URL. The provider must support image
+                  generation and the configured image model; chat-compatible providers may not support images.
+                </p>
               </Field>
             </div>
           ) : null}

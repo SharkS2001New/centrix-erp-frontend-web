@@ -21,7 +21,7 @@ import {
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /**
- * Unpaid and expired orgs stay on Package 1. Trial and paid orgs use their package modules.
+ * Free organisations may open the plan chooser; expired licences are restricted to it.
  */
 export function LicenseExpiryGuard({ children }) {
   const pathname = usePathname();
@@ -37,15 +37,20 @@ export function LicenseExpiryGuard({ children }) {
     externalPosRequiresDatedSubscription(organizationLicense) &&
     (pathname === "/pos" || pathname.startsWith("/pos/"));
   const onPackageOne = usesPackageOne(organizationLicense);
+  const mode = licenseAccessMode(organizationLicense);
   const limited =
     !loading &&
     hasAuthSession() &&
     !isSuperAdmin() &&
     (licenceNeedsPayment(organizationLicense) || onPackageOne);
-  const allowed = onPackageOne
-    ? isFreePlanPath(pathname, organizationLicense)
-    : isLimitedLicencePath(pathname);
+  const allowed = mode === "expired"
+    ? pathname === "/subscribe"
+    : onPackageOne
+      ? isFreePlanPath(pathname, organizationLicense)
+      : isLimitedLicencePath(pathname);
   const planPath = licencePlanPath(pathname);
+  const lockedPlanPath = `${planPath}?locked=1`;
+  const chooserPath = mode === "expired" ? lockedPlanPath : `${planPath}?modal=1`;
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||
@@ -92,15 +97,15 @@ export function LicenseExpiryGuard({ children }) {
 
     planPromptOpenedFor.current = organization.id;
     rememberLicenceReturn(pathname);
-    router.replace(planPath);
-  }, [canPay, choosingPlan, isSuperAdmin, limited, loading, organization?.id, pathname, planPath, router]);
+    router.replace(chooserPath);
+  }, [canPay, choosingPlan, isSuperAdmin, limited, loading, organization?.id, pathname, chooserPath, router]);
 
   useEffect(() => {
-    if (!limited || allowed || !canPay) return;
+    if (!limited || allowed) return;
     if (pathname === planPath || pathname.startsWith(`${planPath}/`)) return;
     rememberLicenceReturn(pathname);
-    router.replace(planPath);
-  }, [allowed, canPay, limited, pathname, planPath, router]);
+    router.replace(chooserPath);
+  }, [allowed, limited, pathname, planPath, chooserPath, router]);
 
   useEffect(() => {
     if (loading || !hasAuthSession() || isSuperAdmin() || limited || choosingPlan) {
@@ -126,7 +131,7 @@ export function LicenseExpiryGuard({ children }) {
     );
   }
 
-  if ((posNeedsSubscription || (limited && !allowed)) && !canPay) {
+  if (posNeedsSubscription && !canPay) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
         <p className="max-w-md text-center text-sm text-slate-600">Ask your organisation admin to pay for Centrix.</p>

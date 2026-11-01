@@ -59,7 +59,7 @@ export function LicenseExpiryBanner({ className = "" }) {
       </div>
       {canPay ? (
         <Link
-          href={renew ? "/subscribe?renew=1" : licencePlanPath(pathname)}
+          href={renew ? "/subscribe?renew=1&modal=1" : `${licencePlanPath(pathname)}?modal=1`}
           className="shrink-0 text-xs font-semibold underline"
           onClick={() => rememberLicenceReturn(pathname)}
         >

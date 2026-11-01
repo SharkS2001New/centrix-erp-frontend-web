@@ -4,9 +4,9 @@ import { PasswordExpiryGuard } from "@/components/auth/password-expiry-guard";
 import { LicenseExpiryGuard } from "@/components/auth/license-expiry-guard";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
 
-export default function AppLayout({ children }) {
+export default function AppLayout({ children, modal }) {
   return (
-    <AppShell>
+    <AppShell modal={modal}>
       <Suspense fallback={<AppRouteLoading label="Loading page…" />}>
         <LicenseExpiryGuard>
           <PasswordExpiryGuard>{children}</PasswordExpiryGuard>

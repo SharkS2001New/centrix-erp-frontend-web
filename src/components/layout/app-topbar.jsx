@@ -65,7 +65,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {canPay && renew ? (
             <Link
-              href="/subscribe?renew=1"
+              href="/subscribe?renew=1&modal=1"
               onClick={() => rememberLicenceReturn(pathname)}
               className="theme-primary-btn inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold"
             >
@@ -74,7 +74,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
           ) : null}
           {canPay && !yearly ? (
             <Link
-              href="/subscribe"
+              href="/subscribe?modal=1"
               onClick={() => rememberLicenceReturn(pathname)}
               className={`${onPackageOne ? "theme-primary-btn" : "theme-secondary-btn"} inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold`}
             >
