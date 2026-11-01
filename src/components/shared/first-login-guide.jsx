@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Play, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { apiRequest } from "@/lib/api";
 import { onboardingGuideStorageKey, videoDemoEmbedUrl } from "@/lib/onboarding-guide";
 
 const GUIDE_STEPS = [
@@ -44,7 +45,6 @@ const GUIDE_STEPS = [
   },
 ];
 
-const VIDEO_EMBED_URL = videoDemoEmbedUrl(process.env.NEXT_PUBLIC_ONBOARDING_DEMO_VIDEO_URL);
 const OPEN_GUIDE_EVENT = "centrix:open-product-guide";
 
 function wasGuideCompleted(key) {
@@ -72,6 +72,8 @@ export function FirstLoginGuide() {
   const [returnToChooser, setReturnToChooser] = useState(false);
   const [targetRect, setTargetRect] = useState(null);
   const [cardPosition, setCardPosition] = useState(null);
+  const [videoEmbedUrl, setVideoEmbedUrl] = useState("");
+  const [videoSettingsError, setVideoSettingsError] = useState("");
   const storageKey = onboardingGuideStorageKey(user?.id, organization?.id);
   const choosingPlan =
     pathname === "/subscribe" ||
@@ -110,6 +112,20 @@ export function FirstLoginGuide() {
 
     window.addEventListener(OPEN_GUIDE_EVENT, openGuide);
     return () => window.removeEventListener(OPEN_GUIDE_EVENT, openGuide);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void apiRequest("/onboarding-guide/video", { token: null })
+      .then((response) => {
+        if (active) setVideoEmbedUrl(videoDemoEmbedUrl(response.video_embed_url) || "");
+      })
+      .catch(() => {
+        if (active) setVideoSettingsError("Could not load the demo video setting. Please try again later.");
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -306,10 +322,10 @@ export function FirstLoginGuide() {
               <h2 id="first-login-guide-title" className="theme-heading mt-2 text-2xl font-semibold">
                 See Centrix in action
               </h2>
-              {VIDEO_EMBED_URL ? (
+              {videoEmbedUrl ? (
                 <div className="mt-5 aspect-video overflow-hidden rounded-xl bg-black">
                   <iframe
-                    src={VIDEO_EMBED_URL}
+                    src={videoEmbedUrl}
                     title="Centrix ERP product demo"
                     className="h-full w-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -319,9 +335,7 @@ export function FirstLoginGuide() {
                 </div>
               ) : (
                 <p className="theme-panel theme-subtext mt-5 rounded-xl border p-4 text-sm leading-6">
-                  A demo video hasn’t been added yet. Set the
-                  {" "}<code className="font-mono">NEXT_PUBLIC_ONBOARDING_DEMO_VIDEO_URL</code>
-                  {" "}environment variable to a YouTube or Vimeo video, then rebuild the frontend.
+                  {videoSettingsError || "The platform administrator hasn’t added a demo video yet. Add a YouTube link under Platform → AI training → Credentials."}
                 </p>
               )}
               <button

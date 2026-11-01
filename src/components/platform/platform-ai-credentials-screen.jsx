@@ -591,6 +591,21 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           </div>
           ) : null}
 
+          <div className="rounded-xl border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold theme-heading">System Guide demo video</h3>
+            <p className="mt-1 text-xs theme-subtext">
+              Paste a YouTube video link. It appears in the in-app Help and first-login guide; no frontend rebuild is needed.
+            </p>
+            <input
+              type="url"
+              className={`${inputClassName()} mt-3`}
+              value={aiForm.demo_video_url}
+              onChange={(e) => setAiForm((form) => ({ ...form, demo_video_url: e.target.value }))}
+              placeholder="https://www.youtube.com/watch?v=abcdefghijk"
+              maxLength={500}
+            />
+          </div>
+
           {testResult ? (
             <div
               className={`rounded-lg border px-4 py-3 text-sm ${

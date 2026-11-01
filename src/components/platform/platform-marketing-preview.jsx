@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { illustrationStyle } from "@/lib/platform-marketing";
+import { illustrationStyle, portfolioFontCss } from "@/lib/platform-marketing";
 import { resolveCustomerMediaUrl } from "@/lib/api";
 
 /** Simple SVG scenes so portfolios look illustrated without photo assets. */
@@ -171,7 +171,11 @@ export function PortfolioPreview({ portfolio, meta, className = "" }) {
   return (
     <article
       className={`mx-auto max-w-5xl space-y-5 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-8 ${className}`}
-      style={{ "--portfolio-accent": colors.accent, "--portfolio-secondary": colors.secondary }}
+      style={{
+        "--portfolio-accent": colors.accent,
+        "--portfolio-secondary": colors.secondary,
+        fontFamily: portfolioFontCss(portfolio?.font_family),
+      }}
     >
       <header className="overflow-hidden rounded-2xl" style={{ backgroundColor: colors.paper }}>
         <PortfolioIllustration

@@ -39,11 +39,12 @@ Login: **admin** / **password** (demo seeder).
 | `NEXT_PUBLIC_USE_COOKIE_AUTH` | `false` locally; set `true` in production with API `WEB_COOKIE_AUTH=true` |
 | `NEXT_PUBLIC_COMPANY_CODE` | `DEMO` (organization for this install) |
 | `NEXT_PUBLIC_COMPANY_NAME` | Optional display name on login screen |
-| `NEXT_PUBLIC_ONBOARDING_DEMO_VIDEO_URL` | Optional HTTPS YouTube or Vimeo URL shown in the first-login guide |
 | `NEXT_PUBLIC_REVERB_APP_KEY` | Reverb app key (must match API `REVERB_APP_KEY`) |
 | `NEXT_PUBLIC_REVERB_HOST` | WebSocket host (e.g. `localhost` or your API host) |
 | `NEXT_PUBLIC_REVERB_PORT` | WebSocket port (default `8080` local, `443` HTTPS) |
 | `NEXT_PUBLIC_REVERB_SCHEME` | `http` or `https` |
+
+Platform administrators can set the optional System Guide demo video URL under Platform AI Training settings; changes take effect without rebuilding the frontend.
 | `NEXT_PUBLIC_APP_URL` | Public ERP URL (e.g. `https://erp.example.com`) — used by print-agent installers when the server sees `localhost` behind a proxy |
 | `PRINT_AGENT_MSI_URL` | Public URL of the Windows MSI on Cloudflare R2 (302 redirect). Synced by **Build Print Agent MSI** when R2 secrets are set. |
 | `PRINT_AGENT_MSI_PATH` | Optional absolute path to a mounted `.msi` (PVC) — usually unnecessary when using R2 |

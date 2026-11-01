@@ -7,15 +7,20 @@ import { ApiError, resolveCustomerMediaUrl } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
-import { PortfolioPngPreview, downloadPortfolioPng, renderMarketingPortfolioCanvas } from "@/components/platform/platform-marketing-export";
+import {
+  createPortfolioPdfBlob,
+  downloadPortfolioPdf,
+  PortfolioPngPreview,
+  downloadPortfolioPng,
+  renderMarketingPortfolioCanvas,
+} from "@/components/platform/platform-marketing-export";
 import { PortfolioPreview } from "@/components/platform/platform-marketing-preview";
 import {
-  downloadMarketingPortfolioPdf,
-  fetchMarketingPortfolioPdf,
   generateMarketingPortfolio,
   generateMarketingPortfolioImages,
   getMarketingPortfolio,
   PORTFOLIO_STATUS_STYLES,
+  PORTFOLIO_FONTS,
   portfolioStatusLabel,
   regenerateMarketingSection,
   shareMarketingPortfolio,
@@ -96,6 +101,7 @@ export default function MarketingPortfolioEditorPage() {
       vertical: portfolio.vertical,
       industry: vertical?.industry || portfolio.industry,
       template_key: portfolio.template_key || "modern",
+      font_family: portfolio.font_family || "sans",
       hero_image_key: portfolio.hero_image_key,
       sections: portfolio.sections,
     };
@@ -188,7 +194,8 @@ export default function MarketingPortfolioEditorPage() {
     try {
       const saved = await updateMarketingPortfolio(id, portfolioPayload());
       setPortfolio(saved.data);
-      await downloadMarketingPortfolioPdf(id, `${portfolio?.title || "Centrix-Portfolio"}.pdf`);
+      const canvas = await renderMarketingPortfolioCanvas(saved.data, meta, id);
+      downloadPortfolioPdf(canvas, saved.data.title);
       notifySuccess("PDF downloaded.");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "PDF failed.");
@@ -202,10 +209,8 @@ export default function MarketingPortfolioEditorPage() {
     try {
       const saved = await updateMarketingPortfolio(id, portfolioPayload());
       setPortfolio(saved.data);
-      const canvas = pngCanvasRef.current && pngSourceRef.current === portfolio
-        ? pngCanvasRef.current
-        : await renderMarketingPortfolioCanvas(portfolio, meta, id);
-      await downloadPortfolioPng(canvas, portfolio.title);
+      const canvas = await renderMarketingPortfolioCanvas(saved.data, meta, id);
+      await downloadPortfolioPng(canvas, saved.data.title);
       notifySuccess("PNG downloaded.");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "PNG failed.");
@@ -219,7 +224,8 @@ export default function MarketingPortfolioEditorPage() {
     try {
       const saved = await updateMarketingPortfolio(id, portfolioPayload());
       setPortfolio(saved.data);
-      const blob = await fetchMarketingPortfolioPdf(id);
+      const canvas = await renderMarketingPortfolioCanvas(saved.data, meta, id);
+      const blob = createPortfolioPdfBlob(canvas);
       const nextUrl = URL.createObjectURL(blob);
       setPdfPreviewUrl(nextUrl);
       setExportView("pdf");
@@ -371,6 +377,18 @@ export default function MarketingPortfolioEditorPage() {
                 <option key={v.id} value={v.id}>
                   {v.label}
                 </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Portfolio font</span>
+            <select
+              className="w-full rounded-lg border border-slate-200 px-3 py-2"
+              value={portfolio.font_family || "sans"}
+              onChange={(e) => patchField("font_family", e.target.value)}
+            >
+              {(meta?.fonts || PORTFOLIO_FONTS).map((font) => (
+                <option key={font.id} value={font.id}>{font.label}</option>
               ))}
             </select>
           </label>
@@ -600,7 +618,7 @@ export default function MarketingPortfolioEditorPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">Export preview</p>
-              <p className="text-xs text-slate-500">PDF and PNG previews match their downloads.</p>
+              <p className="text-xs text-slate-500">PDF and PNG share the same artwork; the PDF paginates it for A4.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button

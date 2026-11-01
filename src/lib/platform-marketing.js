@@ -2,6 +2,16 @@ import { apiFetchBlob, apiRequest, apiUploadForm } from "@/lib/api";
 
 const BASE = "/admin/platform-marketing-portfolios";
 
+export const PORTFOLIO_FONTS = [
+  { id: "sans", label: "Modern Sans", css: "Arial, Helvetica, sans-serif" },
+  { id: "serif", label: "Classic Serif", css: "Georgia, 'Times New Roman', serif" },
+  { id: "mono", label: "Technical Mono", css: "'Courier New', monospace" },
+];
+
+export function portfolioFontCss(fontFamily) {
+  return PORTFOLIO_FONTS.find((font) => font.id === fontFamily)?.css || PORTFOLIO_FONTS[0].css;
+}
+
 export const PORTFOLIO_STATUS_STYLES = {
   draft: "bg-slate-100 text-slate-700",
   ready: "bg-emerald-100 text-emerald-800",
@@ -86,6 +96,18 @@ export async function downloadMarketingPortfolioPdf(id, filename = "Centrix-Port
 
 export async function fetchMarketingPortfolioPdf(id) {
   return apiFetchBlob(`${BASE}/${id}/pdf`);
+}
+
+export async function downloadSharedMarketingPortfolioPdf(token, title = "Centrix-Portfolio") {
+  const blob = await apiFetchBlob(`/marketing-portfolios/shared/${token}/pdf`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[^A-Za-z0-9._-]+/g, "-") || "Centrix-Portfolio"}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export async function uploadMarketingPortfolioImage(id, image) {

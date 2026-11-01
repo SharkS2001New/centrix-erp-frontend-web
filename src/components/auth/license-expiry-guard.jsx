@@ -11,6 +11,7 @@ import {
   licenceNeedsPayment,
   usesPackageOne,
   licencePlanPath,
+  licenseAccessMode,
   externalPosRequiresDatedSubscription,
   parseLicenceInstant,
   rememberLicenceReturn,

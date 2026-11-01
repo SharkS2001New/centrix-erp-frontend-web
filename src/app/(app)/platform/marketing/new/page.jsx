@@ -9,6 +9,7 @@ import { CatalogPageShell, PrimaryButton, SECONDARY_BTN_CLASS } from "@/componen
 import {
   createMarketingPortfolio,
   fetchMarketingMeta,
+  PORTFOLIO_FONTS,
 } from "@/lib/platform-marketing";
 
 const emptyForm = {
@@ -24,6 +25,7 @@ const emptyForm = {
   vertical: "small_shop",
   tone: "professional",
   template_key: "modern",
+  font_family: "sans",
   pain_points: "",
   focus_modules: [],
   title: "",
@@ -183,6 +185,18 @@ export default function NewMarketingPortfolioPage() {
                   <option key={t.id} value={t.id}>
                     {t.label}
                   </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">Portfolio font</span>
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                value={form.font_family}
+                onChange={(e) => setField("font_family", e.target.value)}
+              >
+                {(meta?.fonts || PORTFOLIO_FONTS).map((font) => (
+                  <option key={font.id} value={font.id}>{font.label}</option>
                 ))}
               </select>
             </label>
