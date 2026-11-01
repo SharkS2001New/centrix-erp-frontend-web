@@ -14,13 +14,45 @@ const TOOLS = [
   { cmd: "formatBlock", arg: "p", label: "P", title: "Paragraph" },
 ];
 
+function sanitizeEditorHtml(html) {
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  parsed.querySelectorAll("script,style,iframe,object,embed,svg,math").forEach((node) => node.remove());
+
+  for (const element of parsed.body.querySelectorAll("*")) {
+    for (const attribute of [...element.attributes]) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+      if (name.startsWith("on")) {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      if (name === "style" && /url\s*\(|expression\s*\(|@import/i.test(value)) {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      if (name !== "href" && name !== "src") continue;
+
+      const scheme = value.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
+      const safeLink = name === "href" && (!scheme || ["http", "https", "mailto", "tel"].includes(scheme));
+      const safeImage =
+        name === "src" &&
+        (!scheme || ["http", "https"].includes(scheme) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(value));
+      if (!safeLink && !safeImage) element.removeAttribute(attribute.name);
+    }
+  }
+
+  return parsed.body.innerHTML;
+}
+
 /**
  * Pitch Predictions–style blog editor: toolbar + image upload into HTML body.
  */
 export function MarketingBlogEditor({ value, onChange, disabled = false }) {
   const ref = useRef(null);
   const fileRef = useRef(null);
+  const documentRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const syncing = useRef(false);
 
   useEffect(() => {
@@ -84,13 +116,78 @@ export function MarketingBlogEditor({ value, onChange, disabled = false }) {
     }
   }
 
-  function onPaste(event) {
-    // Prefer HTML when available; strip heavy Google Docs wrappers later on save.
-    const html = event.clipboardData?.getData("text/html");
-    if (html && html.includes("<img")) {
-      // Let the browser paste; backend extracts data-URIs on save.
+  async function onImportDocument(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || disabled) return;
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      notifyError("Choose a Word document (.docx).");
       return;
     }
+    if (file.size > 20 * 1024 * 1024) {
+      notifyError("Word documents must be 20 MB or smaller.");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const mammoth = await import("mammoth/mammoth.browser.js");
+      const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+      const html = sanitizeEditorHtml(result.value);
+      const parsed = new DOMParser().parseFromString(html, "text/html");
+      const images = [...parsed.querySelectorAll("img[src^='data:image/']")];
+      if (images.length > 20) {
+        throw new Error("A Word document can contain up to 20 embedded images.");
+      }
+
+      for (const [index, image] of images.entries()) {
+        const response = await fetch(image.src);
+        if (!response.ok) throw new Error("Could not read an embedded image.");
+        const blob = await response.blob();
+        if (blob.size > 12 * 1024 * 1024) {
+          throw new Error("Embedded images must be 12 MB or smaller.");
+        }
+        const extension = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        const imageFile = new File([blob], `word-image-${index + 1}.${extension}`, {
+          type: blob.type,
+        });
+        const uploaded = await apiUpload(
+          "/admin/marketing-blogs/upload-image",
+          imageFile,
+          "image",
+          { preset: "photo" },
+        );
+        if (!uploaded?.url) throw new Error("Image upload did not return a URL.");
+        image.src = uploaded.url;
+      }
+
+      const body = parsed.body.innerHTML.trim();
+      if (!body) throw new Error("No article content could be read from this document.");
+      if (body.length > 500000) {
+        throw new Error("The converted article is too large to save (maximum 500 KB).");
+      }
+      onImport(body);
+    } catch (err) {
+      notifyError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not import this Word document.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function onPaste(event) {
+    const html = event.clipboardData?.getData("text/html");
+    if (!html) return;
+
+    event.preventDefault();
+    ref.current?.focus();
+    document.execCommand("insertHTML", false, sanitizeEditorHtml(html));
+    emit();
   }
 
   return (
@@ -119,8 +216,24 @@ export function MarketingBlogEditor({ value, onChange, disabled = false }) {
         </button>
         <button
           type="button"
+          title="Import a Word document"
+          disabled={disabled || importing || uploading}
+          className="rounded-md border border-[var(--theme-border)] px-2.5 py-1 text-xs font-semibold text-[var(--theme-text)] disabled:opacity-50"
+          onClick={() => documentRef.current?.click()}
+        >
+          {importing ? "Importing…" : "Import Word"}
+        </button>
+        <input
+          ref={documentRef}
+          type="file"
+          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          className="hidden"
+          onChange={(event) => void onImportDocument(event)}
+        />
+        <button
+          type="button"
           title="Insert image"
-          disabled={disabled || uploading}
+          disabled={disabled || uploading || importing}
           className="rounded-md bg-[var(--theme-primary)] px-2.5 py-1 text-xs font-semibold text-[var(--theme-primary-fg)] disabled:opacity-50"
           onClick={() => fileRef.current?.click()}
         >

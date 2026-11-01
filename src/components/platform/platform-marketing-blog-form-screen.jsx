@@ -214,6 +214,45 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
     }
   }
 
+  function importWordContent(html) {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const titleElement = parsed.querySelector("h1, h2, h3, h4");
+    const importedTitle = titleElement?.textContent?.trim().slice(0, 200) || "";
+    titleElement?.remove();
+
+    const imported = {
+      seo_title: "",
+      seo_description: "",
+    };
+    for (const paragraph of [...parsed.querySelectorAll("p")]) {
+      const text = paragraph.textContent?.trim() || "";
+      const metadata = text.match(/^(seo title|meta description|keywords?|keyword)\s*:\s*/i);
+      if (!metadata) continue;
+
+      const value = text.slice(metadata[0].length).trim();
+      if (/^seo title$/i.test(metadata[1])) imported.seo_title = value.slice(0, 200);
+      if (/^meta description$/i.test(metadata[1])) imported.seo_description = value.slice(0, 320);
+      paragraph.remove();
+    }
+
+    const body = parsed.body.innerHTML.trim();
+    if (!body) {
+      notifyError("No article body was found in the Word document.");
+      return;
+    }
+    const firstParagraph = parsed.body.querySelector("p")?.textContent?.trim() || "";
+
+    setForm((prev) => ({
+      ...prev,
+      title: importedTitle || prev.title,
+      body,
+      excerpt: prev.excerpt || firstParagraph.slice(0, 500),
+      seo_title: imported.seo_title || prev.seo_title,
+      seo_description: imported.seo_description || prev.seo_description,
+    }));
+    notifySuccess("Word content imported. Review it before saving.");
+  }
+
   async function togglePublish() {
     if (!savedId) {
       await savePost({ andPublish: true });
@@ -364,6 +403,7 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
               <MarketingBlogEditor
                 value={form.body}
                 onChange={(body) => setForm((prev) => ({ ...prev, body }))}
+                onImport={importWordContent}
                 disabled={saving}
               />
             </Field>

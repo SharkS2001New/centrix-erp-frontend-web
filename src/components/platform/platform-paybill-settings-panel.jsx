@@ -2,13 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
-import { apiRequest, ApiError } from "@/lib/api";
+import { Copy, Eye, EyeOff, X } from "lucide-react";
+import { apiBaseOrigin, apiRequest, ApiError } from "@/lib/api";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
+
+function platformC2bCallbackUrls() {
+  const apiOrigin = apiBaseOrigin().replace(/\/+$/, "");
+
+  return {
+    confirmation: `${apiOrigin}/api/v1/payments/c2b/confirmation`,
+    validation: `${apiOrigin}/api/v1/payments/c2b/validation`,
+  };
+}
 
 export function PlatformPaybillSettingsPanel() {
   const [form, setForm] = useState({
@@ -45,8 +54,10 @@ export function PlatformPaybillSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [registeringC2b, setRegisteringC2b] = useState(false);
+  const [c2bModalOpen, setC2bModalOpen] = useState(false);
 
   const applySettings = useCallback((settings) => {
+    const callbackUrls = platformC2bCallbackUrls();
     setForm({
       short_code: settings.data?.short_code ?? "",
       account_name_prefix: settings.data?.account_name_prefix ?? "",
@@ -62,8 +73,8 @@ export function PlatformPaybillSettingsPanel() {
       stk_shortcode: settings.data?.stk_shortcode ?? "",
       stk_passkey: "",
       stk_callback_url: settings.data?.stk_callback_url ?? "",
-      c2b_confirmation_url: settings.data?.c2b_confirmation_url ?? "",
-      c2b_validation_url: settings.data?.c2b_validation_url ?? "",
+      c2b_confirmation_url: callbackUrls.confirmation,
+      c2b_validation_url: callbackUrls.validation,
       duration_discount_percent: String(settings.data?.duration_discount_percent ?? 0),
       duration_discount_min_months: String(settings.data?.duration_discount_min_months ?? 3),
     });
@@ -144,10 +155,20 @@ export function PlatformPaybillSettingsPanel() {
         reportIssues: false,
       });
       notifySuccess(result.message || "Platform C2B URLs registered successfully with Daraja.");
+      setC2bModalOpen(false);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not register platform C2B URLs with Daraja.");
     } finally {
       setRegisteringC2b(false);
+    }
+  }
+
+  async function copyC2bUrl(url, label) {
+    try {
+      await navigator.clipboard.writeText(url);
+      notifySuccess(`${label} URL copied.`);
+    } catch {
+      notifyError("Could not copy the URL. Select it and copy it manually.");
     }
   }
 
@@ -371,43 +392,21 @@ export function PlatformPaybillSettingsPanel() {
             <div className="border-t border-slate-200 pt-3 md:col-span-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Daraja C2B callback registration</h4>
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                These confirmation and validation URLs are registered with Daraja for the platform paybill.
+                Use the shared Centrix API callbacks for the platform paybill. Payments are matched to organisations using the account reference.
               </p>
             </div>
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Platform C2B confirmation URL</span>
-              <input
-                className={inputClass}
-                type="url"
-                value={form.c2b_confirmation_url}
-                onChange={(e) => setForm((f) => ({ ...f, c2b_confirmation_url: e.target.value }))}
-                placeholder="https://api.example.com/api/v1/payments/c2b/confirmation"
-                autoComplete="url"
-              />
-            </label>
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Platform C2B validation URL</span>
-              <input
-                className={inputClass}
-                type="url"
-                value={form.c2b_validation_url}
-                onChange={(e) => setForm((f) => ({ ...f, c2b_validation_url: e.target.value }))}
-                placeholder="https://api.example.com/api/v1/payments/c2b/validation"
-                autoComplete="url"
-              />
-            </label>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <PrimaryButton
               type="button"
               showIcon={false}
-              disabled={saving || loading || registeringC2b}
-              onClick={() => void saveAndRegisterC2bUrls()}
+              disabled={loading}
+              onClick={() => setC2bModalOpen(true)}
             >
-              {registeringC2b ? "Registering…" : "Save & register platform C2B URLs"}
+              View and register platform C2B URLs
             </PrimaryButton>
             <span className="text-xs text-slate-500">
-              Registers only the C2B confirmation and validation URLs for the manual M-Pesa shortcode above. STK callback is sent per push.
+              View/copy the fixed API callback URLs, or save and register them with Daraja.
             </span>
           </div>
           {(savedStkCredentials.consumerKey || savedStkCredentials.consumerSecret || savedStkCredentials.passkey) ? (
@@ -465,6 +464,86 @@ export function PlatformPaybillSettingsPanel() {
           {saving ? "Saving…" : "Save payment settings"}
         </PrimaryButton>
       </form>
+
+      {c2bModalOpen ? (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !registeringC2b) setC2bModalOpen(false);
+          }}
+        >
+          <div
+            className="theme-panel max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="platform-c2b-modal-title"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="platform-c2b-modal-title" className="text-base font-semibold text-slate-900">
+                  Platform C2B callback URLs
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  These are the shared backend endpoints Safaricom calls after a platform Paybill payment. They are not website pages or per-organisation URLs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setC2bModalOpen(false)}
+                disabled={registeringC2b}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+                aria-label="Close callback URL dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {[
+                ["Confirmation URL", form.c2b_confirmation_url],
+                ["Validation URL", form.c2b_validation_url],
+              ].map(([label, url]) => (
+                <label key={label} className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+                  <div className="flex gap-2">
+                    <input className={inputClass} value={url} readOnly onFocus={(event) => event.target.select()} />
+                    <PrimaryButton
+                      type="button"
+                      showIcon={false}
+                      onClick={() => void copyC2bUrl(url, label.replace(" URL", ""))}
+                    >
+                      <Copy className="mr-1 inline h-4 w-4" />
+                      Copy
+                    </PrimaryButton>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => setC2bModalOpen(false)}
+                disabled={registeringC2b}
+              >
+                Close
+              </button>
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={saving || loading || registeringC2b}
+                onClick={() => void saveAndRegisterC2bUrls()}
+              >
+                {registeringC2b ? "Saving & registering…" : "Save & register with Daraja"}
+              </PrimaryButton>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              This saves the current payment settings first, then registers the confirmation and validation URLs for the platform shortcode with Daraja. It does not change the separate STK callback.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
