@@ -30,6 +30,7 @@ export function LicenseExpiryGuard({ children }) {
   const { organization, organizationLicense, loading, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
   const [promptOpen, setPromptOpen] = useState(false);
+  const [dismissedExpiredRoute, setDismissedExpiredRoute] = useState(null);
   const planPromptOpenedFor = useRef(null);
   const posNeedsSubscription =
     !loading &&
@@ -46,6 +47,7 @@ export function LicenseExpiryGuard({ children }) {
     (licenceNeedsPayment(organizationLicense) || onPackageOne);
   const allowed = mode === "expired"
     ? pathname === "/subscribe"
+      || (dismissedExpiredRoute?.organizationId === organization?.id && pathname === dismissedExpiredRoute.path)
     : onPackageOne
       ? isFreePlanPath(pathname, organizationLicense)
       : isLimitedLicencePath(pathname);
@@ -56,6 +58,20 @@ export function LicenseExpiryGuard({ children }) {
     pathname.startsWith("/subscribe/") ||
     pathname === "/billing" ||
     pathname.startsWith("/billing/");
+
+  useEffect(() => {
+    function onExpiredLicensePromptDismissed(event) {
+      const path = String(event.detail?.path || "").split("?")[0].replace(/\/$/, "") || "/";
+      setDismissedExpiredRoute({ organizationId: event.detail?.organizationId, path });
+    }
+
+    window.addEventListener("centrix:expired-license-prompt-dismissed", onExpiredLicensePromptDismissed);
+    return () => window.removeEventListener("centrix:expired-license-prompt-dismissed", onExpiredLicensePromptDismissed);
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "expired") setDismissedExpiredRoute(null);
+  }, [mode, organization?.id]);
 
   useEffect(() => {
     if (loading || !organizationLicense || isSuperAdmin()) return undefined;
@@ -88,6 +104,7 @@ export function LicenseExpiryGuard({ children }) {
       !hasAuthSession() ||
       isSuperAdmin() ||
       !limited ||
+      mode === "expired" ||
       !canPay ||
       !organization?.id ||
       choosingPlan
@@ -98,7 +115,7 @@ export function LicenseExpiryGuard({ children }) {
     planPromptOpenedFor.current = organization.id;
     rememberLicenceReturn(pathname);
     router.replace(chooserPath);
-  }, [canPay, choosingPlan, isSuperAdmin, limited, loading, organization?.id, pathname, chooserPath, router]);
+  }, [canPay, choosingPlan, isSuperAdmin, limited, loading, mode, organization?.id, pathname, chooserPath, router]);
 
   useEffect(() => {
     if (!limited || allowed) return;
@@ -123,10 +140,14 @@ export function LicenseExpiryGuard({ children }) {
     setPromptOpen(true);
   }, [choosingPlan, organizationLicense, isSuperAdmin, limited, loading]);
 
-  if ((posNeedsSubscription || (limited && !allowed)) && canPay) {
+  if ((posNeedsSubscription && canPay) || (limited && !allowed)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
-        <p className="max-w-md text-center text-sm text-slate-600">Opening the Centrix payment page…</p>
+        <p className="max-w-md text-center text-sm text-slate-600">
+          {canPay
+            ? "Opening Centrix subscription options…"
+            : "This organisation’s licence has expired. Ask your organisation admin to choose a plan."}
+        </p>
       </div>
     );
   }

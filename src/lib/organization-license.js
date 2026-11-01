@@ -189,7 +189,8 @@ export function subscriptionRenewalOpen(license, windowDays = 30) {
   if (!license.plan_id || !(Number(license.renewal_amount) > 0)) return false;
   const mode = licenseAccessMode(license);
   if (mode === "trial" || mode === "free" || mode === "token") return false;
-  return license.days_remaining != null && license.days_remaining <= windowDays;
+  return mode === "expired"
+    || (license.days_remaining != null && license.days_remaining <= windowDays);
 }
 
 /** Extract licence from capabilities and/or organization objects. */

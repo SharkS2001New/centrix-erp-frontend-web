@@ -47,14 +47,17 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const mode = licenseAccessMode(organizationLicense);
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
   const discount = organizationLicense?.duration_discount ?? DEFAULT_DISCOUNT;
-  const renewOpen = canPay && mode !== "expired" && subscriptionRenewalOpen(organizationLicense);
+  const renewOpen = canPay && subscriptionRenewalOpen(organizationLicense);
   const renewRequested = searchParams.get("renew") === "1";
-  const [charge, setCharge] = useState(() => (renewRequested && renewOpen ? renewalCharge(organizationLicense) : null));
+  const autoRenewExpired = mode === "expired" && renewOpen && !requestedPlanId;
+  const [charge, setCharge] = useState(() => (
+    (renewRequested && renewOpen) || autoRenewExpired ? renewalCharge(organizationLicense) : null
+  ));
   const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
   const [tokenPack, setTokenPack] = useState(null);
   const [tokensEnabled, setTokensEnabled] = useState(true);
-  const [step, setStep] = useState(renewRequested && renewOpen ? "checkout" : "plans");
+  const [step, setStep] = useState((renewRequested && renewOpen) || autoRenewExpired ? "checkout" : "plans");
   const [phone, setPhone] = useState(user?.phone || organizationLicense?.paybill?.account_phone || "");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
@@ -158,6 +161,14 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
+    if (isModal && licenseAccessMode(organizationLicense) === "expired") {
+      const returnPath = freePlanHome(organizationLicense);
+      window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
+        detail: { organizationId: organization?.id, path: returnPath },
+      }));
+      router.replace(returnPath);
+      return;
+    }
     if (isModal && typeof window !== "undefined" && window.history.length > 1) {
       router.back();
       return;
@@ -198,10 +209,10 @@ export default function SubscribePage({ presentation = "page", locked = false })
   }, [capabilities, forPos, isModal, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
-    if (!renewRequested || !canPay || !subscriptionRenewalOpen(organizationLicense)) return;
+    if (!canPay || !renewOpen || requestedPlanId || (!renewRequested && mode !== "expired")) return;
     setCharge(renewalCharge(organizationLicense));
     setStep("checkout");
-  }, [canPay, organizationLicense, renewRequested]);
+  }, [canPay, mode, organizationLicense, renewOpen, renewRequested, requestedPlanId]);
 
   useEffect(() => {
     function onKey(event) {
@@ -503,12 +514,12 @@ export default function SubscribePage({ presentation = "page", locked = false })
       <div className={isModal
         ? "theme-page relative h-full max-h-full w-full max-w-none overflow-y-auto border border-[var(--theme-border)] shadow-2xl"
         : "min-h-full"}>
-      {!isLocked && mode !== "expired" ? (
+      {isModal || (!isLocked && mode !== "expired") ? (
         <button
           type="button"
           onClick={closeForLater}
           className={isModal
-            ? "absolute right-24 top-4 z-10 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
+            ? "absolute right-24 top-4 z-10 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
             : "fixed right-24 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
         >
           Close

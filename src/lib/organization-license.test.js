@@ -246,6 +246,27 @@ describe("organization license", () => {
     expect(isFreePlanPath("/dashboard", ended)).toBe(true);
   });
 
+  it("allows an expired paid subscription to renew its current package, but not an expired trial", () => {
+    const expiredPaid = resolveOrganizationLicense({
+      status: "expired",
+      plan_id: 42,
+      plan_name: "Shop Starter",
+      billing_cycle: "monthly",
+      renewal_amount: 2000,
+    });
+    expect(licenseAccessMode(expiredPaid)).toBe("expired");
+    expect(subscriptionRenewalOpen(expiredPaid)).toBe(true);
+
+    const expiredTrial = resolveOrganizationLicense({
+      status: "expired",
+      is_trial: true,
+      plan_id: 42,
+      plan_name: "Shop Starter",
+      renewal_amount: 2000,
+    });
+    expect(subscriptionRenewalOpen(expiredTrial)).toBe(false);
+  });
+
   it("hides plan changes for a healthy yearly licence and opens renew while it is counting down", () => {
     const healthy = resolveOrganizationLicense({
       status: "active",
