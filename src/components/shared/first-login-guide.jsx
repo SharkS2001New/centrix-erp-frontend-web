@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
 import {
   isEligibleForMonthlyCustomerDemo,
   onboardingDemoStorageKey,
   onboardingGuideStorageKey,
+  guideCardPosition,
   readOnboardingDemoStatus,
   saveOnboardingDemoStatus,
   videoDemoEmbedUrl,
@@ -271,6 +272,45 @@ function getAvailableModuleTips() {
     });
 }
 
+function scrollGuideTargetIntoView(target) {
+  let ancestor = target.parentElement;
+  while (ancestor && ancestor !== document.body) {
+    const overflowY = window.getComputedStyle(ancestor).overflowY;
+    if (/(auto|scroll|overlay)/.test(overflowY) && ancestor.scrollHeight > ancestor.clientHeight) {
+      const bounds = ancestor.getBoundingClientRect();
+      const visibleTop = bounds.top + ancestor.clientTop;
+      const visibleBottom = visibleTop + ancestor.clientHeight;
+      const targetBounds = target.getBoundingClientRect();
+      if (targetBounds.top < visibleTop + 12 || targetBounds.bottom > visibleBottom - 12) {
+        ancestor.scrollTo({
+          top: ancestor.scrollTop + targetBounds.top + targetBounds.height / 2
+            - (visibleTop + ancestor.clientHeight / 2),
+          behavior: "smooth",
+        });
+      }
+      return;
+    }
+    ancestor = ancestor.parentElement;
+  }
+
+  const bounds = target.getBoundingClientRect();
+  if (bounds.top < 12 || bounds.bottom > window.innerHeight - 12) {
+    target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  }
+}
+
+function findGuideTarget(step) {
+  if (!step?.target) return null;
+  return Array.from(document.querySelectorAll(`[data-guide-target="${step.target}"]`))
+    .find((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width > 0
+        && bounds.height > 0
+        && bounds.right > 0
+        && bounds.left < window.innerWidth;
+    }) ?? null;
+}
+
 export function FirstLoginGuide() {
   const { user, organization, organizationLicense, loading, isSuperAdmin } = useAuth();
   const pathname = usePathname();
@@ -382,36 +422,20 @@ export function FirstLoginGuide() {
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const target = step?.target
-          ? Array.from(document.querySelectorAll(`[data-guide-target="${step.target}"]`))
-              .find((element) => {
-                const bounds = element.getBoundingClientRect();
-                return bounds.width > 0
-                  && bounds.height > 0
-                  && bounds.right > 0
-                  && bounds.left < window.innerWidth;
-              })
-          : null;
-        if (target) {
-          const bounds = target.getBoundingClientRect();
-          if (bounds.top < 12 || bounds.bottom > window.innerHeight - 180) {
-            target.scrollIntoView({ block: "center", inline: "nearest" });
-          }
-        }
+        const target = findGuideTarget(step);
         const rect = target?.getBoundingClientRect();
         const nextRect = rect && rect.width > 0 && rect.height > 0
           ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
           : null;
         setTargetRect(nextRect);
 
-        setCardPosition({
-          left: 16,
-          bottom: 16,
-          width: Math.min(380, window.innerWidth - 32),
-        });
+        setCardPosition(nextRect
+          ? guideCardPosition(nextRect, window.innerWidth, window.innerHeight)
+          : null);
       });
     };
 
+    scrollGuideTargetIntoView(findGuideTarget(step));
     measure();
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
@@ -476,20 +500,12 @@ export function FirstLoginGuide() {
             : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
         }`}
         style={view === "tips" && cardPosition
-          ? { left: cardPosition.left, bottom: cardPosition.bottom, width: cardPosition.width }
+          ? { left: cardPosition.left, top: cardPosition.top, width: cardPosition.width }
           : undefined}
         role="dialog"
         aria-modal="true"
         aria-labelledby="first-login-guide-title"
       >
-        <button
-          type="button"
-          onClick={closeGuide}
-          className="theme-subtext absolute right-4 top-4 rounded-lg p-2 hover:bg-[var(--theme-hover)]"
-          aria-label="Close system guide"
-        >
-          <X className="h-5 w-5" />
-        </button>
         <div className="p-5">
           {view === "demo" ? (
             <>
@@ -513,11 +529,11 @@ export function FirstLoginGuide() {
                   {videoSettingsError || "The platform administrator hasn’t added a demo video yet. Add a YouTube or Vimeo link under Platform → AI training → Credentials."}
                 </p>
               )}
-              <div className="mt-5 flex justify-between gap-3">
+              <div className="mt-5 flex justify-between gap-2">
                 <button
                   type="button"
                   onClick={watchLater}
-                  className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-semibold"
+                  className="rounded-md border border-red-500/60 bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
                 >
                   Watch later
                 </button>
@@ -525,7 +541,7 @@ export function FirstLoginGuide() {
                   <button
                     type="button"
                     onClick={markDemoWatched}
-                    className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
+                    className="theme-primary-btn rounded-md px-2.5 py-1 text-xs font-semibold"
                   >
                     I’ve watched
                   </button>
@@ -557,22 +573,22 @@ export function FirstLoginGuide() {
                   No module tips are available in this workspace.
                 </p>
               )}
-              <div className="mt-4 flex items-center justify-between">
+              <div className="mt-4 flex items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={finishGuide}
-                  className="theme-subtext rounded-lg px-1 py-2 text-sm font-semibold hover:text-[var(--theme-text)]"
+                  className="rounded-md border border-red-500/60 bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
                 >
                   Close
                 </button>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   {stepIndex > 0 ? (
                     <button
                       type="button"
                       onClick={() => setStepIndex((index) => index - 1)}
-                      className="theme-secondary-btn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold"
+                      className="theme-secondary-btn inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold"
                     >
-                      <ChevronLeft className="h-4 w-4" />
+                      <ChevronLeft className="h-3.5 w-3.5" />
                       Back
                     </button>
                   ) : null}
@@ -580,20 +596,12 @@ export function FirstLoginGuide() {
                     <button
                       type="button"
                       onClick={() => setStepIndex((index) => index + 1)}
-                      className="theme-primary-btn inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-semibold"
+                      className="theme-primary-btn inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold"
                     >
                       Next
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={finishGuide}
-                      className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
-                    >
-                      Close
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </>

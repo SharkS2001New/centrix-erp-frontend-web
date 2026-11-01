@@ -18,6 +18,7 @@ import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { P } from "@/lib/permission-codes";
 import { CircleHelp } from "lucide-react";
 import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
+import { guideDescriptionForNavItem } from "@/lib/onboarding-guide";
 import {
   buildCustomReportNavItems,
   customReportBelongsToWorkspace,
@@ -116,20 +117,6 @@ function guideTargetForHref(href) {
   return path ? `sidebar:${path}` : undefined;
 }
 
-function guideDescriptionForItem(item) {
-  const label = String(item?.label ?? "this page").trim();
-  if (/analytics/i.test(label)) {
-    return `Review ${label.toLowerCase()} trends, compare performance, and use the available filters to investigate results.`;
-  }
-  if (/dashboard/i.test(label)) {
-    return `Review ${label.toLowerCase()} summaries, monitor key activity, and find items that need attention.`;
-  }
-  if (/report/i.test(label)) {
-    return `Open ${label.toLowerCase()} to filter business data, review results, and export reports.`;
-  }
-  return `Open ${label} to review its tools and manage the related records for your organization.`;
-}
-
 function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0 }) {
   const active = isNavItemActive(item, pathname);
   const showBadge = Number(badgeCount) > 0;
@@ -142,7 +129,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
       data-guide-target={guideTarget}
       data-guide-section={sectionId}
       data-guide-title={item.label}
-      data-guide-description={guideDescriptionForItem(item)}
+      data-guide-description={guideDescriptionForNavItem({ ...item, section: sectionId })}
       onClick={onNavigate}
       className={`app-sidebar-link flex items-center transition ${
         prominent
@@ -326,7 +313,7 @@ function CollapsibleNavSection({
               data-guide-target={guideTargetForHref(item.href)}
               data-guide-section={section.id}
               data-guide-title={item.label}
-              data-guide-description={guideDescriptionForItem(item)}
+              data-guide-description={guideDescriptionForNavItem({ ...item, section: section.id })}
               onClick={onNavigate}
               className={`app-sidebar-icon-btn flex w-full items-center justify-center py-3 transition ${
                 active ? "app-sidebar-icon-btn-active" : ""

@@ -3,6 +3,8 @@ import {
   onboardingDemoStorageKey,
   onboardingGuideStorageKey,
   isEligibleForMonthlyCustomerDemo,
+  guideDescriptionForNavItem,
+  guideCardPosition,
   videoDemoEmbedUrl,
 } from "@/lib/onboarding-guide";
 
@@ -51,6 +53,26 @@ describe("onboarding guide", () => {
       { registration_source: "self_registered" },
       { ...monthlyLicense, is_trial: true },
     )).toBe(false);
+  });
+
+  it("uses link-specific descriptions for usage tips", () => {
+    expect(guideDescriptionForNavItem({ label: "Units of Measure" })).toContain("unit conversions");
+    expect(guideDescriptionForNavItem({ label: "Retail Packages" })).toContain("pack sizes");
+    expect(guideDescriptionForNavItem({ label: "Sales Analytics" })).toContain("sales totals and trends");
+    expect(guideDescriptionForNavItem({ label: "Business Summary" })).toContain("key business figures");
+    expect(guideDescriptionForNavItem({ label: "Custom Area" })).not.toBe(
+      guideDescriptionForNavItem({ label: "Another Area" }),
+    );
+  });
+
+  it("positions usage tips beside their target links and within the viewport", () => {
+    expect(guideCardPosition({ x: 180, y: 200, width: 90, height: 40 }, 1200, 800))
+      .toEqual({ left: 284, top: 110, width: 380 });
+
+    const narrowViewport = guideCardPosition({ x: 120, y: 720, width: 100, height: 40 }, 375, 800);
+    expect(narrowViewport.left).toBeGreaterThanOrEqual(16);
+    expect(narrowViewport.left + narrowViewport.width).toBeLessThanOrEqual(359);
+    expect(narrowViewport.top).toBeLessThanOrEqual(564);
   });
 
   it("rejects malformed, insecure, and unsupported video links", () => {

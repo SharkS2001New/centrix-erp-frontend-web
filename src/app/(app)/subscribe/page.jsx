@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
@@ -777,6 +777,16 @@ function CheckoutStep({
   const canPayByManual = Boolean(
     paymentMethods?.mpesa_manual && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
   );
+  const [expandedPaymentMethod, setExpandedPaymentMethod] = useState(paymentMethod || "mpesa_stk");
+
+  useEffect(() => {
+    if (expandedPaymentMethod === "mpesa_stk"
+      && !paymentMethods?.mpesa_stk
+      && paymentMethod
+      && paymentMethods?.[paymentMethod]) {
+      setExpandedPaymentMethod(paymentMethod);
+    }
+  }, [expandedPaymentMethod, paymentMethod, paymentMethods]);
 
   return (
     <div>
@@ -785,40 +795,224 @@ function CheckoutStep({
                 </button>
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
-          <h2 className="theme-heading text-sm font-medium">Pay with</h2>
-          <div className="mt-3 flex flex-col gap-2" role="group" aria-label="Payment method">
+          <h2 className="theme-heading text-base font-semibold">Choose a payment method</h2>
+          <div className="mt-3 flex flex-col gap-3" role="group" aria-label="Payment method">
             {paymentMethods?.mpesa_stk ? (
-              <button
-                type="button"
-                aria-pressed={paymentMethod === "mpesa_stk"}
-                onClick={() => setPaymentMethod("mpesa_stk")}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "mpesa_stk" ? "theme-primary-btn" : "theme-inset-panel"}`}
-              >
-                <span>Pay via STK push</span>
-                <span className="text-xs opacity-70">Option 1</span>
-              </button>
+              <section className={`theme-panel overflow-hidden rounded-xl border ${expandedPaymentMethod === "mpesa_stk" ? "border-[var(--theme-primary)]" : ""}`}>
+                <button
+                  type="button"
+                  aria-expanded={expandedPaymentMethod === "mpesa_stk"}
+                  aria-controls="payment-details-mpesa-stk"
+                  onClick={() => {
+                    if (expandedPaymentMethod === "mpesa_stk") {
+                      setExpandedPaymentMethod("");
+                    } else {
+                      setExpandedPaymentMethod("mpesa_stk");
+                      if (paymentMethod !== "mpesa_stk") setPaymentMethod("mpesa_stk");
+                    }
+                  }}
+                  className="theme-heading flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold"
+                >
+                  <span>Pay via STK push</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${expandedPaymentMethod === "mpesa_stk" ? "rotate-180" : ""}`} />
+                </button>
+                {expandedPaymentMethod === "mpesa_stk" ? (
+                  <div id="payment-details-mpesa-stk" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
+                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
+                      <li>Enter the phone number that will make the M-Pesa payment.</li>
+                      <li>Select “Send M-Pesa STK prompt” to request a payment prompt.</li>
+                      <li>Approve the prompt on that phone to complete payment.</li>
+                    </ol>
+                    <label className="block text-sm">
+                      <span className="theme-subtext mb-1 block text-xs">Payer’s M-Pesa phone number</span>
+                      <input
+                        type="tel"
+                        autoComplete="tel"
+                        className={inputClass}
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="07…"
+                        maxLength={20}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </section>
             ) : null}
             {canPayByManual ? (
-              <button
-                type="button"
-                aria-pressed={paymentMethod === "mpesa_manual"}
-                onClick={() => setPaymentMethod("mpesa_manual")}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "mpesa_manual" ? "theme-primary-btn" : "theme-inset-panel"}`}
-              >
-                <span>Manual M-Pesa payment</span>
-                <span className="text-xs opacity-70">Option 2</span>
-              </button>
+              <section className={`theme-panel overflow-hidden rounded-xl border ${expandedPaymentMethod === "mpesa_manual" ? "border-[var(--theme-primary)]" : ""}`}>
+                <button
+                  type="button"
+                  aria-expanded={expandedPaymentMethod === "mpesa_manual"}
+                  aria-controls="payment-details-mpesa-manual"
+                  onClick={() => {
+                    if (expandedPaymentMethod === "mpesa_manual") {
+                      setExpandedPaymentMethod("");
+                    } else {
+                      setExpandedPaymentMethod("mpesa_manual");
+                      if (paymentMethod !== "mpesa_manual") setPaymentMethod("mpesa_manual");
+                    }
+                  }}
+                  className="theme-heading flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold"
+                >
+                  <span>Manual M-Pesa payment</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${expandedPaymentMethod === "mpesa_manual" ? "rotate-180" : ""}`} />
+                </button>
+                {expandedPaymentMethod === "mpesa_manual" && canPayByManual ? (
+                  <div id="payment-details-mpesa-manual" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
+                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
+                      <li>Open M-Pesa and choose <strong>Pay Bill</strong>.</li>
+                      <li>Enter the Paybill / Till and account reference shown below.</li>
+                      <li>Pay exactly {formatBillingMoney(due, currency)} and keep the M-Pesa confirmation message.</li>
+                      <li>Prepare your payment below, then enter the transaction code to verify it.</li>
+                    </ol>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Paybill / Till</dt>
+                        <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.short_code}</dd>
+                      </div>
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Account / reference</dt>
+                        <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.account_number || account}</dd>
+                      </div>
+                      {manualPaybill?.account_name ? (
+                        <div className={fieldClass}>
+                          <dt className="theme-subtext text-xs">Account name</dt>
+                          <dd className="theme-heading mt-1 text-sm">{manualPaybill.account_name}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                    {manualPaybill?.instructions ? (
+                      <p className="theme-subtext mt-3 text-sm">{manualPaybill.instructions}</p>
+                    ) : null}
+                    {!checkoutId ? (
+                      <button
+                        type="button"
+                        className="theme-primary-btn mt-4 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                        disabled={busy !== ""}
+                        onClick={onStartManual}
+                      >
+                        {busy === "manual-checkout" ? "Preparing payment…" : "Prepare manual payment"}
+                      </button>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        <label className="block text-sm">
+                          <span className="theme-subtext mb-1 block text-xs">M-Pesa transaction code</span>
+                          <input
+                            className={`${inputClass} font-mono uppercase`}
+                            value={code}
+                            onChange={(event) => setCode(event.target.value.toUpperCase())}
+                            placeholder="QLK1ABC234"
+                            autoComplete="off"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                          disabled={busy !== "" || !code.trim()}
+                          onClick={onCheck}
+                        >
+                          {busy === "check" ? "Verifying payment…" : "Verify M-Pesa payment"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </section>
             ) : null}
             {canPayByEquity ? (
-              <button
-                type="button"
-                aria-pressed={paymentMethod === "equity"}
-                onClick={() => setPaymentMethod("equity")}
-                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "equity" ? "theme-primary-btn" : "theme-inset-panel"}`}
-              >
-                <span>Equity payment</span>
-                <span className="text-xs opacity-70">Option 3</span>
-              </button>
+              <section className={`theme-panel overflow-hidden rounded-xl border ${expandedPaymentMethod === "equity" ? "border-[var(--theme-primary)]" : ""}`}>
+                <button
+                  type="button"
+                  aria-expanded={expandedPaymentMethod === "equity"}
+                  aria-controls="payment-details-equity"
+                  onClick={() => {
+                    if (expandedPaymentMethod === "equity") {
+                      setExpandedPaymentMethod("");
+                    } else {
+                      setExpandedPaymentMethod("equity");
+                      if (paymentMethod !== "equity") setPaymentMethod("equity");
+                    }
+                  }}
+                  className="theme-heading flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold"
+                >
+                  <span>Equity payment</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${expandedPaymentMethod === "equity" ? "rotate-180" : ""}`} />
+                </button>
+                {expandedPaymentMethod === "equity" && canPayByEquity ? (
+                  <div id="payment-details-equity" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
+                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
+                      <li>Transfer exactly {formatBillingMoney(due, currency)} using one of the Equity details below.</li>
+                      <li>Use the reference shown below so the payment can be matched to your organisation.</li>
+                      <li>After transferring, enter the transaction reference and notify the platform administrator.</li>
+                      <li>Your plan activates once the transfer is verified.</li>
+                    </ol>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Equity account</dt>
+                        <dd className="theme-heading mt-1 text-sm">{equityInstructions?.account_name}</dd>
+                      </div>
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Paybill / account</dt>
+                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.paybill_number}</dd>
+                      </div>
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Reference</dt>
+                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.reference}</dd>
+                      </div>
+                      <div className={fieldClass}>
+                        <dt className="theme-subtext text-xs">Account number</dt>
+                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
+                      </div>
+                    </dl>
+                    {equityInstructions?.instructions ? (
+                      <p className="theme-subtext mt-3 text-sm">{equityInstructions.instructions}</p>
+                    ) : null}
+                    {!equityCheckout ? (
+                      <button
+                        type="button"
+                        disabled={busy !== ""}
+                        onClick={onStartEquity}
+                        className="theme-primary-btn mt-4 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                      >
+                        {busy === "equity-start" ? "Preparing payment…" : "Continue with Equity"}
+                      </button>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        <label className="block text-sm">
+                          <span className="theme-subtext mb-1 block text-xs">Equity transaction reference</span>
+                          <input
+                            className={`${inputClass} font-mono uppercase`}
+                            value={equityTransactionId}
+                            onChange={(event) => setEquityTransactionId(event.target.value.trim())}
+                            autoComplete="off"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !equityTransactionId.trim()}
+                          onClick={onVerifyEquity}
+                          className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
+                        >
+                          {busy === "equity-check" ? "Verifying transfer…" : "Verify Equity payment"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !equityTransactionId.trim() || equityNotified}
+                          onClick={onNotifyEquityAdmin}
+                          className="theme-inset-panel w-full rounded-lg border py-3 text-sm font-semibold disabled:opacity-60"
+                        >
+                          {busy === "equity-notify"
+                            ? "Notifying platform admin…"
+                            : equityNotified
+                              ? "Payment sent for admin review"
+                              : "I’ve paid — notify platform admin"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </section>
             ) : null}
           </div>
           {paymentOptionsLoading ? (
@@ -828,153 +1022,6 @@ function CheckoutStep({
             <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm" role="alert">
               No online payment methods are configured. Contact the Centrix administrator.
             </p>
-          ) : null}
-          {paymentMethod === "mpesa_stk" && paymentMethods?.mpesa_stk ? (
-            <>
-              <label className="mt-4 block text-sm">
-                <span className="theme-subtext mb-1 block text-xs">Payer’s M-Pesa phone number</span>
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  className={inputClass}
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  placeholder="07…"
-                  maxLength={20}
-                />
-              </label>
-              <p className="theme-subtext mt-3 text-sm">
-                Enter the number of the person paying. We’ll send the STK prompt to this phone; it defaults to your profile number when available.
-              </p>
-            </>
-          ) : null}
-          {paymentMethod === "mpesa_manual" && canPayByManual ? (
-            <div className="mt-4 space-y-4">
-              <p className="theme-subtext text-sm">
-                Transfer the exact amount and use your organisation code as the payment reference.
-              </p>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Paybill / Till</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.short_code}</dd>
-                </div>
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Account / reference</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.account_number || account}</dd>
-                </div>
-                {manualPaybill?.account_name ? (
-                  <div className={fieldClass}>
-                    <dt className="theme-subtext text-xs">Account name</dt>
-                    <dd className="theme-heading mt-1 text-sm">{manualPaybill.account_name}</dd>
-                  </div>
-                ) : null}
-              </dl>
-              {manualPaybill?.instructions ? (
-                <p className="theme-subtext text-sm">{manualPaybill.instructions}</p>
-              ) : null}
-              {!checkoutId ? (
-                <button
-                  type="button"
-                  className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
-                  disabled={busy !== ""}
-                  onClick={onStartManual}
-                >
-                  {busy === "manual-checkout" ? "Preparing payment…" : "Prepare manual payment"}
-                </button>
-              ) : (
-                <>
-                  <label className="block text-sm">
-                    <span className="theme-subtext mb-1 block text-xs">M-Pesa transaction code</span>
-                    <input
-                      className={`${inputClass} font-mono uppercase`}
-                      value={code}
-                      onChange={(event) => setCode(event.target.value.toUpperCase())}
-                      placeholder="QLK1ABC234"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
-                    disabled={busy !== "" || !code.trim()}
-                    onClick={onCheck}
-                  >
-                    {busy === "check" ? "Verifying payment…" : "Verify M-Pesa payment"}
-                  </button>
-                </>
-              )}
-            </div>
-          ) : null}
-          {paymentMethod === "equity" && canPayByEquity ? (
-            <div className="mt-4 space-y-4">
-              <p className="theme-subtext text-sm">Transfer the exact amount and use your organisation code as the payment reference.</p>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Equity account</dt>
-                  <dd className="theme-heading mt-1 text-sm">{equityInstructions?.account_name}</dd>
-                </div>
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Paybill / account</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.paybill_number}</dd>
-                </div>
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Reference</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.reference}</dd>
-                </div>
-                <div className={fieldClass}>
-                  <dt className="theme-subtext text-xs">Account number</dt>
-                  <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
-                </div>
-              </dl>
-              {equityInstructions?.instructions ? (
-                <p className="theme-subtext text-sm">{equityInstructions.instructions}</p>
-              ) : null}
-              {!equityCheckout ? (
-                <button
-                  type="button"
-                  disabled={busy !== ""}
-                  onClick={onStartEquity}
-                  className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
-                >
-                  {busy === "equity-start" ? "Preparing payment…" : "Continue with Equity"}
-                </button>
-              ) : (
-                <>
-                  <label className="block text-sm">
-                    <span className="theme-subtext mb-1 block text-xs">Equity transaction reference</span>
-                    <input
-                      className={`${inputClass} font-mono uppercase`}
-                      value={equityTransactionId}
-                      onChange={(event) => setEquityTransactionId(event.target.value.trim())}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={busy !== "" || !equityTransactionId.trim()}
-                    onClick={onVerifyEquity}
-                    className="theme-primary-btn w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
-                  >
-                    {busy === "equity-check" ? "Verifying transfer…" : "Verify Equity payment"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy !== "" || !equityTransactionId.trim() || equityNotified}
-                    onClick={onNotifyEquityAdmin}
-                    className="theme-inset-panel w-full rounded-lg border py-3 text-sm font-semibold disabled:opacity-60"
-                  >
-                    {busy === "equity-notify"
-                      ? "Notifying platform admin…"
-                      : equityNotified
-                        ? "Payment sent for admin review"
-                        : "I’ve paid — notify platform admin"}
-                  </button>
-                  <p className="theme-subtext text-xs leading-5">
-                    For a manual transfer, submit its transaction reference. A platform administrator will verify it before activating your plan.
-                  </p>
-                </>
-              )}
-            </div>
           ) : null}
           {notice ? (
             <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${equityNotified ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : watching ? "theme-panel border" : "theme-alert-error"}`}>
@@ -993,10 +1040,10 @@ function CheckoutStep({
               </li>
             ))}
           </ul>
-          <dl className="mt-6 space-y-2 text-sm">
+          <dl className="mt-6 space-y-3 text-sm">
             <div className="flex justify-between gap-4">
               <dt className="theme-text-muted">{product}</dt>
-              <dd className="theme-heading">{formatBillingMoney(due, currency)}</dd>
+              <dd className="theme-heading font-semibold">{formatBillingMoney(due, currency)}</dd>
             </div>
             {Number(charge?.discount) > 0 ? (
               <div className="theme-text-muted flex justify-between gap-4">
@@ -1004,9 +1051,9 @@ function CheckoutStep({
                 <dd>−{formatBillingMoney(charge.discount, currency)}</dd>
               </div>
             ) : null}
-            <div className="theme-heading flex justify-between gap-4 border-t border-[var(--theme-border)] pt-3 font-semibold">
-              <dt>Due today</dt>
-              <dd>{formatBillingMoney(due, currency)}</dd>
+            <div className="theme-panel flex items-center justify-between gap-4 rounded-xl border px-4 py-4">
+              <dt className="theme-heading text-base font-semibold">Due today</dt>
+              <dd className="theme-heading text-2xl font-bold">{formatBillingMoney(due, currency)}</dd>
             </div>
           </dl>
           {paymentMethod === "mpesa_stk" && paymentMethods?.mpesa_stk ? (
