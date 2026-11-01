@@ -50,8 +50,7 @@ export function LicenseExpiryGuard({ children }) {
       ? isFreePlanPath(pathname, organizationLicense)
       : isLimitedLicencePath(pathname);
   const planPath = licencePlanPath(pathname);
-  const lockedPlanPath = `${planPath}?locked=1`;
-  const chooserPath = mode === "expired" ? lockedPlanPath : `${planPath}?modal=1`;
+  const chooserPath = `${planPath}?modal=1`;
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||

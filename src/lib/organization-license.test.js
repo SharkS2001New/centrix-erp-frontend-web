@@ -110,6 +110,7 @@ describe("organization license", () => {
 
   it("keeps free and expired users on the allowed pages", () => {
     expect(licenseAccessMode({ access: "free" })).toBe("free");
+    expect(licenseAccessMode({ access: "full", status: "expired" })).toBe("expired");
     expect(licenceNeedsPayment({ access: "expired" })).toBe(true);
     expect(licenceNeedsPayment({ access: "full" })).toBe(false);
     expect(licenceNeedsPayment({ access: "trial" })).toBe(false);

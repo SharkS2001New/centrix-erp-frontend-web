@@ -207,11 +207,12 @@ export function licenseAccessMode(license) {
   const boundary = licenceBoundary(license);
   if (boundary === "before") return "expired";
   if (boundary === "after" && license?.access !== "token") return "expired";
+  if (["expired", "cancelled", "inactive"].includes(license?.status)) return "expired";
+  if (license?.status === "missing") return "free";
   if (["full", "free", "expired", "token", "trial"].includes(license?.access)) {
     return license.access;
   }
   if (!license) return "full";
-  if (license.status === "missing") return "free";
   if (isLicenseExpired(license)) return "expired";
   if ((license.is_trial || license.status === "trialing") && !isLicenseExpired(license)) return "trial";
   return "full";

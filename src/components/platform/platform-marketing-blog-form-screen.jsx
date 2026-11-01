@@ -20,7 +20,6 @@ import {
   DEFAULT_BLOG_CATEGORIES,
   createMarketingBlog,
   createMarketingBlogCategory,
-  generateMarketingBlogCoverImage,
   getMarketingBlog,
   listMarketingBlogCategories,
   publishMarketingBlog,
@@ -128,8 +127,6 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
-  const [coverGenerating, setCoverGenerating] = useState(false);
-  const [coverInstruction, setCoverInstruction] = useState("");
   const [purging, setPurging] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [savedId, setSavedId] = useState(blogId);
@@ -301,56 +298,6 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
     }
   }
 
-  async function generateCover() {
-    if (!form.title.trim() || bodyIsEmpty(form.body)) {
-      notifyError("Add a title and blog content before generating a cover image.");
-      return;
-    }
-
-    let createdDraftId = null;
-    setCoverGenerating(true);
-    setSaving(true);
-    try {
-      const payload = {
-        title: form.title.trim(),
-        slug: form.slug.trim() || undefined,
-        excerpt: form.excerpt.trim() || null,
-        body: form.body,
-        cover_image_url: form.cover_image_url.trim() || null,
-        category: form.category || "general",
-        author_name: form.author_name.trim() || null,
-        seo_title: form.seo_title.trim() || null,
-        seo_description: form.seo_description.trim() || null,
-      };
-      let id = savedId;
-      if (id) {
-        const saved = await updateMarketingBlog(id, payload);
-        if (saved?.data?.slug) setForm((prev) => ({ ...prev, slug: saved.data.slug }));
-      } else {
-        const saved = await createMarketingBlog(payload);
-        id = saved?.data?.id ?? null;
-        if (!id) throw new Error("The blog draft could not be saved.");
-        setSavedId(id);
-        createdDraftId = id;
-        if (saved?.data?.slug) setForm((prev) => ({ ...prev, slug: saved.data.slug }));
-      }
-
-      const generated = await generateMarketingBlogCoverImage(id, coverInstruction.trim() || undefined);
-      if (!generated?.data?.cover_image_url) {
-        throw new Error("The image was generated but no cover URL was returned.");
-      }
-      setForm((prev) => ({ ...prev, cover_image_url: generated.data.cover_image_url }));
-      notifySuccess(generated.message || "Cover image generated from the blog content.");
-      if (createdDraftId) router.replace(`/platform/blogs/${createdDraftId}/edit`);
-    } catch (err) {
-      if (createdDraftId) router.replace(`/platform/blogs/${createdDraftId}/edit`);
-      notifyError(err instanceof ApiError ? err.message : "Could not generate the cover image.");
-    } finally {
-      setCoverGenerating(false);
-      setSaving(false);
-    }
-  }
-
   async function clearCaches() {
     setPurging(true);
     try {
@@ -476,15 +423,7 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
                 <button
                   type="button"
                   className={SECONDARY_BTN_CLASS}
-                  disabled={coverGenerating || coverUploading || saving}
-                  onClick={() => void generateCover()}
-                >
-                  {coverGenerating ? "Generating…" : "Generate with AI"}
-                </button>
-                <button
-                  type="button"
-                  className={SECONDARY_BTN_CLASS}
-                  disabled={coverUploading || coverGenerating || saving}
+                  disabled={coverUploading || saving}
                   onClick={() => coverInputRef.current?.click()}
                 >
                   {coverUploading ? "Uploading…" : "Upload cover"}
@@ -505,14 +444,6 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
                   placeholder="Or paste image URL"
                 />
               </div>
-              <input
-                className={`${inputClassName()} mt-3`}
-                value={coverInstruction}
-                maxLength={1000}
-                onChange={(event) => setCoverInstruction(event.target.value)}
-                placeholder="Optional visual direction for the AI"
-                aria-label="Optional AI cover image direction"
-              />
               {form.cover_image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -552,7 +483,7 @@ export function PlatformMarketingBlogFormScreen({ blogId = null }) {
             </button>
           )}
           <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void savePost()}>
-            {coverGenerating ? "Generating cover…" : saving ? "Saving…" : savedId ? "Save changes" : "Save draft"}
+            {saving ? "Saving…" : savedId ? "Save changes" : "Save draft"}
           </PrimaryButton>
         </div>
       </CatalogPageShell>

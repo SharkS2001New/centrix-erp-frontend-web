@@ -13,7 +13,7 @@ import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { isYearlyLicence, rememberLicenceReturn, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
+import { isYearlyLicence, licenseAccessMode, rememberLicenceReturn, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
 
 function MenuIcon({ className }) {
   return (
@@ -29,7 +29,8 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
   const hideModuleSearch = Boolean(isSuperAdmin?.());
   const canPay = Boolean(isOrgAdmin?.());
   const yearly = isYearlyLicence(organizationLicense);
-  const renew = yearlyRenewalOpen(organizationLicense);
+  const expired = licenseAccessMode(organizationLicense) === "expired";
+  const renew = !expired && yearlyRenewalOpen(organizationLicense);
   const onPackageOne = usesPackageOne(organizationLicense);
 
   return (
@@ -72,20 +73,20 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
               Renew
             </Link>
           ) : null}
-          {canPay && !yearly ? (
+          {canPay && (!yearly || expired) ? (
             <Link
               href="/subscribe?modal=1"
               onClick={() => rememberLicenceReturn(pathname)}
               className={`${onPackageOne ? "theme-primary-btn" : "theme-secondary-btn"} inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold`}
             >
-              {onPackageOne ? "Choose a plan" : "Change plan"}
+              {onPackageOne || expired ? "Choose a plan" : "Change plan"}
             </Link>
           ) : null}
           <AccountingHelpTopbarButton />
           <DistributionHelpTopbarButton />
           <button
             type="button"
-            onClick={openFirstLoginGuide}
+            onClick={() => openFirstLoginGuide("demo")}
             className="app-topbar-icon-btn inline-flex items-center gap-2 px-2"
             aria-label="Open help and guides"
             title="Help & guides"

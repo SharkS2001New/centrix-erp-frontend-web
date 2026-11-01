@@ -16,6 +16,8 @@ import { PRODUCT_NAME } from "@/lib/branding";
 import { NavItemIcon, NavSectionIcon } from "@/lib/nav-icons";
 import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { P } from "@/lib/permission-codes";
+import { CircleHelp } from "lucide-react";
+import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
 import {
   buildCustomReportNavItems,
   customReportBelongsToWorkspace,
@@ -357,6 +359,7 @@ function CollapsibleNavSection({
       <button
         type="button"
         onClick={() => onToggle(section.id)}
+        data-guide-target={section.id}
         className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-medium transition ${
           active ? "app-sidebar-section-active" : ""
         }`}
@@ -663,9 +666,27 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
             iconOnly ? "justify-center px-0" : "px-[22px]"
           }`}
         >
-          <AppNavLink href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
-            <CentrixLogo collapsed={iconOnly} orgSubtitle={organization?.org_name} />
-          </AppNavLink>
+          <div className={`flex w-full flex-col ${iconOnly ? "items-center" : "items-start"}`}>
+            <AppNavLink href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
+              <CentrixLogo collapsed={iconOnly} />
+            </AppNavLink>
+            {!iconOnly && organization?.org_name ? (
+              <div className="mt-1 flex min-w-0 items-center gap-1 pl-[36px]">
+                <span className="max-w-[180px] truncate text-[10px] font-medium leading-tight text-white/65" title={organization.org_name}>
+                  {organization.org_name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openFirstLoginGuide("tips")}
+                  className="rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Open usage tips"
+                  title="Usage tips"
+                >
+                  <CircleHelp className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1">

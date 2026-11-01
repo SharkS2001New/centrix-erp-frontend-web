@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
@@ -41,11 +42,12 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const requestedBilling = ["monthly", "yearly", "prepaid"].includes(searchParams.get("billing"))
     ? searchParams.get("billing")
     : "monthly";
-  const { organization, organizationLicense, capabilities, user, isSuperAdmin, isOrgAdmin, refreshCapabilities } = useAuth();
+  const { organization, organizationLicense, capabilities, user, isSuperAdmin, isOrgAdmin, refreshCapabilities, logout } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
+  const mode = licenseAccessMode(organizationLicense);
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
   const discount = organizationLicense?.duration_discount ?? DEFAULT_DISCOUNT;
-  const renewOpen = canPay && subscriptionRenewalOpen(organizationLicense);
+  const renewOpen = canPay && mode !== "expired" && subscriptionRenewalOpen(organizationLicense);
   const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
   const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
@@ -150,8 +152,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const due = Number(charge?.amount) || 0;
   const paybill = organizationLicense?.paybill;
   const account = paybill?.account_number || organization?.company_code || "";
-  const mode = licenseAccessMode(organizationLicense);
-  const isLocked = locked || searchParams.get("locked") === "1" || mode === "expired";
+  const isLocked = locked || searchParams.get("locked") === "1";
   const isModal = presentation === "modal" && !isLocked;
 
   const closeForLater = useCallback(() => {
@@ -199,7 +200,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   useEffect(() => {
     function onKey(event) {
-      if (event.key !== "Escape" || isLocked) return;
+      if (event.key !== "Escape" || isLocked || mode === "expired") return;
       if (step === "checkout") {
         if (charge?.kind === "renew") closeForLater();
         else setStep("plans");
@@ -209,7 +210,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [charge?.kind, closeForLater, isLocked, step]);
+  }, [charge?.kind, closeForLater, isLocked, mode, step]);
 
   async function leaveIfPaid(license) {
     const nextMode = licenseAccessMode(license);
@@ -493,17 +494,27 @@ export default function SubscribePage({ presentation = "page", locked = false })
       <div className={isModal
         ? "theme-page relative max-h-[94vh] w-full max-w-[96rem] overflow-y-auto rounded-2xl border border-[var(--theme-border)] shadow-2xl"
         : "min-h-full"}>
-      {!isLocked ? (
+      {!isLocked && mode !== "expired" ? (
         <button
           type="button"
           onClick={closeForLater}
           className={isModal
-            ? "absolute right-4 top-4 z-10 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
-            : "fixed right-4 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
+            ? "absolute right-24 top-4 z-10 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
+            : "fixed right-24 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
         >
           Close
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={() => void logout()}
+        className={isModal
+          ? "absolute right-4 top-4 z-10 inline-flex items-center gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
+          : "fixed right-4 top-4 z-[90] inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
+      >
+        <LogOut className="h-4 w-4" aria-hidden="true" />
+        Logout
+      </button>
       <div className={`mx-auto max-w-[96rem] px-4 pb-16 sm:px-8 ${isModal ? "pt-12" : "min-h-full pt-16"}`}>
         {step === "checkout" && charge ? (
           <CheckoutStep
@@ -766,25 +777,16 @@ function CheckoutStep({
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
           <h2 className="theme-heading text-sm font-medium">Pay with</h2>
-          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Payment method">
+          <div className="mt-3 flex flex-col gap-2" role="group" aria-label="Payment method">
             {paymentMethods?.mpesa_stk ? (
               <button
                 type="button"
                 aria-pressed={paymentMethod === "mpesa_stk"}
                 onClick={() => setPaymentMethod("mpesa_stk")}
-                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa_stk" ? "theme-primary-btn" : "theme-inset-panel"}`}
+                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "mpesa_stk" ? "theme-primary-btn" : "theme-inset-panel"}`}
               >
-                M-Pesa STK
-              </button>
-            ) : null}
-            {canPayByEquity ? (
-              <button
-                type="button"
-                aria-pressed={paymentMethod === "equity"}
-                onClick={() => setPaymentMethod("equity")}
-                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "equity" ? "theme-primary-btn" : "theme-inset-panel"}`}
-              >
-                Equity
+                <span>Pay via STK push</span>
+                <span className="text-xs opacity-70">Option 1</span>
               </button>
             ) : null}
             {canPayByManual ? (
@@ -792,9 +794,21 @@ function CheckoutStep({
                 type="button"
                 aria-pressed={paymentMethod === "mpesa_manual"}
                 onClick={() => setPaymentMethod("mpesa_manual")}
-                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${paymentMethod === "mpesa_manual" ? "theme-primary-btn" : "theme-inset-panel"}`}
+                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "mpesa_manual" ? "theme-primary-btn" : "theme-inset-panel"}`}
               >
-                M-Pesa manual
+                <span>Manual M-Pesa payment</span>
+                <span className="text-xs opacity-70">Option 2</span>
+              </button>
+            ) : null}
+            {canPayByEquity ? (
+              <button
+                type="button"
+                aria-pressed={paymentMethod === "equity"}
+                onClick={() => setPaymentMethod("equity")}
+                className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm font-semibold ${paymentMethod === "equity" ? "theme-primary-btn" : "theme-inset-panel"}`}
+              >
+                <span>Equity payment</span>
+                <span className="text-xs opacity-70">Option 3</span>
               </button>
             ) : null}
           </div>
@@ -809,10 +823,20 @@ function CheckoutStep({
           {paymentMethod === "mpesa_stk" && paymentMethods?.mpesa_stk ? (
             <>
               <label className="mt-4 block text-sm">
-                <span className="theme-subtext mb-1 block text-xs">M-Pesa phone</span>
-                <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07…" />
+                <span className="theme-subtext mb-1 block text-xs">Payer’s M-Pesa phone number</span>
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  className={inputClass}
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="07…"
+                  maxLength={20}
+                />
               </label>
-              <p className="theme-subtext mt-3 text-sm">We’ll send a secure payment prompt to your phone.</p>
+              <p className="theme-subtext mt-3 text-sm">
+                Enter the number of the person paying. We’ll send the STK prompt to this phone; it defaults to your profile number when available.
+              </p>
             </>
           ) : null}
           {paymentMethod === "mpesa_manual" && canPayByManual ? (

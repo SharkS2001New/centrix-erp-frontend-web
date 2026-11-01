@@ -2,48 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { BookOpen, ChevronLeft, ChevronRight, Play, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
 import { onboardingGuideStorageKey, videoDemoEmbedUrl } from "@/lib/onboarding-guide";
-
-const GUIDE_STEPS = [
-  {
-    title: "Your dashboard",
-    description: "A quick look at revenue, invoices, and what needs your attention today.",
-    target: "dashboard",
-  },
-  {
-    title: "Your customers",
-    description: "Keep customer details and account activity together so your team can serve them consistently.",
-    target: "customers",
-  },
-  {
-    title: "Products and services",
-    description: "Set up the products or services you sell, including prices and stock details.",
-    target: "products",
-  },
-  {
-    title: "Record sales",
-    description: "Use the sales workspace to create orders, record payments, and issue receipts.",
-    target: "sales",
-  },
-  {
-    title: "Purchasing and stock",
-    description: "Manage purchasing activity and keep stock levels up to date as your business operates.",
-    target: "suppliers",
-  },
-  {
-    title: "Reports",
-    description: "Review reports to understand sales and organisation activity.",
-    target: "reports",
-  },
-  {
-    title: "Need a hand?",
-    description: "You can reopen this guide any time from Help in the top bar, or watch the optional product demo.",
-    target: null,
-  },
-];
 
 const MODULE_TIPS = [
   {
@@ -277,9 +239,17 @@ function saveGuideCompletion(key) {
 }
 
 function getAvailableModuleTips() {
-  return MODULE_TIPS.filter((item) =>
-    item.target && document.querySelector(`[data-guide-target="${item.target}"]`),
-  );
+  return MODULE_TIPS.filter((item) => {
+    if (!item.target) return false;
+    return Array.from(document.querySelectorAll(`[data-guide-target="${item.target}"]`))
+      .some((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.width > 0
+          && bounds.height > 0
+          && bounds.right > 0
+          && bounds.left < window.innerWidth;
+      });
+  });
 }
 
 export function FirstLoginGuide() {
@@ -288,12 +258,10 @@ export function FirstLoginGuide() {
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [view, setView] = useState("tips");
-  const [returnToChooser, setReturnToChooser] = useState(false);
   const [targetRect, setTargetRect] = useState(null);
   const [cardPosition, setCardPosition] = useState(null);
   const [videoEmbedUrl, setVideoEmbedUrl] = useState("");
   const [videoSettingsError, setVideoSettingsError] = useState("");
-  const [selectedModuleTip, setSelectedModuleTip] = useState(null);
   const [availableModuleTips, setAvailableModuleTips] = useState([]);
   const storageKey = onboardingGuideStorageKey(user?.id, organization?.id);
   const choosingPlan =
@@ -301,15 +269,13 @@ export function FirstLoginGuide() {
     pathname.startsWith("/subscribe/") ||
     pathname === "/billing" ||
     pathname.startsWith("/billing/");
-  const step = selectedModuleTip || GUIDE_STEPS[stepIndex];
+  const step = availableModuleTips[stepIndex];
 
   const finishGuide = useCallback(() => {
-    if (storageKey && view !== "chooser") saveGuideCompletion(storageKey);
+    if (storageKey) saveGuideCompletion(storageKey);
     setOpen(false);
-    setView("tips");
-    setReturnToChooser(false);
-    setSelectedModuleTip(null);
-  }, [storageKey, view]);
+    setAvailableModuleTips([]);
+  }, [storageKey]);
 
   useEffect(() => {
     if (choosingPlan) {
@@ -318,8 +284,8 @@ export function FirstLoginGuide() {
     }
     if (loading || !storageKey || isSuperAdmin?.()) return;
     if (!wasGuideCompleted(storageKey)) {
+      setAvailableModuleTips(getAvailableModuleTips());
       setStepIndex(0);
-      setSelectedModuleTip(null);
       setView("tips");
       setOpen(true);
     }
@@ -328,10 +294,8 @@ export function FirstLoginGuide() {
   useEffect(() => {
     function openGuide(event) {
       setStepIndex(0);
-      setSelectedModuleTip(null);
-      setView(event.detail === "tips" ? "modules" : "chooser");
       setAvailableModuleTips(getAvailableModuleTips());
-      setReturnToChooser(false);
+      setView(event.detail === "tips" ? "tips" : "demo");
       setOpen(true);
     }
 
@@ -377,38 +341,28 @@ export function FirstLoginGuide() {
           ? Array.from(document.querySelectorAll(`[data-guide-target="${step.target}"]`))
               .find((element) => {
                 const bounds = element.getBoundingClientRect();
-                return bounds.width > 0 && bounds.height > 0;
+                return bounds.width > 0
+                  && bounds.height > 0
+                  && bounds.right > 0
+                  && bounds.left < window.innerWidth;
               })
           : null;
+        if (target) {
+          const bounds = target.getBoundingClientRect();
+          if (bounds.top < 12 || bounds.bottom > window.innerHeight - 180) {
+            target.scrollIntoView({ block: "center", inline: "nearest" });
+          }
+        }
         const rect = target?.getBoundingClientRect();
         const nextRect = rect && rect.width > 0 && rect.height > 0
           ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
           : null;
         setTargetRect(nextRect);
 
-        const cardWidth = Math.min(420, window.innerWidth - 32);
-        const cardHeight = Math.min(240, window.innerHeight - 32);
-        let left = (window.innerWidth - cardWidth) / 2;
-        let top = (window.innerHeight - cardHeight) / 2;
-        if (nextRect && window.innerWidth >= 760) {
-          const rightSide = nextRect.x + nextRect.width + 32;
-          const leftSide = nextRect.x - cardWidth - 32;
-          if (rightSide + cardWidth <= window.innerWidth - 16) {
-            left = rightSide;
-          } else if (leftSide >= 16) {
-            left = leftSide;
-          }
-          top = nextRect.y + nextRect.height / 2 - cardHeight / 2;
-        } else if (nextRect) {
-          top = nextRect.y + nextRect.height + 24;
-          if (top + cardHeight > window.innerHeight - 16) {
-            top = nextRect.y - cardHeight - 24;
-          }
-        }
         setCardPosition({
-          left: Math.max(16, Math.min(left, window.innerWidth - cardWidth - 16)),
-          top: Math.max(16, Math.min(top, window.innerHeight - cardHeight - 16)),
-          width: cardWidth,
+          left: 16,
+          bottom: 16,
+          width: Math.min(380, window.innerWidth - 32),
         });
       });
     };
@@ -471,13 +425,13 @@ export function FirstLoginGuide() {
         />
       ) : null}
       <section
-        className={`theme-modal absolute w-[min(420px,calc(100vw-32px))] overflow-hidden rounded-[18px] border border-slate-700/80 shadow-2xl ${
+        className={`theme-modal absolute w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-[18px] border border-slate-700/80 shadow-2xl ${
           view === "tips" && cardPosition
             ? ""
             : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
         }`}
         style={view === "tips" && cardPosition
-          ? { left: cardPosition.left, top: cardPosition.top, width: cardPosition.width }
+          ? { left: cardPosition.left, bottom: cardPosition.bottom, width: cardPosition.width }
           : undefined}
         role="dialog"
         aria-modal="true"
@@ -492,94 +446,7 @@ export function FirstLoginGuide() {
           <X className="h-5 w-5" />
         </button>
         <div className="p-5">
-          {view === "chooser" ? (
-            <>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">Help & guidance</p>
-              <h2 id="first-login-guide-title" className="theme-heading mt-2 text-2xl font-semibold">
-                What would you like help with?
-              </h2>
-              <p className="theme-subtext mt-2 text-sm">
-                Watch a quick product demo or open step-by-step usage tips. You can close this any time.
-              </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReturnToChooser(true);
-                    setView("demo");
-                  }}
-                  className="theme-inset-panel flex items-start gap-3 rounded-xl border p-4 text-left hover:border-[var(--theme-primary)]"
-                >
-                  <Play className="mt-0.5 h-5 w-5 shrink-0 text-[var(--theme-primary)]" />
-                  <span>
-                    <span className="theme-heading block text-sm font-semibold">View Demo</span>
-                    <span className="theme-subtext mt-1 block text-xs">See an overview of Centrix ERP.</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStepIndex(0);
-                    setSelectedModuleTip(null);
-                    setAvailableModuleTips(getAvailableModuleTips());
-                    setView("modules");
-                  }}
-                  className="theme-inset-panel flex items-start gap-3 rounded-xl border p-4 text-left hover:border-[var(--theme-primary)]"
-                >
-                  <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-[var(--theme-primary)]" />
-                  <span>
-                    <span className="theme-heading block text-sm font-semibold">Show Usage Tips</span>
-                    <span className="theme-subtext mt-1 block text-xs">Follow the main steps for getting started.</span>
-                  </span>
-                </button>
-              </div>
-              <div className="mt-8 flex justify-end border-t border-[var(--theme-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={finishGuide}
-                  className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-semibold"
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          ) : view === "modules" ? (
-            <>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">Usage tips</p>
-              <h2 id="first-login-guide-title" className="theme-heading mt-1 text-lg font-semibold">
-                Choose a module
-              </h2>
-              <p className="theme-subtext mt-1 text-sm">
-                Select a module to see its own quick tip.
-              </p>
-              <div className="mt-4 grid max-h-[45vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
-                {availableModuleTips.length ? availableModuleTips.map((item) => (
-                  <button
-                    key={item.target}
-                    type="button"
-                    onClick={() => {
-                      setSelectedModuleTip(item);
-                      setView("tips");
-                    }}
-                    className="theme-inset-panel rounded-lg border px-3 py-2 text-left text-sm font-medium hover:border-[var(--theme-primary)]"
-                  >
-                    {item.title}
-                  </button>
-                )) : (
-                  <p className="theme-subtext col-span-full py-3 text-sm">
-                    No module tips are available for this workspace.
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setView("chooser")}
-                className="theme-secondary-btn mt-4 rounded-lg px-3 py-2 text-sm font-semibold"
-              >
-                Back
-              </button>
-            </>
-          ) : view === "demo" ? (
+          {view === "demo" ? (
             <>
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">Video demo</p>
               <h2 id="first-login-guide-title" className="theme-heading mt-2 text-2xl font-semibold">
@@ -603,7 +470,7 @@ export function FirstLoginGuide() {
               )}
               <button
                 type="button"
-                onClick={() => setView(returnToChooser ? "chooser" : "tips")}
+                onClick={() => setView("tips")}
                 className="theme-secondary-btn mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -612,67 +479,36 @@ export function FirstLoginGuide() {
             </>
           ) : (
             <>
-              {selectedModuleTip ? (
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-primary)]">
-                  {selectedModuleTip.title} tip
-                </p>
-              ) : (
-                <div className="flex items-center gap-2" aria-label={`Tip ${stepIndex + 1} of ${GUIDE_STEPS.length}`}>
+              {step ? (
+                <div className="flex items-center gap-2" aria-label={`Tip ${stepIndex + 1} of ${availableModuleTips.length}`}>
                   <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-500/30">
                     <span
                       className="block h-full rounded-full bg-blue-400"
-                      style={{ width: `${((stepIndex + 1) / GUIDE_STEPS.length) * 100}%` }}
+                      style={{ width: `${((stepIndex + 1) / availableModuleTips.length) * 100}%` }}
                     />
                   </span>
-                  <span className="theme-subtext text-xs">{stepIndex + 1}/{GUIDE_STEPS.length}</span>
+                  <span className="theme-subtext text-xs">{stepIndex + 1}/{availableModuleTips.length}</span>
                 </div>
-              )}
-              <h2 id="first-login-guide-title" className="theme-heading mt-3 text-lg font-semibold">
-                {step.title}
-              </h2>
-              <p className="theme-subtext mt-2 text-sm leading-5">{step.description}</p>
-              {!selectedModuleTip && stepIndex === GUIDE_STEPS.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReturnToChooser(false);
-                    setView("demo");
-                  }}
-                  className="theme-secondary-btn mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
-                >
-                  <Play className="h-4 w-4" />
-                  View Demo
-                </button>
               ) : null}
-              {selectedModuleTip ? (
-                <div className="mt-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedModuleTip(null);
-                      setView("modules");
-                    }}
-                    className="theme-secondary-btn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    All module tips
-                  </button>
-                  <button
-                    type="button"
-                    onClick={finishGuide}
-                    className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
-                  >
-                    Close
-                  </button>
-                </div>
+              {step ? (
+                <>
+                  <h2 id="first-login-guide-title" className="theme-heading mt-3 text-lg font-semibold">
+                    {step.title}
+                  </h2>
+                  <p className="theme-subtext mt-2 text-sm leading-5">{step.description}</p>
+                </>
               ) : (
+                <p className="theme-subtext mt-3 text-sm">
+                  No module tips are available in this workspace.
+                </p>
+              )}
               <div className="mt-4 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={finishGuide}
                   className="theme-subtext rounded-lg px-1 py-2 text-sm font-semibold hover:text-[var(--theme-text)]"
                 >
-                  Skip
+                  Close
                 </button>
                 <div className="flex gap-2">
                   {stepIndex > 0 ? (
@@ -685,7 +521,7 @@ export function FirstLoginGuide() {
                       Back
                     </button>
                   ) : null}
-                  {stepIndex < GUIDE_STEPS.length - 1 ? (
+                  {stepIndex < availableModuleTips.length - 1 ? (
                     <button
                       type="button"
                       onClick={() => setStepIndex((index) => index + 1)}
@@ -700,12 +536,11 @@ export function FirstLoginGuide() {
                       onClick={finishGuide}
                       className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
                     >
-                      Finish
+                      Close
                     </button>
                   )}
                 </div>
               </div>
-              )}
             </>
           )}
         </div>
@@ -714,7 +549,7 @@ export function FirstLoginGuide() {
   );
 }
 
-export function openFirstLoginGuide(view = "chooser") {
+export function openFirstLoginGuide(view = "demo") {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(OPEN_GUIDE_EVENT, { detail: view }));
   }
