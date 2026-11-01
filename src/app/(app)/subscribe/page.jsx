@@ -32,6 +32,34 @@ function renewalCharge(license) {
   };
 }
 
+function getPaymentSteps(instructions, fallback) {
+  const text = String(instructions ?? "").trim();
+  if (!text) return fallback;
+
+  const numberedSteps = text.split(/(?:^|\s)\d+[.)]\s+/).map((step) => step.trim()).filter(Boolean);
+  if (numberedSteps.length > 1) return numberedSteps;
+
+  const lines = text.split(/\r?\n/).map((step) => step.trim()).filter(Boolean);
+  return lines.length > 0 ? lines : fallback;
+}
+
+function PaymentSteps({ instructions, fallback }) {
+  const steps = getPaymentSteps(instructions, fallback);
+
+  return (
+    <ol className="mb-4 grid gap-2">
+      {steps.map((step, index) => (
+        <li key={`${index}-${step}`} className="theme-panel flex items-start gap-3 rounded-lg border px-3 py-2.5">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--theme-primary)] text-xs font-bold text-white">
+            {index + 1}
+          </span>
+          <span className="theme-heading pt-0.5 text-sm font-bold leading-5">{step}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function SubscribePage({ presentation = "page", locked = false }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -829,11 +857,11 @@ function CheckoutStep({
                 </button>
                 {expandedPaymentMethod === "mpesa_stk" ? (
                   <div id="payment-details-mpesa-stk" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
-                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
-                      <li>Enter the phone number that will make the M-Pesa payment.</li>
-                      <li>Select “Send M-Pesa STK prompt” to request a payment prompt.</li>
-                      <li>Approve the prompt on that phone to complete payment.</li>
-                    </ol>
+                    <PaymentSteps fallback={[
+                      "Enter the phone number that will make the M-Pesa payment.",
+                      "Select Send M-Pesa STK prompt to request a payment prompt.",
+                      "Approve the prompt on that phone to complete payment.",
+                    ]} />
                     <label className="block text-sm">
                       <span className="theme-subtext mb-1 block text-xs">Payer’s M-Pesa phone number</span>
                       <input
@@ -871,12 +899,15 @@ function CheckoutStep({
                 </button>
                 {expandedPaymentMethod === "mpesa_manual" && canPayByManual ? (
                   <div id="payment-details-mpesa-manual" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
-                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
-                      <li>Open M-Pesa and choose <strong>Pay Bill</strong>.</li>
-                      <li>Enter the Paybill / Till and account reference shown below.</li>
-                      <li>Pay exactly {formatBillingMoney(due, currency)} and keep the M-Pesa confirmation message.</li>
-                      <li>Prepare your payment below, then enter the transaction code to verify it.</li>
-                    </ol>
+                    <PaymentSteps
+                      instructions={manualPaybill?.instructions}
+                      fallback={[
+                        "Open M-Pesa and choose Pay Bill.",
+                        "Enter the Paybill / Till and account reference shown below.",
+                        `Pay exactly ${formatBillingMoney(due, currency)} and keep the confirmation message.`,
+                        "Enter the M-Pesa transaction code below and verify your payment.",
+                      ]}
+                    />
                     <dl className="grid gap-3 sm:grid-cols-2">
                       <div className={fieldClass}>
                         <dt className="theme-subtext text-xs">Paybill / Till</dt>
@@ -893,9 +924,6 @@ function CheckoutStep({
                         </div>
                       ) : null}
                     </dl>
-                    {manualPaybill?.instructions ? (
-                      <p className="theme-subtext mt-3 text-sm">{manualPaybill.instructions}</p>
-                    ) : null}
                     {!checkoutId ? (
                       <button
                         type="button"
@@ -952,12 +980,15 @@ function CheckoutStep({
                 </button>
                 {expandedPaymentMethod === "equity" && canPayByEquity ? (
                   <div id="payment-details-equity" className="border-t border-[var(--theme-border)] px-4 pb-4 pt-3">
-                    <ol className="theme-subtext mb-4 list-inside list-decimal space-y-1.5 text-sm">
-                      <li>Transfer exactly {formatBillingMoney(due, currency)} using one of the Equity details below.</li>
-                      <li>Use the reference shown below so the payment can be matched to your organisation.</li>
-                      <li>After transferring, enter the transaction reference and notify the platform administrator.</li>
-                      <li>Your plan activates once the transfer is verified.</li>
-                    </ol>
+                    <PaymentSteps
+                      instructions={equityInstructions?.instructions}
+                      fallback={[
+                        `Transfer exactly ${formatBillingMoney(due, currency)} using the Equity details below.`,
+                        "Use the reference shown below so the payment can be matched to your organisation.",
+                        "After transferring, enter the transaction reference and notify the platform administrator.",
+                        "Your plan activates after the transfer is verified.",
+                      ]}
+                    />
                     <dl className="grid gap-3 sm:grid-cols-2">
                       <div className={fieldClass}>
                         <dt className="theme-subtext text-xs">Equity account</dt>
@@ -976,9 +1007,6 @@ function CheckoutStep({
                         <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
                       </div>
                     </dl>
-                    {equityInstructions?.instructions ? (
-                      <p className="theme-subtext mt-3 text-sm">{equityInstructions.instructions}</p>
-                    ) : null}
                     {!equityCheckout ? (
                       <button
                         type="button"
