@@ -61,6 +61,13 @@ export async function regenerateMarketingSection(id, body) {
   });
 }
 
+export async function generateMarketingPortfolioImages(id, body = {}) {
+  return apiRequest(`${BASE}/${id}/generate-images`, {
+    method: "POST",
+    body,
+  });
+}
+
 export async function shareMarketingPortfolio(id) {
   return apiRequest(`${BASE}/${id}/share`, { method: "POST", body: {} });
 }

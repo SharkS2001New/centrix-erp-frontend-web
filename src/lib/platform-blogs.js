@@ -77,6 +77,13 @@ export async function updateMarketingBlog(id, body) {
   return apiRequest(`${BASE}/${id}`, { method: "PATCH", body });
 }
 
+export async function generateMarketingBlogCoverImage(id, instruction) {
+  return apiRequest(`${BASE}/${id}/generate-cover-image`, {
+    method: "POST",
+    body: instruction ? { instruction } : {},
+  });
+}
+
 export async function publishMarketingBlog(id) {
   return apiRequest(`${BASE}/${id}/publish`, { method: "POST", body: {} });
 }

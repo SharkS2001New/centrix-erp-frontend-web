@@ -116,7 +116,7 @@ export default function NewMarketingPortfolioPage() {
         ]}
       />
 
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="w-full space-y-6">
         <section className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-6 shadow-sm">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Quick generate</h2>

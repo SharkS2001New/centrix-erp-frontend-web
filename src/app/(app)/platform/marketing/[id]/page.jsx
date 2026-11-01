@@ -13,6 +13,7 @@ import {
   downloadMarketingPortfolioPdf,
   fetchMarketingPortfolioPdf,
   generateMarketingPortfolio,
+  generateMarketingPortfolioImages,
   getMarketingPortfolio,
   PORTFOLIO_STATUS_STYLES,
   portfolioStatusLabel,
@@ -240,6 +241,24 @@ export default function MarketingPortfolioEditorPage() {
       notifySuccess(`Image compressed and uploaded (${sizeKb} KB). Save section edits to keep it.`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Image upload failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onGenerateSectionImage(sectionKey) {
+    setBusy(`image:${sectionKey}`);
+    try {
+      const saved = await updateMarketingPortfolio(id, portfolioPayload());
+      setPortfolio(saved.data);
+      const res = await generateMarketingPortfolioImages(id, {
+        section_key: sectionKey,
+        instruction: instruction.trim() || undefined,
+      });
+      setPortfolio(res.data);
+      notifySuccess(res.message || "Section image generated.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Section image generation failed.");
     } finally {
       setBusy("");
     }
@@ -528,26 +547,38 @@ export default function MarketingPortfolioEditorPage() {
               <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Section photo</p>
-                  <p className="mt-1 text-xs text-slate-500">JPEG, PNG, or WebP up to 10 MB. Images are resized and compressed on upload.</p>
+                  <p className="mt-1 text-xs text-slate-500">Generate an image from this section’s content or upload a JPEG, PNG, or WebP up to 10 MB.</p>
                 </div>
-                <label className={`${SECONDARY_BTN_CLASS} cursor-pointer text-center`}>
-                  {busy === `upload:${section.key}` ? "Uploading…" : section.image_path ? "Replace photo" : "Upload photo"}
-                  <input
-                    className="sr-only"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    disabled={!!busy}
-                    onChange={(event) => {
-                      void onSectionImageUpload(index, section.key, event.target.files?.[0]);
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  {!section.image_path && !section.image_url ? (
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      disabled={!!busy}
+                      onClick={() => void onGenerateSectionImage(section.key)}
+                    >
+                      {busy === `image:${section.key}` ? "Generating…" : "Generate with AI"}
+                    </button>
+                  ) : null}
+                  <label className={`${SECONDARY_BTN_CLASS} cursor-pointer text-center`}>
+                    {busy === `upload:${section.key}` ? "Uploading…" : section.image_path || section.image_url ? "Replace photo" : "Upload photo"}
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={!!busy}
+                      onChange={(event) => {
+                        void onSectionImageUpload(index, section.key, event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
                 {section.image_path || section.image_url ? (
                   <div className="relative h-48 w-full sm:col-span-2 sm:max-w-sm">
                     <Image
                       src={resolveCustomerMediaUrl(section.image_path) || resolveCustomerMediaUrl(section.image_url)}
-                      alt={`Uploaded photo for ${section.title || section.key}`}
+                      alt={`Section image for ${section.title || section.key}`}
                       fill
                       sizes="(max-width: 640px) 100vw, 384px"
                       unoptimized

@@ -50,9 +50,7 @@ function sanitizeEditorHtml(html) {
 export function MarketingBlogEditor({ value, onChange, disabled = false }) {
   const ref = useRef(null);
   const fileRef = useRef(null);
-  const documentRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [importing, setImporting] = useState(false);
   const syncing = useRef(false);
 
   useEffect(() => {
@@ -115,6 +113,77 @@ export function MarketingBlogEditor({ value, onChange, disabled = false }) {
       setUploading(false);
     }
   }
+
+  function onPaste(event) {
+    const html = event.clipboardData?.getData("text/html");
+    if (!html) return;
+
+    event.preventDefault();
+    ref.current?.focus();
+    document.execCommand("insertHTML", false, sanitizeEditorHtml(html));
+    emit();
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] px-2 py-1.5">
+        {TOOLS.map((tool) => (
+          <button
+            key={`${tool.cmd}-${tool.arg || tool.label}`}
+            type="button"
+            title={tool.title}
+            disabled={disabled}
+            className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] disabled:opacity-50"
+            onClick={() => run(tool.cmd, tool.arg)}
+          >
+            {tool.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          title="Insert link"
+          disabled={disabled}
+          className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] disabled:opacity-50"
+          onClick={insertLink}
+        >
+          Link
+        </button>
+        <button
+          type="button"
+          title="Insert image"
+          disabled={disabled || uploading}
+          className="rounded-md bg-[var(--theme-primary)] px-2.5 py-1 text-xs font-semibold text-[var(--theme-primary-fg)] disabled:opacity-50"
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? "Uploading…" : "Image"}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => void onPickImage(event)}
+        />
+      </div>
+      <div
+        ref={ref}
+        contentEditable={!disabled}
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Blog body"
+        className="marketing-blog-editor min-h-[280px] px-3 py-3 text-sm leading-6 text-[var(--theme-text)] outline-none prose-img:max-w-full [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-lg"
+        onInput={emit}
+        onBlur={emit}
+        onPaste={onPaste}
+      />
+    </div>
+  );
+}
+
+export function MarketingBlogWordImportButton({ onImport, disabled = false }) {
+  const documentRef = useRef(null);
+  const [importing, setImporting] = useState(false);
 
   async function onImportDocument(event) {
     const file = event.target.files?.[0];
@@ -180,85 +249,24 @@ export function MarketingBlogEditor({ value, onChange, disabled = false }) {
     }
   }
 
-  function onPaste(event) {
-    const html = event.clipboardData?.getData("text/html");
-    if (!html) return;
-
-    event.preventDefault();
-    ref.current?.focus();
-    document.execCommand("insertHTML", false, sanitizeEditorHtml(html));
-    emit();
-  }
-
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)]">
-      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] px-2 py-1.5">
-        {TOOLS.map((tool) => (
-          <button
-            key={`${tool.cmd}-${tool.arg || tool.label}`}
-            type="button"
-            title={tool.title}
-            disabled={disabled}
-            className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] disabled:opacity-50"
-            onClick={() => run(tool.cmd, tool.arg)}
-          >
-            {tool.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          title="Insert link"
-          disabled={disabled}
-          className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] disabled:opacity-50"
-          onClick={insertLink}
-        >
-          Link
-        </button>
-        <button
-          type="button"
-          title="Import a Word document"
-          disabled={disabled || importing || uploading}
-          className="rounded-md border border-[var(--theme-border)] px-2.5 py-1 text-xs font-semibold text-[var(--theme-text)] disabled:opacity-50"
-          onClick={() => documentRef.current?.click()}
-        >
-          {importing ? "Importing…" : "Import Word"}
-        </button>
-        <input
-          ref={documentRef}
-          type="file"
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          className="hidden"
-          onChange={(event) => void onImportDocument(event)}
-        />
-        <button
-          type="button"
-          title="Insert image"
-          disabled={disabled || uploading || importing}
-          className="rounded-md bg-[var(--theme-primary)] px-2.5 py-1 text-xs font-semibold text-[var(--theme-primary-fg)] disabled:opacity-50"
-          onClick={() => fileRef.current?.click()}
-        >
-          {uploading ? "Uploading…" : "Image"}
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => void onPickImage(event)}
-        />
-      </div>
-      <div
-        ref={ref}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        role="textbox"
-        aria-multiline="true"
-        aria-label="Blog body"
-        className="marketing-blog-editor min-h-[280px] px-3 py-3 text-sm leading-6 text-[var(--theme-text)] outline-none prose-img:max-w-full [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-lg"
-        onInput={emit}
-        onBlur={emit}
-        onPaste={onPaste}
+    <>
+      <button
+        type="button"
+        title="Import a Word document"
+        disabled={disabled || importing}
+        className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50"
+        onClick={() => documentRef.current?.click()}
+      >
+        {importing ? "Importing…" : "Import"}
+      </button>
+      <input
+        ref={documentRef}
+        type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={(event) => void onImportDocument(event)}
       />
-    </div>
+    </>
   );
 }

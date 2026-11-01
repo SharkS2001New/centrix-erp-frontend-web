@@ -157,7 +157,12 @@ export function PlatformPaybillSettingsPanel() {
       notifySuccess(result.message || "Platform C2B URLs registered successfully with Daraja.");
       setC2bModalOpen(false);
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Could not register platform C2B URLs with Daraja.");
+      const message = err instanceof ApiError && err.status === 0
+        ? "The API did not return a readable response while registering with Daraja. Your settings were saved; retry shortly, and contact the administrator if this continues."
+        : err instanceof ApiError
+          ? err.message
+          : "Could not register platform C2B URLs with Daraja.";
+      notifyError(message);
     } finally {
       setRegisteringC2b(false);
     }
