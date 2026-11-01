@@ -113,24 +113,36 @@ function groupNavItemsByLabel(items) {
 
 function guideTargetForHref(href) {
   const path = String(href || "").split("?")[0];
-  if (path === "/dashboard") return "dashboard";
-  if (path === "/customers") return "customers";
-  if (path === "/products") return "products";
-  if (path === "/sales" || path === "/sales/pos") return "sales";
-  if (path === "/lpo" || path === "/purchases") return "purchases";
-  if (path === "/reports") return "reports";
-  return undefined;
+  return path ? `sidebar:${path}` : undefined;
+}
+
+function guideDescriptionForItem(item) {
+  const label = String(item?.label ?? "this page").trim();
+  if (/analytics/i.test(label)) {
+    return `Review ${label.toLowerCase()} trends, compare performance, and use the available filters to investigate results.`;
+  }
+  if (/dashboard/i.test(label)) {
+    return `Review ${label.toLowerCase()} summaries, monitor key activity, and find items that need attention.`;
+  }
+  if (/report/i.test(label)) {
+    return `Open ${label.toLowerCase()} to filter business data, review results, and export reports.`;
+  }
+  return `Open ${label} to review its tools and manage the related records for your organization.`;
 }
 
 function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0 }) {
   const active = isNavItemActive(item, pathname);
   const showBadge = Number(badgeCount) > 0;
+  const guideTarget = guideTargetForHref(item.href);
 
   return (
     <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
-      data-guide-target={guideTargetForHref(item.href) || sectionId}
+      data-guide-target={guideTarget}
+      data-guide-section={sectionId}
+      data-guide-title={item.label}
+      data-guide-description={guideDescriptionForItem(item)}
       onClick={onNavigate}
       className={`app-sidebar-link flex items-center transition ${
         prominent
@@ -311,6 +323,10 @@ function CollapsibleNavSection({
               key={item.href}
               href={item.href}
               data-pos-leave-ignore="true"
+              data-guide-target={guideTargetForHref(item.href)}
+              data-guide-section={section.id}
+              data-guide-title={item.label}
+              data-guide-description={guideDescriptionForItem(item)}
               onClick={onNavigate}
               className={`app-sidebar-icon-btn flex w-full items-center justify-center py-3 transition ${
                 active ? "app-sidebar-icon-btn-active" : ""
@@ -359,7 +375,6 @@ function CollapsibleNavSection({
       <button
         type="button"
         onClick={() => onToggle(section.id)}
-        data-guide-target={section.id}
         className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-medium transition ${
           active ? "app-sidebar-section-active" : ""
         }`}

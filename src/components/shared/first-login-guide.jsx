@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
-import { onboardingGuideStorageKey, videoDemoEmbedUrl } from "@/lib/onboarding-guide";
+import {
+  isEligibleForMonthlyCustomerDemo,
+  onboardingDemoStorageKey,
+  onboardingGuideStorageKey,
+  readOnboardingDemoStatus,
+  saveOnboardingDemoStatus,
+  videoDemoEmbedUrl,
+} from "@/lib/onboarding-guide";
 
 const MODULE_TIPS = [
   {
@@ -239,21 +246,33 @@ function saveGuideCompletion(key) {
 }
 
 function getAvailableModuleTips() {
-  return MODULE_TIPS.filter((item) => {
-    if (!item.target) return false;
-    return Array.from(document.querySelectorAll(`[data-guide-target="${item.target}"]`))
-      .some((element) => {
-        const bounds = element.getBoundingClientRect();
-        return bounds.width > 0
-          && bounds.height > 0
-          && bounds.right > 0
-          && bounds.left < window.innerWidth;
-      });
-  });
+  const seen = new Set();
+  return Array.from(document.querySelectorAll('[data-guide-target^="sidebar:"]'))
+    .filter((element) => {
+      const target = element.dataset.guideTarget;
+      const bounds = element.getBoundingClientRect();
+      if (!target || seen.has(target) || bounds.width <= 0 || bounds.height <= 0
+        || bounds.right <= 0 || bounds.left >= window.innerWidth) {
+        return false;
+      }
+      seen.add(target);
+      return true;
+    })
+    .map((element) => {
+      const title = element.dataset.guideTitle || element.textContent.trim();
+      const sectionTip = MODULE_TIPS.find((tip) => tip.target === element.dataset.guideSection);
+      return {
+        target: element.dataset.guideTarget,
+        title,
+        description: element.dataset.guideDescription
+          || sectionTip?.description
+          || `Open ${title} to review its tools and manage related records for your organization.`,
+      };
+    });
 }
 
 export function FirstLoginGuide() {
-  const { user, organization, loading, isSuperAdmin } = useAuth();
+  const { user, organization, organizationLicense, loading, isSuperAdmin } = useAuth();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -264,6 +283,9 @@ export function FirstLoginGuide() {
   const [videoSettingsError, setVideoSettingsError] = useState("");
   const [availableModuleTips, setAvailableModuleTips] = useState([]);
   const storageKey = onboardingGuideStorageKey(user?.id, organization?.id);
+  const demoKey = onboardingDemoStorageKey(user?.id, organization?.id);
+  const [demoStatus, setDemoStatus] = useState(null);
+  const eligibleForDemo = isEligibleForMonthlyCustomerDemo(organization, organizationLicense);
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||
@@ -283,16 +305,19 @@ export function FirstLoginGuide() {
       return;
     }
     if (loading || !storageKey || isSuperAdmin?.()) return;
+    const currentDemoStatus = readOnboardingDemoStatus(demoKey);
+    setDemoStatus(currentDemoStatus);
     if (!wasGuideCompleted(storageKey)) {
       setAvailableModuleTips(getAvailableModuleTips());
       setStepIndex(0);
       setView("tips");
       setOpen(true);
     }
-  }, [choosingPlan, isSuperAdmin, loading, storageKey]);
+  }, [choosingPlan, demoKey, isSuperAdmin, loading, storageKey]);
 
   useEffect(() => {
     function openGuide(event) {
+      if (event.detail !== "tips" && (!eligibleForDemo || demoStatus === "watched")) return;
       setStepIndex(0);
       setAvailableModuleTips(getAvailableModuleTips());
       setView(event.detail === "tips" ? "tips" : "demo");
@@ -301,7 +326,27 @@ export function FirstLoginGuide() {
 
     window.addEventListener(OPEN_GUIDE_EVENT, openGuide);
     return () => window.removeEventListener(OPEN_GUIDE_EVENT, openGuide);
-  }, []);
+  }, [demoStatus, eligibleForDemo]);
+
+  const watchLater = useCallback(() => {
+    saveOnboardingDemoStatus(demoKey, "later");
+    setDemoStatus("later");
+    setOpen(false);
+  }, [demoKey]);
+
+  const markDemoWatched = useCallback(() => {
+    saveOnboardingDemoStatus(demoKey, "watched");
+    setDemoStatus("watched");
+    setOpen(false);
+  }, [demoKey]);
+
+  const closeGuide = useCallback(() => {
+    if (view === "demo") {
+      watchLater();
+      return;
+    }
+    finishGuide();
+  }, [finishGuide, view, watchLater]);
 
   useEffect(() => {
     let active = true;
@@ -320,11 +365,11 @@ export function FirstLoginGuide() {
   useEffect(() => {
     if (!open) return undefined;
     function closeOnEscape(event) {
-      if (event.key === "Escape") finishGuide();
+      if (event.key === "Escape") closeGuide();
     }
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [finishGuide, open]);
+  }, [closeGuide, open]);
 
   useEffect(() => {
     if (!open || view !== "tips") {
@@ -439,7 +484,7 @@ export function FirstLoginGuide() {
       >
         <button
           type="button"
-          onClick={finishGuide}
+          onClick={closeGuide}
           className="theme-subtext absolute right-4 top-4 rounded-lg p-2 hover:bg-[var(--theme-hover)]"
           aria-label="Close system guide"
         >
@@ -465,17 +510,27 @@ export function FirstLoginGuide() {
                 </div>
               ) : (
                 <p className="theme-panel theme-subtext mt-5 rounded-xl border p-4 text-sm leading-6">
-                  {videoSettingsError || "The platform administrator hasn’t added a demo video yet. Add a YouTube link under Platform → AI training → Credentials."}
+                  {videoSettingsError || "The platform administrator hasn’t added a demo video yet. Add a YouTube or Vimeo link under Platform → AI training → Credentials."}
                 </p>
               )}
-              <button
-                type="button"
-                onClick={() => setView("tips")}
-                className="theme-secondary-btn mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </button>
+              <div className="mt-5 flex justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={watchLater}
+                  className="theme-secondary-btn rounded-lg px-4 py-2 text-sm font-semibold"
+                >
+                  Watch later
+                </button>
+                {videoEmbedUrl ? (
+                  <button
+                    type="button"
+                    onClick={markDemoWatched}
+                    className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-semibold"
+                  >
+                    I’ve watched
+                  </button>
+                ) : null}
+              </div>
             </>
           ) : (
             <>

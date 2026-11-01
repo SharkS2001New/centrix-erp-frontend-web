@@ -10,10 +10,12 @@ import { AccountingHelpTopbarButton } from "@/components/accounting/accounting-h
 import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribution-help";
 import { BookOpen } from "lucide-react";
 import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
+import { onboardingDemoStorageKey, readOnboardingDemoStatus, isEligibleForMonthlyCustomerDemo } from "@/lib/onboarding-guide";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { isYearlyLicence, licenseAccessMode, rememberLicenceReturn, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
+import { useEffect, useState } from "react";
 
 function MenuIcon({ className }) {
   return (
@@ -24,7 +26,7 @@ function MenuIcon({ className }) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
-  const { isSuperAdmin, isOrgAdmin, organizationLicense } = useAuth();
+  const { isSuperAdmin, isOrgAdmin, organizationLicense, organization, user } = useAuth();
   const pathname = usePathname();
   const hideModuleSearch = Boolean(isSuperAdmin?.());
   const canPay = Boolean(isOrgAdmin?.());
@@ -32,6 +34,33 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
   const expired = licenseAccessMode(organizationLicense) === "expired";
   const renew = !expired && yearlyRenewalOpen(organizationLicense);
   const onPackageOne = usesPackageOne(organizationLicense);
+  const demoKey = onboardingDemoStorageKey(user?.id, organization?.id);
+  const [demoPreference, setDemoPreference] = useState(null);
+  const demoPreferenceReady = demoPreference?.key === demoKey;
+  const showDemoButton = demoPreferenceReady
+    && demoPreference.status !== "watched"
+    && isEligibleForMonthlyCustomerDemo(organization, organizationLicense);
+
+  useEffect(() => {
+    if (!demoKey) {
+      setDemoPreference({ key: null, status: null });
+      return undefined;
+    }
+    const updateStatus = (key = demoKey) => {
+      if (key === demoKey) setDemoPreference({ key: demoKey, status: readOnboardingDemoStatus(demoKey) });
+    };
+    updateStatus();
+    const onDemoStatus = (event) => updateStatus(event.detail?.key);
+    const onStorage = (event) => {
+      if (event.key === demoKey) updateStatus();
+    };
+    window.addEventListener("centrix:onboarding-demo-status", onDemoStatus);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("centrix:onboarding-demo-status", onDemoStatus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [demoKey]);
 
   return (
     <>
@@ -84,16 +113,18 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
           ) : null}
           <AccountingHelpTopbarButton />
           <DistributionHelpTopbarButton />
-          <button
-            type="button"
-            onClick={() => openFirstLoginGuide("demo")}
-            className="app-topbar-icon-btn inline-flex items-center gap-2 px-2"
-            aria-label="Open help and guides"
-            title="Help & guides"
-          >
-            <BookOpen className="h-5 w-5" aria-hidden />
-            <span className="hidden text-sm font-medium sm:inline">Help</span>
-          </button>
+          {showDemoButton ? (
+            <button
+              type="button"
+              onClick={() => openFirstLoginGuide("demo")}
+              className="app-topbar-icon-btn inline-flex items-center gap-2 px-2"
+              aria-label="View product demo"
+              title="View Demo"
+            >
+              <BookOpen className="h-5 w-5" aria-hidden />
+              <span className="hidden text-sm font-medium sm:inline">View Demo</span>
+            </button>
+          ) : null}
           <NotificationBell />
           <WorkspaceSwitcher />
           <ThemeToggle compact className="hidden sm:inline-flex" />

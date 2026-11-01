@@ -249,6 +249,7 @@ export function aiFormFromApi(res) {
     gemini_api_key: "",
     gemini_model: settings.gemini_model ?? res?.gemini_model ?? "",
     demo_video_url: settings.demo_video_url ?? "",
+    landing_video_url: settings.landing_video_url ?? "",
     gemini_api_key_set: Boolean(settings.gemini_api_key_set),
     gemini_api_key_hint: settings.gemini_api_key_hint ?? "",
     free_ai_provider: settings.free_ai_provider ?? res?.free_ai_provider ?? "gemini",
@@ -326,6 +327,7 @@ export function aiPayloadFromForm(form, options = {}) {
     }
     payload.talk_gemini_model = form.talk_gemini_model || null;
     payload.demo_video_url = form.demo_video_url || null;
+    payload.landing_video_url = form.landing_video_url || null;
   }
   if (includeInsights && form.insights) {
     payload.insights = insightsPayloadFromForm(form.insights);

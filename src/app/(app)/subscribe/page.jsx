@@ -48,12 +48,13 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
   const discount = organizationLicense?.duration_discount ?? DEFAULT_DISCOUNT;
   const renewOpen = canPay && mode !== "expired" && subscriptionRenewalOpen(organizationLicense);
-  const [charge, setCharge] = useState(() => (renewOpen ? renewalCharge(organizationLicense) : null));
+  const renewRequested = searchParams.get("renew") === "1";
+  const [charge, setCharge] = useState(() => (renewRequested && renewOpen ? renewalCharge(organizationLicense) : null));
   const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
   const [tokenPack, setTokenPack] = useState(null);
   const [tokensEnabled, setTokensEnabled] = useState(true);
-  const [step, setStep] = useState(renewOpen ? "checkout" : "plans");
+  const [step, setStep] = useState(renewRequested && renewOpen ? "checkout" : "plans");
   const [phone, setPhone] = useState(user?.phone || organizationLicense?.paybill?.account_phone || "");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
@@ -157,6 +158,10 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
+    if (isModal && typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
     const workspaceId = getStoredWorkspace();
     if (forPos || (workspaceId === "pos" && licenseAccessMode(organizationLicense) === "token")) {
       router.replace("/choose-workspace");
@@ -190,13 +195,13 @@ export default function SubscribePage({ presentation = "page", locked = false })
       return;
     }
     router.replace("/dashboard");
-  }, [capabilities, forPos, organization?.id, organizationLicense, router]);
+  }, [capabilities, forPos, isModal, organization?.id, organizationLicense, router]);
 
   useEffect(() => {
-    if (!canPay || !subscriptionRenewalOpen(organizationLicense)) return;
+    if (!renewRequested || !canPay || !subscriptionRenewalOpen(organizationLicense)) return;
     setCharge(renewalCharge(organizationLicense));
     setStep("checkout");
-  }, [canPay, organizationLicense]);
+  }, [canPay, organizationLicense, renewRequested]);
 
   useEffect(() => {
     function onKey(event) {
@@ -309,7 +314,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
     setEquityTransactionId("");
     setEquityNotified(false);
 
-    if (method !== "mpesa_manual" || !charge || charge.kind === "token" || charge.kind === "renew") {
+    if (method !== "mpesa_manual" || !charge || charge.kind === "token") {
       return;
     }
     if (!paymentMethods.mpesa_manual) {
@@ -321,11 +326,13 @@ export default function SubscribePage({ presentation = "page", locked = false })
     try {
       const res = await apiRequest("/erp/organization/licence/checkout", {
         method: "POST",
-        body: {
-          plan_id: charge.plan.id,
-          months: charge.months,
-          billing: charge.billing === "yearly" ? "yearly" : "monthly",
-        },
+        body: charge.kind === "renew"
+          ? { billing: "renew", months: charge.months }
+          : {
+            plan_id: charge.plan.id,
+            months: charge.months,
+            billing: charge.billing === "yearly" ? "yearly" : "monthly",
+          },
       });
       setCheckoutId(res.checkout?.id ?? null);
       setManualPaybill(res.paybill ?? manualPaybill);
@@ -338,17 +345,19 @@ export default function SubscribePage({ presentation = "page", locked = false })
   }
 
   async function startEquity() {
-    if (!charge?.plan?.id || charge.kind === "token" || charge.kind === "renew") return;
+    if (charge?.kind === "token" || (!charge?.plan?.id && charge?.kind !== "renew")) return;
     setBusy("equity-start");
     setNotice("");
     try {
       const res = await apiRequest("/erp/organization/licence/equity/checkout", {
         method: "POST",
-        body: {
-          plan_id: charge.plan.id,
-          months: charge.months,
-          billing: charge.billing === "yearly" ? "yearly" : "monthly",
-        },
+        body: charge.kind === "renew"
+          ? { billing: "renew", months: charge.months }
+          : {
+            plan_id: charge.plan.id,
+            months: charge.months,
+            billing: charge.billing === "yearly" ? "yearly" : "monthly",
+          },
       });
       setEquityCheckout(res.checkout ?? null);
       setCheckoutId(res.checkout?.id ?? null);
@@ -489,10 +498,10 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   return (
     <div className={isModal
-      ? "fixed inset-0 z-[230] flex items-center justify-center bg-slate-950/65 p-3 sm:p-6"
+      ? "fixed inset-0 z-[230] flex items-center justify-center bg-slate-950/65 p-0"
       : "theme-page fixed inset-0 z-[80] overflow-y-auto"}>
       <div className={isModal
-        ? "theme-page relative max-h-[94vh] w-full max-w-[96rem] overflow-y-auto rounded-2xl border border-[var(--theme-border)] shadow-2xl"
+        ? "theme-page relative h-full max-h-full w-full max-w-none overflow-y-auto border border-[var(--theme-border)] shadow-2xl"
         : "min-h-full"}>
       {!isLocked && mode !== "expired" ? (
         <button
@@ -669,7 +678,7 @@ function PlansStep({
 
   return (
     <div>
-      <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Upgrade your plan</h1>
+      <h1 className="theme-heading text-center text-3xl font-semibold tracking-tight">Choose a plan</h1>
       <YearlyBillingSwitch yearly={yearly} onChange={setYearly} />
       {forPos ? (
         <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
@@ -763,10 +772,10 @@ function CheckoutStep({
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
   const canPayByEquity = Boolean(
-    paymentMethods?.equity && equityInstructions && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
+    paymentMethods?.equity && equityInstructions && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
   );
   const canPayByManual = Boolean(
-    paymentMethods?.mpesa_manual && charge?.plan?.id && charge.kind !== "token" && charge.kind !== "renew",
+    paymentMethods?.mpesa_manual && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
   );
 
   return (

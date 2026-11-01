@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { jsPDF } from "jspdf";
 import { resolveCustomerMediaUrl } from "@/lib/api";
 import { fetchMarketingPortfolioImage, portfolioFontCss } from "@/lib/platform-marketing";
+import { portfolioPdfPageRanges } from "@/lib/platform-marketing-pdf-pages";
 
 const THEMES = {
   modern: { accent: "#185FA5", secondary: "#16A085", paper: "#F3F7FA" },
@@ -69,17 +70,21 @@ export function createPortfolioPdfBlob(canvas) {
   if (!canvas) throw new Error("The portfolio preview is still being prepared.");
   const pageWidthMm = 210;
   const pageHeightMm = 297;
-  const sourcePageHeight = Math.floor((canvas.width * pageHeightMm) / pageWidthMm);
-  const pageCount = Math.ceil(canvas.height / sourcePageHeight);
+  const pageRanges = portfolioPdfPageRanges(
+    canvas.width,
+    canvas.height,
+    canvas.portfolioContentBlocks || [],
+  );
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
 
-  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+  for (const [pageIndex, range] of pageRanges.entries()) {
     if (pageIndex > 0) pdf.addPage("a4", "portrait");
-    const sourceY = pageIndex * sourcePageHeight;
-    const sourceHeight = Math.min(sourcePageHeight, canvas.height - sourceY);
+    const scale = range.fitToPage
+      ? Math.min(1, (canvas.width * pageHeightMm) / (pageWidthMm * range.height))
+      : 1;
     const pageCanvas = document.createElement("canvas");
-    pageCanvas.width = canvas.width;
-    pageCanvas.height = sourceHeight;
+    pageCanvas.width = Math.round(canvas.width * scale);
+    pageCanvas.height = Math.round(range.height * scale);
     const context = pageCanvas.getContext("2d");
     if (!context) throw new Error("Could not prepare the PDF page.");
     context.fillStyle = "#FFFFFF";
@@ -87,21 +92,22 @@ export function createPortfolioPdfBlob(canvas) {
     context.drawImage(
       canvas,
       0,
-      sourceY,
+      range.y,
       canvas.width,
-      sourceHeight,
+      range.height,
       0,
       0,
-      canvas.width,
-      sourceHeight,
+      pageCanvas.width,
+      pageCanvas.height,
     );
-    const renderedHeight = (sourceHeight / canvas.width) * pageWidthMm;
+    const renderedWidth = (pageCanvas.width / canvas.width) * pageWidthMm;
+    const renderedHeight = (pageCanvas.height / canvas.width) * pageWidthMm;
     pdf.addImage(
       pageCanvas.toDataURL("image/jpeg", 0.94),
       "JPEG",
+      (pageWidthMm - renderedWidth) / 2,
       0,
-      0,
-      pageWidthMm,
+      renderedWidth,
       renderedHeight,
       undefined,
       "FAST",
@@ -148,11 +154,15 @@ export async function renderMarketingPortfolioCanvas(portfolio, meta, portfolioI
   if (!measure) throw new Error("Could not measure the portfolio text on this device.");
   measure.font = `20px ${font}`;
   const sectionLayouts = sections.map((section) => {
+    measure.font = `bold 28px ${font}`;
+    const headingLines = wrapText(measure, section.title || section.key || "", 560);
+    measure.font = `20px ${font}`;
     const bodyLines = wrapText(measure, section.body || "", 560);
     const bullets = (Array.isArray(section.bullets) ? section.bullets : [])
       .flatMap((bullet) => wrapText(measure, `• ${bullet}`, 560));
-    const contentHeight = 190 + bodyLines.length * 30 + bullets.length * 28;
-    return { section, bodyLines, bullets, height: Math.max(360, contentHeight) };
+    const contentHeight =
+      170 + headingLines.length * 36 + bodyLines.length * 30 + bullets.length * 28;
+    return { section, headingLines, bodyLines, bullets, height: Math.max(360, contentHeight) };
   });
   const coverArtHeight = 310;
   const coverHeight = 520;
@@ -162,6 +172,7 @@ export async function renderMarketingPortfolioCanvas(portfolio, meta, portfolioI
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not create an image preview on this device.");
+  const portfolioContentBlocks = [{ start: 0, end: coverHeight }];
 
   context.fillStyle = "#FFFFFF";
   context.fillRect(0, 0, width, height);
@@ -251,8 +262,7 @@ export async function renderMarketingPortfolioCanvas(portfolio, meta, portfolioI
     context.fillStyle = theme.secondary;
     context.fillText(String(index + 1).padStart(2, "0"), textX, cardY + 52);
     context.font = `bold 28px ${font}`;
-    const headingLines = wrapText(context, section.title || section.key || "", textWidth).slice(0, 2);
-    let textY = drawLines(context, headingLines, textX, cardY + 96, 36, "#0F172A");
+    let textY = drawLines(context, layout.headingLines, textX, cardY + 96, 36, "#0F172A");
     context.font = `20px ${font}`;
     const bodyY = drawLines(context, layout.bodyLines, textX, textY + 8, 30, "#334155");
     if (layout.bullets.length) drawLines(context, layout.bullets, textX + 4, bodyY + 10, 28, "#334155");
@@ -292,12 +302,15 @@ export async function renderMarketingPortfolioCanvas(portfolio, meta, portfolioI
         "rgba(255,255,255,0.9)",
       );
     }
+    portfolioContentBlocks.push({ start: cardY, end: cardY + cardHeight });
     y += cardHeight + 28;
   }
 
+  portfolioContentBlocks.push({ start: height - 50, end: height });
   context.fillStyle = "#64748B";
   context.font = `18px ${font}`;
   context.fillText("Centrix ERP  ·  Kenya  ·  Prepared for your business", margin, height - 24);
+  canvas.portfolioContentBlocks = portfolioContentBlocks;
   return canvas;
 }
 
