@@ -19574,7 +19574,7 @@ export function PosScreen({ standalone = false }) {
               totals={cartSummary?.total ?? 0}
               heldCount={heldOrdersCount}
               pendingSync={pendingSync}
-              version="1.0.0"
+              version={capabilities?.centrix_version_label || "—"}
               currencySettings={classicCurrencySettings}
               statusMessage={
                 offlineSyncing && pendingSync > 0
@@ -19590,6 +19590,7 @@ export function PosScreen({ standalone = false }) {
           <PosStatusFooter
             user={user}
             organization={organization ?? capabilities?.organization}
+            version={capabilities?.centrix_version_label || "—"}
           />
         )
       ) : null}

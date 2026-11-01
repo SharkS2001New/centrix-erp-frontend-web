@@ -24,7 +24,7 @@ function formatClock(date) {
 export function HotelPosStatusFooter({
   user,
   heldCount = 0,
-  version = "1.0.0",
+  version = "—",
   connectionStatus: connectionStatusProp = null,
   pendingSync = 0,
   failedSyncCount = 0,

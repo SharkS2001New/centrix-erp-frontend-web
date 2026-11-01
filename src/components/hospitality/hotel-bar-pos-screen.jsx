@@ -2005,7 +2005,7 @@ export function HotelBarPosScreen() {
           <HotelPosStatusFooter
             user={user}
             heldCount={heldCount}
-            version="1.0.0"
+            version={capabilities?.centrix_version_label || "—"}
             connectionStatus={connectionStatus}
             pendingSync={pendingSync}
             failedSyncCount={failedSyncChecks?.length ?? 0}

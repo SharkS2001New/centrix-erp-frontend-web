@@ -68,7 +68,7 @@ export function ClassicPosStatusFooter({
   totals = 0,
   heldCount = 0,
   pendingSync = 0,
-  version = "1.0.0",
+  version = "—",
   currencySettings = GENERAL_DEFAULTS,
   statusMessage = null,
   connectionStatus = "online",

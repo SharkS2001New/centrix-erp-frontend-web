@@ -16,6 +16,7 @@ function formatClock(date) {
 
 export function PosStatusFooter({
   user,
+  version = "—",
 }) {
   const [now, setNow] = useState(() => new Date());
   // Same recovery path as the shell banner: ping immediately on `online`,
@@ -43,6 +44,7 @@ export function PosStatusFooter({
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 sm:justify-end">
         <span className="text-sm tabular-nums">{formatClock(now)}</span>
+        <span className="text-xs font-medium">Centrix {version}</span>
         <span
           className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
             systemOnline ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"
