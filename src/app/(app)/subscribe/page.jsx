@@ -40,23 +40,38 @@ function getPaymentSteps(instructions, fallback) {
   if (numberedSteps.length > 1) return numberedSteps;
 
   const lines = text.split(/\r?\n/).map((step) => step.trim()).filter(Boolean);
-  return lines.length > 0 ? lines : fallback;
+  return lines.length > 1 ? lines : fallback;
 }
 
-function PaymentSteps({ instructions, fallback }) {
-  const steps = getPaymentSteps(instructions, fallback);
+function addPaymentDetail(steps, pattern, detail) {
+  const detailValue = detail?.split(": ").slice(1).join(": ");
+  if (!detail || !detailValue || steps.some((step) => step.includes(detailValue))) return;
+  const targetIndex = steps.findIndex((step) => pattern.test(step));
+  if (targetIndex >= 0) {
+    steps[targetIndex] = `${steps[targetIndex]} (${detail})`;
+  } else {
+    steps.push(detail);
+  }
+}
+
+function PaymentSteps({ instructions, fallback, details = [] }) {
+  const steps = [...getPaymentSteps(instructions, fallback)];
+  details.forEach(({ pattern, value }) => addPaymentDetail(steps, pattern, value));
 
   return (
-    <ol className="mb-4 grid gap-2">
-      {steps.map((step, index) => (
-        <li key={`${index}-${step}`} className="theme-panel flex items-start gap-3 rounded-lg border px-3 py-2.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--theme-primary)] text-xs font-bold text-white">
-            {index + 1}
-          </span>
-          <span className="theme-heading pt-0.5 text-sm font-bold leading-5">{step}</span>
-        </li>
-      ))}
-    </ol>
+    <div className="mb-4">
+      <h3 className="theme-heading mb-2.5 text-sm font-bold">Payment steps</h3>
+      <ol className="grid gap-2.5">
+        {steps.map((step, index) => (
+          <li key={`${index}-${step}`} className="theme-panel flex items-start gap-3 rounded-xl border border-[var(--theme-border)] px-3.5 py-3 shadow-sm">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--theme-primary)] text-xs font-bold text-white shadow-sm">
+              {index + 1}
+            </span>
+            <span className="theme-heading pt-1 text-sm font-bold leading-5">{step}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -70,7 +85,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const requestedBilling = ["monthly", "yearly", "prepaid"].includes(searchParams.get("billing"))
     ? searchParams.get("billing")
     : "monthly";
-  const { organization, organizationLicense, capabilities, user, isSuperAdmin, isOrgAdmin, refreshCapabilities, logout } = useAuth();
+  const { organization, organizationLicense, capabilities, user, loading: authLoading, isSuperAdmin, isOrgAdmin, refreshCapabilities, logout } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
   const mode = licenseAccessMode(organizationLicense);
   const plans = Array.isArray(organizationLicense?.plans) ? organizationLicense.plans : EMPTY_PLANS;
@@ -542,29 +557,38 @@ export default function SubscribePage({ presentation = "page", locked = false })
       <div className={isModal
         ? "theme-page relative h-full max-h-full w-full max-w-none overflow-y-auto border border-[var(--theme-border)] shadow-2xl"
         : "min-h-full"}>
-      {isModal || (!isLocked && mode !== "expired") ? (
+      <div className={`z-10 flex items-center gap-2 ${isModal ? "absolute right-4 top-4" : "fixed right-4 top-4"}`}>
+        {isModal || (!isLocked && mode !== "expired") ? (
+          <button
+            type="button"
+            onClick={closeForLater}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm ${
+              isModal ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"
+            }`}
+          >
+            Close
+          </button>
+        ) : null}
         <button
           type="button"
-          onClick={closeForLater}
+          onClick={() => void logout()}
           className={isModal
-            ? "absolute right-24 top-4 z-10 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
-            : "fixed right-24 top-4 z-[90] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
+            ? "inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+            : "inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
         >
-          Close
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          Logout
         </button>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => void logout()}
-        className={isModal
-          ? "absolute right-4 top-4 z-10 inline-flex items-center gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-semibold text-[var(--theme-text)] shadow-sm hover:bg-[var(--theme-surface-subtle)]"
-          : "fixed right-4 top-4 z-[90] inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"}
-      >
-        <LogOut className="h-4 w-4" aria-hidden="true" />
-        Logout
-      </button>
+      </div>
       <div className={`mx-auto max-w-[96rem] px-4 pb-16 sm:px-8 ${isModal ? "pt-12" : "min-h-full pt-16"}`}>
-        {step === "checkout" && charge ? (
+        {authLoading || (step === "checkout" && paymentOptionsLoading) ? (
+          <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
+            <div className="theme-panel flex items-center gap-3 rounded-xl border px-5 py-4 shadow-sm">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--theme-border)] border-t-[var(--theme-primary)]" aria-hidden="true" />
+              <span className="theme-heading text-sm font-medium">Preparing subscription options…</span>
+            </div>
+          </div>
+        ) : step === "checkout" && charge ? (
           <CheckoutStep
             charge={charge}
             due={due}
@@ -809,7 +833,6 @@ function CheckoutStep({
         ? "12 months paid in advance"
         : "Monthly subscription";
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
-  const fieldClass = "theme-inset-panel rounded-xl border px-3 py-3";
   const canPayByEquity = Boolean(
     paymentMethods?.equity && equityInstructions && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
   );
@@ -902,28 +925,17 @@ function CheckoutStep({
                     <PaymentSteps
                       instructions={manualPaybill?.instructions}
                       fallback={[
-                        "Open M-Pesa and choose Pay Bill.",
-                        "Enter the Paybill / Till and account reference shown below.",
-                        `Pay exactly ${formatBillingMoney(due, currency)} and keep the confirmation message.`,
+                        "Open M-Pesa and choose Pay Bill or Buy Goods, as applicable.",
+                        "Enter the account/reference shown in the next step.",
+                        "Enter the exact amount shown and confirm the payment.",
                         "Enter the M-Pesa transaction code below and verify your payment.",
                       ]}
+                      details={[
+                        { pattern: /pay\s*bill|paybill|till/i, value: manualPaybill?.short_code ? `Paybill / Till: ${manualPaybill.short_code}` : "" },
+                        { pattern: /account|reference/i, value: `Account / reference: ${manualPaybill?.account_number || account}` },
+                        { pattern: /amount|exact amount/i, value: `Amount: ${formatBillingMoney(due, currency)}` },
+                      ]}
                     />
-                    <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Paybill / Till</dt>
-                        <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.short_code}</dd>
-                      </div>
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Account / reference</dt>
-                        <dd className="theme-heading mt-1 font-mono text-sm">{manualPaybill?.account_number || account}</dd>
-                      </div>
-                      {manualPaybill?.account_name ? (
-                        <div className={fieldClass}>
-                          <dt className="theme-subtext text-xs">Account name</dt>
-                          <dd className="theme-heading mt-1 text-sm">{manualPaybill.account_name}</dd>
-                        </div>
-                      ) : null}
-                    </dl>
                     {!checkoutId ? (
                       <button
                         type="button"
@@ -983,30 +995,23 @@ function CheckoutStep({
                     <PaymentSteps
                       instructions={equityInstructions?.instructions}
                       fallback={[
-                        `Transfer exactly ${formatBillingMoney(due, currency)} using the Equity details below.`,
-                        "Use the reference shown below so the payment can be matched to your organisation.",
+                        "Open the Equity app or visit an Equity branch and select Pay Bill.",
+                        "Enter the Equity Paybill number and account number shown in the next steps.",
+                        "Use the organisation reference shown below and transfer the exact amount.",
                         "After transferring, enter the transaction reference and notify the platform administrator.",
-                        "Your plan activates after the transfer is verified.",
+                      ]}
+                      details={[
+                        { pattern: /pay\s*bill|paybill/i, value: equityInstructions?.paybill_number ? `Equity Paybill: ${equityInstructions.paybill_number}` : "" },
+                        { pattern: /account/i, value: equityInstructions?.account_number ? `Account number: ${equityInstructions.account_number}` : "" },
+                        { pattern: /reference/i, value: equityInstructions?.reference ? `Reference: ${equityInstructions.reference}` : "" },
+                        { pattern: /amount|transfer/i, value: `Amount: ${formatBillingMoney(due, currency)}` },
                       ]}
                     />
-                    <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Equity account</dt>
-                        <dd className="theme-heading mt-1 text-sm">{equityInstructions?.account_name}</dd>
-                      </div>
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Paybill / account</dt>
-                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.paybill_number}</dd>
-                      </div>
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Reference</dt>
-                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.reference}</dd>
-                      </div>
-                      <div className={fieldClass}>
-                        <dt className="theme-subtext text-xs">Account number</dt>
-                        <dd className="theme-heading mt-1 font-mono text-sm">{equityInstructions?.account_number}</dd>
-                      </div>
-                    </dl>
+                    {equityInstructions?.account_name ? (
+                      <p className="theme-subtext mb-3 rounded-lg border border-[var(--theme-border)] px-3 py-2 text-sm">
+                        Account name: <strong className="theme-heading">{equityInstructions.account_name}</strong>
+                      </p>
+                    ) : null}
                     {!equityCheckout ? (
                       <button
                         type="button"
