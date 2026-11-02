@@ -362,6 +362,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   async function selectPaymentMethod(method) {
     setPaymentMethod(method);
     setNotice("");
+    setWatching(false);
     setCode("");
     setCheckoutId(null);
     setEquityCheckout(null);
@@ -558,7 +559,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
         ? "theme-page relative h-full max-h-full w-full max-w-none overflow-y-auto border border-[var(--theme-border)] shadow-2xl"
         : "min-h-full"}>
       <div className={`z-10 flex items-center gap-2 ${isModal ? "absolute right-4 top-4" : "fixed right-4 top-4"}`}>
-        {isModal || (!isLocked && mode !== "expired") ? (
+        {!isLocked ? (
           <button
             type="button"
             onClick={closeForLater}
@@ -850,6 +851,25 @@ function CheckoutStep({
     }
   }, [expandedPaymentMethod, paymentMethod, paymentMethods]);
 
+  const paymentNotice = notice ? (
+    <p
+      className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+        equityNotified
+          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+          : watching
+            ? "theme-panel border-[var(--theme-primary)]"
+            : "theme-alert-error"
+      }`}
+      role={watching ? "status" : "alert"}
+      aria-live={watching ? "polite" : "assertive"}
+    >
+      {watching ? (
+        <span className="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]" aria-hidden="true" />
+      ) : null}
+      {notice}
+    </p>
+  ) : null;
+
   return (
     <div>
       <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
@@ -897,6 +917,7 @@ function CheckoutStep({
                         maxLength={20}
                       />
                     </label>
+                    {paymentMethod === "mpesa_stk" ? paymentNotice : null}
                   </div>
                 ) : null}
               </section>
@@ -967,6 +988,7 @@ function CheckoutStep({
                         </button>
                       </div>
                     )}
+                    {paymentMethod === "mpesa_manual" ? paymentNotice : null}
                   </div>
                 ) : null}
               </section>
@@ -1054,6 +1076,7 @@ function CheckoutStep({
                         </button>
                       </div>
                     )}
+                    {paymentMethod === "equity" ? paymentNotice : null}
                   </div>
                 ) : null}
               </section>
@@ -1065,11 +1088,6 @@ function CheckoutStep({
           {!paymentOptionsLoading && !paymentMethods?.mpesa_stk && !canPayByEquity && !canPayByManual ? (
             <p className="theme-alert-error mt-4 rounded-lg px-3 py-2 text-sm" role="alert">
               No online payment methods are configured. Contact the Centrix administrator.
-            </p>
-          ) : null}
-          {notice ? (
-            <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${equityNotified ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : watching ? "theme-panel border" : "theme-alert-error"}`}>
-              {notice}
             </p>
           ) : null}
         </section>

@@ -149,16 +149,23 @@ export function PlatformPaybillSettingsPanel() {
     setRegisteringC2b(true);
     try {
       if (!await saveSettings()) return;
-      const result = await apiRequest("/admin/platform-paybill/register-c2b-urls", {
+      const register = () => apiRequest("/admin/platform-paybill/register-c2b-urls", {
         method: "POST",
         loading: false,
         reportIssues: false,
       });
+      let result;
+      try {
+        result = await register();
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 0) throw error;
+        result = await register();
+      }
       notifySuccess(result.message || "Platform C2B URLs registered successfully with Daraja.");
       setC2bModalOpen(false);
     } catch (err) {
       const message = err instanceof ApiError && err.status === 0
-        ? "The API did not return a readable response while registering with Daraja. Your settings were saved; retry shortly, and contact the administrator if this continues."
+        ? "The API connection was interrupted while confirming Daraja registration. Your settings were saved; Daraja may already have received the request. Check the Daraja portal before retrying."
         : err instanceof ApiError
           ? err.message
           : "Could not register platform C2B URLs with Daraja.";

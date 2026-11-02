@@ -267,6 +267,33 @@ describe("organization license", () => {
     expect(subscriptionRenewalOpen(expiredTrial)).toBe(false);
   });
 
+  it("keeps an expired trial identified as a trial so it opens plan selection, not renewal checkout", () => {
+    const expiredTrial = resolveOrganizationLicense({
+      status: "expired",
+      is_trial: true,
+      plan_id: 42,
+      plan_name: "Shop Starter",
+      billing_cycle: "yearly",
+      renewal_amount: 12000,
+      days_remaining: -1,
+    });
+
+    expect(expiredTrial.is_trial).toBe(true);
+    expect(subscriptionRenewalOpen(expiredTrial)).toBe(false);
+  });
+
+  it("allows an expired contract-based licence with a saved renewal price to renew", () => {
+    const expiredContract = resolveOrganizationLicense({
+      status: "expired",
+      is_trial: false,
+      plan_id: null,
+      billing_cycle: "yearly",
+      renewal_amount: 24000,
+    });
+
+    expect(subscriptionRenewalOpen(expiredContract)).toBe(true);
+  });
+
   it("hides plan changes for a healthy yearly licence and opens renew while it is counting down", () => {
     const healthy = resolveOrganizationLicense({
       status: "active",

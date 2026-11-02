@@ -133,7 +133,7 @@ export function resolveOrganizationLicense(source = null) {
   }
 
   const access = ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null;
-  const isTrial = access === "trial" || (access == null && Boolean(raw.is_trial || status === "trialing") && !(daysRemaining != null && daysRemaining < 0));
+  const isTrial = access === "trial" || (access == null && Boolean(raw.is_trial || status === "trialing"));
 
   return {
     status: status || (end ? "active" : "missing"),
@@ -186,7 +186,7 @@ export function yearlyRenewalOpen(license) {
 /** Paid subscriptions can renew during the final month or after expiry. */
 export function subscriptionRenewalOpen(license, windowDays = 30) {
   if (!license || license.is_trial || license.status === "trialing") return false;
-  if (!license.plan_id || !(Number(license.renewal_amount) > 0)) return false;
+  if (!(Number(license.renewal_amount) > 0)) return false;
   const mode = licenseAccessMode(license);
   if (mode === "trial" || mode === "free" || mode === "token") return false;
   return mode === "expired"
