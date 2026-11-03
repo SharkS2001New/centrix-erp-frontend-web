@@ -22,6 +22,34 @@ export function resolveSecurityTimeouts(capabilities) {
   };
 }
 
+export function nightSessionIdleMinutesForNow(capabilities, date = new Date()) {
+  const policy = capabilities?.night_session;
+  if (!policy?.enabled) return null;
+
+  const timezone = policy.timezone || "Africa/Nairobi";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const currentMinutes = Number(values.hour) * 60 + Number(values.minute);
+  const [startHour, startMinute] = String(policy.start || "23:00").split(":").map(Number);
+  const [endHour, endMinute] = String(policy.end || "06:00").split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  const isNight = start === end
+    ? false
+    : start < end
+      ? currentMinutes >= start && currentMinutes < end
+      : currentMinutes >= start || currentMinutes < end;
+
+  if (!isNight) return null;
+  const minutes = Number(policy.idle_minutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 30;
+}
+
 export function securityFormFromApi(res) {
   const security = mergeSecuritySettings({ security: res?.security ?? res });
   return {

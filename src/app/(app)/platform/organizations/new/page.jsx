@@ -33,7 +33,11 @@ import {
   emptyProvisionSubscriptionForm,
   ensureSubscriptionAfterProvision,
 } from "@/lib/provision-subscription";
-import { formatBillingDate, formatBillingMoney } from "@/lib/platform-billing";
+import {
+  formatBillingDate,
+  formatBillingMoney,
+  plansForOrganizationIndustry,
+} from "@/lib/platform-billing";
 import { menuGroupStateFromProfile } from "@/lib/menu-groups";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
@@ -320,6 +324,19 @@ export default function RegisterOrganizationPage() {
       return;
     }
 
+    if (subscriptionForm.license_mode === "trial" && plans.length > 0) {
+      const eligibleTrialPlans = plansForOrganizationIndustry(
+        plans,
+        { industry, deployment_profile: deploymentProfile },
+        { trialOnly: true },
+      );
+      if (!eligibleTrialPlans.some((plan) => String(plan.id) === String(subscriptionForm.plan_id))) {
+        setError("Choose a free-trial plan available for this organisation’s industry and setup type.");
+        setSubmitting(false);
+        return;
+      }
+    }
+
     if (
       (subscriptionForm.license_mode === "trial" || subscriptionForm.license_mode === "plan") &&
       !subscriptionForm.current_period_end
@@ -570,6 +587,7 @@ export default function RegisterOrganizationPage() {
                       onChange={setSubscriptionForm}
                       plans={plans}
                       plansLoading={plansLoading}
+                      organization={{ industry, deployment_profile: deploymentProfile }}
                     />
                   </div>
                 }

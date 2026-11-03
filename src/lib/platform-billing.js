@@ -30,13 +30,20 @@ export function organizationIndustry(organization) {
 }
 
 /**
- * Payment packages that match the organisation's industry.
+ * Payment packages that match the organisation's industry and, for trials,
+ * the plan's optional setup-profile restriction.
  * Keeps the current plan in the list even when it is inactive or from another industry.
  */
-export function plansForOrganizationIndustry(plans, organization, { keepPlanId = null } = {}) {
+export function plansForOrganizationIndustry(plans, organization, { keepPlanId = null, trialOnly = false } = {}) {
   const industry = organizationIndustry(organization);
+  const profile = String(organization?.deployment_profile ?? "");
   const list = Array.isArray(plans) ? plans : [];
-  const matched = list.filter((plan) => (plan.industry || "commerce") === industry);
+  const matched = list.filter((plan) => {
+    if ((plan.industry || "commerce") !== industry) return false;
+    if (!trialOnly) return true;
+    const trialProfiles = Array.isArray(plan.trial_profile_keys) ? plan.trial_profile_keys : [];
+    return trialProfiles.length === 0 || (profile !== "" && trialProfiles.includes(profile));
+  });
   const keep =
     keepPlanId != null ? list.find((plan) => String(plan.id) === String(keepPlanId)) : null;
   const out = [...matched].sort((a, b) => {
@@ -286,6 +293,7 @@ export function emptyPlanForm(overrides = {}) {
     name: "",
     code: "",
     industry: "commerce",
+    trial_profile_keys: [],
     description: "",
     interval: "monthly",
     license_basis: "org",
@@ -319,6 +327,7 @@ export function planRecordToForm(record) {
     name: record.name ?? "",
     code: record.code ?? "",
     industry: record.industry || "commerce",
+    trial_profile_keys: Array.isArray(record.trial_profile_keys) ? [...record.trial_profile_keys] : [],
     description: record.description ?? "",
     interval: record.interval ?? "monthly",
     license_basis: record.license_basis === "user" ? "user" : "org",
@@ -363,6 +372,7 @@ export function planFormToPayload(form) {
     name: form.name.trim(),
     code: form.code.trim() || null,
     industry: form.industry || "commerce",
+    trial_profile_keys: form.trial_profile_keys ?? [],
     description: form.description.trim() || null,
     interval: form.interval || "monthly",
     license_basis: form.license_basis === "user" ? "user" : "org",

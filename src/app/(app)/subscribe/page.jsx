@@ -116,6 +116,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const [manualPaybill, setManualPaybill] = useState(null);
   const [watching, setWatching] = useState(false);
   const purchaseIntentHandled = useRef(false);
+  const stkPromptInFlight = useRef(false);
 
   useEffect(() => {
     if (!requestedPlanId || purchaseIntentHandled.current || !canPay || plans.length === 0) return;
@@ -320,6 +321,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   }, [checkoutId, watching]);
 
   async function payNow() {
+    if (stkPromptInFlight.current || watching) return;
     if (!paymentMethods.mpesa_stk) {
       setNotice("M-Pesa STK is unavailable. Choose manual M-Pesa or Equity transfer.");
       return;
@@ -338,6 +340,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
       setNotice("A platform administrator has not set the renew amount for this organisation.");
       return;
     }
+    stkPromptInFlight.current = true;
     setBusy("stk");
     setNotice("");
     try {
@@ -355,6 +358,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not start M-Pesa.");
     } finally {
+      stkPromptInFlight.current = false;
       setBusy("");
     }
   }
@@ -1122,11 +1126,15 @@ function CheckoutStep({
             <>
               <button
                 type="button"
-                disabled={busy !== ""}
+                disabled={busy !== "" || watching}
                 onClick={onPay}
                 className="theme-primary-btn mt-6 w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-60"
               >
-                {busy === "stk" ? "Sending prompt…" : "Send M-Pesa STK prompt"}
+                {busy === "stk"
+                  ? "Sending prompt…"
+                  : watching
+                    ? "Prompt sent — waiting for payment"
+                    : "Send M-Pesa STK prompt"}
               </button>
               <p className="theme-subtext mt-4 text-xs leading-5">
                 Pay {formatBillingMoney(due, currency)} to Paybill {paybill?.short_code || "—"} account {account || "your organisation code"}. This does not renew by itself.

@@ -30,21 +30,25 @@ export default function PlatformPlansPage() {
   const confirm = useConfirm();
   const [plans, setPlans] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [setupProfiles, setSetupProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(() => emptyPlanForm());
+  const trialProfilesForIndustry = setupProfiles.filter((profile) => profile.industry === (form.industry || "commerce"));
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansRes, tplRes] = await Promise.all([
+      const [plansRes, tplRes, profilesRes] = await Promise.all([
         apiRequest("/admin/platform-plans"),
         apiRequest("/admin/platform-invoices/saved-templates").catch(() => ({ data: [] })),
+        apiRequest("/admin/setup-profiles"),
       ]);
       setPlans((plansRes.data ?? []).filter((plan) => !plan.self_serve));
       setTemplates(tplRes.data ?? []);
+      setSetupProfiles(profilesRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load plans.");
       setPlans([]);
@@ -420,6 +424,16 @@ export default function PlatformPlansPage() {
                     setForm((f) => ({
                       ...f,
                       industry,
+                      trial_profile_keys: (() => {
+                        const selected = f.trial_profile_keys ?? [];
+                        if (selected.length === 0) return [];
+                        const matching = selected.filter((key) =>
+                          setupProfiles.some((profile) => profile.key === key && profile.industry === industry),
+                        );
+                        return matching.length > 0
+                          ? matching
+                          : setupProfiles.filter((profile) => profile.industry === industry).map((profile) => profile.key);
+                      })(),
                       workspace_keys: (f.workspace_keys ?? []).filter((id) => allowed.has(id)),
                       section_keys: industry === "commerce" ? f.section_keys : [],
                     }));
@@ -428,6 +442,50 @@ export default function PlatformPlansPage() {
                 />
                 <span className="mt-1 block text-xs text-slate-500">This package and its prices are only offered to organisations in this industry.</span>
               </label>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-900">Free trial setup types</legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={(form.trial_profile_keys ?? []).length > 0}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      trial_profile_keys: event.target.checked
+                        ? trialProfilesForIndustry.map((profile) => profile.key)
+                        : [],
+                    }))}
+                  />
+                  <span>
+                    Limit this plan’s free trial to selected setup types
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Leave unchecked to allow trials for any setup type in this industry.
+                    </span>
+                  </span>
+                </label>
+                {(form.trial_profile_keys ?? []).length > 0 ? (
+                  <ul className="grid gap-1 rounded-lg border border-slate-200 p-3 sm:grid-cols-2">
+                    {trialProfilesForIndustry.map((profile) => (
+                      <li key={profile.key}>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={form.trial_profile_keys.includes(profile.key)}
+                            disabled={form.trial_profile_keys.length === 1 && form.trial_profile_keys.includes(profile.key)}
+                            onChange={(event) => setForm((current) => ({
+                              ...current,
+                              trial_profile_keys: event.target.checked
+                                ? [...current.trial_profile_keys, profile.key]
+                                : current.trial_profile_keys.filter((key) => key !== profile.key),
+                            }))}
+                          />
+                          {profile.label}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </fieldset>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Description</span>
                 <textarea className={inputClass} rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />

@@ -14,7 +14,10 @@ import { LockScreenOverlay } from "@/components/auth/lock-screen-overlay";
 import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import { isScreenLocked, setScreenLocked, getStoredUser } from "@/lib/auth-storage";
 import { getAuthClientId } from "@/lib/workspace-session";
-import { mergeSecuritySettings } from "@/lib/security-settings";
+import {
+  mergeSecuritySettings,
+  nightSessionIdleMinutesForNow,
+} from "@/lib/security-settings";
 import { pinUnlockEnabled } from "@/lib/hotel-pin-device";
 import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
@@ -41,15 +44,24 @@ export function LockScreenProvider({ children }) {
   const [enablePinUnlock, setEnablePinUnlock] = useState(false);
   const lockTimeoutRef = useRef(null);
   const logoutTimeoutRef = useRef(null);
+  const nightLogoutIntervalRef = useRef(null);
+  const lastActivityAtRef = useRef(0);
   const lockedRef = useRef(false);
 
   const hotelLockEnabled = isHospitalityIndustry(capabilities);
   const lockMinutes = hotelLockEnabled ? screenLockMinutes() || DEFAULT_SCREEN_LOCK_MINUTES : null;
   const idleMinutes = sessionIdleMinutes() || DEFAULT_SESSION_IDLE_MINUTES;
+  const userId = user?.id;
 
   useEffect(() => {
     lockedRef.current = locked;
   }, [locked]);
+
+  useEffect(() => {
+    if (userId != null) {
+      lastActivityAtRef.current = Date.now();
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (loading) return;
@@ -107,6 +119,10 @@ export function LockScreenProvider({ children }) {
       window.clearTimeout(logoutTimeoutRef.current);
       logoutTimeoutRef.current = null;
     }
+    if (nightLogoutIntervalRef.current != null) {
+      window.clearInterval(nightLogoutIntervalRef.current);
+      nightLogoutIntervalRef.current = null;
+    }
   }, []);
 
   const scheduleIdleTimers = useCallback(() => {
@@ -116,12 +132,23 @@ export function LockScreenProvider({ children }) {
       void logout();
     }, idleMinutes * 60 * 1000);
 
+    nightLogoutIntervalRef.current = window.setInterval(() => {
+      const nightIdleMinutes = nightSessionIdleMinutesForNow(capabilities);
+      const idleLimit = nightIdleMinutes == null
+        ? null
+        : Math.min(idleMinutes, nightIdleMinutes) * 60 * 1000;
+      if (idleLimit != null && Date.now() - lastActivityAtRef.current >= idleLimit) {
+        clearIdleTimers();
+        void logout({ reason: "idle" });
+      }
+    }, 15_000);
+
     if (lockMinutes != null && !lockedRef.current) {
       lockTimeoutRef.current = window.setTimeout(() => {
         lockScreen();
       }, lockMinutes * 60 * 1000);
     }
-  }, [clearIdleTimers, idleMinutes, lockMinutes, lockScreen, logout]);
+  }, [capabilities, clearIdleTimers, idleMinutes, lockMinutes, lockScreen, logout]);
 
   useEffect(() => {
     if (loading || !user) {
@@ -132,6 +159,7 @@ export function LockScreenProvider({ children }) {
     scheduleIdleTimers();
 
     function onActivity() {
+      lastActivityAtRef.current = Date.now();
       scheduleIdleTimers();
     }
 

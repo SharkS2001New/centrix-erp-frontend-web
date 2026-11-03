@@ -14,6 +14,7 @@ import {
   licenseBasisLabel,
   planBillingLabel,
   platformPlanOptionLabel,
+  plansForOrganizationIndustry,
 } from "@/lib/platform-billing";
 
 const inputClass =
@@ -27,9 +28,13 @@ export function ProvisionSubscriptionFields({
   onChange,
   plans = [],
   plansLoading = false,
+  organization = null,
 }) {
-  const selectedPlan = plans.find((row) => String(row.id) === String(form.plan_id));
   const isTrial = form.license_mode === "trial";
+  const availablePlans = organization
+    ? plansForOrganizationIndustry(plans, organization, { trialOnly: isTrial })
+    : plans;
+  const selectedPlan = availablePlans.find((row) => String(row.id) === String(form.plan_id));
   const needsPlan = form.license_mode === "plan" || (isTrial && plans.length > 0);
   const trialMax = packageTrialMax(selectedPlan);
 
@@ -39,18 +44,26 @@ export function ProvisionSubscriptionFields({
 
   function setMode(license_mode) {
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
+    const modePlans = organization
+      ? plansForOrganizationIndustry(plans, organization, { trialOnly: license_mode === "trial" })
+      : plans;
+    const modePlan = modePlans.some((row) => String(row.id) === String(form.plan_id))
+      ? modePlans.find((row) => String(row.id) === String(form.plan_id))
+      : modePlans[0];
     if (license_mode === "trial") {
-      const days = Math.min(trialMax, Math.max(1, Number(form.trial_days) || trialMax));
+      const max = packageTrialMax(modePlan);
+      const days = Math.min(max, Math.max(1, Number(form.trial_days) || max));
       patch({
         license_mode,
         status: "trialing",
+        plan_id: modePlan ? String(modePlan.id) : "",
         trial_days: String(days),
         current_period_end: addCalendarDays(start, days),
       });
       return;
     }
     if (license_mode === "plan") {
-      const plan = selectedPlan || plans[0];
+      const plan = modePlan || availablePlans[0];
       patch({
         license_mode,
         status: "active",
@@ -72,7 +85,7 @@ export function ProvisionSubscriptionFields({
   }
 
   function applyPlan(planId) {
-    const plan = plans.find((row) => String(row.id) === String(planId));
+    const plan = availablePlans.find((row) => String(row.id) === String(planId));
     const terms = plan ? commercialTermsFromPlan(plan) : null;
     const start = form.current_period_start || new Date().toISOString().slice(0, 10);
     const max = packageTrialMax(plan);
@@ -135,7 +148,11 @@ export function ProvisionSubscriptionFields({
         <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
           {plansLoading ? (
             <p className="text-sm text-slate-500">Loading plans…</p>
-          ) : plans.length === 0 ? (
+          ) : availablePlans.length === 0 && plans.length > 0 && isTrial ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              No active plan offers a free trial for this organisation’s setup type. Update a plan’s trial setup types or choose “No licence yet”.
+            </p>
+          ) : availablePlans.length === 0 ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               No active plans yet.{" "}
               <Link href="/platform/plans" className="font-medium underline">
@@ -153,7 +170,7 @@ export function ProvisionSubscriptionFields({
                 value={form.plan_id}
                 onChange={(next) => applyPlan(next)}
                 required={form.license_mode === "plan"}
-                options={plans.map((plan) => ({
+                options={availablePlans.map((plan) => ({
                   value: String(plan.id),
                   label: platformPlanOptionLabel(plan),
                 }))}

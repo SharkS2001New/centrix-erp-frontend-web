@@ -24,6 +24,29 @@ describe("subscription package industry filter", () => {
     expect(driving.map((plan) => plan.id)).toEqual([2]);
   });
 
+  it("limits trial packages to the organisation setup type when configured", () => {
+    const scoped = [
+      { ...plans[0], trial_profile_keys: ["small_shop"] },
+      { ...plans[0], id: 4, name: "Wholesale", trial_profile_keys: ["wholesale_retail"] },
+      { ...plans[0], id: 5, name: "Any setup", trial_profile_keys: [] },
+    ];
+
+    expect(
+      plansForOrganizationIndustry(
+        scoped,
+        { deployment_profile: "small_shop" },
+        { trialOnly: true },
+      ).map((plan) => plan.id),
+    ).toEqual([5, 1]);
+    expect(
+      plansForOrganizationIndustry(
+        scoped,
+        { deployment_profile: "wholesale_retail" },
+        { trialOnly: true },
+      ).map((plan) => plan.id),
+    ).toEqual([5, 4]);
+  });
+
   it("keeps the current package even when industries differ", () => {
     const list = plansForOrganizationIndustry(plans, { deployment_profile: "driving_school" }, { keepPlanId: 1 });
     expect(list.map((plan) => plan.id)).toEqual([1, 2]);

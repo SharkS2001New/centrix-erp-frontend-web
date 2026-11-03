@@ -48,6 +48,9 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
   const [trialDays, setTrialDays] = useState("14");
   const [saving, setSaving] = useState(false);
   const industryLabel = organizationIndustryLabel(organization);
+  const availablePlans = plansForOrganizationIndustry(plans, organization, {
+    trialOnly: mode === "trial",
+  });
 
   function packageTrialMax(plan) {
     const n = Number(plan?.trial_days);
@@ -65,7 +68,7 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
           organization,
         );
         setPlans(rows);
-        const first = rows[0] ?? null;
+        const first = plansForOrganizationIndustry(rows, organization, { trialOnly: true })[0] ?? null;
         setPlanId(first ? String(first.id) : "");
         if (first) setTrialDays(String(packageTrialMax(first)));
       })
@@ -80,7 +83,7 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
     };
   }, [organization]);
 
-  const selected = plans.find((plan) => String(plan.id) === String(planId)) ?? null;
+  const selected = availablePlans.find((plan) => String(plan.id) === String(planId)) ?? null;
   const terms = selected ? commercialTermsFromPlan(selected) : null;
   const trialMax = packageTrialMax(selected);
 
@@ -147,11 +150,16 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
             onChange={(event) => {
               const nextId = event.target.value;
               setPlanId(nextId);
-              const next = plans.find((plan) => String(plan.id) === String(nextId));
+              const next = availablePlans.find((plan) => String(plan.id) === String(nextId));
               setTrialDays(String(packageTrialMax(next)));
             }}
           >
-            {plans.map((plan) => (
+            {availablePlans.length === 0 ? (
+              <option value="" disabled>
+                {mode === "trial" ? "No trial plans for this setup type" : "No plans available"}
+              </option>
+            ) : null}
+            {availablePlans.map((plan) => (
               <option key={plan.id} value={plan.id}>
                 {platformPlanOptionLabel(plan)}
               </option>
@@ -163,7 +171,16 @@ function AssignOrganizationPlan({ organizationId, organization, onSaved }) {
           <select
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             value={mode}
-            onChange={(event) => setMode(event.target.value)}
+            onChange={(event) => {
+              const nextMode = event.target.value;
+              setMode(nextMode);
+              const options = plansForOrganizationIndustry(plans, organization, { trialOnly: nextMode === "trial" });
+              if (!options.some((plan) => String(plan.id) === String(planId))) {
+                const first = options[0];
+                setPlanId(first ? String(first.id) : "");
+                if (first) setTrialDays(String(packageTrialMax(first)));
+              }
+            }}
           >
             <option value="trial">Free trial</option>
             <option value="paid">Paid plan</option>

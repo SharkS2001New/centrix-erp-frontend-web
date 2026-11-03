@@ -250,9 +250,9 @@ export default function PlatformSubscriptionsPage() {
   const assignPlans = useMemo(
     () =>
       form.organization_id
-        ? plansForOrganizationIndustry(plans, assignOrganization)
+        ? plansForOrganizationIndustry(plans, assignOrganization, { trialOnly: form.status === "trialing" })
         : [],
-    [plans, assignOrganization, form.organization_id],
+    [plans, assignOrganization, form.organization_id, form.status],
   );
   const assignIndustryLabel = organizationIndustryLabel(assignOrganization);
 
@@ -362,6 +362,14 @@ export default function PlatformSubscriptionsPage() {
     e.preventDefault();
     if (!form.organization_id || !form.plan_id) {
       notifyError("Select organization and plan.");
+      return;
+    }
+    if (!assignPlans.some((plan) => String(plan.id) === String(form.plan_id))) {
+      notifyError(
+        form.status === "trialing"
+          ? "Choose a free-trial plan available for this organisation’s industry and setup type."
+          : "Choose a plan available for this organisation’s industry.",
+      );
       return;
     }
     setSaving(true);
@@ -1008,15 +1016,23 @@ export default function PlatformSubscriptionsPage() {
                     className={inputClass}
                     value={form.status}
                     onChange={(status) => {
+                      const statusPlans = plansForOrganizationIndustry(plans, assignOrganization, {
+                        trialOnly: status === "trialing",
+                      });
+                      const currentPlanId = statusPlans.some((row) => String(row.id) === String(form.plan_id))
+                        ? form.plan_id
+                        : String(statusPlans[0]?.id ?? "");
                       if (status === "trialing") {
-                        const plan = plans.find((row) => String(row.id) === String(form.plan_id));
+                        const plan = statusPlans.find((row) => String(row.id) === String(currentPlanId));
+                        setForm((f) => ({ ...f, plan_id: currentPlanId }));
                         applyTrialDays(packageTrialMax(plan), form.current_period_start, plan);
                       } else {
-                        const plan = plans.find((row) => String(row.id) === String(form.plan_id));
+                        const plan = statusPlans.find((row) => String(row.id) === String(currentPlanId));
                         const start =
                           form.current_period_start || new Date().toISOString().slice(0, 10);
                         setForm((f) => ({
                           ...f,
+                          plan_id: currentPlanId,
                           status,
                           current_period_start: start,
                           current_period_end: plan

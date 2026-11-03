@@ -46,6 +46,7 @@ function previewPlan(plan, discount) {
     features,
     feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
     industry: plan.industry || "commerce",
+    trial_profile_keys: Array.isArray(plan.trial_profile_keys) ? plan.trial_profile_keys : [],
     workspace_keys: Array.isArray(plan.workspace_keys) ? plan.workspace_keys : [],
     feature_keys: plan.feature_keys && typeof plan.feature_keys === "object" ? plan.feature_keys : null,
     section_keys: Array.isArray(plan.section_keys) ? plan.section_keys : [],
@@ -89,6 +90,7 @@ function emptyForm() {
     name: "",
     description: "",
     industry: "commerce",
+    trial_profile_keys: [],
     interval: "monthly",
     yearly_billing: "one_time",
     price: "",
@@ -117,6 +119,7 @@ function recordToForm(plan, catalog) {
     name: plan.name ?? "",
     description: plan.description ?? "",
     industry: plan.industry || "commerce",
+    trial_profile_keys: Array.isArray(plan.trial_profile_keys) ? [...plan.trial_profile_keys] : [],
     interval: yearly ? "yearly" : "monthly",
     yearly_billing: plan.yearly_billing === "subscription" ? "subscription" : "one_time",
     price: yearly
@@ -170,6 +173,7 @@ function formToPayload(form) {
     name: form.name.trim(),
     description: form.description.trim() || null,
     industry: form.industry || "commerce",
+    trial_profile_keys: form.trial_profile_keys ?? [],
     interval: yearly ? "annual" : "monthly",
     yearly_billing: yearlyBilling,
     license_basis: "org",
@@ -259,6 +263,7 @@ function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearl
 export default function SelfServePlansPage() {
   const confirm = useConfirm();
   const [plans, setPlans] = useState([]);
+  const [setupProfiles, setSetupProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -284,13 +289,18 @@ export default function SelfServePlansPage() {
   const [freeBusy, setFreeBusy] = useState(false);
   const [packageCatalog, setPackageCatalog] = useState({});
   const [aiComposeOpen, setAiComposeOpen] = useState(false);
+  const trialSetupProfiles = setupProfiles.filter((profile) => profile.industry === (form.industry || "commerce"));
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest("/admin/platform-plans");
+      const [res, profileRes] = await Promise.all([
+        apiRequest("/admin/platform-plans"),
+        apiRequest("/admin/setup-profiles"),
+      ]);
       const rows = Array.isArray(res.data) ? res.data : [];
       setPlans(rows.filter((plan) => plan.self_serve));
+      setSetupProfiles(profileRes.data ?? []);
       setPackageCatalog(res.catalog && typeof res.catalog === "object" ? res.catalog : {});
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not load self-serve plans.");
@@ -909,6 +919,16 @@ export default function SelfServePlansPage() {
                     setForm((f) => ({
                       ...f,
                       industry,
+                      trial_profile_keys: (() => {
+                        const selected = f.trial_profile_keys ?? [];
+                        if (selected.length === 0) return [];
+                        const matching = selected.filter((key) =>
+                          setupProfiles.some((profile) => profile.key === key && profile.industry === industry),
+                        );
+                        return matching.length > 0
+                          ? matching
+                          : setupProfiles.filter((profile) => profile.industry === industry).map((profile) => profile.key);
+                      })(),
                       workspace_keys: access.workspace_keys,
                       feature_keys: access.feature_keys,
                       section_keys: industry === "commerce" ? f.section_keys : [],
@@ -919,6 +939,50 @@ export default function SelfServePlansPage() {
                 />
                 <span className="mt-1 block text-xs text-slate-500">This package and its price are only offered to organisations in this industry.</span>
               </label>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-900">Free trial setup types</legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={(form.trial_profile_keys ?? []).length > 0}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      trial_profile_keys: event.target.checked
+                        ? trialSetupProfiles.map((profile) => profile.key)
+                        : [],
+                    }))}
+                  />
+                  <span>
+                    Limit free trials to selected setup types
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Leave unchecked to allow trials for any setup type in this industry.
+                    </span>
+                  </span>
+                </label>
+                {(form.trial_profile_keys ?? []).length > 0 ? (
+                  <ul className="grid gap-1 rounded-lg border border-slate-200 p-3 sm:grid-cols-2">
+                    {trialSetupProfiles.map((profile) => (
+                      <li key={profile.key}>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={form.trial_profile_keys.includes(profile.key)}
+                            disabled={form.trial_profile_keys.length === 1 && form.trial_profile_keys.includes(profile.key)}
+                            onChange={(event) => setForm((current) => ({
+                              ...current,
+                              trial_profile_keys: event.target.checked
+                                ? [...current.trial_profile_keys, profile.key]
+                                : current.trial_profile_keys.filter((key) => key !== profile.key),
+                            }))}
+                          />
+                          {profile.label}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </fieldset>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Shows on</span>
