@@ -149,23 +149,16 @@ export function PlatformPaybillSettingsPanel() {
     setRegisteringC2b(true);
     try {
       if (!await saveSettings()) return;
-      const register = () => apiRequest("/admin/platform-paybill/register-c2b-urls", {
+      const result = await apiRequest("/admin/platform-paybill/register-c2b-urls", {
         method: "POST",
         loading: false,
         reportIssues: false,
       });
-      let result;
-      try {
-        result = await register();
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 0) throw error;
-        result = await register();
-      }
       notifySuccess(result.message || "Platform C2B URLs registered successfully with Daraja.");
       setC2bModalOpen(false);
     } catch (err) {
       const message = err instanceof ApiError && err.status === 0
-        ? "The API connection was interrupted while confirming Daraja registration. Your settings were saved; Daraja may already have received the request. Check the Daraja portal before retrying."
+        ? "The connection closed before the registration result was received. Your settings were saved, but Daraja may have received the request. Check the Daraja portal before trying again; Safaricom allows live URL registration only once."
         : err instanceof ApiError
           ? err.message
           : "Could not register platform C2B URLs with Daraja.";
