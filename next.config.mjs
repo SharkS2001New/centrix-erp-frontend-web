@@ -42,6 +42,9 @@ const htmlDocumentHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Emits a minimal self-contained server bundle at .next/standalone (only the
+  // node_modules the runtime actually needs). Consumed by the production Dockerfile.
+  output: "standalone",
   async headers() {
     const rules = [
       {

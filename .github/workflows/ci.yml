@@ -3,7 +3,22 @@ name: Web CI
 on:
   push:
     branches: [main, master, develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/workflows/docker-publish.yml"
+      - ".github/workflows/build-print-agent-msi.yml"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/workflows/docker-publish.yml"
+      - ".github/workflows/build-print-agent-msi.yml"
+
+# Cancel superseded in-flight runs for the same PR / branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

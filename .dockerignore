@@ -1,11 +1,43 @@
-node_modules
-.next
+# VCS, editor, CI
 .git
 .github
+.cursor
+.gitignore
+
+# Env files (never bake real secrets into images)
 .env
 .env.*
 !.env.local.example
+
+# Build / tooling outputs
+node_modules
+.next
 npm-debug.log*
+test-results
+playwright-report
+coverage
+
+# Docker meta
 Dockerfile
+.dockerignore
+
+# Repo-level docs and notes (not used at runtime)
 README.md
+AGENTS.md
+CLAUDE.md
 clean.md
+docs
+
+# Tests and test configs (not needed to build or run)
+e2e
+playwright.config.mjs
+vitest.config.mjs
+
+# Sibling projects that ship separately (Windows installers / native agents).
+# Not referenced by package.json or Next.js build — pure dead weight in the web image.
+attendance-agent
+attendance-agent-dotnet
+kra-agent
+kra-agent-dotnet
+print-agent
+print-agent-dotnet
