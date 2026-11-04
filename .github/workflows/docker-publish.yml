@@ -104,43 +104,22 @@ jobs:
             NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME || 'https' }}
             NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || '' }}
 
-      - name: Check out centrixerpk3setup
+      # Notify centrixerpk3setup that a new image is published. That repo's
+      # deploy.yml listens for frontend-image-published, bumps the tag in
+      # centrix-erp-frontend-web/values.yaml on main, and runs helm upgrade
+      # from the self-hosted runner on the k3s host. PERSONAL_ACCESS_TOKEN
+      # needs repo scope on centrixerpk3setup.
+      - name: Dispatch deploy to centrixerpk3setup
         if: github.event_name != 'pull_request'
-        uses: actions/checkout@v5
+        uses: peter-evans/repository-dispatch@v3
         with:
-          repository: ${{ github.repository_owner }}/centrixerpk3setup
-          path: centrixerpk3setup
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
-      - name: Update Helm image tag
-        if: github.event_name != 'pull_request'
-        run: |
-          TAG="${{ steps.image_tag.outputs.value }}"
-          FILE="centrixerpk3setup/centrix-erp-frontend-web/values.yaml"
-          sed -i "s|^\([[:space:]]*tag:\).*|\1 ${TAG}|" "$FILE"
-          echo "Updated ${FILE} -> ${TAG}"
-
-      - name: Commit and push centrixerpk3setup
-        if: github.event_name != 'pull_request'
-        run: |
-          cd centrixerpk3setup
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add centrix-erp-frontend-web/values.yaml
-          if git diff --staged --quiet; then
-            echo "No tag changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(centrix-erp-frontend-web): bump image tag to ${{ steps.image_tag.outputs.value }}"
-          DEFAULT_BRANCH="$(git symbolic-ref --short HEAD)"
-          for attempt in 1 2 3 4 5; do
-            git pull --rebase origin "$DEFAULT_BRANCH"
-            if git push origin "HEAD:${DEFAULT_BRANCH}"; then
-              echo "Push succeeded on attempt ${attempt}."
-              exit 0
-            fi
-            echo "Push rejected (attempt ${attempt}); retrying after rebase…"
-            sleep $((attempt * 2))
-          done
-          echo "Failed to push centrixerpk3setup after 5 attempts."
-          exit 1
+          repository: ${{ github.repository_owner }}/centrixerpk3setup
+          event-type: frontend-image-published
+          client-payload: |
+            {
+              "tag": "${{ steps.image_tag.outputs.value }}",
+              "sha": "${{ github.sha }}",
+              "source_repo": "${{ github.repository }}",
+              "source_run_id": "${{ github.run_id }}"
+            }
