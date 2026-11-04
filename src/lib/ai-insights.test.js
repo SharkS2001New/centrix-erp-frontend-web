@@ -65,6 +65,23 @@ describe("ai insights settings helpers", () => {
     ).toBe("en-US-male");
   });
 
+  it("keeps demo video settings out of the AI credentials payload", () => {
+    const form = aiFormFromApi({
+      settings: {
+        enabled: true,
+        demo_video_url: "https://youtu.be/abcdefghijk",
+        landing_video_url: "https://vimeo.com/123456",
+      },
+    });
+    const payload = aiPayloadFromForm(form, {
+      includeInsights: false,
+      includePlatformGemini: true,
+    });
+
+    expect(payload).not.toHaveProperty("demo_video_url");
+    expect(payload).not.toHaveProperty("landing_video_url");
+  });
+
   it("gates Talk on platform talk_enabled", () => {
     const allow = () => true;
     const base = {
