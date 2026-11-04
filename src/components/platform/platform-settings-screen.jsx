@@ -21,8 +21,7 @@ const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "ai", label: "AI credentials" },
-  { id: "in-app-demo", label: "In-app demo video" },
-  { id: "landing-demo", label: "Public landing demo" },
+  { id: "demo-videos", label: "Demo videos" },
   { id: "alerts", label: "Alert notifications" },
   { id: "payroll", label: "Payroll" },
   { id: "paybill", label: "Subscription payments" },
@@ -49,11 +48,16 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
     if (requestedTab === "ai-credentials" || requestedTab === "credentials") {
       router.replace("/platform/settings?tab=ai");
     }
+    if (requestedTab === "in-app-demo" || requestedTab === "landing-demo") {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", "demo-videos");
+      router.replace(`${pathname}?${params.toString()}`);
+    }
     // Legacy platform MSI tab removed — org admins install via Administration → Local printing.
     if (requestedTab === "print-agent-msi") {
       router.replace("/platform/settings?tab=theme");
     }
-  }, [requestedTab, router]);
+  }, [pathname, requestedTab, router, searchParams]);
 
   const activeTab = resolveTab(requestedTab, resolveTab(initialTab));
   const emailTab = searchParams.get("email_tab");
@@ -87,10 +91,8 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
           ? "Shared WhatsApp webhook URL and verify token for all tenants."
           : activeTab === "ai"
             ? "Gemini or OpenAI for free tenant AI and platform tools (email assist, training console)."
-            : activeTab === "in-app-demo"
-              ? "Demo shown to self-registered organizations on monthly plans, also available later from View Demo."
-              : activeTab === "landing-demo"
-                ? "Demo video link displayed on the public Centrix landing page."
+            : activeTab === "demo-videos"
+              ? "Manage the in-app demo shown to self-registered organizations and the public Centrix landing-page demo."
             : activeTab === "r2"
               ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
               : activeTab === "payroll"
@@ -116,19 +118,19 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
       {activeTab === "email" ? <PlatformEmailDeliveryPanel /> : null}
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
       {activeTab === "ai" ? <PlatformAiCredentialsScreen embedded /> : null}
-      {activeTab === "in-app-demo" ? (
-        <PlatformDemoVideoSettingsPanel
-          field="demo_video_url"
-          title="In-app demo video"
-          description="Shown to self-registered organizations on monthly plans. The video can be watched later from View Demo."
-        />
-      ) : null}
-      {activeTab === "landing-demo" ? (
-        <PlatformDemoVideoSettingsPanel
-          field="landing_video_url"
-          title="Public landing page demo video"
-          description="This is a separate video link for the public Centrix landing page."
-        />
+      {activeTab === "demo-videos" ? (
+        <div className="space-y-6">
+          <PlatformDemoVideoSettingsPanel
+            field="demo_video_url"
+            title="In-app demo video"
+            description="Shown to self-registered organizations on monthly plans. The video can be watched later from View Demo."
+          />
+          <PlatformDemoVideoSettingsPanel
+            field="landing_video_url"
+            title="Public landing page demo video"
+            description="This is a separate video link for the public Centrix landing page."
+          />
+        </div>
       ) : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
       {activeTab === "payroll" ? (
