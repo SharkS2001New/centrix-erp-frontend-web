@@ -205,16 +205,42 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
-    if (isModal && licenseAccessMode(organizationLicense) === "expired") {
-      const returnPath = freePlanHome(organizationLicense);
+    let back = isModal ? takeLicenceReturnPath() : null;
+    const modeNow = licenseAccessMode(organizationLicense);
+    let backAllowed = Boolean(back) && (
+      !licenceNeedsPayment(organizationLicense)
+      || isFreePlanPath(back, organizationLicense)
+    );
+
+    if (isModal) {
+      const returnPath = backAllowed ? back : modeNow === "expired" ? freePlanHome(organizationLicense) : null;
+      if (modeNow === "expired") {
+        const path = returnPath || freePlanHome(organizationLicense);
+        window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
+          detail: { organizationId: organization?.id, path },
+        }));
+      }
+
+      if (returnPath) {
+        router.replace(returnPath);
+        return;
+      }
+
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        router.back();
+        return;
+      }
+
+      router.replace(modeNow === "expired" ? freePlanHome(organizationLicense) : "/dashboard");
+      return;
+    }
+
+    if (modeNow === "expired") {
+      const returnPath = backAllowed ? back : freePlanHome(organizationLicense);
       window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
         detail: { organizationId: organization?.id, path: returnPath },
       }));
       router.replace(returnPath);
-      return;
-    }
-    if (isModal && typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
       return;
     }
     const workspaceId = getStoredWorkspace();
@@ -226,9 +252,8 @@ export default function SubscribePage({ presentation = "page", locked = false })
       router.replace(workspaceHomePath(workspaceId, capabilities) || "/pos");
       return;
     }
-    const back = takeLicenceReturnPath();
-    const modeNow = licenseAccessMode(organizationLicense);
-    const backAllowed = Boolean(back) && (
+    back = takeLicenceReturnPath();
+    backAllowed = Boolean(back) && (
       !licenceNeedsPayment(organizationLicense)
       || isFreePlanPath(back, organizationLicense)
     );
@@ -356,6 +381,17 @@ export default function SubscribePage({ presentation = "page", locked = false })
       setWatching(Boolean(res.stk && res.checkout?.id));
       setNotice(res.message || "Check your phone for the M-Pesa prompt.");
     } catch (err) {
+      if (
+        err instanceof ApiError
+        && err.status === 409
+        && err.body?.prompt_already_pending
+        && err.body?.checkout?.id
+      ) {
+        setCheckoutId(err.body.checkout.id);
+        setWatching(true);
+        setNotice("Checking the status of your existing M-Pesa prompt.");
+        return;
+      }
       setNotice(err instanceof ApiError ? err.message : "Could not start M-Pesa.");
     } finally {
       stkPromptInFlight.current = false;
