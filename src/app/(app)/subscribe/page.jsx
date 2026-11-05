@@ -226,11 +226,6 @@ export default function SubscribePage({ presentation = "page", locked = false })
         return;
       }
 
-      if (typeof window !== "undefined" && window.history.length > 1) {
-        router.back();
-        return;
-      }
-
       router.replace(modeNow === "expired" ? freePlanHome(organizationLicense) : "/dashboard");
       return;
     }
@@ -661,13 +656,11 @@ export default function SubscribePage({ presentation = "page", locked = false })
             onBack={isLocked
               ? () => setStep("plans")
               : charge.kind === "renew"
-                ? closeForLater
+                ? null
                 : () => setStep("plans")}
             backLabel={isLocked
               ? "‹ Choose a plan"
-              : charge.kind === "renew"
-                ? "Close"
-                : "‹ Configure your plan"}
+              : "‹ Configure your plan"}
             onPay={() => void payNow()}
             onStartEquity={() => void startEquity()}
             onVerifyEquity={() => void verifyEquity()}
@@ -912,9 +905,11 @@ function CheckoutStep({
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
-        {backLabel}
-                </button>
+      {onBack ? (
+        <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
+          {backLabel}
+        </button>
+      ) : null}
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
           <h2 className="theme-heading text-base font-semibold">Choose a payment method</h2>
