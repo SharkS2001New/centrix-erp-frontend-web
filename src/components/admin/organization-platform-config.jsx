@@ -383,11 +383,11 @@ function AdvancedDataImportPlatformFields({ salesPlatform, onPatch, industry = "
   );
 }
 
-export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
+export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail", profileDefaults = null) {
   const mobileProfiles = new Set(["wholesale_retail", "distribution"]);
   const driverProfiles = new Set(["distribution", "wholesale_retail"]);
 
-  return {
+  const defaults = {
     show_checkout_on_create_order: defaultBackofficeCheckoutOnCreate(deploymentProfile),
     show_pos_checkout_on_create: true,
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
@@ -463,6 +463,9 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     convert_to_unpaid_statuses: [],
     customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
+  return profileDefaults
+    ? { ...defaults, ...salesPlatformFromApi(profileDefaults) }
+    : defaults;
 }
 
 export function salesPlatformFromApi(apiPayload) {

@@ -11,6 +11,7 @@ import {
  */
 export const HotelPosProductImage = memo(function HotelPosProductImage({
   productCode,
+  imageUrl,
   offlineMode = false,
   alt = "Product",
   className = "h-full w-full object-cover",
@@ -20,7 +21,12 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
 
   useEffect(() => {
     let cancelled = false;
+    const directUrl = imageUrl && !imageUrl.includes("/api/v1/products/") ? imageUrl : null;
     const immediate = peekHotelPosCachedImageUrl(productCode);
+    if (directUrl && !offlineMode) {
+      setSrc(directUrl);
+      return undefined;
+    }
     if (immediate) {
       setSrc(immediate);
       return undefined;
@@ -35,12 +41,22 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
     return () => {
       cancelled = true;
     };
-  }, [productCode]);
+  }, [imageUrl, offlineMode, productCode]);
+
+  const handleImageError = () => {
+    if (src === imageUrl && productCode) {
+      void resolveHotelPosCachedImageUrl(productCode).then((url) => {
+        if (url) setSrc(url);
+      });
+      return;
+    }
+    setSrc(null);
+  };
 
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={alt} className={className} />
+      <img src={src} alt={alt} className={className} onError={handleImageError} />
     );
   }
 

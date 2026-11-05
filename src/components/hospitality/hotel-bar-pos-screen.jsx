@@ -194,6 +194,7 @@ const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
         <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
           <HotelPosProductImage
             productCode={product.product_code}
+            imageUrl={product.image_url}
             offlineMode={offlineMode}
             alt={product.product_name}
             className="h-full w-full object-cover"
@@ -2158,6 +2159,7 @@ export function HotelBarPosScreen() {
                           <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--theme-surface-muted)] ring-1 ring-[var(--theme-border)]">
                             <HotelPosProductImage
                               productCode={line.product_code}
+                              imageUrl={line.image_url}
                               offlineMode={offlineMode}
                               alt={line.description}
                               className="h-full w-full object-cover"

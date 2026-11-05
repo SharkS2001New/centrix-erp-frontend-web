@@ -41,6 +41,11 @@ import {
 import { menuGroupStateFromProfile } from "@/lib/menu-groups";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
+function salesDefaultsForProfile(profile, profiles = []) {
+  const profileDefaults = profiles.find((row) => row.key === profile)?.default_sales_platform;
+  return defaultSalesPlatformState(profile, profileDefaults);
+}
+
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
   const provisioningEnabled = capabilities?.allow_org_provisioning !== false;
@@ -133,10 +138,10 @@ export default function RegisterOrganizationPage() {
             profiles,
             initialProfile,
             modules,
-            defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false,
+            salesDefaultsForProfile(initialProfile, profiles).enable_mobile_orders !== false,
           ),
         );
-        setSalesPlatform(defaultSalesPlatformState(initialProfile));
+        setSalesPlatform(salesDefaultsForProfile(initialProfile, profiles));
       })
       .catch((err) => {
         setOptionsError(
@@ -180,12 +185,12 @@ export default function RegisterOrganizationPage() {
         profilePresets,
         nextProfile,
         moduleOptions,
-        defaultSalesPlatformState(nextProfile).enable_mobile_orders !== false,
+        salesDefaultsForProfile(nextProfile).enable_mobile_orders !== false,
       ),
     );
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
     setSalesPlatform({
-      ...defaultSalesPlatformState(nextProfile),
+      ...salesDefaultsForProfile(nextProfile),
       ...menuGroupStateFromProfile(preset),
     });
   }
@@ -229,9 +234,9 @@ export default function RegisterOrganizationPage() {
     setIndustry(industryForProfile(nextProfile, industries, profilePresets));
     setDeploymentProfile(nextProfile);
     if (template.sales_platform) {
-      setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...template.sales_platform });
+      setSalesPlatform({ ...salesDefaultsForProfile(nextProfile), ...template.sales_platform });
     } else {
-      setSalesPlatform(defaultSalesPlatformState(nextProfile));
+      setSalesPlatform(salesDefaultsForProfile(nextProfile));
     }
     if (template.enabled_modules && Object.keys(template.enabled_modules).length > 0) {
       setEnabledModules(template.enabled_modules);
@@ -248,9 +253,9 @@ export default function RegisterOrganizationPage() {
       setIndustry(industryForProfile(nextProfile, industries, profilePresets));
       setDeploymentProfile(nextProfile);
       if (snapshot.sales_platform) {
-        setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...snapshot.sales_platform });
+        setSalesPlatform({ ...salesDefaultsForProfile(nextProfile), ...snapshot.sales_platform });
       } else {
-        setSalesPlatform(defaultSalesPlatformState(nextProfile));
+        setSalesPlatform(salesDefaultsForProfile(nextProfile));
       }
       if (snapshot.enabled_modules && Object.keys(snapshot.enabled_modules).length > 0) {
         setEnabledModules(snapshot.enabled_modules);

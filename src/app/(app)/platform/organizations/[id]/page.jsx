@@ -153,10 +153,10 @@ export default function ManageOrganizationPage() {
       modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false),
     );
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
-    setSalesPlatform((prev) => ({
-      ...(nextIndustry === "hospitality" ? defaultSalesPlatformState(nextProfile) : prev ?? {}),
+    setSalesPlatform({
+      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
       ...menuGroupStateFromProfile(preset),
-    }));
+    });
   }
 
   function onProfileChange(nextProfile) {
@@ -164,7 +164,10 @@ export default function ManageOrganizationPage() {
     setDeploymentProfile(nextProfile);
     setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
-    setSalesPlatform((prev) => ({ ...(prev ?? {}), ...menuGroupStateFromProfile(preset) }));
+    setSalesPlatform({
+      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
+      ...menuGroupStateFromProfile(preset),
+    });
   }
 
   function toggleModule(key) {
@@ -369,7 +372,13 @@ export default function ManageOrganizationPage() {
               onProfileChange={onProfileChange}
               enableTabWorkspace={enableTabWorkspace}
               onEnableTabWorkspaceChange={setEnableTabWorkspace}
-              salesPlatform={salesPlatform ?? defaultSalesPlatformState()}
+              salesPlatform={
+                salesPlatform ??
+                defaultSalesPlatformState(
+                  deploymentProfile,
+                  profilePresets.find((profile) => profile.key === deploymentProfile)?.default_sales_platform,
+                )
+              }
               onSalesChange={setSalesPlatform}
               payrollPlatform={payrollPlatform ?? defaultPayrollPlatformState()}
               onPayrollChange={setPayrollPlatform}
