@@ -273,6 +273,7 @@ function getAvailableModuleTips() {
 }
 
 function scrollGuideTargetIntoView(target) {
+  if (!target) return;
   let ancestor = target.parentElement;
   while (ancestor && ancestor !== document.body) {
     const overflowY = window.getComputedStyle(ancestor).overflowY;
