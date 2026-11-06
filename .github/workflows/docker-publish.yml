@@ -94,15 +94,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'https://centrixapi.betsassured.com/api/v1' }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'https://api.centrixerp.co.ke/api/v1' }}
             NEXT_PUBLIC_USE_COOKIE_AUTH=${{ vars.NEXT_PUBLIC_USE_COOKIE_AUTH || 'true' }}
             NEXT_PUBLIC_COMPANY_CODE=${{ vars.NEXT_PUBLIC_COMPANY_CODE || 'DEMO' }}
             NEXT_PUBLIC_COMPANY_NAME=${{ vars.NEXT_PUBLIC_COMPANY_NAME || 'Centrix ERP' }}
             NEXT_PUBLIC_REVERB_APP_KEY=${{ vars.NEXT_PUBLIC_REVERB_APP_KEY || 'centrix-prod-reverb' }}
-            NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST || 'centrixapi.betsassured.com' }}
+            NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST || 'api.centrixerp.co.ke' }}
             NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT || '443' }}
             NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME || 'https' }}
-            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || '' }}
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'https://app.centrixerp.co.ke' }}
 
       # Notify centrixerpk3setup that a new image is published. That repo's
       # deploy.yml listens for frontend-image-published, bumps the tag in
