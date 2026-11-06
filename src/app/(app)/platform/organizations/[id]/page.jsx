@@ -157,6 +157,9 @@ export default function ManageOrganizationPage() {
       ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
       ...menuGroupStateFromProfile(preset),
     });
+    setPayrollPlatform(
+      payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
+    );
   }
 
   function onProfileChange(nextProfile) {
@@ -168,6 +171,9 @@ export default function ManageOrganizationPage() {
       ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
       ...menuGroupStateFromProfile(preset),
     });
+    setPayrollPlatform(
+      payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
+    );
   }
 
   function toggleModule(key) {

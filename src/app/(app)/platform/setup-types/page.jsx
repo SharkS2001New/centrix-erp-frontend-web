@@ -8,7 +8,7 @@ export default function PlatformSetupTypesPage() {
   return (
     <CatalogPageShell
       title="Setup types"
-      subtitle="Applications and menu groups for each setup type, such as Small shop. External POS is listed with the other applications."
+      subtitle="Configure applications, sales behaviour, order workflows, and business defaults that are applied when an organization uses a setup type."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Setup types" }]} />
       <PlatformSetupTypesPanel />

@@ -234,7 +234,7 @@ export function PlatformSetupTypesPanel() {
         body: { name: trimmed, industry },
       });
       setName("");
-      setProfileTab("applications");
+      setProfileTab(industry === "commerce" ? "sales" : "applications");
       setOpenKey(res?.data?.key ?? "");
       notifySuccess(`Created ${res?.data?.label || trimmed}.`);
       await load({ quiet: true });
@@ -327,9 +327,9 @@ export function PlatformSetupTypesPanel() {
         </PrimaryButton>
       </form>
       <p className="text-sm text-slate-600">
-        Each setup type stores applications, menu groups, and the operational defaults for that
-        business, including order workflow and sales behavior. New organizations use these defaults;
-        choosing the setup type again on an existing organization applies the updated defaults there.
+        Configure applications, sales behaviour, order workflow, order/report defaults, and
+        hospitality or payroll settings for each setup type. These defaults are applied when the
+        setup is selected during registration or on an existing organization.
       </p>
       {profiles.map((profile) => (
         <div key={profile.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -353,7 +353,7 @@ export function PlatformSetupTypesPanel() {
               setOpenKey(profile.key);
             }}
           >
-            Open setup type
+            Configure setup type
           </PrimaryButton>
         </div>
       ))}
