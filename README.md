@@ -194,6 +194,6 @@ docker build \
 docker run --rm -p 3000:3000 centrix-erp-frontend-web
 ```
 
-Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`. Each push also updates `tag` in `pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml` (same pattern as pitchpredictionswebsite).
+Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`. Each push opens or updates a pull request in `pitchpredk3ssetup` to update `tag` in `centrix-erp-frontend-web/values.yaml`; merge that PR to deploy the image. The print-agent MSI workflow uses a separate pull request to update `PRINT_AGENT_MSI_URL`.
 
 Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `repo` and `write:packages` scopes.
