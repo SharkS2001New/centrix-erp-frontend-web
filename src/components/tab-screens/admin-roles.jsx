@@ -107,11 +107,11 @@ export function AdminRolesScreen() {
     async function bootstrap() {
       setLoading(true);
       try {
-        const list = await loadRoles();
+        // Roles list and permissions catalog are independent — fetch in parallel
+        // to cut page-load latency (the two calls account for most of it).
+        const [list] = await Promise.all([loadRoles(), loadPermissionsCatalog()]);
         if (cancelled) return;
         setRoles(list);
-        await loadPermissionsCatalog();
-        if (cancelled) return;
         if (!initialRolePicked.current && list.length > 0) {
           initialRolePicked.current = true;
           setSelectedRoleId(normalizeRoleId(list[0].id));
