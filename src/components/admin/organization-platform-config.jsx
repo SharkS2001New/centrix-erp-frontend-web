@@ -650,12 +650,13 @@ export function payrollPlatformToApi(state = {}) {
   };
 }
 
-function OrganizationPayrollPlatformSettings({
+export function OrganizationPayrollPlatformSettings({
   payrollPlatform,
   onChange,
   enabledModules = {},
+  allowInactiveApplications = false,
 }) {
-  const hrEnabled = Boolean(enabledModules.hr_payroll);
+  const hrEnabled = allowInactiveApplications || Boolean(enabledModules.hr_payroll);
   const state = payrollPlatform ?? defaultPayrollPlatformState();
 
   function patch(partial) {
@@ -665,7 +666,7 @@ function OrganizationPayrollPlatformSettings({
   return (
     <PlatformFormSection
       title="Payroll"
-      description="Platform-only Kenya payroll rules for this organization. Tenant HR settings cannot override these."
+      description="Platform-only Kenya payroll rules. Tenant HR settings cannot override these."
     >
       {!hrEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -719,8 +720,9 @@ export function OrganizationPlatformSalesSettings({
   onChange,
   enabledModules = {},
   deploymentProfile = "wholesale_retail",
+  allowInactiveApplications = false,
 }) {
-  const salesEnabled = Boolean(enabledModules.sales);
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const description =
     "Platform-only checkout mode for backoffice, mobile application access, and payment integrations.";
@@ -920,10 +922,11 @@ export function OrganizationOrdersListSettings({
   onChange,
   enabledModules = {},
   industry = "commerce",
+  allowInactiveApplications = false,
 }) {
   const isHospitality = industry === "hospitality";
-  const salesEnabled = Boolean(enabledModules.sales);
-  const hospitalityEnabled = Boolean(
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
+  const hospitalityEnabled = allowInactiveApplications || Boolean(
     enabledModules.hospitality ||
       enabledModules["hospitality.backend"] ||
       enabledModules["hospitality.bar_pos"],
@@ -969,9 +972,10 @@ export function OrganizationOrderWorkflowSettings({
   salesPlatform,
   onChange,
   enabledModules = {},
+  allowInactiveApplications = false,
 }) {
   const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const salesEnabled = Boolean(enabledModules.sales);
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
   const distributionEnabled = Boolean(enabledModules.distribution);
   const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;

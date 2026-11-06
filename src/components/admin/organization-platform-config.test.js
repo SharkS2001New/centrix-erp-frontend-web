@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { defaultSalesPlatformState } from "@/components/admin/organization-platform-config";
+import {
+  defaultSalesPlatformState,
+  payrollPlatformFromApi,
+  payrollPlatformToApi,
+} from "@/components/admin/organization-platform-config";
 
 describe("defaultSalesPlatformState", () => {
   it("uses the selected setup profile's server-provided defaults", () => {
@@ -20,5 +24,23 @@ describe("defaultSalesPlatformState", () => {
       "unpaid",
       "completed",
     ]);
+  });
+});
+
+describe("payrollPlatformFromApi", () => {
+  it("normalizes setup-profile payroll defaults for provisioning", () => {
+    const payroll = payrollPlatformFromApi({
+      payroll_month_days_basis: "fixed_30",
+      shif_minimum_monthly: 2500,
+    });
+
+    expect(payroll).toEqual({
+      payroll_month_days_basis: "fixed_30",
+      shif_minimum_monthly: "2500",
+    });
+    expect(payrollPlatformToApi(payroll)).toEqual({
+      payroll_month_days_basis: "fixed_30",
+      shif_minimum_monthly: 2500,
+    });
   });
 });

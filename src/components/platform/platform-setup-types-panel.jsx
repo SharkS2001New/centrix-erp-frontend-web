@@ -16,8 +16,12 @@ import { provisionableWorkspacesForProfile } from "@/lib/workspace-modules";
 import {
   OrganizationOrderWorkflowSettings,
   OrganizationOrdersListSettings,
+  OrganizationPayrollPlatformSettings,
   OrganizationPlatformSalesSettings,
   defaultSalesPlatformState,
+  defaultPayrollPlatformState,
+  payrollPlatformFromApi,
+  payrollPlatformToApi,
 } from "@/components/admin/organization-platform-config";
 import {
   HOSPITALITY_SERVICE_CATALOG,
@@ -92,6 +96,7 @@ export function PlatformSetupTypesPanel() {
                 profile.key,
                 profile.default_sales_platform,
               ),
+              payroll_platform: payrollPlatformFromApi(profile.default_payroll_platform),
             }))
           : [],
       );
@@ -168,6 +173,9 @@ export function PlatformSetupTypesPanel() {
         accounting: savedMenuGroup(profile, GROUPS[2]),
         applications: profile.applications ?? {},
         sales_platform: profile.sales_platform ?? {},
+        payroll_platform: payrollPlatformToApi(
+          profile.payroll_platform ?? defaultPayrollPlatformState(),
+        ),
       };
       if (profile.custom) body.label = profile.label;
       await apiRequest(`/admin/setup-profiles/${profile.key}`, {
@@ -194,6 +202,14 @@ export function PlatformSetupTypesPanel() {
     );
   }
 
+  function setPayrollPlatform(profileKey, payrollPlatform) {
+    setProfiles((rows) =>
+      rows.map((row) =>
+        row.key === profileKey ? { ...row, payroll_platform: payrollPlatform } : row,
+      ),
+    );
+  }
+
   function enabledModulesForProfile(profile) {
     const apps = profile?.applications ?? {};
     return {
@@ -203,6 +219,7 @@ export function PlatformSetupTypesPanel() {
       hospitality: Boolean(apps.hotel_bar_pos || apps.hospitality_backoffice),
       "hospitality.backend": Boolean(apps.hospitality_backoffice),
       "hospitality.bar_pos": Boolean(apps.hotel_bar_pos),
+      hr_payroll: Boolean(apps.hr),
     };
   }
 
@@ -254,6 +271,7 @@ export function PlatformSetupTypesPanel() {
 
   const isHospitalityProfile = activeProfile?.industry === "hospitality";
   const supportsSalesWorkflow = activeProfile?.industry === "commerce";
+  const supportsPayroll = activeProfile?.application_ids?.includes("hr") === true;
   const profileTabs = activeProfile
     ? [
         { id: "applications", label: "Applications & menus" },
@@ -270,9 +288,12 @@ export function PlatformSetupTypesPanel() {
               { id: "orders_list", label: "Orders & reports" },
             ]
           : []),
+        ...(supportsPayroll ? [{ id: "payroll", label: "Payroll defaults" }] : []),
       ]
     : [];
   const profileSales = activeProfile?.sales_platform ?? {};
+  const profilePayroll =
+    activeProfile?.payroll_platform ?? defaultPayrollPlatformState();
   const profileModules = activeProfile ? enabledModulesForProfile(activeProfile) : {};
 
   return (
@@ -454,6 +475,7 @@ export function PlatformSetupTypesPanel() {
                   onChange={(value) => setSalesPlatform(activeProfile.key, value)}
                   enabledModules={profileModules}
                   deploymentProfile={activeProfile.key}
+                  allowInactiveApplications
                 />
             ) : null}
             {profileTab === "orders_list" ? (
@@ -462,6 +484,7 @@ export function PlatformSetupTypesPanel() {
                   onChange={(value) => setSalesPlatform(activeProfile.key, value)}
                   enabledModules={profileModules}
                   industry={activeProfile.industry}
+                  allowInactiveApplications
                 />
             ) : null}
             {profileTab === "workflow" && supportsSalesWorkflow ? (
@@ -469,7 +492,16 @@ export function PlatformSetupTypesPanel() {
                   salesPlatform={profileSales}
                   onChange={(value) => setSalesPlatform(activeProfile.key, value)}
                   enabledModules={profileModules}
+                  allowInactiveApplications
                 />
+            ) : null}
+            {profileTab === "payroll" && supportsPayroll ? (
+              <OrganizationPayrollPlatformSettings
+                payrollPlatform={profilePayroll}
+                onChange={(value) => setPayrollPlatform(activeProfile.key, value)}
+                enabledModules={profileModules}
+                allowInactiveApplications
+              />
             ) : null}
             {profileTab === "hotel" && isHospitalityProfile ? (
                 <div className="space-y-4">

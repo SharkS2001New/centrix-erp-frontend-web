@@ -11,6 +11,7 @@ import {
   modulesForProfile,
   defaultSalesPlatformState,
   defaultPayrollPlatformState,
+  payrollPlatformFromApi,
   payrollPlatformToApi,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
@@ -44,6 +45,11 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 function salesDefaultsForProfile(profile, profiles = []) {
   const profileDefaults = profiles.find((row) => row.key === profile)?.default_sales_platform;
   return defaultSalesPlatformState(profile, profileDefaults);
+}
+
+function payrollDefaultsForProfile(profile, profiles = []) {
+  const profileDefaults = profiles.find((row) => row.key === profile)?.default_payroll_platform;
+  return payrollPlatformFromApi(profileDefaults);
 }
 
 export default function RegisterOrganizationPage() {
@@ -142,6 +148,7 @@ export default function RegisterOrganizationPage() {
           ),
         );
         setSalesPlatform(salesDefaultsForProfile(initialProfile, profiles));
+        setPayrollPlatform(payrollDefaultsForProfile(initialProfile, profiles));
       })
       .catch((err) => {
         setOptionsError(
@@ -193,6 +200,7 @@ export default function RegisterOrganizationPage() {
       ...salesDefaultsForProfile(nextProfile),
       ...menuGroupStateFromProfile(preset),
     });
+    setPayrollPlatform(payrollDefaultsForProfile(nextProfile, profilePresets));
   }
 
   function onIndustryChange(nextIndustry) {
@@ -238,6 +246,7 @@ export default function RegisterOrganizationPage() {
     } else {
       setSalesPlatform(salesDefaultsForProfile(nextProfile));
     }
+    setPayrollPlatform(payrollDefaultsForProfile(nextProfile, profilePresets));
     if (template.enabled_modules && Object.keys(template.enabled_modules).length > 0) {
       setEnabledModules(template.enabled_modules);
     } else {
@@ -257,6 +266,11 @@ export default function RegisterOrganizationPage() {
       } else {
         setSalesPlatform(salesDefaultsForProfile(nextProfile));
       }
+      setPayrollPlatform(
+        snapshot.payroll_platform
+          ? payrollPlatformFromApi(snapshot.payroll_platform)
+          : payrollDefaultsForProfile(nextProfile, profilePresets),
+      );
       if (snapshot.enabled_modules && Object.keys(snapshot.enabled_modules).length > 0) {
         setEnabledModules(snapshot.enabled_modules);
       } else if (snapshot.applications) {
