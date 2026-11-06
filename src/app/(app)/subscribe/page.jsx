@@ -148,7 +148,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/erp/organization/billing")
+    apiRequest("/erp/organization/billing?payment_options=1", { loading: false })
       .then((res) => {
         if (cancelled) return;
         const billing = res.data ?? {};
@@ -213,7 +213,11 @@ export default function SubscribePage({ presentation = "page", locked = false })
     );
 
     if (isModal) {
-      const returnPath = backAllowed ? back : modeNow === "expired" ? freePlanHome(organizationLicense) : null;
+      const returnPath = backAllowed
+        ? back
+        : licenceNeedsPayment(organizationLicense) || modeNow === "expired"
+          ? freePlanHome(organizationLicense)
+          : null;
       if (modeNow === "expired") {
         const path = returnPath || freePlanHome(organizationLicense);
         window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
@@ -617,7 +621,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
         </button>
       </div>
       <div className={`mx-auto max-w-[96rem] px-4 pb-16 sm:px-8 ${isModal ? "pt-12" : "min-h-full pt-16"}`}>
-        {authLoading || (step === "checkout" && paymentOptionsLoading) ? (
+        {authLoading ? (
           <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
             <div className="theme-panel flex items-center gap-3 rounded-xl border px-5 py-4 shadow-sm">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--theme-border)] border-t-[var(--theme-primary)]" aria-hidden="true" />
