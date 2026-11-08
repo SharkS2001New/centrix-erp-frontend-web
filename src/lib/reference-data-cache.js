@@ -251,6 +251,30 @@ export function fetchActiveUsersCached(organizationId) {
 }
 
 /**
+ * Active Administration → Payment methods rows (shared across Hotel POS / folios / front desk).
+ * Soft TTL; call invalidateReferenceResource("payment-methods") after CUD.
+ */
+export function fetchPaymentMethodsCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "payment-methods");
+  return fetchOrgCached(key, async () => {
+    try {
+      const res = await apiRequest("/payment-methods", {
+        searchParams: { per_page: 50, "filter[is_active]": 1 },
+        loading: false,
+        reportIssues: false,
+      });
+      return res?.data ?? [];
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return [];
+      }
+      throw error;
+    }
+  }, { ttlMs: REFERENCE_TTL_MS });
+}
+
+/**
  * Users who can create orders / sell: backoffice create order, POS checkout,
  * hotel POS, or mobile field sales — filtered server-side by permissions.
  * Active accounts only (inactive employees linked to a user are excluded).

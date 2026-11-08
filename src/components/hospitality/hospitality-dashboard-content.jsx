@@ -2,7 +2,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
+import {
+  CatalogPageShell,
+  Field,
+  FILTER_CONTROL_CLASS,
+  FilterToolbar,
+  PrimaryLink,
+} from "@/components/catalog/catalog-shared";
 import {
   DashboardErrorBanner,
   DashboardKpiGrid,
@@ -17,10 +23,12 @@ import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest } from "@/lib/api";
+import { todayDashboardDateRange } from "@/lib/dashboard-dates";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { useOrgFormat } from "@/lib/org-format";
 import { P } from "@/lib/permission-codes";
 import { HOSPITALITY_REPORT_DEFS } from "@/lib/reports/hospitality-reports";
+import { useAppliedDateRange } from "@/lib/use-applied-date-range";
 
 const ROOM_STATUS_ROWS = [
   { key: "occupied", label: "Occupied", color: "#0f766e" },
@@ -250,6 +258,16 @@ function AttentionCard({ label, value, hint, href, tone = "default" }) {
 export function HospitalityDashboardContent() {
   const { capabilities, hasPermission } = useAuth();
   const fmt = useOrgFormat();
+  const initialRange = useMemo(() => todayDashboardDateRange(), []);
+  const {
+    fromDate,
+    toDate,
+    setFromDate,
+    setToDate,
+    appliedFrom,
+    appliedTo,
+    applyDates,
+  } = useAppliedDateRange(initialRange);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -260,7 +278,13 @@ export function HospitalityDashboardContent() {
     else setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/hospitality/dashboard", { loading: false });
+      const res = await apiRequest("/hospitality/dashboard", {
+        searchParams: {
+          from_date: appliedFrom || undefined,
+          to_date: appliedTo || undefined,
+        },
+        loading: false,
+      });
       setSummary(res ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load hospitality dashboard");
@@ -268,9 +292,18 @@ export function HospitalityDashboardContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [appliedFrom, appliedTo]);
 
   useTabAwareDataLoad(loadDashboard);
+
+  const periodLabel = useMemo(() => {
+    if (!appliedFrom || !appliedTo) return "selected period";
+    if (appliedFrom === appliedTo) {
+      const today = todayDashboardDateRange().from;
+      return appliedFrom === today ? "today" : fmt.date(appliedFrom);
+    }
+    return `${fmt.date(appliedFrom)} – ${fmt.date(appliedTo)}`;
+  }, [appliedFrom, appliedTo, fmt]);
 
   const quickLinks = useMemo(
     () => QUICK_LINKS.filter((item) => linkVisible(item, capabilities, hasPermission)),
@@ -331,60 +364,87 @@ export function HospitalityDashboardContent() {
       id: "occupancy",
       label: "Occupancy",
       value: `${Number(kpis.occupancy_pct ?? rooms.occupancy_pct ?? 0)}%`,
-      hint: `${Number(rooms.occupied ?? 0).toLocaleString()} / ${Number(rooms.total ?? 0).toLocaleString()} rooms`,
+      hint: `${Number(rooms.occupied ?? 0).toLocaleString()} / ${Number(rooms.total ?? 0).toLocaleString()} rooms (live)`,
     },
     {
       id: "adr",
       label: "ADR",
       value: fmt.currency(kpis.adr ?? 0),
-      hint: "Average daily rate today",
+      hint: `Average daily rate · ${periodLabel}`,
     },
     {
       id: "revpar",
       label: "RevPAR",
       value: fmt.currency(kpis.revpar ?? 0),
-      hint: "Revenue per available room",
+      hint: `Revenue per available room · ${periodLabel}`,
     },
     {
       id: "room_rev",
       label: "Room revenue",
       value: fmt.currency(kpis.room_revenue ?? 0),
-      hint: `${Number(kpis.room_nights ?? 0).toLocaleString()} room nights`,
+      hint: `${Number(kpis.room_nights ?? 0).toLocaleString()} room nights · ${periodLabel}`,
     },
     {
       id: "fnb",
       label: "F&B collected",
       value: fmt.currency(fnb.collected ?? kpis.fnb_collected ?? 0),
-      hint: `${Number(fnb.checks ?? 0).toLocaleString()} paid checks`,
+      hint: `${Number(fnb.checks ?? 0).toLocaleString()} paid checks · ${periodLabel}`,
     },
     {
       id: "total_rev",
-      label: "Total revenue today",
+      label: "Total revenue",
       value: fmt.currency(kpis.total_revenue ?? 0),
-      hint: "Rooms + F&B collected",
+      hint: `Rooms + F&B · ${periodLabel}`,
     },
     {
       id: "arrivals",
-      label: "Arrivals today",
+      label: "Arrivals",
       value: Number(summary?.arrivals_today ?? 0).toLocaleString(),
-      hint: "Expected check-ins",
+      hint: `Check-ins · ${periodLabel}`,
     },
     {
       id: "departures",
-      label: "Departures today",
+      label: "Departures",
       value: Number(summary?.departures_today ?? 0).toLocaleString(),
-      hint: "Due to check out",
+      hint: `Check-outs · ${periodLabel}`,
     },
   ];
 
   const subtitle = summary?.as_of
-    ? `Live house status · Rooms, guests, and F&B · Updated ${fmt.dateTime(summary.as_of)}`
-    : "Live house status — rooms, guests, folios, and food & drink";
+    ? `House status · Revenue for ${periodLabel} · Updated ${fmt.dateTime(summary.as_of)}`
+    : `House status — rooms, guests, folios, and food & drink · ${periodLabel}`;
 
   return (
     <CatalogPageShell
       title="Hospitality overview"
       subtitle={subtitle}
+      toolbar={
+        <FilterToolbar>
+          <Field label="From">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className={FILTER_CONTROL_CLASS}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className={FILTER_CONTROL_CLASS}
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={applyDates}
+            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+          >
+            Filter
+          </button>
+        </FilterToolbar>
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <DashboardRefreshButton
@@ -495,7 +555,7 @@ export function HospitalityDashboardContent() {
 
             <DashboardPanel
               title="F&B by outlet"
-              subtitle="Collected today"
+              subtitle={`Collected · ${periodLabel}`}
               headerAction={
                 canOpenOrders ? (
                   <Link href="/hospitality/orders" className="theme-link text-xs font-medium">
@@ -507,7 +567,7 @@ export function HospitalityDashboardContent() {
               <DonutChart
                 segments={outletSegments}
                 loading={false}
-                emptyMessage="No food & drink sales today."
+                emptyMessage={`No food & drink sales for ${periodLabel}.`}
               />
               {(summary?.fnb_by_outlet ?? []).length ? (
                 <ul className="mt-4 space-y-2 border-t border-[var(--theme-border)] pt-3 text-sm">
@@ -526,8 +586,8 @@ export function HospitalityDashboardContent() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <DashboardSection
-              title="Arrivals today"
-              subtitle="Guests expected to check in"
+              title="Arrivals"
+              subtitle={`Guests arriving · ${periodLabel}`}
               action={
                 hasPermission(P.hospitality.reservations.view) ? (
                   <Link href="/hospitality/reservations" className="text-sm text-[#185FA5] hover:underline">
@@ -544,7 +604,7 @@ export function HospitalityDashboardContent() {
                   { key: "status", label: "Status" },
                 ]}
                 rows={summary?.arrivals ?? []}
-                emptyMessage="No arrivals scheduled for today."
+                emptyMessage={`No arrivals scheduled for ${periodLabel}.`}
                 formatValue={(key, value) =>
                   key === "status" ? statusLabel(value) : value == null || value === "" ? "—" : String(value)
                 }
@@ -554,8 +614,8 @@ export function HospitalityDashboardContent() {
             </DashboardSection>
 
             <DashboardSection
-              title="Departures today"
-              subtitle="Guests due to check out"
+              title="Departures"
+              subtitle={`Guests departing · ${periodLabel}`}
               action={
                 canOpenFrontDesk ? (
                   <Link href="/hospitality/front-desk" className="text-sm text-[#185FA5] hover:underline">
@@ -572,7 +632,7 @@ export function HospitalityDashboardContent() {
                   { key: "status", label: "Status" },
                 ]}
                 rows={summary?.departures ?? []}
-                emptyMessage="No departures due today."
+                emptyMessage={`No departures due for ${periodLabel}.`}
                 formatValue={(key, value) =>
                   key === "status" ? statusLabel(value) : value == null || value === "" ? "—" : String(value)
                 }

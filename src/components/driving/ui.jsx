@@ -188,7 +188,7 @@ function clockMinutes(value) {
   return hour * 60 + (Number.isFinite(minute) ? minute : 0);
 }
 
-export function DayBoard({ lessons = [], instructors = [] }) {
+export function DayBoard({ lessons = [], instructors = [], onLessonAction = null, busyLessonId = null }) {
   const hours = [];
   for (let hour = BOARD_START; hour < BOARD_END; hour += 1) hours.push(hour);
   const columns = [];
@@ -228,12 +228,28 @@ export function DayBoard({ lessons = [], instructors = [] }) {
                 const start = clockMinutes(lesson.starts_at) - BOARD_START * 60;
                 const endText = lesson.ends_at ? clockMinutes(lesson.ends_at) - BOARD_START * 60 : start + 60;
                 const top = (start / 60) * BOARD_ROW;
-                const block = Math.max(42, ((endText - start) / 60) * BOARD_ROW - 8);
-                const tone = lesson.lesson_type === "theory" ? "border-violet-200 bg-violet-100 text-violet-950" : "border-sky-200 bg-sky-100 text-sky-950";
+                const block = Math.max(onLessonAction ? 64 : 42, ((endText - start) / 60) * BOARD_ROW - 8);
+                const done = ["completed", "cancelled", "no_show"].includes(String(lesson.status || ""));
+                const tone = done
+                  ? "border-slate-200 bg-slate-100 text-slate-700"
+                  : lesson.lesson_type === "theory"
+                    ? "border-violet-200 bg-violet-100 text-violet-950"
+                    : "border-sky-200 bg-sky-100 text-sky-950";
+                const busy = String(busyLessonId) === String(lesson.id);
                 return (
                   <div key={lesson.id} className={`absolute inset-x-1 overflow-hidden rounded-lg border px-2 py-1 text-xs ${tone}`} style={{ top: Math.max(0, top), height: block }}>
                     <p className="truncate font-semibold">{lesson.student?.full_name || "Student"}</p>
-                    <p className="truncate capitalize opacity-80">{lesson.lesson_type} · {String(lesson.starts_at).slice(11, 16)}</p>
+                    <p className="truncate capitalize opacity-80">
+                      {lesson.lesson_type} · {String(lesson.starts_at).slice(11, 16)}
+                      {lesson.status && lesson.status !== "scheduled" ? ` · ${lesson.status}` : ""}
+                    </p>
+                    {onLessonAction && !done ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <button type="button" disabled={busy} className="rounded bg-white/80 px-1.5 py-0.5 font-semibold disabled:opacity-50" onClick={() => onLessonAction(lesson, "completed")}>Done</button>
+                        <button type="button" disabled={busy} className="rounded bg-white/80 px-1.5 py-0.5 font-semibold disabled:opacity-50" onClick={() => onLessonAction(lesson, "no_show")}>No-show</button>
+                        <button type="button" disabled={busy} className="rounded bg-white/80 px-1.5 py-0.5 font-semibold disabled:opacity-50" onClick={() => onLessonAction(lesson, "cancelled")}>Cancel</button>
+                      </div>
+                    ) : null}
                     <span className="sr-only">{index}</span>
                   </div>
                 );

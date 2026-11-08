@@ -60,6 +60,7 @@ import {
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { fetchPaymentMethodsCached } from "@/lib/reference-data-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
@@ -409,13 +410,9 @@ export function HotelBarPosScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/payment-methods", {
-      searchParams: { per_page: 50, "filter[is_active]": 1 },
-      loading: false,
-      reportIssues: false,
-    })
-      .then((res) => {
-        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res.data ?? []));
+    fetchPaymentMethodsCached(organization?.id)
+      .then((rows) => {
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(rows));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);
@@ -423,7 +420,7 @@ export function HotelBarPosScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organization?.id]);
 
   useEffect(() => {
     setGridColumns(hotelSettings.gridColumns);

@@ -75,12 +75,12 @@ function NightAuditManager() {
   }
 
   const candidates = preview?.candidates ?? [];
-  const flashRow = preview?.manager_flash?.rows?.[0] ?? null;
+  const snapshot = preview?.snapshot ?? null;
 
   return (
     <CatalogPageShell
       title="Night audit"
-      subtitle="Post room nights and review the manager flash. Auto-runs daily at 00:30 for orgs with night audit enabled (yesterday’s business date)."
+      subtitle="Post room nights for the business date. Full manager flash lives under Hospitality reports after posting. Auto-runs daily at 00:30 when night audit is enabled."
     >
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <Field label="Business date">
@@ -117,21 +117,16 @@ function NightAuditManager() {
         </p>
       ) : null}
 
-      {flashRow ? (
+      {snapshot ? (
         <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ["Occ %", flashRow.occupancy_pct],
-            ["ADR", Number(flashRow.adr ?? 0).toFixed(2)],
-            ["RevPAR", Number(flashRow.revpar ?? 0).toFixed(2)],
-            ["Room rev", Number(flashRow.room_revenue ?? 0).toFixed(2)],
-            ["Food & drink gross", Number(flashRow.fnb_gross ?? 0).toFixed(2)],
-            ["Food & drink collected", Number(flashRow.fnb_collected ?? 0).toFixed(2)],
-            ["Cash", Number(flashRow.cash ?? 0).toFixed(2)],
-            ["M-Pesa", Number(flashRow.mpesa ?? 0).toFixed(2)],
-            ["Arrivals", flashRow.arrivals],
-            ["Departures", flashRow.departures],
-            ["Open folios", flashRow.open_folios],
-            ["Open checks", flashRow.open_fnb_checks],
+            ["Arrivals", snapshot.arrivals],
+            ["Departures", snapshot.departures],
+            ["Open folios", snapshot.open_folios],
+            ["Folio bal", Number(snapshot.open_folio_balance ?? 0).toFixed(2)],
+            ["Open checks", snapshot.open_fnb_checks],
+            ["Rooms to post", preview?.rooms_count ?? 0],
+            ["Post total", Number(preview?.total_amount ?? 0).toFixed(2)],
           ].map(([label, value]) => (
             <div
               key={label}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { ksh } from "@/lib/spa/format";
 import { serviceImageSrc } from "@/lib/spa/image";
@@ -13,17 +14,49 @@ import { Field, SpaSearch, SpaSelect, inputClass } from "@/components/spa/ui";
 export function PosScreen() {
   const spa = useSpa();
   const { organization } = useAuth();
+  const params = useSearchParams();
+  const appointmentParam = params.get("appointment") || "";
+  const hydratedAppointment = useRef("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [lines, setLines] = useState([]);
   const [clientId, setClientId] = useState("");
   const [staffId, setStaffId] = useState(spa.staff[0]?.id || "");
+  const [appointmentId, setAppointmentId] = useState("");
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState("cash");
   const [parts, setParts] = useState({ cash: 0, mpesa: 0, card: 0 });
   const [receipt, setReceipt] = useState(null);
   const [paper, setPaper] = useState("a4");
   const [cartOpen, setCartOpen] = useState(false);
+
+  useEffect(() => {
+    if (!appointmentParam || hydratedAppointment.current === appointmentParam) return;
+    const booking = spa.appointmentForCheckout?.(appointmentParam) || spa.appointments.find((item) => item.id === appointmentParam);
+    if (!booking) return;
+    hydratedAppointment.current = appointmentParam;
+    const service = spa.services.find((item) => item.id === booking.serviceId);
+    setAppointmentId(booking.id);
+    setClientId(booking.clientId || "");
+    setStaffId(booking.staffId || spa.staff[0]?.id || "");
+    if (service) {
+      setLines([
+        {
+          name: service.name,
+          qty: 1,
+          price: service.price,
+          cost: 0,
+          kind: "service",
+          refId: service.id,
+          staffId: booking.staffId || "",
+        },
+      ]);
+      setCartOpen(true);
+    }
+    if (booking.status === "booked") {
+      spa.setAppointmentStatus(booking.id, "in_progress");
+    }
+  }, [appointmentParam, spa]);
 
   const categories = ["All", ...new Set(spa.services.map((item) => item.category))];
   const catalog = useMemo(() => {
@@ -66,6 +99,7 @@ export function PosScreen() {
     const result = spa.completeSale({
       clientId,
       staffId,
+      appointmentId: appointmentId || undefined,
       lines,
       discount: discountAmount,
       taxRate: spa.taxRate,
@@ -78,12 +112,18 @@ export function PosScreen() {
       toast.error(result);
       return false;
     }
-    toast.success(`Sale ${result.number} recorded. No payment was sent to M-Pesa or a card machine.`);
+    toast.success(
+      appointmentId
+        ? `Sale ${result.number} recorded and appointment completed.`
+        : `Sale ${result.number} recorded. No payment was sent to M-Pesa or a card machine.`,
+    );
     setReceipt(result);
     setLines([]);
     setDiscount(0);
     setMethod("cash");
     setParts({ cash: 0, mpesa: 0, card: 0 });
+    setAppointmentId("");
+    hydratedAppointment.current = "";
     return true;
   }
 
@@ -151,10 +191,21 @@ export function PosScreen() {
         <div className="flex items-center justify-between border-b border-[var(--theme-border)] px-4 py-3">
           <div>
             <h2 className="theme-heading text-sm font-semibold">Ticket</h2>
-            <p className="theme-subtext text-xs">{lines.length === 0 ? "Tap a service to start" : `${lines.length} item${lines.length === 1 ? "" : "s"}`}</p>
+            <p className="theme-subtext text-xs">
+              {appointmentId
+                ? "From appointment — finish payment to complete the booking"
+                : lines.length === 0
+                  ? "Tap a service to start"
+                  : `${lines.length} item${lines.length === 1 ? "" : "s"}`}
+            </p>
           </div>
           <button type="button" className="text-sm font-medium text-[var(--theme-accent-text)] lg:hidden" onClick={() => setCartOpen(false)}>Close</button>
         </div>
+        {appointmentId ? (
+          <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs text-emerald-800">
+            Checking out a booked service. Client and staff are prefilled from the calendar.
+          </div>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3 sm:px-4">
           {lines.length === 0 ? (
             <p className="hotel-pos-empty-ticket theme-subtext flex flex-1 items-center justify-center rounded-2xl px-4 py-16 text-center text-sm">The ticket is empty.</p>

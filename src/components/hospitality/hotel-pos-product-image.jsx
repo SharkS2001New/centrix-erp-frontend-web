@@ -10,6 +10,7 @@ import {
 
 /**
  * Prefers session/IndexedDB cached photo (R2 → API → local PC).
+ * Falls back to the catalogue remote/CDN URL so tiles still render while import runs.
  * Refreshes only when imageVersion / image path changes after upload or replace.
  */
 export const HotelPosProductImage = memo(function HotelPosProductImage({
@@ -37,6 +38,7 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
       return undefined;
     }
     if (external && !offlineMode) {
+      // Show the saved remote/CDN/R2 URL immediately while /image/file imports to storage.
       setSrc(external);
       if (productCode) {
         void resolveHotelPosCachedImageUrl(productCode, {
@@ -78,6 +80,7 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
 
   const handleImageError = () => {
     const external = hotelPosExternalImageUrl(imageUrl);
+    // Cached blob failed — fall back to the catalogue remote URL once.
     if (src && external && src !== external) {
       setSrc(external);
       return;

@@ -38,7 +38,7 @@ function isCentrixProductImageApiUrl(url) {
   return typeof url === "string" && url.includes("/api/v1/products/") && url.includes("/image");
 }
 
-/** Catalogue / CDN URL the till can fetch without going through /image/file. */
+/** Catalogue / CDN URL the till can show without going through /image/file. */
 export function hotelPosExternalImageUrl(imageUrl) {
   const url = String(imageUrl ?? "").trim();
   if (!url) return null;
@@ -87,7 +87,11 @@ export function invalidateHotelPosProductImageCache(productCode) {
   void idbDeleteCatalogImage(code).catch(() => {});
 }
 
-async function fetchBlobFromUrl(url, { withAuth = false } = {}) {
+/**
+ * Fetch image bytes. Never follow cross-origin redirects from /image/file —
+ * those break CORS when Authorization was on the first hop.
+ */
+async function fetchBlobFromUrl(url, { withAuth = false, allowRedirect = false } = {}) {
   const headers = { Accept: "image/*,*/*" };
   if (withAuth) {
     const token = getToken();
@@ -96,26 +100,48 @@ async function fetchBlobFromUrl(url, { withAuth = false } = {}) {
   const res = await fetch(url, {
     headers,
     credentials: withAuth ? apiFetchCredentials() : "omit",
-    // Versioned URLs (?v=) keep force-cache safe; path change ⇒ new URL.
-    cache: "force-cache",
+    // Do not force-cache failures / redirects; only successful blobs are stored in IDB.
+    cache: "default",
+    redirect: allowRedirect ? "follow" : "manual",
   });
-  if (!res.ok) return null;
+
+  // 301/302/303/307/308 — caller should use Location or the catalogue fallback URL.
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("Location");
+    if (location && !withAuth) {
+      return fetchBlobFromUrl(location, { withAuth: false, allowRedirect: true });
+    }
+    return { redirectTo: location || null, blob: null };
+  }
+
+  if (!res.ok) return { redirectTo: null, blob: null };
   const blob = await res.blob();
-  if (!isDisplayableImageBlob(blob)) return null;
-  return blob;
+  if (!isDisplayableImageBlob(blob)) return { redirectTo: null, blob: null };
+  return { redirectTo: null, blob };
 }
 
 async function fetchAndStoreImage(code, fallbackUrl = null, imageVersion = null) {
   const version = normalizeVersion(imageVersion);
-  let blob = await fetchBlobFromUrl(productImageFileUrl(code, version), { withAuth: true }).catch(
-    () => null,
-  );
+  const apiResult = await fetchBlobFromUrl(productImageFileUrl(code, version), {
+    withAuth: true,
+    allowRedirect: false,
+  }).catch(() => ({ redirectTo: null, blob: null }));
+
+  let blob = apiResult?.blob ?? null;
+
   if (!blob) {
-    const external = hotelPosExternalImageUrl(fallbackUrl);
+    const external =
+      hotelPosExternalImageUrl(fallbackUrl) ||
+      hotelPosExternalImageUrl(apiResult?.redirectTo);
     if (external) {
-      blob = await fetchBlobFromUrl(external, { withAuth: false }).catch(() => null);
+      const externalResult = await fetchBlobFromUrl(external, {
+        withAuth: false,
+        allowRedirect: true,
+      }).catch(() => ({ redirectTo: null, blob: null }));
+      blob = externalResult?.blob ?? null;
     }
   }
+
   if (!blob) return null;
   await idbPutCatalogImage(code, blob, blob.type || "image/jpeg", version).catch(() => {});
   return rememberUrl(code, URL.createObjectURL(blob), version);
