@@ -789,8 +789,11 @@ export function EndOfDayReportScreen({
   const debouncedCashierId = useDebouncedValue(cashierId, 350);
   const debouncedFloatSessionId = useDebouncedValue(floatSessionId, 350);
   const [saleDate, setSaleDate] = useState(todayIsoDate());
-  const [reportMode, setReportMode] = useState("daily");
   const [saleMonth, setSaleMonth] = useState(() => todayIsoDate().slice(0, 7));
+  const [reportMode, setReportMode] = useState("daily");
+  const [appliedSaleDate, setAppliedSaleDate] = useState(todayIsoDate());
+  const [appliedSaleMonth, setAppliedSaleMonth] = useState(() => todayIsoDate().slice(0, 7));
+  const [appliedReportMode, setAppliedReportMode] = useState("daily");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -869,10 +872,10 @@ export function EndOfDayReportScreen({
     setError(null);
     try {
       const params = {};
-      if (reportMode === "monthly") {
-        params.sale_month = saleMonth;
+      if (appliedReportMode === "monthly") {
+        params.sale_month = appliedSaleMonth;
       } else {
-        params.sale_date = saleDate;
+        params.sale_date = appliedSaleDate;
       }
       if (debouncedBranchId) params.branch_id = debouncedBranchId;
       if (debouncedCashierId) params.cashier_id = debouncedCashierId;
@@ -887,17 +890,23 @@ export function EndOfDayReportScreen({
     }
   }, [
     apiPath,
-    saleDate,
-    saleMonth,
-    reportMode,
+    appliedSaleDate,
+    appliedSaleMonth,
+    appliedReportMode,
     debouncedBranchId,
     debouncedCashierId,
     debouncedFloatSessionId,
   ]);
 
   useEffect(() => {
-    if (reportMode === "monthly" ? saleMonth : saleDate) load();
-  }, [load, saleDate, saleMonth, reportMode]);
+    if (appliedReportMode === "monthly" ? appliedSaleMonth : appliedSaleDate) load();
+  }, [load, appliedSaleDate, appliedSaleMonth, appliedReportMode]);
+
+  function applyDateFilters() {
+    setAppliedReportMode(reportMode);
+    setAppliedSaleDate(saleDate);
+    setAppliedSaleMonth(saleMonth);
+  }
 
   const summary = report?.summary ?? {};
   const payments = useMemo(() => report?.payments ?? {}, [report?.payments]);
@@ -1072,16 +1081,16 @@ export function EndOfDayReportScreen({
   const floatBreakdownTotal =
     report?.float_breakdown_total ?? summary.opening_float ?? 0;
 
-  const isMonthly = reportMode === "monthly" || report?.report_mode === "monthly";
-  const periodStart = report?.period_start ?? (isMonthly ? `${saleMonth}-01` : saleDate);
-  const periodEnd = report?.period_end ?? saleDate;
+  const isMonthly = appliedReportMode === "monthly" || report?.report_mode === "monthly";
+  const periodStart = report?.period_start ?? (isMonthly ? `${appliedSaleMonth}-01` : appliedSaleDate);
+  const periodEnd = report?.period_end ?? appliedSaleDate;
   const expensesHref = buildExpensesHref({ fromDate: periodStart, toDate: periodEnd });
 
   const handleEodPrint = useCallback(() => {
     if (!report) return;
     const periodLabel = isMonthly
       ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
-      : formatReportDate(saleDate);
+      : formatReportDate(appliedSaleDate);
     void printEodReport(report, {
       organizationName: organization?.org_name ?? organization?.name ?? "",
       branchName,
@@ -1120,7 +1129,7 @@ export function EndOfDayReportScreen({
     periodStart,
     report,
     showTillPanels,
-    saleDate,
+    appliedSaleDate,
     selectedSessionLabel,
     showCashVariance,
     user?.full_name,
@@ -1143,7 +1152,7 @@ export function EndOfDayReportScreen({
             {branchName} ·{" "}
             {isMonthly
               ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
-              : formatReportDate(saleDate)}
+              : formatReportDate(appliedSaleDate)}
             {cashierName ? ` · ${cashierName}` : " · All cashiers"}
             {selectedSessionLabel ? ` · ${selectedSessionLabel}` : ""}
           </p>
@@ -1235,7 +1244,7 @@ export function EndOfDayReportScreen({
               />
             </div>
           )}
-          <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
+          <button type="button" onClick={applyDateFilters} className={SECONDARY_BTN_CLASS}>
             Filter
           </button>
       </FilterToolbar>

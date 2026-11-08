@@ -94,18 +94,14 @@ function FrontDeskManager() {
     };
   }, [foliosEnabled]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ soft = false } = {}) => {
+    if (!soft) setLoading(true);
     try {
-      const [a, d, h, r] = await Promise.all([
-        apiRequest("/hospitality/front-desk/arrivals"),
-        apiRequest("/hospitality/front-desk/departures"),
-        apiRequest("/hospitality/front-desk/in-house"),
-        apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
-      ]);
-      setArrivals(a?.data ?? []);
-      setDepartures(d?.data ?? []);
-      setInHouse(h?.data ?? []);
-      setRooms(r?.data ?? r ?? []);
+      const board = await apiRequest("/hospitality/front-desk/board", { loading: false });
+      setArrivals(board?.arrivals ?? []);
+      setDepartures(board?.departures ?? []);
+      setInHouse(board?.in_house ?? []);
+      setRooms(board?.rooms ?? []);
       setArrivalRoomById({});
       setInHouseRoomById({});
     } catch (e) {

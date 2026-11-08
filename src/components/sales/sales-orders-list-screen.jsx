@@ -969,11 +969,14 @@ export default function SalesOrdersListScreen({
     ordersListSort,
   ]);
 
-  /** Same filters/dates as the list — every matching order across pages. */
+  /** Same filters/dates as the list — queues when the match set spans many pages. */
   const fetchAllFilteredOrders = useCallback(async () => {
     const searchParams = buildOrdersListSearchParams(1, 200);
     const { page: _page, ...rest } = searchParams;
-    return fetchAllPages("/sales", rest, { perPage: 200 });
+    return fetchAllPages("/sales", { ...rest, with_items: 0 }, {
+      perPage: 200,
+      message: "Loading matching orders…",
+    });
   }, [buildOrdersListSearchParams]);
 
   // Keep the last loaded queue when switching tabs; Refresh / filter changes reload.
@@ -2184,7 +2187,13 @@ export default function SalesOrdersListScreen({
                 enabledExpenses={showMobileExpensesCard}
                 unpaidHintCount={(summary?.unpaid ?? 0) + (summary?.partial ?? 0)}
                 loadUnpaidOrders={async () => {
-                  const allRows = await fetchAllFilteredOrders();
+                  const searchParams = buildOrdersListSearchParams(1, 200);
+                  const { page: _page, ...rest } = searchParams;
+                  const allRows = await fetchAllPages(
+                    "/sales",
+                    { ...rest, with_items: 0, outstanding_balance: 1 },
+                    { perPage: 200, message: "Loading unpaid orders…" },
+                  );
                   return (allRows ?? []).filter((sale) => {
                     if (!sale?.id) return false;
                     if (String(sale.status ?? "").toLowerCase() === "cancelled") return false;

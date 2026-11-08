@@ -31,7 +31,9 @@ export function HospitalityNightAuditScreen() {
 function NightAuditManager() {
   const [preview, setPreview] = useState(null);
   const [history, setHistory] = useState([]);
-  const [businessDate, setBusinessDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const today = () => new Date().toISOString().slice(0, 10);
+  const [businessDate, setBusinessDate] = useState(today);
+  const [appliedDate, setAppliedDate] = useState(today);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
@@ -39,9 +41,10 @@ function NightAuditManager() {
     try {
       const [p, h] = await Promise.all([
         apiRequest("/hospitality/night-audit/preview", {
-          searchParams: { business_date: businessDate },
+          searchParams: { business_date: appliedDate },
+          loading: false,
         }),
-        apiRequest("/hospitality/night-audit/history"),
+        apiRequest("/hospitality/night-audit/history", { loading: false }),
       ]);
       setPreview(p);
       setHistory(h?.data ?? []);
@@ -50,17 +53,17 @@ function NightAuditManager() {
     } finally {
       setLoading(false);
     }
-  }, [businessDate]);
+  }, [appliedDate]);
 
   useTabAwareDataLoad(load);
 
   async function run() {
-    if (!window.confirm(`Post room nights for ${businessDate}?`)) return;
+    if (!window.confirm(`Post room nights for ${appliedDate}?`)) return;
     setRunning(true);
     try {
       const res = await apiRequest("/hospitality/night-audit/run", {
         method: "POST",
-        body: { business_date: businessDate },
+        body: { business_date: appliedDate },
       });
       notifySuccess(`Posted ${res?.rooms_posted ?? 0} rooms · ${Number(res?.amount_posted ?? 0).toFixed(2)}`);
       await load();
@@ -88,7 +91,14 @@ function NightAuditManager() {
             onChange={(e) => setBusinessDate(e.target.value)}
           />
         </Field>
-        <SecondaryButton onClick={() => void load()}>Preview</SecondaryButton>
+        <SecondaryButton
+          onClick={() => {
+            setAppliedDate(businessDate);
+            if (businessDate === appliedDate) void load();
+          }}
+        >
+          Preview
+        </SecondaryButton>
         <PrimaryButton
           showIcon={false}
           disabled={running || preview?.already_run || !candidates.length}

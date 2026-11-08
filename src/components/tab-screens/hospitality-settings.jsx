@@ -13,6 +13,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { P } from "@/lib/permission-codes";
 import { LOCAL_PRINTING_ADMIN_LABEL, LOCAL_PRINTING_ADMIN_PATH } from "@/lib/local-printing";
 import {
@@ -165,12 +166,11 @@ export function HospitalitySettingsScreen() {
   const inventoryEnabled = Boolean(capabilities?.modules?.inventory);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const [settingsRes, recipesRes, salesRes] = await Promise.all([
-        apiRequest("/hospitality/settings"),
-        apiRequest("/hospitality/recipes"),
-        apiRequest("/erp/settings/sales").catch(() => null),
+        apiRequest("/hospitality/settings", { loading: false }),
+        apiRequest("/hospitality/recipes", { loading: false }),
+        apiRequest("/erp/settings/sales", { loading: false }).catch(() => null),
       ]);
       setStockForm(hospitalityStockFormFromApi(settingsRes));
       setSetupGuide(settingsRes?.setup_guide ?? null);
@@ -187,9 +187,7 @@ export function HospitalitySettingsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   async function saveStockSettings() {
     if (!canEdit) return;

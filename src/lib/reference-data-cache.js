@@ -40,6 +40,9 @@ export function invalidateReferenceResource(resource, organizationId) {
   invalidateOrgCacheResource(resolveOrgId(organizationId), resource);
 }
 
+/** Soft refresh window — CUD still invalidates immediately via invalidateReferenceResource. */
+const REFERENCE_TTL_MS = 30 * 60_000;
+
 export function fetchCategoriesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "categories");
@@ -49,7 +52,7 @@ export function fetchCategoriesCached(organizationId) {
       loading: false,
     });
     return res.data ?? [];
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export function fetchSubCategoriesCached(organizationId) {
@@ -61,7 +64,7 @@ export function fetchSubCategoriesCached(organizationId) {
       loading: false,
     });
     return res.data ?? [];
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export function fetchVatsCached(organizationId) {
@@ -73,7 +76,7 @@ export function fetchVatsCached(organizationId) {
       loading: false,
     });
     return res.data ?? [];
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export function fetchSuppliersCached(organizationId) {
@@ -81,7 +84,7 @@ export function fetchSuppliersCached(organizationId) {
   const key = orgCacheKey(orgId, "suppliers");
   return fetchOrgCached(key, async () => {
     return fetchAllPaginatedRowsSmart("/reference/suppliers", {}, { perPage: 200 });
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 /**
@@ -119,7 +122,7 @@ export function fetchUomsCached(organizationId) {
       loading: false,
     });
     return res.data ?? [];
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export async function fetchCatalogReferenceDataCached(organizationId) {
@@ -152,7 +155,7 @@ export function fetchBranchesCached(organizationId) {
       }
       throw error;
     }
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export function fetchRoutesCached(organizationId) {
@@ -177,7 +180,7 @@ export function fetchRoutesCached(organizationId) {
       }
       throw error;
     }
-  });
+  }, { ttlMs: REFERENCE_TTL_MS });
 }
 
 export function fetchRetailPackagesCached(organizationId) {

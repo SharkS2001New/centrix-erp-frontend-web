@@ -4,7 +4,7 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 
-export { HotelBarPosScreen } from "@/components/hospitality/hotel-bar-pos-screen";
+/** Prefer importing HotelBarPosScreen from hotel-bar-pos-screen (or the dynamic hotel-bar-pos page). */
 export { HospitalityDashboardContent as HospitalityDashboardScreen } from "@/components/hospitality/hospitality-dashboard-content";
 
 export function HospitalityPlaceholderScreen({ title, description, serviceKey = null }) {

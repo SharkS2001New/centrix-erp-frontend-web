@@ -83,7 +83,7 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     setLoading(true);
     try {
       const [res, settings] = await Promise.all([
-        apiRequest(`/hospitality/checks/${checkId}`),
+        apiRequest(`/hospitality/checks/${checkId}`, { loading: false }),
         fetchHotelPosSettings().catch(() => null),
       ]);
       setCheck(res?.check ?? null);

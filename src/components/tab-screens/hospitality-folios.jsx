@@ -81,6 +81,7 @@ function FoliosManager() {
     try {
       const res = await apiRequest("/hospitality/folios", {
         searchParams: { status: status || undefined, per_page: 100 },
+        loading: false,
       });
       setRows(res?.data ?? []);
     } catch (e) {

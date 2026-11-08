@@ -124,6 +124,7 @@ import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import {
   fetchBranchesCached,
   fetchRetailPackagesForProductCodes,
+  fetchRoutesCached,
   fetchUomsCached,
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
@@ -2350,9 +2351,9 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     let cancelled = false;
-    apiRequest("/routes", { searchParams: { per_page: 200 } })
-      .then((res) => {
-        if (!cancelled) setRoutes(res.data ?? []);
+    fetchRoutesCached(organizationId)
+      .then((rows) => {
+        if (!cancelled) setRoutes(rows ?? []);
       })
       .catch(() => {
         if (!cancelled) setRoutes([]);
@@ -2360,7 +2361,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [showRouteOrderUi]);
+  }, [showRouteOrderUi, organizationId]);
 
   const usesRouteMarkup =
     showRouteOrderUi && isRouteOrder && Boolean(selectedRouteId);
@@ -4432,16 +4433,15 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   const loadPosReferenceData = useCallback(async () => {
-    // Do not warm the full retail-package catalog — hydrate packages for cart/search codes only.
-    const [uoms, vats] = await Promise.all([
-      fetchUomsCached(),
-      fetchVatsCached().catch(() => []),
-    ]);
+    // UOMs unblock the shell first; VATs hydrate after so first paint stays lean.
+    const uoms = await fetchUomsCached();
     const uomMap = new Map();
     for (const u of uoms) uomMap.set(String(u.id), u);
+    setUomById(uomMap);
+
+    const vats = await fetchVatsCached().catch(() => []);
     const vatMap = new Map();
     for (const v of vats) vatMap.set(String(v.id), v);
-    setUomById(uomMap);
     setVatById(vatMap);
     return { uomMap, vatMap };
   }, []);

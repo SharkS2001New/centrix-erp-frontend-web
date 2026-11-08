@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -8,6 +8,8 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import {
   CatalogPageShell,
+  FilterSelect,
+  FilterToolbar,
   inputClassName,
   SearchableSelect,
   SecondaryButton,
@@ -35,34 +37,80 @@ export function HospitalityHousekeepingScreen() {
 function HousekeepingBoard() {
   const [rooms, setRooms] = useState([]);
   const [counts, setCounts] = useState({});
+  const [floors, setFloors] = useState([]);
   const [staff, setStaff] = useState([]);
+  const staffLoadedRef = useRef(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [floorFilter, setFloorFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
 
   const load = useCallback(async () => {
+    const includeStaff = !staffLoadedRef.current;
     try {
-      const res = await apiRequest("/hospitality/housekeeping");
+      const res = await apiRequest("/hospitality/housekeeping", {
+        searchParams: {
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          floor: floorFilter !== "all" ? floorFilter : undefined,
+          include_staff: includeStaff ? 1 : 0,
+        },
+        loading: false,
+      });
       setRooms(res?.rooms ?? []);
       setCounts(res?.counts ?? {});
-      setStaff(res?.staff ?? []);
+      setFloors(res?.floors ?? []);
+      if (includeStaff) {
+        setStaff(res?.staff ?? []);
+        staffLoadedRef.current = true;
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load housekeeping");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter, floorFilter]);
 
-  useTabAwareDataLoad(load);
+  useTabAwareDataLoad(load, {
+    depsKey: `${statusFilter}|${floorFilter}`,
+    hasData: rooms.length > 0 || !loading,
+  });
 
   async function setStatus(roomId, status) {
     setBusyId(roomId);
     try {
-      await apiRequest(`/hospitality/housekeeping/rooms/${roomId}`, {
+      const res = await apiRequest(`/hospitality/housekeeping/rooms/${roomId}`, {
         method: "PATCH",
         body: { status },
+        loading: false,
       });
-      notifySuccess(`Room marked ${status}`);
-      await load();
+      const updated = res?.room;
+      const to = updated?.status ?? status;
+      const from = rooms.find((r) => Number(r.id) === Number(roomId))?.status;
+      notifySuccess(`Room marked ${to}`);
+      if (from && from !== to) {
+        setCounts((c) => {
+          const next = { ...c };
+          if (next[from] != null) next[from] = Math.max(0, Number(next[from]) - 1);
+          next[to] = Number(next[to] ?? 0) + 1;
+          return next;
+        });
+      }
+      setRooms((prev) => {
+        if (statusFilter !== "all" && to !== statusFilter) {
+          return prev.filter((r) => Number(r.id) !== Number(roomId));
+        }
+        return prev.map((r) =>
+          Number(r.id) === Number(roomId)
+            ? {
+                ...r,
+                status: to,
+                housekeeping_assigned_to:
+                  updated?.housekeeping_assigned_to ?? r.housekeeping_assigned_to,
+                housekeeping_notes: updated?.housekeeping_notes ?? r.housekeeping_notes,
+              }
+            : r,
+        );
+      });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Update failed");
     } finally {
@@ -75,21 +123,44 @@ function HousekeepingBoard() {
     if (!room) return;
     setBusyId(roomId);
     try {
-      await apiRequest(`/hospitality/housekeeping/rooms/${roomId}`, {
+      const res = await apiRequest(`/hospitality/housekeeping/rooms/${roomId}`, {
         method: "PATCH",
         body: {
           status: room.status,
           housekeeping_assigned_to: userId ? Number(userId) : null,
         },
+        loading: false,
       });
+      const assignee = staff.find((u) => String(u.id) === String(userId));
       notifySuccess(userId ? "Assignee updated" : "Assignee cleared");
-      await load();
+      setRooms((prev) =>
+        prev.map((r) =>
+          Number(r.id) === Number(roomId)
+            ? {
+                ...r,
+                housekeeping_assigned_to:
+                  res?.room?.housekeeping_assigned_to ?? (userId ? Number(userId) : null),
+                housekeeping_assignee_name: userId
+                  ? assignee?.name ?? r.housekeeping_assignee_name
+                  : null,
+              }
+            : r,
+        ),
+      );
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Assign failed");
     } finally {
       setBusyId(null);
     }
   }
+
+  const floorOptions = useMemo(
+    () => [
+      { value: "all", label: "All floors" },
+      ...floors.map((f) => ({ value: String(f), label: `Floor ${f}` })),
+    ],
+    [floors],
+  );
 
   return (
     <CatalogPageShell title="Housekeeping" subtitle="Update room cleanliness, assign cleaners, and free rooms after checkout.">
@@ -101,6 +172,33 @@ function HousekeepingBoard() {
         ))}
         <SecondaryButton onClick={() => void load()}>Refresh</SecondaryButton>
       </div>
+
+      <FilterToolbar className="mb-4">
+        <FilterSelect
+          value={statusFilter}
+          onChange={(e) => {
+            setLoading(true);
+            setStatusFilter(e.target.value);
+          }}
+          options={[
+            { value: "all", label: "All statuses" },
+            { value: "dirty", label: "Dirty" },
+            { value: "clean", label: "Clean" },
+            { value: "vacant", label: "Vacant" },
+            { value: "occupied", label: "Occupied" },
+            { value: "ooo", label: "Out of order" },
+          ]}
+        />
+        <FilterSelect
+          value={floorFilter}
+          onChange={(e) => {
+            setLoading(true);
+            setFloorFilter(e.target.value);
+          }}
+          options={floorOptions}
+        />
+      </FilterToolbar>
+
       {loading ? (
         <p className="theme-subtext text-sm">Loading…</p>
       ) : (
@@ -154,7 +252,7 @@ function HousekeepingBoard() {
               </div>
             </div>
           ))}
-          {!rooms.length ? <p className="theme-subtext text-sm">No active rooms.</p> : null}
+          {!rooms.length ? <p className="theme-subtext text-sm">No rooms match these filters.</p> : null}
         </div>
       )}
     </CatalogPageShell>

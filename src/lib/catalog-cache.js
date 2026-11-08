@@ -2,6 +2,11 @@ import { apiRequest } from "@/lib/api";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { getStoredOrganization } from "@/lib/auth-storage";
 import {
+  fetchOrgCached,
+  invalidateOrgCacheResource,
+  orgCacheKey,
+} from "@/lib/org-cache";
+import {
   fetchStockLevelsMap,
   mergeProductWithLiveStock,
   mergeProductsWithLiveStock,
@@ -11,6 +16,9 @@ import {
   rankPosProductSearchResults,
   scorePosProductSearch,
 } from "@/lib/pos-product-search-rank";
+
+/** Full catalog crawl is expensive — keep a short session cache; search APIs stay live. */
+const PRODUCT_CATALOG_TTL_MS = 5 * 60_000;
 
 export {
   fetchStockLevelsMap,
@@ -252,20 +260,26 @@ export async function isProductCodeInCatalogCached(organizationId, productCode, 
 }
 
 /**
- * Full product list via live paginated API (no org cache).
+ * Full product list (paginated crawl) with a short org session cache.
  * Prefer searchProductCatalogCached for pickers.
  * @returns {Promise<object[]>}
  */
 export async function fetchProductCatalogCached(organizationId, { status = "active" } = {}) {
-  void resolveOrgId(organizationId);
-  const searchParams = { per_page: 200 };
-  if (status !== "all") searchParams.status = status;
-  const rows = await fetchAllPaginatedRowsSmart(
-    "/products",
-    searchParams,
-    { perPage: 200 },
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "product-catalog", status);
+  return fetchOrgCached(
+    key,
+    async () => {
+      const searchParams = { per_page: 200, fields: "lean" };
+      if (status !== "all") searchParams.status = status;
+      const rows = await fetchAllPaginatedRowsSmart("/products", searchParams, {
+        perPage: 200,
+        message: "Loading product catalogue…",
+      });
+      return (rows ?? []).map(stripProductStockFields);
+    },
+    { ttlMs: PRODUCT_CATALOG_TTL_MS },
   );
-  return (rows ?? []).map(stripProductStockFields);
 }
 
 /** @returns {Promise<Map<string, object>>} */
@@ -289,7 +303,7 @@ export async function fetchProductsWithLiveStock(organizationId, branchId, optio
   return mergeProductsWithLiveStock(catalog, stockByCode);
 }
 
-/** No-op — product catalog is no longer cached client-side. */
-export function invalidateProductCatalogCache(_organizationId) {
-  // Product search/list always hits the API.
+/** Drop session product-catalog cache after product CUD / org switch. */
+export function invalidateProductCatalogCache(organizationId) {
+  invalidateOrgCacheResource(resolveOrgId(organizationId), "product-catalog");
 }
