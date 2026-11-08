@@ -29,7 +29,7 @@ import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
-import { isHttpImageUrl } from "@/components/products/product-image-field";
+import { isHttpImageUrl, isImportableImageUrl } from "@/components/products/product-image-field";
 
 export function ProductsNewScreen() {
   const { capabilities, user } = useAuth();
@@ -221,7 +221,7 @@ export function ProductsNewScreen() {
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
-      if (hotelCatalogue && imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+      if (hotelCatalogue && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(code, imageUrlDraft);
       } else if (hotelCatalogue && imageFile) {
         await uploadProductImage(code, imageFile);
