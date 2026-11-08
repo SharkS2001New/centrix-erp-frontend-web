@@ -122,13 +122,15 @@ import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import {
+  fetchBranchesCached,
   fetchRetailPackagesForProductCodes,
   fetchUomsCached,
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
-import { printSaleOrder } from "@/components/sales/sale-order-print";
+import { printSaleOrder } from "@/components/sales/sale-order-print-lazy";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
+import dynamic from "next/dynamic";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -184,7 +186,6 @@ import {
 } from "@/lib/pos-cart-merge";
 import { validatePosDirectCheckoutPayment } from "@/lib/pos-checkout-credit-sale";
 import { PosPaymentPanel } from "./pos-payment-panel";
-import { PosEditPaymentAdjustmentDialog } from "./pos-edit-payment-adjustment-dialog";
 import { PosProductSearch } from "./pos-product-search";
 import { ClassicPosStatusFooter } from "./classic-pos-status-footer";
 import { ClassicPosCartTable } from "./classic-pos-cart-table";
@@ -195,16 +196,9 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
-import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
-import { PosPendingSyncOverlay } from "./pos-pending-sync-overlay";
 import { OfflineSellingDurationLabel, syncProgressPercent } from "./pos-offline-sync-controls";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
-import { PosSaveOrderDialog } from "./pos-save-order-dialog";
-import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
-import { PosKraProductUploadDialog } from "@/components/pos/pos-kra-product-upload-dialog";
 import { PosActionButton } from "./pos-action-button";
-import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
-import { FloatBreakdownModal, OpenSessionModal, RecordSessionExpenseModal } from "@/components/pos/till-session-ui";
 import { dedupeErrorMessage, buildExpensesHref } from "@/lib/expenses-link";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -226,7 +220,6 @@ import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import { usePosUserThemePreference } from "@/hooks/use-pos-user-theme-preference";
 import { resolveEffectivePosThemeTemplate, resolveEffectivePosThemeColors } from "@/lib/pos-user-theme-preference";
-import { PosUserThemeDialog } from "./pos-user-theme-dialog";
 import {
   abandonOfflineSaleEdit,
   cartHasStaleFailedOutboxAttachment,
@@ -331,12 +324,6 @@ import {
   registerProductsOnKraDevice,
 } from "@/lib/kra-product-registration";
 import { applyTheme, getTheme } from "@/lib/theme";
-import {
-  PosPriceCheckerModal,
-  PosPreviousOrderLoadingOverlay,
-  PosPrepareNextOrderOverlay,
-  PosTicketSyncConflictOverlay,
-} from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
 import { formDraftKey } from "@/stores/form-drafts";
@@ -389,6 +376,79 @@ import {
   previousOrderAdjustmentsMatchDelta,
   resolvePreviousOrderEditPriorTotal,
 } from "@/lib/pos-edit-payment-adjustment";
+
+/** Rare overlays/modals — deferred so classic + modern cart paint first. Behavior unchanged. */
+const PosEditPaymentAdjustmentDialog = dynamic(
+  () => import("./pos-edit-payment-adjustment-dialog").then((m) => m.PosEditPaymentAdjustmentDialog),
+  { ssr: false },
+);
+const PosHeldOrdersOverlay = dynamic(
+  () => import("./pos-held-orders-overlay").then((m) => m.PosHeldOrdersOverlay),
+  { ssr: false },
+);
+const PosPendingSyncOverlay = dynamic(
+  () => import("./pos-pending-sync-overlay").then((m) => m.PosPendingSyncOverlay),
+  { ssr: false },
+);
+const PosSaveOrderDialog = dynamic(
+  () => import("./pos-save-order-dialog").then((m) => m.PosSaveOrderDialog),
+  { ssr: false },
+);
+const PosLeaveGuardDialog = dynamic(
+  () => import("./pos-leave-guard-dialog").then((m) => m.PosLeaveGuardDialog),
+  { ssr: false },
+);
+const PosKraProductUploadDialog = dynamic(
+  () =>
+    import("@/components/pos/pos-kra-product-upload-dialog").then(
+      (m) => m.PosKraProductUploadDialog,
+    ),
+  { ssr: false },
+);
+const CloseSessionModal = dynamic(
+  () => import("@/components/pos/pos-session-modals").then((m) => m.CloseSessionModal),
+  { ssr: false },
+);
+const XReportModal = dynamic(
+  () => import("@/components/pos/pos-session-modals").then((m) => m.XReportModal),
+  { ssr: false },
+);
+const ZReportModal = dynamic(
+  () => import("@/components/pos/pos-session-modals").then((m) => m.ZReportModal),
+  { ssr: false },
+);
+const FloatBreakdownModal = dynamic(
+  () => import("@/components/pos/till-session-ui").then((m) => m.FloatBreakdownModal),
+  { ssr: false },
+);
+const OpenSessionModal = dynamic(
+  () => import("@/components/pos/till-session-ui").then((m) => m.OpenSessionModal),
+  { ssr: false },
+);
+const RecordSessionExpenseModal = dynamic(
+  () => import("@/components/pos/till-session-ui").then((m) => m.RecordSessionExpenseModal),
+  { ssr: false },
+);
+const PosUserThemeDialog = dynamic(
+  () => import("./pos-user-theme-dialog").then((m) => m.PosUserThemeDialog),
+  { ssr: false },
+);
+const PosPriceCheckerModal = dynamic(
+  () => import("./pos-utility-modals").then((m) => m.PosPriceCheckerModal),
+  { ssr: false },
+);
+const PosPreviousOrderLoadingOverlay = dynamic(
+  () => import("./pos-utility-modals").then((m) => m.PosPreviousOrderLoadingOverlay),
+  { ssr: false },
+);
+const PosPrepareNextOrderOverlay = dynamic(
+  () => import("./pos-utility-modals").then((m) => m.PosPrepareNextOrderOverlay),
+  { ssr: false },
+);
+const PosTicketSyncConflictOverlay = dynamic(
+  () => import("./pos-utility-modals").then((m) => m.PosTicketSyncConflictOverlay),
+  { ssr: false },
+);
 
 const cartToolbarBtnClassName =
   "theme-secondary-btn inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold uppercase tracking-wide shadow-sm disabled:opacity-50";
@@ -1786,16 +1846,15 @@ export function PosScreen({ standalone = false }) {
     setPosTillMetaLoading(true);
     try {
       const [tillRes, branchRes, sessionRes] = await Promise.allSettled([
-        apiRequest("/tills", { searchParams: { per_page: 200 } }),
-        apiRequest("/branches", {
-          searchParams: { per_page: 200, ...orgListParams(organizationId) },
-        }),
+        apiRequest("/tills", { searchParams: { per_page: 200 }, loading: false }),
+        fetchBranchesCached(organizationId),
         apiRequest("/till-float-sessions", {
           searchParams: {
             per_page: 200,
             "filter[status]": "open",
             "filter[session_date]": orgTodayKey,
           },
+          loading: false,
         }),
       ]);
       const tills =
@@ -1808,7 +1867,7 @@ export function PosScreen({ standalone = false }) {
           : [];
       const branchesFromApi =
         branchRes.status === "fulfilled"
-          ? filterByOrganization(branchRes.value?.data ?? [], organizationId)
+          ? filterByOrganization(branchRes.value ?? [], organizationId)
           : [];
       const branches = branchesFromApi.length > 0
         ? branchesFromApi

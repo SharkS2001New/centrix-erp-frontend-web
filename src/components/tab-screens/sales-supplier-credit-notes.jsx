@@ -50,6 +50,8 @@ export function SalesSupplierCreditNotesScreen() {
   );
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [busyId, setBusyId] = useState(null);
@@ -67,11 +69,14 @@ export function SalesSupplierCreditNotesScreen() {
         q: debouncedSearch,
         extra: {
           status: statusFilter !== "all" ? statusFilter : undefined,
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
+          from_date: appliedFrom || undefined,
+          to_date: appliedTo || undefined,
         },
       });
-      const res = await apiRequest("/supplier-credit-notes", { searchParams: searchParamsApi });
+      const res = await apiRequest("/supplier-credit-notes", {
+        searchParams: searchParamsApi,
+        loading: false,
+      });
       const parsed = parsePaginator(res);
       setRows(parsed.items);
       setTotal(parsed.total);
@@ -82,13 +87,13 @@ export function SalesSupplierCreditNotesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, appliedFrom, appliedTo]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, appliedFrom, appliedTo]);
 
   const safePage = Math.min(page, totalPages);
   const listRefresh = useListRefreshUi({
@@ -186,6 +191,18 @@ export function SalesSupplierCreditNotesScreen() {
             className={FILTER_CONTROL_CLASS}
             aria-label="To date"
           />
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={listLoading}
+            onClick={() => {
+              setPage(1);
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+            }}
+          >
+            Filter
+          </button>
         </FilterToolbar>
 
         {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}

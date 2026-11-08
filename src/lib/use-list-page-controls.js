@@ -127,8 +127,9 @@ const EMPTY_FIRST_DIR = Object.freeze({});
  */
 export function useTableSort(storageKey, options = {}) {
   const firstDirByColumn = options.firstDirByColumn ?? EMPTY_FIRST_DIR;
-  const [sort, setSort] = useState(null);
-  const [sortDir, setSortDir] = useState("asc");
+  // Sync hydrate (like page size) — avoids default-sort fetch then stored-sort refetch.
+  const [sort, setSort] = useState(() => readStoredSort(storageKey).sort);
+  const [sortDir, setSortDir] = useState(() => readStoredSort(storageKey).sortDir);
 
   useEffect(() => {
     const stored = readStoredSort(storageKey);

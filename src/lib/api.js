@@ -11,6 +11,7 @@ import { notifyError as showErrorToast } from "./notify";
 import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 import { compressImageFileIfNeeded, compressPresetForUpload } from "./image-compress";
+import { invalidateEntityPhotoCache } from "./entity-photo-cache";
 import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
 import {
   ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
@@ -974,7 +975,7 @@ export async function platformSpeedProbeStream({ range = "1h", onEvent, signal }
   return donePayload;
 }
 
-/** Multipart upload (e.g. customer shop image, org logo). */
+/** Multipart upload (e.g. customer shop image, org logo). Always compresses images client-side first. */
 export async function apiUpload(path, file, fieldName = "image", compressOptions = {}) {
   const preset =
     compressOptions.preset ?? compressPresetForUpload(path, fieldName);
@@ -1011,6 +1012,12 @@ export async function apiUpload(path, file, fieldName = "image", compressOptions
     throw new ApiError(formatApiErrorMessage(data, res.statusText || "Upload failed"), res.status, data);
   }
 
+  // Drop stale blob URLs so the next display fetch hits the new file (/…/image → /…/image/file).
+  const cleanPath = String(path.split("?")[0] || "").replace(/\/$/, "");
+  if (cleanPath.startsWith("/")) {
+    invalidateEntityPhotoCache(`${apiBaseOrigin()}/api/v1${cleanPath}`);
+  }
+
   return data;
 }
 
@@ -1018,26 +1025,46 @@ export async function uploadCustomerShopImage(customerNum, file) {
   return apiUpload(`/customers/${customerNum}/shop-image`, file, "image", { preset: "photo" });
 }
 
+async function invalidateProductImageLocalCaches(productCode) {
+  const code = String(productCode ?? "").trim();
+  if (!code) return;
+  invalidateEntityPhotoCache(
+    `${apiBaseOrigin()}/api/v1/products/${encodeURIComponent(code)}/image`,
+  );
+  try {
+    const { invalidateHotelPosProductImageCache } = await import("@/lib/hotel-pos-image-cache");
+    invalidateHotelPosProductImageCache(code);
+  } catch {
+    /* hotel cache optional outside POS bundles */
+  }
+}
+
 export async function uploadProductImage(productCode, file) {
-  return apiUpload(
+  const data = await apiUpload(
     `/products/${encodeURIComponent(productCode)}/image`,
     file,
     "image",
     { preset: "photo" },
   );
+  await invalidateProductImageLocalCaches(productCode);
+  return data;
 }
 
 export async function importProductImageFromUrl(productCode, url) {
-  return apiRequest(`/products/${encodeURIComponent(productCode)}/image/from-url`, {
+  const data = await apiRequest(`/products/${encodeURIComponent(productCode)}/image/from-url`, {
     method: "POST",
     body: { url: String(url ?? "").trim() },
   });
+  await invalidateProductImageLocalCaches(productCode);
+  return data;
 }
 
 export async function deleteProductImage(productCode) {
-  return apiRequest(`/products/${encodeURIComponent(productCode)}/image`, {
+  const data = await apiRequest(`/products/${encodeURIComponent(productCode)}/image`, {
     method: "DELETE",
   });
+  await invalidateProductImageLocalCaches(productCode);
+  return data;
 }
 
 export async function apiFetchBlob(path) {

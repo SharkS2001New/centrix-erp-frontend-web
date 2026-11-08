@@ -55,6 +55,8 @@ export function AccountingCustomerInvoicesScreen() {
   );
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(20);
@@ -66,8 +68,8 @@ export function AccountingCustomerInvoicesScreen() {
       const extra = {};
       if (presetCustomer) extra.customer_num = presetCustomer;
       if (statusFilter !== "all") extra.payment_status = statusFilter;
-      if (fromDate) extra.from_date = fromDate;
-      if (toDate) extra.to_date = toDate;
+      if (appliedFrom) extra.from_date = appliedFrom;
+      if (appliedTo) extra.to_date = appliedTo;
 
       const searchParamsApi = buildPageParams({
         page,
@@ -75,7 +77,10 @@ export function AccountingCustomerInvoicesScreen() {
         q: debouncedSearch,
         extra,
       });
-      const res = await apiRequest("/customer-invoices", { searchParams: searchParamsApi });
+      const res = await apiRequest("/customer-invoices", {
+        searchParams: searchParamsApi,
+        loading: false,
+      });
       const parsed = parsePaginator(res);
       setInvoices(parsed.items.map(normalizeCustomerInvoice));
       setTotalInvoices(parsed.total);
@@ -86,13 +91,13 @@ export function AccountingCustomerInvoicesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, presetCustomer, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, presetCustomer, appliedFrom, appliedTo]);
 
   useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, presetCustomer, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, presetCustomer, appliedFrom, appliedTo]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -123,8 +128,8 @@ export function AccountingCustomerInvoicesScreen() {
               const extra = {};
               if (presetCustomer) extra.customer_num = presetCustomer;
               if (statusFilter !== "all") extra.payment_status = statusFilter;
-              if (fromDate) extra.from_date = fromDate;
-              if (toDate) extra.to_date = toDate;
+              if (appliedFrom) extra.from_date = appliedFrom;
+              if (appliedTo) extra.to_date = appliedTo;
               return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
             }}
             disabled={loading || listLoading}
@@ -165,6 +170,18 @@ export function AccountingCustomerInvoicesScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={listLoading}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}

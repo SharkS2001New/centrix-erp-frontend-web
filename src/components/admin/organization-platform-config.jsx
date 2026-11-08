@@ -1718,7 +1718,7 @@ function OrganizationHotelServicesPanel({
       {mode === "manage" && organizationId ? (
         <PlatformFormSection
           title="Hotel POS demo data"
-          description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated. Remove deletes the hotel/bar menu, demo tables, and all Hotel POS orders so you can start with real data. Outlets, rooms, and reservations are kept."
+          description="Seed ~38 Hotel & Bar menu items with photos (kitchen food, hotel drinks, bar alcohol & softs), floor tables, and outlets for POS testing. Photos are stored on the organisation media disk (local or R2). Safe to re-run — existing HTL-* codes are updated. Remove deletes the hotel/bar menu, demo tables, and all Hotel POS orders so you can start with real data. Outlets, rooms, and reservations are kept."
         >
           <div className="flex flex-wrap gap-3">
             <button

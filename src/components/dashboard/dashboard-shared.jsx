@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Field, SearchableSelect, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  Field,
+  SearchableSelect,
+  SECONDARY_BTN_CLASS,
+  StatCard,
+  inputClassName,
+} from "@/components/catalog/catalog-shared";
 import { HubKpiCard } from "@/components/reports/report-charts";
 import { formatReportKes } from "@/lib/reports/format";
 
@@ -99,6 +105,8 @@ export function DashboardDateRangeBar({
   onToDateChange,
   onBranchChange,
   showBranch = true,
+  onApply,
+  applyDisabled = false,
   onRefresh,
   refreshing = false,
   /** Inclusive minimum span (e.g. 7 = at least one week). */
@@ -144,6 +152,16 @@ export function DashboardDateRangeBar({
               ]}
             />
           </Field>
+        ) : null}
+        {onApply ? (
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={applyDisabled || refreshing}
+            onClick={onApply}
+          >
+            Filter
+          </button>
         ) : null}
         {onRefresh ? <DashboardRefreshButton onClick={onRefresh} loading={refreshing} /> : null}
       </div>

@@ -112,6 +112,8 @@ export function ExpensesScreen() {
   const [userFilter, setUserFilter] = useState("all");
   const [fromDate, setFromDate] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
   const [toDate, setToDate] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
+  const [appliedTo, setAppliedTo] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
   const [statusFilter, setStatusFilter] = useState("active");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
@@ -164,7 +166,7 @@ export function ExpensesScreen() {
         status: statusFilter,
         ...(hasUrlDateRange
           ? { from_date: urlFromDate, to_date: urlToDate }
-          : { from_date: fromDate, to_date: toDate }),
+          : { from_date: appliedFrom, to_date: appliedTo }),
       };
 
       const searchParams = buildPageParams({
@@ -186,7 +188,7 @@ export function ExpensesScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   // List first — do not wait for groups/users/summary.
   useTabAwareDataLoad(loadExpenses, { softEvictMs: 20_000 });
@@ -238,7 +240,7 @@ export function ExpensesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, pageSize, sort, sortDir]);
 
   const activeSortLabel = sort
     ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
@@ -450,8 +452,8 @@ export function ExpensesScreen() {
                 },
                 extra: {
                   status: statusFilter,
-                  from_date: hasUrlDateRange ? urlFromDate : fromDate,
-                  to_date: hasUrlDateRange ? urlToDate : toDate,
+                  from_date: hasUrlDateRange ? urlFromDate : appliedFrom,
+                  to_date: hasUrlDateRange ? urlToDate : appliedTo,
                 },
               })
             }
@@ -522,6 +524,18 @@ export function ExpensesScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={listLoading || hasUrlDateRange}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
         <FilterSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}

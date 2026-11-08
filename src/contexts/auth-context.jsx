@@ -338,44 +338,8 @@ export function AuthProvider({ children }) {
       });
   }, [refreshCapabilities]);
 
-  useEffect(() => {
-    if (!hasAuthSession()) return undefined;
-    const isPosSession = loginChannel === POS_LOGIN_CHANNEL;
-    const refreshOnFocus = () => {
-      // Browser print dialog blurs/focuses the app; refreshing capabilities here
-      // remounts heavy screens and feels like the page reloaded after Print A4.
-      if (isBrowserPrintDialogOpen()) return;
-      refreshCapabilities({
-        maxAgeMs: isPosSession ? POS_CAPABILITIES_REFRESH_MS : CAPABILITIES_REFRESH_MS,
-      }).catch(() => {});
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshOnFocus();
-      }
-    };
-
-    window.addEventListener("focus", refreshOnFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", refreshOnFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [refreshCapabilities, loginChannel]);
-
-  useEffect(() => {
-    if (!hasAuthSession() || loginChannel !== POS_LOGIN_CHANNEL) return undefined;
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      refreshCapabilities({ maxAgeMs: POS_CAPABILITIES_REFRESH_MS }).catch(() => {});
-    }, POS_CAPABILITIES_REFRESH_MS);
-
-    return () => window.clearInterval(interval);
-  }, [refreshCapabilities, loginChannel]);
-
+  // Focus / visibility: version stamp only (cheap). Full capabilities refresh only when
+  // the stamp changes — avoids remounting POS on print blur/focus.
   useEffect(() => {
     if (!hasAuthSession()) return undefined;
 
@@ -409,14 +373,20 @@ export function AuthProvider({ children }) {
       }
     };
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void syncIfAccessChanged();
+      }
+    };
+
     const interval = window.setInterval(syncIfAccessChanged, CAPABILITIES_VERSION_POLL_MS);
     window.addEventListener("focus", syncIfAccessChanged);
-    document.addEventListener("visibilitychange", syncIfAccessChanged);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncIfAccessChanged);
-      document.removeEventListener("visibilitychange", syncIfAccessChanged);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [refreshCapabilities]);
 

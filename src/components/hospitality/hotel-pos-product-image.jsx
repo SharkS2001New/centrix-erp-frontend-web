@@ -2,55 +2,88 @@
 
 import { memo, useEffect, useState } from "react";
 import {
+  hotelPosExternalImageUrl,
+  hotelPosImageVersionFromUrl,
   peekHotelPosCachedImageUrl,
   resolveHotelPosCachedImageUrl,
 } from "@/lib/hotel-pos-image-cache";
 
 /**
- * Prefers session/IndexedDB cached photo; fetches once and stores in IndexedDB.
+ * Prefers session/IndexedDB cached photo (R2 → API → local PC).
+ * Refreshes only when imageVersion / image path changes after upload or replace.
  */
 export const HotelPosProductImage = memo(function HotelPosProductImage({
   productCode,
   imageUrl,
+  imageVersion = null,
   offlineMode = false,
   alt = "Product",
   className = "h-full w-full object-cover",
   placeholderClassName = "flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400",
 }) {
-  const [src, setSrc] = useState(() => peekHotelPosCachedImageUrl(productCode));
+  const version =
+    imageVersion || hotelPosImageVersionFromUrl(imageUrl) || null;
+  const [src, setSrc] = useState(() => peekHotelPosCachedImageUrl(productCode, version));
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const directUrl = imageUrl && !imageUrl.includes("/api/v1/products/") ? imageUrl : null;
-    const immediate = peekHotelPosCachedImageUrl(productCode);
-    if (directUrl && !offlineMode) {
-      setSrc(directUrl);
-      return undefined;
-    }
+    setFailed(false);
+
+    const external = hotelPosExternalImageUrl(imageUrl);
+    const immediate = peekHotelPosCachedImageUrl(productCode, version);
     if (immediate) {
       setSrc(immediate);
       return undefined;
     }
-    setSrc(null);
-    if (!productCode) return undefined;
+    if (external && !offlineMode) {
+      setSrc(external);
+      if (productCode) {
+        void resolveHotelPosCachedImageUrl(productCode, {
+          fallbackUrl: imageUrl,
+          imageVersion: version,
+        }).then((url) => {
+          if (!cancelled && url) setSrc(url);
+        });
+      }
+      return undefined;
+    }
 
-    void resolveHotelPosCachedImageUrl(productCode).then((url) => {
-      if (!cancelled && url) setSrc(url);
+    setSrc(null);
+    if (!productCode) {
+      setFailed(true);
+      return undefined;
+    }
+
+    void resolveHotelPosCachedImageUrl(productCode, {
+      fallbackUrl: imageUrl,
+      imageVersion: version,
+    }).then((url) => {
+      if (cancelled) return;
+      if (url) {
+        setSrc(url);
+        return;
+      }
+      if (external) {
+        setSrc(external);
+        return;
+      }
+      setFailed(true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, offlineMode, productCode]);
+  }, [imageUrl, imageVersion, offlineMode, productCode, version]);
 
   const handleImageError = () => {
-    if (src === imageUrl && productCode) {
-      void resolveHotelPosCachedImageUrl(productCode).then((url) => {
-        if (url) setSrc(url);
-      });
+    const external = hotelPosExternalImageUrl(imageUrl);
+    if (src && external && src !== external) {
+      setSrc(external);
       return;
     }
     setSrc(null);
+    setFailed(true);
   };
 
   if (src) {
@@ -60,7 +93,7 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
     );
   }
 
-  if (offlineMode) {
+  if (offlineMode || failed) {
     return <span className={placeholderClassName}>No photo</span>;
   }
 

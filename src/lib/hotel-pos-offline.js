@@ -17,7 +17,6 @@ import {
   idbDeleteOutboxCheck,
   idbGetAllCatalog,
   idbGetCatalogProduct,
-  idbListCatalogImageCodes,
   idbGetLocalCheck,
   idbGetMeta,
   idbGetOutboxCheck,
@@ -153,7 +152,8 @@ export async function warmHotelPosOfflineCatalog({
 
 /**
  * Download authenticated product photos into IndexedDB for offline tiles.
- * @param {Array<{ product_code: string, has_image?: boolean, image_url?: string }>} products
+ * Keeps existing blobs when image_version matches; re-fetches only after path/upload change.
+ * @param {Array<{ product_code: string, has_image?: boolean, image_url?: string, image_version?: string|null }>} products
  */
 export async function warmHotelPosOfflineImages(products = []) {
   const withImages = (products ?? []).filter(
@@ -162,14 +162,17 @@ export async function warmHotelPosOfflineImages(products = []) {
   if (!withImages.length) return { warmed: 0 };
 
   const { resolveHotelPosCachedImageUrl } = await import("@/lib/hotel-pos-image-cache");
-  const already = new Set(await idbListCatalogImageCodes().catch(() => []));
-  const missing = withImages.filter((p) => !already.has(String(p.product_code)));
-  let warmed = already.size;
+  let warmed = 0;
 
-  for (let i = 0; i < missing.length; i += IMAGE_WARM_CONCURRENCY) {
-    const slice = missing.slice(i, i + IMAGE_WARM_CONCURRENCY);
+  for (let i = 0; i < withImages.length; i += IMAGE_WARM_CONCURRENCY) {
+    const slice = withImages.slice(i, i + IMAGE_WARM_CONCURRENCY);
     const urls = await Promise.all(
-      slice.map((p) => resolveHotelPosCachedImageUrl(String(p.product_code)).catch(() => null)),
+      slice.map((p) =>
+        resolveHotelPosCachedImageUrl(String(p.product_code), {
+          fallbackUrl: p.image_url ?? null,
+          imageVersion: p.image_version ?? null,
+        }).catch(() => null),
+      ),
     );
     warmed += urls.filter(Boolean).length;
   }
@@ -393,6 +396,7 @@ export function addProductToHotelCheckInMemory(check, product, qty = 1) {
       vat_amount: lineVatAmount(lineTotal, vatPct),
       sort_order: lines.length + 1,
       image_url: product.image_url ?? null,
+      image_version: product.image_version ?? null,
     });
   }
   return recalculateLocalHotelCheck({
@@ -457,6 +461,7 @@ export function mergeHotelCheckFromServer(serverCheck, optimisticCheck, pendingP
       ...serverLine,
       client_key: clientKey,
       image_url: opt.image_url ?? serverLine.image_url,
+      image_version: opt.image_version ?? serverLine.image_version ?? null,
     };
   });
 

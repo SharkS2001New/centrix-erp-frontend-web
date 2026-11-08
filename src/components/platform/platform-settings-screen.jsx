@@ -9,6 +9,7 @@ import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
+import { PlatformR2MediaSettingsPanel } from "@/components/platform/platform-r2-media-settings-panel";
 import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
 import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platform-kenya-payroll-settings-panel";
 import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
@@ -94,7 +95,7 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
             : activeTab === "demo-videos"
               ? "Manage the in-app demo shown to self-registered organizations and the public Centrix landing-page demo."
             : activeTab === "r2"
-              ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+              ? "Cloudflare R2 for database backups and product/media files (org-scoped by company code)."
               : activeTab === "payroll"
                 ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
                 : activeTab === "paybill"
@@ -140,7 +141,12 @@ export function PlatformSettingsScreen({ initialTab = "theme" }) {
         </div>
       ) : null}
       {activeTab === "paybill" ? <PlatformPaybillSettingsPanel /> : null}
-      {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
+      {activeTab === "r2" ? (
+        <div className="space-y-6">
+          <PlatformR2BackupSettingsPanel />
+          <PlatformR2MediaSettingsPanel />
+        </div>
+      ) : null}
     </CatalogPageShell>
   );
 }

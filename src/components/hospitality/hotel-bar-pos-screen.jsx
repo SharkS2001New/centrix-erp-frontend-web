@@ -195,6 +195,7 @@ const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
           <HotelPosProductImage
             productCode={product.product_code}
             imageUrl={product.image_url}
+            imageVersion={product.image_version}
             offlineMode={offlineMode}
             alt={product.product_name}
             className="h-full w-full object-cover"
@@ -381,7 +382,7 @@ export function HotelBarPosScreen() {
           if (p?.product_code) m.set(String(p.product_code), p);
         }
         replaceCatalogMap(m);
-        void primeHotelPosImageCacheFromIndexedDb([...m.keys()]);
+        void primeHotelPosImageCacheFromIndexedDb([...m.values()]);
         void warmHotelPosOfflineImages([...m.values()]).catch(() => {});
       } catch (e) {
         // ignore
@@ -702,9 +703,7 @@ export function HotelBarPosScreen() {
                     await idbPutCatalogProducts(batch);
                     upsertCatalogMapItems(batch);
                     void warmHotelPosOfflineImages(batch).catch(() => {});
-                    void primeHotelPosImageCacheFromIndexedDb(
-                      batch.map((p) => p.product_code),
-                    );
+                    void primeHotelPosImageCacheFromIndexedDb(batch);
                   } catch {
                     /* ignore */
                   }
@@ -746,7 +745,7 @@ export function HotelBarPosScreen() {
               await idbPutCatalogProducts(batch);
               upsertCatalogMapItems(batch);
               void warmHotelPosOfflineImages(batch).catch(() => {});
-              void primeHotelPosImageCacheFromIndexedDb(batch.map((p) => p.product_code));
+              void primeHotelPosImageCacheFromIndexedDb(batch);
             } catch {
               /* ignore */
             }
@@ -2160,6 +2159,7 @@ export function HotelBarPosScreen() {
                             <HotelPosProductImage
                               productCode={line.product_code}
                               imageUrl={line.image_url}
+                              imageVersion={line.image_version}
                               offlineMode={offlineMode}
                               alt={line.description}
                               className="h-full w-full object-cover"
