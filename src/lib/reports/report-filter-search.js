@@ -42,7 +42,7 @@ export function reportFilterPlaceholder(optionsKey, label) {
     routes: "All routes",
     subcategories: "All subcategories",
     suppliers: "All suppliers",
-    cashiers: "All users",
+    cashiers: "All sales users",
     paymentMethods: "All payment methods",
     customers: "All customers",
     products: "All products",

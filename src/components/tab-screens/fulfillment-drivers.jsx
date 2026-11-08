@@ -8,7 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchEmployeesCached,
   fetchRoutesCached,
-  fetchUsersCached,
+  fetchActiveUsersCached,
   fetchVehiclesCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -158,7 +158,7 @@ export function FulfillmentDriversScreen() {
     try {
       const orgId = user?.organization_id;
       const [usersData, employeesData] = await Promise.all([
-        fetchUsersCached(orgId),
+        fetchActiveUsersCached(orgId),
         fetchEmployeesCached(orgId).catch(() => []),
       ]);
       setUsers(usersData ?? []);

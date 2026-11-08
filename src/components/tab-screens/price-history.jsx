@@ -8,7 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { fetchCategoriesCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchCategoriesCached, fetchActiveUsersCached } from "@/lib/reference-data-cache";
 import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import {
   Field,
@@ -180,7 +180,7 @@ export function PriceHistoryScreen() {
       const orgId = user?.organization_id;
       const [cats, usersData] = await Promise.all([
         fetchCategoriesCached(orgId),
-        fetchUsersCached(orgId),
+        fetchActiveUsersCached(orgId),
       ]);
       setCategories(cats ?? []);
       setUsers(usersData ?? []);
@@ -314,7 +314,7 @@ export function PriceHistoryScreen() {
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
           options={[
-            { value: "all", label: "All users" },
+            { value: "all", label: "All active users" },
             ...users.map((u) => ({
               value: String(u.id),
               label: u.username ?? u.full_name,

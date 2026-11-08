@@ -2069,8 +2069,10 @@ export function OrganizationModuleToggles({
       title="Applications"
       description={
         isHotelProfile
-          ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
-          : "Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
+          ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus optional Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
+          : deploymentProfile === "spa_kinyozi"
+            ? "SPA & Kinyozi tenants get the salon workspace and Administration. Accounting and HR are not part of this setup."
+            : "Choose which applications appear on the login workspace screen for this organization. Applications follow the organisation’s industry and setup type. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
       }
     >
       <div className="space-y-4">

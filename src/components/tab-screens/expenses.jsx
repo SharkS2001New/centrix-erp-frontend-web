@@ -30,7 +30,7 @@ import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
-import { fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchActiveUsersCached } from "@/lib/reference-data-cache";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
 import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
@@ -137,7 +137,7 @@ export function ExpensesScreen() {
       const [groupRes, pmRes, usersData, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 200 } }),
-        fetchUsersCached(user?.organization_id),
+        fetchActiveUsersCached(user?.organization_id),
         apiRequest("/expenses/summary").catch(() => null),
       ]);
       setGroups(groupRes.data ?? []);
@@ -494,7 +494,7 @@ export function ExpensesScreen() {
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
           options={[
-            { value: "all", label: "All users" },
+            { value: "all", label: "All active users" },
             ...users
               .slice()
               .sort((a, b) =>

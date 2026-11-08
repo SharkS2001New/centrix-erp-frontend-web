@@ -567,7 +567,7 @@ export default function SalesOrdersListScreen({
         label: u.full_name?.trim() || u.username || `User #${u.id}`,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-    return [{ value: "all", label: "All users" }, ...list];
+    return [{ value: "all", label: "All sales users" }, ...list];
   }, [sellers]);
 
   const ordersListSort = useMemo(() => {

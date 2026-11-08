@@ -75,6 +75,7 @@ function savedMenuGroup(profile, group) {
 export function PlatformSetupTypesPanel() {
   const confirm = useConfirm();
   const [profiles, setProfiles] = useState([]);
+  const [businessTypeCatalog, setBusinessTypeCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [name, setName] = useState("");
@@ -88,10 +89,12 @@ export function PlatformSetupTypesPanel() {
     if (!quiet) setLoading(true);
     try {
       const res = await apiRequest("/admin/setup-profiles");
+      setBusinessTypeCatalog(Array.isArray(res?.business_type_catalog) ? res.business_type_catalog : []);
       setProfiles(
         Array.isArray(res?.data)
           ? res.data.map((profile) => ({
               ...profile,
+              business_types: Array.isArray(profile.business_types) ? profile.business_types : [],
               sales_platform: defaultSalesPlatformState(
                 profile.key,
                 profile.default_sales_platform,
@@ -172,6 +175,7 @@ export function PlatformSetupTypesPanel() {
         hr: savedMenuGroup(profile, GROUPS[1]),
         accounting: savedMenuGroup(profile, GROUPS[2]),
         applications: profile.applications ?? {},
+        business_types: Array.isArray(profile.business_types) ? profile.business_types : [],
         sales_platform: profile.sales_platform ?? {},
         payroll_platform: payrollPlatformToApi(
           profile.payroll_platform ?? defaultPayrollPlatformState(),
@@ -192,6 +196,21 @@ export function PlatformSetupTypesPanel() {
 
   function setLabel(profileKey, label) {
     setProfiles((rows) => rows.map((row) => (row.key === profileKey ? { ...row, label } : row)));
+  }
+
+  function setBusinessType(profileKey, businessType, checked) {
+    setProfiles((rows) =>
+      rows.map((row) => {
+        if (row.key !== profileKey) return row;
+        const current = Array.isArray(row.business_types) ? row.business_types : [];
+        const next = checked
+          ? current.includes(businessType)
+            ? current
+            : [...current, businessType]
+          : current.filter((value) => value !== businessType);
+        return { ...row, business_types: next };
+      }),
+    );
   }
 
   function setSalesPlatform(profileKey, salesPlatform) {
@@ -327,9 +346,9 @@ export function PlatformSetupTypesPanel() {
         </PrimaryButton>
       </form>
       <p className="text-sm text-slate-600">
-        Configure applications, sales behaviour, order workflow, order/report defaults, and
-        hospitality or payroll settings for each setup type. These defaults are applied when the
-        setup is selected during registration or on an existing organization.
+        Tick the applications and menu parts each setup type includes, and which business types it
+        appears under on Instant trial. Disabled applications stay hidden. These defaults are applied
+        when the setup is selected during website signup or on an existing organisation.
       </p>
       {profiles.map((profile) => (
         <div key={profile.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -421,6 +440,9 @@ export function PlatformSetupTypesPanel() {
                 ) : null}
               <details open className="rounded-lg border border-slate-200 px-3 py-2">
                 <summary className="cursor-pointer text-sm font-medium text-slate-800">Applications</summary>
+                <p className="mt-1 text-xs text-slate-500">
+                  Only apps for this industry are listed. Unticked apps are not provisioned and stay hidden from tenants.
+                </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {provisionableWorkspacesForProfile(activeProfile.key, profiles).map((app) => (
                     <label key={app.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -435,29 +457,63 @@ export function PlatformSetupTypesPanel() {
                   ))}
                 </div>
               </details>
-              {GROUPS.map((group) => {
-                const moduleOn = menuGroupModuleOn(activeProfile, group);
+              <details open className="rounded-lg border border-slate-200 px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                  Business types (Instant trial)
+                </summary>
+                <p className="mt-1 text-xs text-slate-500">
+                  Choose which website business types show this setup. Leave all unticked to allow every business type in the industry.
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {businessTypeCatalog
+                    .filter((row) => row.industry === activeProfile.industry)
+                    .map((row) => (
+                      <label
+                        key={row.value}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300"
+                          checked={(activeProfile.business_types ?? []).includes(row.value)}
+                          onChange={(event) =>
+                            setBusinessType(activeProfile.key, row.value, event.target.checked)
+                          }
+                        />
+                        <span>{row.label}</span>
+                      </label>
+                    ))}
+                </div>
+              </details>
+              {GROUPS.filter((group) => menuGroupModuleOn(activeProfile, group)).map((group) => {
                 const values = group.normalize(activeProfile.menu_groups?.[group.id]);
                 return (
-                  <details key={group.id} className="rounded-lg border border-slate-200 px-3 py-2">
-                    <summary className={`cursor-pointer text-sm font-medium ${moduleOn ? "text-slate-800" : "text-slate-400"}`}>
+                  <details key={group.id} open className="rounded-lg border border-slate-200 px-3 py-2">
+                    <summary className="cursor-pointer text-sm font-medium text-slate-800">
                       {group.title}
                     </summary>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Parts shown inside this application for organisations using this setup.
+                    </p>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       {group.catalog.map((section) => (
                         <label
                           key={section.key}
-                          className={`flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm ${
-                            moduleOn ? "" : "cursor-not-allowed opacity-50"
-                          }`}
+                          className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         >
                           <input
                             type="checkbox"
                             className="rounded border-slate-300"
-                            disabled={!moduleOn}
-                            checked={moduleOn && values[section.key] !== false}
+                            checked={values[section.key] !== false}
                             onChange={(event) =>
-                              setGroup(activeProfile.key, group.id, group.catalog, group.normalize, section.key, event.target.checked)
+                              setGroup(
+                                activeProfile.key,
+                                group.id,
+                                group.catalog,
+                                group.normalize,
+                                section.key,
+                                event.target.checked,
+                              )
                             }
                           />
                           <span>{section.label}</span>

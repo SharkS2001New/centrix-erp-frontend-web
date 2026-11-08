@@ -238,8 +238,19 @@ export function fetchUsersCached(organizationId, { path = "/reference/users", se
 }
 
 /**
+ * Active login users for generic filters (expenses, price history, etc.).
+ * Excludes deactivated users and users linked to inactive employees.
+ */
+export function fetchActiveUsersCached(organizationId) {
+  return fetchUsersCached(organizationId, {
+    searchParams: { active_only: 1 },
+  });
+}
+
+/**
  * Users who can create orders / sell: backoffice create order, POS checkout,
  * hotel POS, or mobile field sales — filtered server-side by permissions.
+ * Active accounts only (inactive employees linked to a user are excluded).
  */
 export function fetchSalesCapableUsersCached(organizationId) {
   return fetchUsersCached(organizationId, {
