@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   readTabWorkspaceStore,
   seedWorkspaceTabLanding,
+  shouldKeepTabPaneMounted,
   tabStorageKey,
 } from "@/lib/tab-workspace";
 
@@ -81,5 +82,35 @@ describe("seedWorkspaceTabLanding", () => {
       "/accounting/trial-balance",
       "/accounting/journal",
     ]);
+  });
+});
+
+describe("shouldKeepTabPaneMounted", () => {
+  it("keeps everyday list/report panes mounted when inactive so revisit does not reload", () => {
+    expect(
+      shouldKeepTabPaneMounted({ entryId: "products", isActive: false, inactiveKeepRank: 0 }),
+    ).toBe(true);
+    expect(
+      shouldKeepTabPaneMounted({ entryId: "reports-key", isActive: false, inactiveKeepRank: 2 }),
+    ).toBe(true);
+    expect(
+      shouldKeepTabPaneMounted({ entryId: "inventory-stock", isActive: false, inactiveKeepRank: 5 }),
+    ).toBe(true);
+  });
+
+  it("soft-evicts only POS and live stock-take when inactive", () => {
+    expect(
+      shouldKeepTabPaneMounted({ entryId: "sales-pos", isActive: false, inactiveKeepRank: 0 }),
+    ).toBe(false);
+    expect(
+      shouldKeepTabPaneMounted({
+        entryId: "inventory-stock-take-id",
+        isActive: false,
+        inactiveKeepRank: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepTabPaneMounted({ entryId: "sales-pos", isActive: true, inactiveKeepRank: -1 }),
+    ).toBe(true);
   });
 });

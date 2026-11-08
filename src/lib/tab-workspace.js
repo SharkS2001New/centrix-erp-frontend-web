@@ -5,20 +5,21 @@ import { lookupReportLabel } from "@/lib/reports/report-nav";
 
 export const TAB_WORKSPACE_MAX_TABS = 10;
 
-/** Soft keep-alive: active tab + this many recent inactive panes stay mounted. */
-export const TAB_KEEP_ALIVE_SOFT_MAX = 4;
+/**
+ * Soft keep-alive cap when many tabs are open. Active tab is always mounted;
+ * this many most-recently-used inactive panes stay mounted too. Remaining idle
+ * panes soft-evict and remount only when reopened (memory pressure valve).
+ */
+export const TAB_KEEP_ALIVE_SOFT_MAX = TAB_WORKSPACE_MAX_TABS;
 
 /**
- * Always unmount when inactive — these screens retain heavy in-memory state.
- * Tab chrome stays; pane remounts on reactivation.
+ * Always unmount when inactive — only screens that are unsafe or extremely heavy
+ * to leave mounted (live POS cart / stock-take session). Everyday lists & reports
+ * stay keep-alive so revisiting a tab does not reload.
  */
 export const TAB_SOFT_EVICT_ALWAYS = new Set([
   "sales-pos",
-  "reports-key",
-  "inventory-stock",
   "inventory-stock-take-id",
-  "products",
-  "accounting-account-mappings",
 ]);
 
 /**
@@ -31,7 +32,8 @@ export const TAB_SOFT_EVICT_ALWAYS = new Set([
 export function shouldKeepTabPaneMounted({ entryId, isActive, inactiveKeepRank }) {
   if (isActive) return true;
   if (TAB_SOFT_EVICT_ALWAYS.has(entryId)) return false;
-  return inactiveKeepRank >= 0 && inactiveKeepRank < Math.max(0, TAB_KEEP_ALIVE_SOFT_MAX - 1);
+  // Keep every open inactive pane while under the soft max (default = max tabs).
+  return inactiveKeepRank >= 0 && inactiveKeepRank < Math.max(0, TAB_KEEP_ALIVE_SOFT_MAX);
 }
 
 /** Routes that always use full-page navigation without the tab bar. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
@@ -382,7 +382,6 @@ function CollapsibleNavSection({
 
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
@@ -548,21 +547,9 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     [visibleSections, workspaceId],
   );
 
-  const navHrefs = useMemo(() => {
-    const hrefs = new Set();
-    for (const section of visibleSections) {
-      for (const item of section.items ?? []) {
-        if (item.href) hrefs.add(item.href);
-      }
-    }
-    return [...hrefs];
-  }, [visibleSections]);
-
-  useEffect(() => {
-    for (const href of navHrefs) {
-      router.prefetch(href);
-    }
-  }, [navHrefs, router]);
+  // Do not bulk-prefetch every nav href — with tab workspace, route pages are
+  // empty stubs and screens load via React.lazy; flooding prefetch fights
+  // capabilities/notifications/page data for bandwidth.
 
   const [expandedSections, setExpandedSections] = useState(() => {
     const stored = readStoredSections();

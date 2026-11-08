@@ -97,7 +97,38 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
     this.systemIssuePrompted = Boolean(options.systemIssuePrompted);
+    /** True when the client already redirected to login / license — callers should soft-stop. */
+    this.authRedirect = Boolean(options.authRedirect);
   }
+}
+
+/** Session ended and navigation away already started — don't surface as an app fault. */
+export function isAuthRedirectError(error) {
+  return error instanceof ApiError && error.authRedirect === true;
+}
+
+/**
+ * After login redirect (or softFail), resolve in-flight calls as `undefined`
+ * instead of rejecting — avoids Next.js Runtime ApiError overlays when callers
+ * omit .catch (common for background AI / session-end races).
+ */
+function softCancelApiRequest(promise, options = {}) {
+  return promise.catch((error) => {
+    if (isAuthRedirectError(error) || options.softFail) {
+      return undefined;
+    }
+    throw error;
+  });
+}
+
+/** Centrix AI assistant / insights / voice — UI surfaces failures; don't open system-issue. */
+export function isAiFeatureApiPath(path) {
+  const normalized = String(path ?? "")
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/api\/v1\//i, "")
+    .replace(/^\/api\//i, "")
+    .replace(/^\/+/, "");
+  return normalized === "ai" || normalized.startsWith("ai/");
 }
 
 export { canSeeServerErrorDetail };
@@ -259,6 +290,7 @@ export function apiModuleLabel(path) {
     erp: "Settings",
     notifications: "Notifications",
     "action-requests": "Approvals",
+    ai: "AI assistant",
   };
 
   if (first === "reports") {
@@ -463,7 +495,10 @@ export async function apiRequest(path, options = {}) {
     return inflightGetRequests.get(dedupeKey);
   }
 
-  const promise = performApiRequest(path, url, { ...options, method });
+  const promise = softCancelApiRequest(
+    performApiRequest(path, url, { ...options, method }),
+    options,
+  );
   if (dedupeKey) {
     inflightGetRequests.set(dedupeKey, promise);
     promise.finally(() => {
@@ -479,9 +514,13 @@ export async function apiRequest(path, options = {}) {
 async function performApiRequest(path, url, options = {}) {
   const method = options.method ?? "GET";
   const trackNavigation = shouldTrackNavigationFetch(options, method);
-  const trackIssues = options.reportIssues !== false;
-  const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
+  // AI feature errors are shown in-panel; default off so a bad OpenAI key doesn't
+  // open the system-issue "report to administrator" dialog / Runtime overlay noise.
+  const trackIssues = isAiFeatureApiPath(apiPath)
+    ? options.reportIssues === true
+    : options.reportIssues !== false;
+  const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   // Capture before await — workspace switch rotates Sanctum tokens mid-flight.
   const requestAuthEpoch = getAuthEpoch();
   const requestBearerToken =
@@ -560,14 +599,16 @@ async function performApiRequest(path, url, options = {}) {
           code !== "session_active_elsewhere" &&
           (authRotatedSinceRequest || isAuthSessionRotationInFlight());
 
+        let redirectedForAuth = false;
         if (licenseExpired && (res.status === 401 || res.status === 403)) {
           clearSession();
           localStorage.removeItem("pos_erp_active_session");
           if (!isAuthEndpoint(path)) {
-            void revokeServerAuthSession();
+            void revokeServerAuthSession().catch(() => {});
           }
           if (!window.location.pathname.startsWith("/login")) {
             window.location.assign("/login?reason=license");
+            redirectedForAuth = true;
           }
         } else if (res.status === 401 && !ignoreStaleUnauthorized) {
           const locked = isScreenLocked();
@@ -578,7 +619,7 @@ async function performApiRequest(path, url, options = {}) {
             clearSession();
             localStorage.removeItem("pos_erp_active_session");
             if (!isAuthEndpoint(path)) {
-              void revokeServerAuthSession();
+              void revokeServerAuthSession().catch(() => {});
             }
             if (!window.location.pathname.startsWith("/login")) {
               const reason =
@@ -588,8 +629,18 @@ async function performApiRequest(path, url, options = {}) {
                     ? "session"
                     : "auth";
               window.location.assign(`/login?reason=${reason}`);
+              redirectedForAuth = true;
             }
           }
+        }
+
+        if (redirectedForAuth) {
+          throw new ApiError(
+            formatApiErrorMessage(data, res.statusText),
+            res.status,
+            data,
+            { authRedirect: true },
+          );
         }
       }
 
@@ -606,7 +657,9 @@ async function performApiRequest(path, url, options = {}) {
         apiPath,
       );
       let systemIssuePrompted = false;
-      if (trackIssues) {
+      // Auth failures are expected when the session ends — don't open system-issue UI.
+      const skipIssueLog = res.status === 401 || res.status === 403;
+      if (trackIssues && !skipIssueLog) {
         const report = await logApiErrorIssue({
           path: apiPath,
           method,

@@ -787,6 +787,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         uomById,
         printWindow,
         documentType: cachedType,
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
+        kraWaitForDevice: false,
       });
       if (!printed) {
         disposePrintWindow(printWindow);
@@ -818,6 +821,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         uomById,
         printWindow,
         documentType: "proforma",
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
+        kraWaitForDevice: false,
       });
       if (!printed) {
         disposePrintWindow(printWindow);

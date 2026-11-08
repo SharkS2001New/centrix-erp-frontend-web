@@ -119,7 +119,7 @@ export function AdminUsersScreen() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(15);
+  const { pageSize, setPageSize, pageSizeOptions } = useListPageSize(15);
   const [branches, setBranches] = useState([]);
   const [hospitalityOutlets, setHospitalityOutlets] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -222,14 +222,18 @@ export function AdminUsersScreen() {
     if (!organizationId) return;
     try {
       const requests = [
-        apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
+        apiRequest(adminPath("/branches"), {
+          searchParams: { per_page: 200, ...orgListParams(organizationId) },
+          loading: false,
+        }),
+        apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 }, loading: false }),
       ];
       const routeReqIndex = mobileAppEnabled ? requests.length : -1;
       if (mobileAppEnabled) {
         requests.push(
           apiRequest(adminPath("/routes"), {
             searchParams: { per_page: 200, ...orgListParams(organizationId) },
+            loading: false,
           }),
         );
       }
@@ -238,12 +242,13 @@ export function AdminUsersScreen() {
         requests.push(
           apiRequest(adminPath("/tills"), {
             searchParams: { per_page: 200, ...orgListParams(organizationId) },
+            loading: false,
           }),
         );
       }
       const hospitalityOutletReqIndex = hospitalityPosEnabled ? requests.length : -1;
       if (hospitalityPosEnabled) {
-        requests.push(apiRequest("/hospitality/outlets", { reportIssues: false }));
+        requests.push(apiRequest("/hospitality/outlets", { reportIssues: false, loading: false }));
       }
 
       const results = await Promise.allSettled(requests);
@@ -309,7 +314,7 @@ export function AdminUsersScreen() {
     if (matrixLoaded || matrixLoading) return;
     setMatrixLoading(true);
     try {
-      const matrixRes = await apiRequest(adminPath("/roles/permissions/matrix"));
+      const matrixRes = await apiRequest(adminPath("/roles/permissions/matrix"), { loading: false });
       setPermissions(matrixRes.permissions ?? []);
       const filteredMatrix = filterPermissionMatrixForCapabilities(
         {
@@ -338,7 +343,7 @@ export function AdminUsersScreen() {
         q: debouncedSearch,
         extra: orgListParams(organizationId),
       });
-      const userRes = await apiRequest(adminPath("/users"), { searchParams });
+      const userRes = await apiRequest(adminPath("/users"), { searchParams, loading: false });
       const parsed = parsePaginator(userRes);
       setUsers(filterByOrganization(parsed.items, organizationId));
       setTotalUsers(parsed.total);
@@ -348,7 +353,7 @@ export function AdminUsersScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [organizationId, adminPath, page, debouncedSearch]);
+  }, [organizationId, adminPath, page, pageSize, debouncedSearch]);
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadUsers()]);
@@ -358,7 +363,7 @@ export function AdminUsersScreen() {
     setPermLoading(true);
     setPermError(null);
     try {
-      const res = await apiRequest(adminPath(`/users/${userId}/permissions`));
+      const res = await apiRequest(adminPath(`/users/${userId}/permissions`), { loading: false });
       setRolePermissionIds(permissionIdSet(res.role_permission_ids));
       setGrantedIds(permissionIdSet(res.granted_permission_ids));
       setDeniedIds(permissionIdSet(res.denied_permission_ids));
@@ -370,8 +375,13 @@ export function AdminUsersScreen() {
   }, [adminPath]);
 
   // Users list first — branches/roles/tills fill filters after paint.
-  useTabAwareDataLoad(loadUsers);
-  useTabAwareDataLoad(loadReferenceData);
+  const usersDepsKey = `${organizationId}|${page}|${pageSize}|${debouncedSearch}`;
+  useTabAwareDataLoad(loadUsers, {
+    depsKey: usersDepsKey,
+    hasData: users.length > 0 || !listLoading,
+    softEvictMs: 20_000,
+  });
+  useTabAwareDataLoad(loadReferenceData, { softEvictMs: 30_000 });
 
   useEffect(() => {
     setPage(1);
@@ -1008,9 +1018,10 @@ export function AdminUsersScreen() {
           totalPages={totalPages}
           total={totalUsers}
           pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
           onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+          onPageSizeChange={handlePageSizeChange}
+        />
 
         <UserDetailModal
           open={Boolean(viewUser)}

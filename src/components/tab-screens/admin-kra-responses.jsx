@@ -26,6 +26,7 @@ import { KraDeviceStatusBanner } from "@/components/reports/kra-device-status-ba
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { todayCalendarDate } from "@/lib/datetime";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 
@@ -53,9 +54,11 @@ export function AdminKraResponsesScreen() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [statusFilter, setStatusFilter] = useState("all");
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
+  const [deviceStatusLoaded, setDeviceStatusLoaded] = useState(false);
 
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
@@ -72,7 +75,7 @@ export function AdminKraResponsesScreen() {
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
-        q: search,
+        q: debouncedSearch,
         extra: {
           from_date: fromDate || undefined,
           to_date: toDate || undefined,
@@ -80,10 +83,13 @@ export function AdminKraResponsesScreen() {
         },
       });
 
-      const [res, statusRes] = await Promise.all([
-        apiRequest(adminPath("/kra-responses"), { searchParams }),
-        apiRequest(adminPath("/kra/device-status")).catch(() => null),
-      ]);
+      // Device status changes rarely — refresh with the first list load only.
+      const listPromise = apiRequest(adminPath("/kra-responses"), { searchParams });
+      const statusPromise = deviceStatusLoaded
+        ? Promise.resolve(null)
+        : apiRequest(adminPath("/kra/device-status")).catch(() => null);
+
+      const [res, statusRes] = await Promise.all([listPromise, statusPromise]);
 
       const parsed = parsePaginator(res);
       setRows(parsed.items);
@@ -93,7 +99,10 @@ export function AdminKraResponsesScreen() {
         total: parsed.total,
         per_page: parsed.perPage,
       });
-      setDeviceStatus(statusRes);
+      if (statusRes) {
+        setDeviceStatus(statusRes);
+        setDeviceStatusLoaded(true);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load KRA responses");
       setRows([]);
@@ -101,13 +110,13 @@ export function AdminKraResponsesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [adminPath, page, pageSize, search, fromDate, toDate, statusFilter]);
+  }, [adminPath, page, pageSize, debouncedSearch, fromDate, toDate, statusFilter, deviceStatusLoaded]);
 
   useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, statusFilter, search]);
+  }, [fromDate, toDate, statusFilter, debouncedSearch]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);

@@ -9,6 +9,10 @@ import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+} from "@/lib/reports/report-page-size";
+import {
   fetchCategoriesCached,
   fetchSubCategoriesCached,
 } from "@/lib/reference-data-cache";
@@ -200,7 +204,10 @@ export function ProductPriceSheetScreen() {
   const [totalRows, setTotalRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(50);
+  const { pageSize, setPageSize, pageSizeOptions } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
   const [subcategories, setSubcategories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [printColumns, setPrintColumns] = useState(DEFAULT_PRINT_COLUMNS);
@@ -640,6 +647,7 @@ export function ProductPriceSheetScreen() {
             totalPages={totalPages}
             total={totalRows}
             pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
             onChange={setPage}
             onPageSizeChange={handlePageSizeChange}
           />

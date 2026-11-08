@@ -1,14 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useLockScreen } from "@/contexts/lock-screen-context";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { ProfileModal } from "@/components/layout/profile-modal";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { workspaceDefinition } from "@/lib/workspaces";
+
+const ProfileModal = dynamic(
+  () => import("@/components/layout/profile-modal").then((m) => m.ProfileModal),
+  { ssr: false },
+);
 
 function UserAvatar({ name }) {
   const initial = (name?.trim()?.[0] ?? "U").toUpperCase();
@@ -151,7 +156,9 @@ export function UserAccountMenu({
         ) : null}
       </div>
 
-      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      {profileOpen ? (
+        <ProfileModal open onClose={() => setProfileOpen(false)} />
+      ) : null}
     </>
   );
 }

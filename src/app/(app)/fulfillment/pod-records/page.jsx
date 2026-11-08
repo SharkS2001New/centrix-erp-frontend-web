@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { FulfillmentPodRecordsScreen } from "@/components/tab-screens/fulfillment-pod-records";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <FulfillmentPodRecordsScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/fulfillment-pod-records"),
+  "FulfillmentPodRecordsScreen",
+);

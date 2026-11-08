@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { canShowAiInsights, canUseAiInsights, formatInsightClipboard, aiInsightsBlockedReason } from "@/lib/ai-insights";
+import { canUseAiInsights, formatInsightClipboard, aiInsightsBlockedReason } from "@/lib/ai-insights";
 import { PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
 /**
@@ -42,11 +42,17 @@ export function AiInsightPanel({
     setDeliverMsg(null);
     try {
       let res;
+      const aiOpts = { reportIssues: false };
       if (mode === "stock_pulse" || mode === "sales_brief") {
-        res = await apiRequest(`/ai/insights/${mode.replace("_", "-")}`, { method: "POST", body: {} });
+        res = await apiRequest(`/ai/insights/${mode.replace("_", "-")}`, {
+          method: "POST",
+          body: {},
+          ...aiOpts,
+        });
       } else if (mode === "explain_screen" || mode === "explain") {
         res = await apiRequest("/ai/insights/explain-screen", {
           method: "POST",
+          ...aiOpts,
           body: {
             screen_key: reportKey || screenKey || "screen",
             filters,
@@ -58,6 +64,7 @@ export function AiInsightPanel({
       } else if (mode === "report") {
         res = await apiRequest("/ai/insights/analyze-report", {
           method: "POST",
+          ...aiOpts,
           body: {
             report_key: reportKey || "report",
             filters,
@@ -69,6 +76,7 @@ export function AiInsightPanel({
       } else {
         res = await apiRequest("/ai/insights/run", {
           method: "POST",
+          ...aiOpts,
           body: {
             type: mode,
             product_code: productCode || undefined,
@@ -125,6 +133,7 @@ export function AiInsightPanel({
     try {
       const res = await apiRequest("/ai/insights/ask", {
         method: "POST",
+        reportIssues: false,
         body: {
           question: question.trim(),
           insight_id: insight?.insight_id ?? undefined,
@@ -150,6 +159,7 @@ export function AiInsightPanel({
     try {
       const res = await apiRequest("/ai/insights/deliver", {
         method: "POST",
+        reportIssues: false,
         body: { insight_id: insight.insight_id },
       });
       const parts = [];
@@ -281,20 +291,4 @@ export function AiInsightPanel({
   );
 }
 
-/** Compact trigger button for toolbars. */
-export function AiAnalyzeButton({ onClick, disabled = false, label = "Analyze with AI" }) {
-  const { capabilities, hasPermission } = useAuth();
-  // Show whenever Insights is enabled for the org and the user may use AI —
-  // do not hide just because the API key is missing (panel explains that).
-  if (!canShowAiInsights({ capabilities, hasPermission })) return null;
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {label}
-    </button>
-  );
-}
+export { AiAnalyzeButton } from "@/components/ai/ai-analyze-button";

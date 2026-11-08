@@ -48,6 +48,7 @@ import {
   capabilitiesVersionChanged,
   isBrowserReloadNavigation,
 } from "@/lib/capabilities-sync";
+import { isBrowserPrintDialogOpen } from "@/lib/open-print-window";
 import {
   clearLicenseWarningDismissed,
   licenseFromAuthState,
@@ -123,6 +124,10 @@ export function AuthProvider({ children }) {
           dedupe: force ? false : undefined,
           cache: force ? "no-store" : undefined,
         });
+        // Soft-cancelled auth redirect resolves undefined — keep cache.
+        if (!caps) {
+          return cached;
+        }
         if (gen !== capabilitiesRefreshGen.current) {
           return caps;
         }
@@ -337,6 +342,9 @@ export function AuthProvider({ children }) {
     if (!hasAuthSession()) return undefined;
     const isPosSession = loginChannel === POS_LOGIN_CHANNEL;
     const refreshOnFocus = () => {
+      // Browser print dialog blurs/focuses the app; refreshing capabilities here
+      // remounts heavy screens and feels like the page reloaded after Print A4.
+      if (isBrowserPrintDialogOpen()) return;
       refreshCapabilities({
         maxAgeMs: isPosSession ? POS_CAPABILITIES_REFRESH_MS : CAPABILITIES_REFRESH_MS,
       }).catch(() => {});
@@ -375,6 +383,7 @@ export function AuthProvider({ children }) {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
+      if (isBrowserPrintDialogOpen()) return;
       try {
         const stamp = await apiRequest("/erp/capabilities/version", {
           loading: false,

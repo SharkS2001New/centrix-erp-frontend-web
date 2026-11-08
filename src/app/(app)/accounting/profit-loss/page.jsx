@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { AccountingProfitLossScreen } from "@/components/tab-screens/accounting-profit-loss";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <AccountingProfitLossScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/accounting-profit-loss"),
+  "AccountingProfitLossScreen",
+);

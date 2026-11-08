@@ -1,7 +1,11 @@
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 
-/** Default date window for tabular reports — last 30 days ending today. */
-export function defaultReportDateRange(days = 29) {
+/**
+ * Offset-from-today helper (0 = today, 6 = last 7 inclusive days).
+ * Prefer `getReportsDefaultDateRange(moduleSettings)` for org/platform defaults.
+ */
+export function defaultReportDateRange(days = 6) {
   return defaultDashboardDateRange(days);
 }
 
@@ -14,8 +18,8 @@ export function defaultReportBranchId(user, isOrgWide) {
   return user?.branch_id ? String(user.branch_id) : "";
 }
 
-export function buildInitialReportFilters(user, isOrgWide) {
-  const { from, to } = defaultReportDateRange();
+export function buildInitialReportFilters(user, isOrgWide, moduleSettings = null) {
+  const { from, to } = getReportsDefaultDateRange(moduleSettings);
   const branchId = defaultReportBranchId(user, isOrgWide);
   return {
     fromDate: from,

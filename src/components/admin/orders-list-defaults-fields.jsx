@@ -182,8 +182,8 @@ export function OrdersListDefaultsFields({
             />
             <p className="mt-1 text-xs text-slate-500">
               {isHospitality
-                ? "Default From/To window for hotel reports (sales, F&B, occupancy, and others), including today. Example: 2 = yesterday + today. Staff can still change the range on each report."
-                : "Default From/To window for reports (KRA invoices, compliance, sales reports, and others), including today. Example: 2 = yesterday + today. Staff can still change the range on each report."}
+                ? "Default From/To window for hotel reports (sales, F&B, occupancy, and others), including today. Example: 1 = today only; 30 ≈ one month. Staff can still change the range on each report — Filter applies the window so wide ranges stay fast."
+                : "Default From/To for KRA invoices, sales/compliance reports, expenses, P&L, AR/AP, returns, and credit notes (including today). Example: 1 = today only; 30 ≈ one month. Staff can still change dates — Filter applies the window so wide ranges stay fast."}
             </p>
           </Field>
           {!isHospitality ? (

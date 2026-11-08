@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { ProductsDeletedScreen } from "@/components/tab-screens/products-deleted";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <ProductsDeletedScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/products-deleted"),
+  "ProductsDeletedScreen",
+);

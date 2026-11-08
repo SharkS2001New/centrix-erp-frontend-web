@@ -137,7 +137,8 @@ const SALES_DEFAULTS = {
   orders_list_default_days: 14,
   /** Shop Debtors Unpaid / Partial / Paid — often wider than orders (1–2 months). */
   shop_debtors_default_days: 30,
-  reports_default_date_range_days: 30,
+  // Align with Sales overview speed — 7 inclusive days (was 30).
+  reports_default_date_range_days: 7,
   orders_list_search_days: 30,
   orders_list_sort: "-created_at",
   orders_list_visible_columns: [
@@ -679,7 +680,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   stock_deduct_on: "order_created",
   orders_list_default_days: "14",
   shop_debtors_default_days: "30",
-  reports_default_date_range_days: "30",
+  reports_default_date_range_days: "7",
   orders_list_search_days: "30",
   orders_list_sort: "-created_at",
 };

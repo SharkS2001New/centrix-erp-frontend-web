@@ -193,9 +193,10 @@ export function PlatformR2BackupSettingsPanel() {
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Cloudflare R2 offsite upload</h2>
           <p className="mt-1 text-xs text-slate-500">
-            After each local database dump, the backup is copied to your R2 bucket. Older SQL dumps
-            under the object prefix are pruned automatically (default 7 days). Leave the secret blank
-            to keep the current value. Manage backup files on{" "}
+            After each local database dump, the SQL file is uploaded to your Cloudflare R2 bucket —
+            dumps are not written into MySQL tables. Older SQL objects under the prefix are pruned
+            automatically (default 7 days). Leave the secret blank to keep the current value. Manage
+            backup runs on{" "}
             <a href="/platform/database-backups" className="font-medium text-[#185FA5] hover:underline">
               Database backups
             </a>

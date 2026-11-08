@@ -7,6 +7,7 @@ import "./globals.css";
 const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
+  display: "swap",
 });
 
 import { APP_DESCRIPTION, APP_TITLE, DEFAULT_PWA_THEME_COLOR } from "@/lib/branding";
@@ -14,12 +15,17 @@ import { APP_DESCRIPTION, APP_TITLE, DEFAULT_PWA_THEME_COLOR } from "@/lib/brand
 export const metadata = {
   title: APP_TITLE,
   description: APP_DESCRIPTION,
-  themeColor: DEFAULT_PWA_THEME_COLOR,
   appleWebApp: {
     capable: true,
     title: APP_TITLE,
   },
   // Favicons: src/app/favicon.ico, icon.png, icon.svg, apple-icon.png
+};
+
+export const viewport = {
+  themeColor: DEFAULT_PWA_THEME_COLOR,
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {

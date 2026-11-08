@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import {
   CatalogPageShell,
   Field,
@@ -235,6 +235,9 @@ export function PaymentsBreakdownScreen({
   const initialRange = todayDashboardDateRange();
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  /** Applied dates drive fetch — draft inputs only hit the API on Filter. */
+  const [appliedFromDate, setAppliedFromDate] = useState(initialRange.from);
+  const [appliedToDate, setAppliedToDate] = useState(initialRange.to);
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [cashiers, setCashiers] = useState([]);
@@ -250,8 +253,17 @@ export function PaymentsBreakdownScreen({
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const loadAbortRef = useRef(null);
+  /** Skip one effect cycle when method_code is synced from a response that already has the right rows. */
+  const suppressLoadForMethodSyncRef = useRef(false);
 
   const showBranchFilter = isMultiBranchCatalog(user);
+
+  function applyDateRange() {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setPage(1);
+  }
 
   useEffect(() => {
     if (!organizationId) return;
@@ -284,12 +296,15 @@ export function PaymentsBreakdownScreen({
   }, [cashiers, branchId]);
 
   const load = useCallback(async () => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
     try {
       const res = await apiRequest(apiPath, {
         searchParams: {
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
+          from_date: appliedFromDate || undefined,
+          to_date: appliedToDate || undefined,
           branch_id: branchId || undefined,
           cashier_id: cashierId || undefined,
           float_session_id: hideSessionFilter ? undefined : floatSessionId || undefined,
@@ -298,22 +313,29 @@ export function PaymentsBreakdownScreen({
           page,
           per_page: pageSize,
         },
+        loading: false,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setData(res);
       const nextMethods = Array.isArray(res?.methods) ? res.methods : [];
       if (nextMethods.length > 0 && !nextMethods.some((m) => m.method_code === methodCode)) {
+        // Need rows for a different tender — one follow-up fetch via methodCode effect.
         setMethodCode(nextMethods[0].method_code);
       } else if (res?.method_code && res.method_code !== methodCode) {
+        // Server already returned the corrected tender's rows — sync tab without refetch.
+        suppressLoadForMethodSyncRef.current = true;
         setMethodCode(res.method_code);
       }
     } catch (e) {
+      if (controller.signal.aborted || isAbortError(e)) return;
       notifyError(e instanceof ApiError ? e.message : "Failed to load payments breakdown");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [
-    fromDate,
-    toDate,
+    appliedFromDate,
+    appliedToDate,
     branchId,
     cashierId,
     floatSessionId,
@@ -326,7 +348,14 @@ export function PaymentsBreakdownScreen({
   ]);
 
   useEffect(() => {
+    if (suppressLoadForMethodSyncRef.current) {
+      suppressLoadForMethodSyncRef.current = false;
+      return undefined;
+    }
     void load();
+    return () => {
+      loadAbortRef.current?.abort();
+    };
   }, [load]);
 
   const reportRefresh = useReportRefreshUi({
@@ -388,14 +417,14 @@ export function PaymentsBreakdownScreen({
 
   const exportBaseParams = useMemo(
     () => ({
-      from_date: fromDate || undefined,
-      to_date: toDate || undefined,
+      from_date: appliedFromDate || undefined,
+      to_date: appliedToDate || undefined,
       branch_id: branchId || undefined,
       cashier_id: cashierId || undefined,
       float_session_id: floatSessionId || undefined,
       q: searchQ || undefined,
     }),
-    [fromDate, toDate, branchId, cashierId, floatSessionId, searchQ],
+    [appliedFromDate, appliedToDate, branchId, cashierId, floatSessionId, searchQ],
   );
 
   const branchName = useMemo(() => {
@@ -510,7 +539,7 @@ export function PaymentsBreakdownScreen({
   }, [printScope, methodName]);
 
   const exportFilename = useMemo(() => {
-    const range = `${fromDate || "from"}-${toDate || "to"}`;
+    const range = `${appliedFromDate || "from"}-${appliedToDate || "to"}`;
     if (printScope === "active") {
       const slug = String(methodCode || "tab")
         .toLowerCase()
@@ -518,7 +547,7 @@ export function PaymentsBreakdownScreen({
       return `payments-breakdown-${slug}-${range}`;
     }
     return `payments-breakdown-all-${range}`;
-  }, [printScope, methodCode, fromDate, toDate]);
+  }, [printScope, methodCode, appliedFromDate, appliedToDate]);
 
   const exportExtraLines = useMemo(() => {
     const lines = [`Cashier: ${cashierName}`];
@@ -575,8 +604,8 @@ export function PaymentsBreakdownScreen({
             footerRow={null}
             estimatedRowCount={exportEstimatedRows}
             meta={{
-              fromDate,
-              toDate,
+              fromDate: appliedFromDate,
+              toDate: appliedToDate,
               branchName,
               extraLines: exportExtraLines,
             }}
@@ -593,9 +622,9 @@ export function PaymentsBreakdownScreen({
           <input
             type="date"
             value={fromDate}
-            onChange={(e) => {
-              setFromDate(e.target.value);
-              setPage(1);
+            onChange={(e) => setFromDate(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyDateRange();
             }}
             className={FILTER_CONTROL_CLASS}
           />
@@ -604,9 +633,9 @@ export function PaymentsBreakdownScreen({
           <input
             type="date"
             value={toDate}
-            onChange={(e) => {
-              setToDate(e.target.value);
-              setPage(1);
+            onChange={(e) => setToDate(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyDateRange();
             }}
             className={FILTER_CONTROL_CLASS}
           />
@@ -684,6 +713,9 @@ export function PaymentsBreakdownScreen({
             className="w-56 shrink-0 sm:w-64"
           />
         </Field>
+        <PrimaryButton type="button" showIcon={false} onClick={applyDateRange} disabled={loading}>
+          Filter
+        </PrimaryButton>
       </FilterToolbar>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

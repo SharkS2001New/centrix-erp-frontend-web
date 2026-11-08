@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
+import { NavigationReadyOnMount } from "@/components/layout/navigation-ready-on-mount";
 import { AppErrorBoundary } from "@/components/shared/app-error-boundary";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { SCREEN_COMPONENTS } from "@/lib/screen-registry-components";
@@ -25,8 +26,8 @@ import {
  *
  * Registered screens stay mounted while their tab is open — one instance per
  * concrete pathname (so /customers/1 and /customers/2 are separate panes).
- * Heavy / idle panes are soft-evicted (unmounted) to free memory; they remount
- * when the tab is activated again.
+ * Revisiting an open tab shows the kept pane (no remount / no data reload).
+ * Only POS and live stock-take soft-evict when inactive; closing a tab unmounts it.
  * Unregistered routes use live Next.js `children` for the active URL only.
  * Screen modules load on first open via React.lazy.
  */
@@ -44,7 +45,9 @@ function RegisteredTabPane({ entry, paneHref, isActive }) {
       <TabPaneRouterFreeze href={paneHref}>
         <AppErrorBoundary>
           <Suspense fallback={<AppRouteLoading label="Loading page…" />}>
-            <Screen />
+            <NavigationReadyOnMount>
+              <Screen />
+            </NavigationReadyOnMount>
           </Suspense>
         </AppErrorBoundary>
       </TabPaneRouterFreeze>
@@ -54,15 +57,24 @@ function RegisteredTabPane({ entry, paneHref, isActive }) {
 
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
-  const { enabled, tabs, activeHref: workspaceActiveHref } = useTabWorkspace();
+  const {
+    enabled,
+    tabs,
+    activeHref: workspaceActiveHref,
+    pendingPaneHref,
+  } = useTabWorkspace();
 
   const routeHref = normalizeTabHref(pathname);
   const storedActiveHref = workspaceActiveHref ? normalizeTabHref(workspaceActiveHref) : null;
+  const pendingHref = pendingPaneHref ? normalizeTabHref(pendingPaneHref) : null;
+  // While reusing an already-open tab, pendingHref activates the destination pane
+  // before usePathname() updates (otherwise Unpaid stays visible under All Orders).
   // Prefer the live route when the stored active tab belongs to another path (e.g. after
   // switching back to Backoffice while Create order was still the last active tab).
-  const activeHref =
-    storedActiveHref &&
-    pathOnlyFromHref(storedActiveHref) === pathOnlyFromHref(routeHref)
+  const activeHref = pendingHref
+    ? pendingHref
+    : storedActiveHref &&
+        pathOnlyFromHref(storedActiveHref) === pathOnlyFromHref(routeHref)
       ? storedActiveHref
       : routeHref;
   const activePath = pathnameFromTabHref(activeHref);

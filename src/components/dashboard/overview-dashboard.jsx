@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
@@ -13,9 +14,28 @@ import {
   DashboardSection,
 } from "@/components/dashboard/dashboard-shared";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
-import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
-import { AiDashboardInsightCards } from "@/components/ai/ai-dashboard-insight-cards";
 import { isFreePlanPath, usesPackageOne } from "@/lib/organization-license";
+
+const ReportsDashboardSection = dynamic(
+  () =>
+    import("@/components/dashboard/reports-dashboard-section").then(
+      (m) => m.ReportsDashboardSection,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="mt-6 h-40 animate-pulse rounded-xl border border-[var(--theme-border)] bg-[var(--theme-panel)]" />
+    ),
+  },
+);
+
+const AiDashboardInsightCards = dynamic(
+  () =>
+    import("@/components/ai/ai-dashboard-insight-cards").then(
+      (m) => m.AiDashboardInsightCards,
+    ),
+  { ssr: false },
+);
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.dashboard.sales.view },

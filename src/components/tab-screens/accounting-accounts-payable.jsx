@@ -14,6 +14,7 @@ export function AccountingAccountsPayableScreen() {
     <AccountingReportScreen
       title="Accounts Payable"
       apiPath="/reports/accounts-payable"
+      useReportsDefaultRange
       emptyLabel="No supplier payables outstanding."
       intro={
         <div className="mb-4 theme-panel rounded-xl border px-5 py-4 shadow-sm">

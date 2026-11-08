@@ -42,10 +42,14 @@ import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
 import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
 import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+  reportCacheMatchesPageSize,
+} from "@/lib/reports/report-page-size";
 
-const DEFAULT_PAGE_SIZE = 20;
 const CACHE_SLOT = "structured-report";
 
 export function StructuredReportScreen({ definition }) {
@@ -74,20 +78,26 @@ function StandardReportScreen({ definition }) {
     if (definition.emptyDateRange) {
       return { from: "", to: "" };
     }
-    // Only intentional overrides (AR week, P&L today). Everything else uses org setting.
+    // Only rare analytical overrides (e.g. AR aging). Everything else uses org setting.
     if (Object.prototype.hasOwnProperty.call(REPORT_DEFAULT_DATE_RANGE_DAYS, definition.key)) {
       return defaultReportDateRange(REPORT_DEFAULT_DATE_RANGE_DAYS[definition.key]);
     }
     return getReportsDefaultDateRange(capabilities?.module_settings);
   }, [definition.emptyDateRange, definition.key, capabilities?.module_settings]);
   const defaultRange = useMemo(() => resolveDefaultRange(), [resolveDefaultRange]);
+  const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
   const branchInitialized = useRef(false);
 
   const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  ).pageSize;
   const cacheMatchesDefinition =
     cachedBundle &&
     cachedBundle.reportKey === definition.key &&
-    cachedBundle.apiPath === definition.apiPath;
+    cachedBundle.apiPath === definition.apiPath &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
 
   const [rows, setRows] = useState(() => (cacheMatchesDefinition ? cachedBundle.rows ?? [] : []));
   const [reportMeta, setReportMeta] = useState(() =>
@@ -101,7 +111,10 @@ function StandardReportScreen({ definition }) {
   );
   const [error, setError] = useState(null);
   const [page, setPage] = useState(() => (cacheMatchesDefinition ? cachedBundle.page ?? 1 : 1));
-  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
   const [fromDate, setFromDate] = useState(() =>
     cacheMatchesDefinition ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
   );
@@ -109,7 +122,7 @@ function StandardReportScreen({ definition }) {
     cacheMatchesDefinition ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
   );
   const [branchId, setBranchId] = useState(() =>
-    cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
+    cacheMatchesDefinition ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
   );
   const [branches, setBranches] = useState([]);
   const defaultExtraFilters = useMemo(
@@ -137,11 +150,11 @@ function StandardReportScreen({ definition }) {
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
       : {
-    fromDate: defaultRange.from,
-    toDate: defaultRange.to,
-          branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
+          fromDate: defaultRange.from,
+          toDate: defaultRange.to,
+          branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
           extraFilters: defaultExtraFilters,
-    queryFilters: {},
+          queryFilters: {},
         },
   );
   const filterOptions = useReportFilterOptions(definition.key);
@@ -159,7 +172,7 @@ function StandardReportScreen({ definition }) {
       return;
     }
     const nextBranchId = defaultReportBranchId(user, isOrgWide);
-    setBranchId(nextBranchId);
+    setBranchId((prev) => (prev === nextBranchId ? prev : nextBranchId));
     setApplied((prev) => (prev.branchId === nextBranchId ? prev : { ...prev, branchId: nextBranchId }));
   }, [user, isOrgWide, cacheMatchesDefinition, cachedBundle]);
 
@@ -181,7 +194,9 @@ function StandardReportScreen({ definition }) {
     filterRowsRef.current = definition.filterRows;
   }, [applied, definition.filterRows]);
 
-  const depsKey = `${definition.key}|${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
+  const depsKey = pageSizeReady
+    ? `${definition.key}|${definition.apiPath}|${page}|${pageSize}|${appliedKey}`
+    : `${definition.key}|${definition.apiPath}|page-size-pending`;
 
   useLayoutEffect(() => {
     if (cacheMatchesDefinition && cachedBundle?.depsKey === depsKey) {
@@ -190,6 +205,7 @@ function StandardReportScreen({ definition }) {
   }, [cacheMatchesDefinition, cachedBundle?.depsKey, depsKey, paneHref]);
 
   const loadReport = useCallback(async () => {
+    if (!pageSizeReady) return;
     setLoading(true);
     setError(null);
     const currentApplied = appliedRef.current;
@@ -227,6 +243,7 @@ function StandardReportScreen({ definition }) {
         reportMeta: meta,
         reportSummary: summary,
         page,
+        pageSize,
         fromDate: currentApplied.fromDate,
         toDate: currentApplied.toDate,
         branchId: currentApplied.branchId,
@@ -244,7 +261,7 @@ function StandardReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [definition.key, definition.apiPath, definition.dateColumn, page, pageSize, paneHref, depsKey]);
+  }, [definition.key, definition.apiPath, definition.dateColumn, page, pageSize, pageSizeReady, paneHref, depsKey]);
 
   function handlePageSizeChange(next) {
     setPageSize(next);
@@ -252,9 +269,10 @@ function StandardReportScreen({ definition }) {
   }
 
   const hasData =
-    rows.length > 0 ||
-    reportMeta != null ||
-    Boolean(cacheMatchesDefinition && cachedBundle?.depsKey === depsKey);
+    pageSizeReady &&
+    (rows.length > 0 ||
+      reportMeta != null ||
+      Boolean(cacheMatchesDefinition && cachedBundle?.depsKey === depsKey));
 
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
 
@@ -578,7 +596,7 @@ function StandardReportScreen({ definition }) {
                 pageSize={pageSize}
             onChange={setPage}
                 onPageSizeChange={handlePageSizeChange}
-                pageSizeOptions={[10, 20, 25, 50, 100]}
+                pageSizeOptions={pageSizeOptions}
           />
         </>
           ) : null}

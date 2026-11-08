@@ -7,16 +7,18 @@ Runs as a **Windows service** and renders with **wkhtmltopdf** (works in the bac
 - **Thermal (80mm)** — POS receipts (`job_type: receipt`)
 - **A4** — HR payslips, cash advances, leave forms, invoices (`payroll_receipt`, `cash_advance`, `leave_application`, …)
 
-Agent **0.3.1+** picks paper size from `job_type`. Agent **0.3.2+** bundles Sumatra during publish/install (no separate copy step).
+Agent **0.3.2+** bundles Sumatra on publish/install and downloads **wkhtmltopdf** during install by default so a till works after one admin install.
 
 ## For till / office staff
 
 1. In Centrix open **Administration → Local printing**
 2. Select **Centrix Print Agent (Windows)**
-3. Click **Download build package (source)** (always available)
-4. Follow the steps in **`BUILD.md`** (inside the zip)
+3. Prefer **Download Windows print service** (ready zip): unzip → right-click **`INSTALL.bat`** → Run as administrator
+4. Open `http://127.0.0.1:9247/v1/health`, then **Test connection → Save** in Centrix
 
-If your company already published the ready installer, use **Download Windows print service** instead (unzip + run `install-windows-service.ps1` as admin — no SDK needed).
+If only the source package is available, use **Download build package (source)** and follow **`BUILD.md`** / **`BUILD-AND-INSTALL.bat`** (.NET 8 SDK once).
+
+USB receipt printers: if health is OK but nothing prints, set the Windows service **Log On** to the Windows user who can see that printer, then restart the service.
 
 ## For developers
 

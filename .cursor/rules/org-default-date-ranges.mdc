@@ -1,0 +1,31 @@
+---
+description: Org/platform default date filters for reports and related lists
+alwaysApply: true
+---
+
+# Org default date ranges
+
+Platform/org admins set inclusive day windows under sales module settings. Respect them; do not hardcode “fast” windows that override org intent (daily vs monthly, etc.).
+
+## Settings → helpers
+
+| Setting | Helper | Use for |
+|---|---|---|
+| `sales.reports_default_date_range_days` | `getReportsDefaultDateRange` / `getReportsDefaultDateRangeDays` / `reportDefaultDateRangeDays` | KRA invoices, structured/generic/custom/expenses/P&L reports, AR/AP lists, returns, credit notes, customer invoices, report dashboards |
+| `sales.orders_list_default_days` | `getOrdersListDefaultDateRange` / `normalizeOrdersListDefaultDays` | Sales/hospitality orders lists, fulfillment orders |
+| `sales.shop_debtors_default_days` | `getShopDebtorsDefaultDateRange` | Shop Debtors Unpaid / Partial / Paid |
+| `sales.mobile_sheets_default_days` | `getMobileSheetsDefaultDateRange` | Mobile picking/loading/trip sheets |
+
+## Speed (keep these; they replace hardcoded short ranges)
+
+- Gate fetches with **applied** From/To (Filter/Apply), not live date inputs.
+- Wait for `pageSizeReady` from `useListPageSize` before the first list/report request.
+- Prefer `apiRequest(..., { loading: false })` on filter-driven reloads.
+- Accounting **period** statements (trial balance, balance sheet, P&L accounting screen) may keep calendar-month via `defaultAccountingDateRange`.
+- POS payments breakdown may stay **today** (operational till view).
+- `REPORT_DEFAULT_DATE_RANGE_DAYS` may only hold rare analytical overrides (e.g. AR aging), never speed hacks.
+
+## Inclusive vs offset
+
+- Org settings and `defaultDateRange(n)` are **inclusive** days (`1` = today only).
+- `defaultReportDateRange` / `defaultDashboardDateRange` use **offset** from today (`0` = today, `6` = last 7 days). Convert with `Math.max(0, inclusive - 1)`.

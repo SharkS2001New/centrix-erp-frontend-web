@@ -45,9 +45,15 @@ import {
   PaginationBar,
   PrimaryButton,
 } from "@/components/catalog/catalog-shared";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+  reportCacheMatchesPageSize,
+} from "@/lib/reports/report-page-size";
 
-const DEFAULT_PAGE_SIZE = 20;
+const CACHE_SLOT = "generic-report";
 
 function formatCell(key, value, row) {
   return formatReportCell(key, value, undefined, row);
@@ -67,19 +73,56 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     () => defaultReportDateRange(reportDefaultDateRangeDays(reportKey, capabilities?.module_settings)),
     [reportKey, capabilities?.module_settings],
   );
+  const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
   const branchInitialized = useRef(false);
   const filterOptions = useReportFilterOptions(reportKey);
-  const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [reportSummary, setReportSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  ).pageSize;
+  const cacheMatches =
+    cachedBundle &&
+    cachedBundle.reportKey === reportKey &&
+    cachedBundle.apiPath === apiPath &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
+
+  const [rows, setRows] = useState(() => (cacheMatches ? cachedBundle.rows ?? [] : []));
+  const [meta, setMeta] = useState(() => (cacheMatches ? cachedBundle.meta ?? null : null));
+  const [reportSummary, setReportSummary] = useState(() =>
+    cacheMatches ? cachedBundle.reportSummary ?? null : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !(cacheMatches && (cachedBundle.rows?.length || cachedBundle.meta)),
+  );
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
-  const [fromDate, setFromDate] = useState(defaultRange.from);
-  const [toDate, setToDate] = useState(defaultRange.to);
-  const [branchId, setBranchId] = useState("");
-  const [queryFilters, setQueryFilters] = useState({});
+  const [page, setPage] = useState(() => (cacheMatches ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatches ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
+  );
+  const [queryFilters, setQueryFilters] = useState(() =>
+    cacheMatches ? cachedBundle.queryFilters ?? {} : {},
+  );
+  const [applied, setApplied] = useState(() =>
+    cacheMatches && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+          toDate: cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+          branchId: cacheMatches ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
+          queryFilters: cacheMatches ? cachedBundle.queryFilters ?? {} : {},
+        },
+  );
   const [branches, setBranches] = useState([]);
   const [aiOpen, setAiOpen] = useState(false);
 
@@ -96,13 +139,21 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   useEffect(() => {
     if (!user || branchInitialized.current) return;
     branchInitialized.current = true;
-    setBranchId(defaultReportBranchId(user, isOrgWide));
-  }, [user, isOrgWide]);
+    if (cacheMatches && (cachedBundle?.applied?.branchId != null || cachedBundle?.branchId != null)) {
+      return;
+    }
+    const nextBranch = defaultReportBranchId(user, isOrgWide);
+    setBranchId((prev) => (prev === nextBranch ? prev : nextBranch));
+    setApplied((prev) => (prev.branchId === nextBranch ? prev : { ...prev, branchId: nextBranch }));
+  }, [user, isOrgWide, cacheMatches, cachedBundle?.applied?.branchId, cachedBundle?.branchId]);
 
-  const queryFiltersKey = useMemo(() => JSON.stringify(queryFilters), [queryFilters]);
-  const depsKey = `${reportKey}|${apiPath}|${page}|${pageSize}|${fromDate}|${toDate}|${branchId}|${queryFiltersKey}|${payrollRunId}`;
+  const appliedKey = useMemo(() => JSON.stringify(applied), [applied]);
+  const depsKey = pageSizeReady
+    ? `${reportKey}|${apiPath}|${page}|${pageSize}|${appliedKey}|${payrollRunId}`
+    : `${reportKey}|${apiPath}|page-size-pending`;
 
   const loadReport = useCallback(async () => {
+    if (!pageSizeReady) return;
     setLoading(true);
     setError(null);
     try {
@@ -110,19 +161,35 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         per_page: pageSize,
         page,
         ...buildReportQueryParams(reportKey, {
-          fromDate,
-          toDate,
-          branchId,
-          extraValues: queryFilters,
+          fromDate: applied.fromDate,
+          toDate: applied.toDate,
+          branchId: applied.branchId,
+          extraValues: applied.queryFilters,
         }),
       };
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
 
       const res = await apiRequest(apiPath, { searchParams, loading: false });
       const centrixRows = normalizeReportRows(res);
+      const nextMeta = normalizeReportMeta(res, page, pageSize);
+      const nextSummary = normalizeReportSummary(res);
       setRows(centrixRows);
-      setMeta(normalizeReportMeta(res, page, pageSize));
-      setReportSummary(normalizeReportSummary(res));
+      setMeta(nextMeta);
+      setReportSummary(nextSummary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        reportKey,
+        apiPath,
+        rows: centrixRows,
+        meta: nextMeta,
+        reportSummary: nextSummary,
+        page,
+        pageSize,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        queryFilters: applied.queryFilters,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -132,18 +199,29 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, pageSize, fromDate, toDate, branchId, queryFilters, payrollRunId, reportKey, paneHref, depsKey]);
+  }, [apiPath, page, pageSize, pageSizeReady, applied, payrollRunId, reportKey, paneHref, depsKey]);
 
   function handlePageSizeChange(next) {
     setPageSize(next);
     setPage(1);
   }
 
-  const hasData = rows.length > 0 || meta != null;
+  function applyFilters() {
+    setPage(1);
+    setApplied({
+      fromDate,
+      toDate,
+      branchId,
+      queryFilters: { ...queryFilters },
+    });
+  }
+
+  const hasData = pageSizeReady && (rows.length > 0 || meta != null);
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
 
   function refreshReport() {
     invalidateTabAwareDataLoad(paneHref);
+    clearTabPaneCache(paneHref, CACHE_SLOT);
     void loadReport();
   }
 
@@ -197,14 +275,14 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   const exportSearchParams = useMemo(() => {
     const searchParams = buildReportQueryParams(reportKey, {
-      fromDate,
-      toDate,
-      branchId,
-      extraValues: queryFilters,
+      fromDate: applied.fromDate,
+      toDate: applied.toDate,
+      branchId: applied.branchId,
+      extraValues: applied.queryFilters,
     });
     if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
     return searchParams;
-  }, [branchId, fromDate, toDate, queryFilters, payrollRunId, reportKey]);
+  }, [applied, payrollRunId, reportKey]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -216,13 +294,13 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   const aiFilters = useMemo(
     () => ({
-      from: fromDate,
-      to: toDate,
-      branch_id: branchId || undefined,
-      ...queryFilters,
+      from: applied.fromDate,
+      to: applied.toDate,
+      branch_id: applied.branchId || undefined,
+      ...applied.queryFilters,
       ...(payrollRunId ? { payroll_run_id: payrollRunId } : {}),
     }),
-    [fromDate, toDate, branchId, queryFilters, payrollRunId],
+    [applied, payrollRunId],
   );
 
   return (
@@ -272,10 +350,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   type="date"
                   className={FILTER_CONTROL_CLASS}
                   value={fromDate}
-                  onChange={(e) => {
-                    setPage(1);
-                    setFromDate(e.target.value);
-                  }}
+                  onChange={(e) => setFromDate(e.target.value)}
                 />
               </Field>
               <Field label="To">
@@ -283,10 +358,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   type="date"
                   className={FILTER_CONTROL_CLASS}
                   value={toDate}
-                  onChange={(e) => {
-                    setPage(1);
-                    setToDate(e.target.value);
-                  }}
+                  onChange={(e) => setToDate(e.target.value)}
                 />
               </Field>
             </>
@@ -295,10 +367,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             <Field label="Branch">
               <ReportBranchSearchSelect
                 value={branchId}
-                onChange={(nextBranchId) => {
-                  setPage(1);
-                  setBranchId(nextBranchId);
-                }}
+                onChange={setBranchId}
                 branches={branches}
                 controlClassName={FILTER_CONTROL_CLASS}
               />
@@ -308,11 +377,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             reportKey={reportKey}
             values={queryFilters}
             onChange={(id, value) => {
-              setPage(1);
               setQueryFilters((prev) => ({ ...prev, [id]: value }));
             }}
             optionsByKey={filterOptions}
           />
+          <div className="flex items-end pb-0.5">
+            <PrimaryButton type="button" showIcon={false} onClick={applyFilters} disabled={loading}>
+              Apply
+            </PrimaryButton>
+          </div>
         </FilterToolbar>
         ) : (
           <div className="mb-4">
@@ -389,7 +462,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           pageSize={pageSize}
           onChange={setPage}
           onPageSizeChange={handlePageSizeChange}
-          pageSizeOptions={[10, 20, 25, 50, 100]}
+          pageSizeOptions={pageSizeOptions}
         />
       </div>
     </CatalogPageShell>

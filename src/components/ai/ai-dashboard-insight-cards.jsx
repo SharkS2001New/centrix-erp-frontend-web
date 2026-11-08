@@ -28,13 +28,25 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    apiRequest("/ai/insights/dashboard")
+    apiRequest("/ai/insights/dashboard", {
+      loading: false,
+      reportIssues: false,
+      softFail: true,
+    })
       .then((res) => {
-        if (!cancelled) setCards(Array.isArray(res?.cards) ? res.cards : []);
+        if (cancelled) return;
+        // softFail / auth redirect resolves undefined — stay quiet, no cards.
+        if (res == null) {
+          setCards([]);
+          return;
+        }
+        setCards(Array.isArray(res?.cards) ? res.cards : []);
       })
       .catch((e) => {
         if (!cancelled) {
           setCards([]);
+          // Auth redirect soft-cancels; don't flash a scary AI error on logout.
+          if (e instanceof ApiError && (e.status === 401 || e.authRedirect)) return;
           setError(e instanceof ApiError ? e.message : "Could not load AI insight cards");
         }
       })

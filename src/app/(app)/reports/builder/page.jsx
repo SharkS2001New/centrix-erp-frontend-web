@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { ReportsBuilderScreen } from "@/components/tab-screens/reports-builder";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <ReportsBuilderScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/reports-builder"),
+  "ReportsBuilderScreen",
+);

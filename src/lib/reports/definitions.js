@@ -1625,7 +1625,7 @@ export const REPORT_DEFINITIONS = {
   "kra-receipts": {
     title: "KRA responses",
     subtitle:
-      "Fiscal receipt submissions from checkout and credit notes — preview, print, retry failed receipts, and inspect device payloads",
+      "Fiscal receipt submissions from checkout and credit notes — totals count successful live uploads to eTIMS only (excludes test mode, failed, and skipped)",
     section: "Compliance",
     apiPath: "/reports/kra-receipts",
     dateColumn: "receipt_date",
@@ -1639,14 +1639,16 @@ export const REPORT_DEFINITIONS = {
       { key: "document_type", label: "Type", accessor: (r) => r.document_type ?? "sale" },
       { key: "status", label: "Status", accessor: (r) => r.status },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
-      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
-      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "order_total", label: "eTIMS total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "eTIMS VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
     footerTotals: ["order_total", "total_vat"],
   },
 
   "kra-invoices": {
     title: "KRA invoices",
+    subtitle:
+      "Totals count successful live fiscalizations uploaded to eTIMS (sales + credit notes; excludes test mode)",
     section: "Pricing & tax",
     apiPath: "/reports/kra-receipts",
     dateColumn: "sale_date",
@@ -1662,8 +1664,8 @@ export const REPORT_DEFINITIONS = {
       { key: "status", label: "Status", accessor: (r) => r.status },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) || r.channel },
-      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
-      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "order_total", label: "eTIMS total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "eTIMS VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
     footerTotals: ["order_total", "total_vat"],
   },
@@ -1671,7 +1673,7 @@ export const REPORT_DEFINITIONS = {
   "kra-compliance-summary": {
     title: "KRA compliance",
     subtitle:
-      "Overall fiscalization health by day — success rate, CU invoices, fiscalized/failed totals and VAT",
+      "Overall fiscalization health by day — fiscalized totals/VAT count successful live eTIMS uploads only (excludes test mode)",
     section: "Compliance",
     apiPath: "/reports/kra-compliance-summary",
     dateColumn: "receipt_date",

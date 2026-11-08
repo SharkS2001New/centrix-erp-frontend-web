@@ -21,26 +21,70 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/report-charts";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+  reportCacheMatchesPageSize,
+} from "@/lib/reports/report-page-size";
 
-const DEFAULT_PAGE_SIZE = 25;
+const CACHE_SLOT = "expenses-report";
 
 export function ExpensesReportScreen({ definition }) {
   const { user, capabilities } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const [rows, setRows] = useState([]);
-  const [reportMeta, setReportMeta] = useState(null);
-  const [reportSummary, setReportSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  ).pageSize;
+  const cacheMatches =
+    cachedBundle &&
+    cachedBundle.apiPath === definition.apiPath &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
+
+  const [rows, setRows] = useState(() => (cacheMatches ? cachedBundle.rows ?? [] : []));
+  const [reportMeta, setReportMeta] = useState(() =>
+    cacheMatches ? cachedBundle.reportMeta ?? null : null,
+  );
+  const [reportSummary, setReportSummary] = useState(() =>
+    cacheMatches ? cachedBundle.reportSummary ?? null : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !(cacheMatches && (cachedBundle.rows?.length || cachedBundle.reportMeta)),
+  );
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [branchId, setBranchId] = useState("");
+  const [page, setPage] = useState(() => (cacheMatches ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatches ? cachedBundle.branchId ?? "" : "",
+  );
   const [branches, setBranches] = useState([]);
-  const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
+  const [applied, setApplied] = useState(() =>
+    cacheMatches && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+          toDate: cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+          branchId: cacheMatches ? cachedBundle.branchId ?? "" : "",
+        },
+  );
   const [viewMode, setViewMode] = useState("both");
 
   useEffect(() => {
@@ -50,14 +94,19 @@ export function ExpensesReportScreen({ definition }) {
   }, []);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
+    if (!user?.branch_id || branchId) return;
+    const next = String(user.branch_id);
+    setBranchId(next);
+    setApplied((prev) => (prev.branchId ? prev : { ...prev, branchId: next }));
   }, [user?.branch_id, branchId]);
 
   const appliedKey = useMemo(
     () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
     [applied],
   );
-  const depsKey = `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
+  const depsKey = pageSizeReady
+    ? `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`
+    : `${definition.apiPath}|page-size-pending`;
 
   function handlePageSizeChange(next) {
     setPageSize(next);
@@ -65,6 +114,7 @@ export function ExpensesReportScreen({ definition }) {
   }
 
   const loadReport = useCallback(async () => {
+    if (!pageSizeReady) return;
     setLoading(true);
     setError(null);
     try {
@@ -77,9 +127,24 @@ export function ExpensesReportScreen({ definition }) {
       if (applied.toDate) searchParams.to_date = applied.toDate;
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
-      setRows(normalizeReportRows(res));
-      setReportMeta(normalizeReportMeta(res, page, pageSize));
-      setReportSummary(normalizeReportSummary(res));
+      const nextRows = normalizeReportRows(res);
+      const nextMeta = normalizeReportMeta(res, page, pageSize);
+      const nextSummary = normalizeReportSummary(res);
+      setRows(nextRows);
+      setReportMeta(nextMeta);
+      setReportSummary(nextSummary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        apiPath: definition.apiPath,
+        rows: nextRows,
+        reportMeta: nextMeta,
+        reportSummary: nextSummary,
+        page,
+        pageSize,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -89,13 +154,14 @@ export function ExpensesReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, page, pageSize, paneHref, depsKey]);
+  }, [applied, definition.apiPath, page, pageSize, pageSizeReady, paneHref, depsKey]);
 
-  const hasData = rows.length > 0 || reportMeta != null;
+  const hasData = pageSizeReady && (rows.length > 0 || reportMeta != null);
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
 
   function refreshReport() {
     invalidateTabAwareDataLoad(paneHref);
+    clearTabPaneCache(paneHref, CACHE_SLOT);
     void loadReport();
   }
 
@@ -239,6 +305,7 @@ export function ExpensesReportScreen({ definition }) {
                 totalPages={totalPages}
                 total={reportMeta?.total ?? rows.length}
                 pageSize={pageSize}
+                pageSizeOptions={pageSizeOptions}
                 onChange={setPage}
                 onPageSizeChange={handlePageSizeChange}
               />

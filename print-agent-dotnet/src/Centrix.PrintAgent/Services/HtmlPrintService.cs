@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Centrix.PrintAgent.Services;
@@ -5,10 +6,13 @@ namespace Centrix.PrintAgent.Services;
 /// <summary>
 /// Renders receipt HTML and sends it to a Windows printer.
 /// Prefers wkhtmltopdf (Windows service safe), then Edge/Chrome headless as fallback.
+/// Jobs for different printers run in parallel; the same printer is serialized.
 /// </summary>
 public sealed class HtmlPrintService
 {
-    private static readonly SemaphoreSlim PrintLock = new(1, 1);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PrinterLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly PrinterDiscovery _printers;
 
     public HtmlPrintService(PrinterDiscovery printers)
@@ -24,7 +28,11 @@ public sealed class HtmlPrintService
         string? jobType,
         CancellationToken cancellationToken)
     {
-        await PrintLock.WaitAsync(cancellationToken);
+        var targetPrinter = ResolvePrinter(printerName);
+        var lockKey = string.IsNullOrWhiteSpace(targetPrinter) ? "__default__" : targetPrinter;
+        var printerLock = PrinterLocks.GetOrAdd(lockKey, static _ => new SemaphoreSlim(1, 1));
+
+        await printerLock.WaitAsync(cancellationToken);
         try
         {
             var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -42,7 +50,6 @@ public sealed class HtmlPrintService
             {
                 var pageHeightMm = await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, jobType, cancellationToken);
 
-                var targetPrinter = ResolvePrinter(printerName);
                 for (var copy = 0; copy < copies; copy++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -60,7 +67,7 @@ public sealed class HtmlPrintService
         }
         finally
         {
-            PrintLock.Release();
+            printerLock.Release();
         }
     }
 

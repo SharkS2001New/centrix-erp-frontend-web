@@ -19,6 +19,11 @@ const BACKGROUND_TASK_ERROR_PATTERNS = [
     test: /background task timed out/i,
     message: "The task took too long and was stopped. Please try again.",
   },
+  {
+    test: /lost connection while waiting for the background task|background_task_poll_unavailable|please check your internet connection/i,
+    message:
+      "Lost connection while waiting for the background task. The job may still be running — check the task panel or try again shortly.",
+  },
 ];
 
 export const EXPORT_EMPTY_ROWS_MESSAGE =

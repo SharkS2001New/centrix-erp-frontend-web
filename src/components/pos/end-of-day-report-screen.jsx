@@ -25,6 +25,8 @@ import {
   formatInTimezone,
   todayCalendarDate,
 } from "@/lib/datetime";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 
 function todayIsoDate() {
   return todayCalendarDate();
@@ -782,12 +784,19 @@ export function EndOfDayReportScreen({
   const [branchId, setBranchId] = useState("");
   const [cashierId, setCashierId] = useState("");
   const [floatSessionId, setFloatSessionId] = useState("");
+  // Debounce filter tweaks so rapid branch/cashier/session changes don't stampede EOD.
+  const debouncedBranchId = useDebouncedValue(branchId, 350);
+  const debouncedCashierId = useDebouncedValue(cashierId, 350);
+  const debouncedFloatSessionId = useDebouncedValue(floatSessionId, 350);
   const [saleDate, setSaleDate] = useState(todayIsoDate());
   const [reportMode, setReportMode] = useState("daily");
   const [saleMonth, setSaleMonth] = useState(() => todayIsoDate().slice(0, 7));
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Paint filters/title immediately; report data can fill in under local loading UI.
+  usePageNavigationReady(true);
 
   useEffect(() => {
     if (!organizationId) return;
@@ -865,10 +874,10 @@ export function EndOfDayReportScreen({
       } else {
         params.sale_date = saleDate;
       }
-      if (branchId) params.branch_id = branchId;
-      if (cashierId) params.cashier_id = cashierId;
-      if (floatSessionId) params.float_session_id = floatSessionId;
-      const data = await apiRequest(apiPath, { searchParams: params });
+      if (debouncedBranchId) params.branch_id = debouncedBranchId;
+      if (debouncedCashierId) params.cashier_id = debouncedCashierId;
+      if (debouncedFloatSessionId) params.float_session_id = debouncedFloatSessionId;
+      const data = await apiRequest(apiPath, { searchParams: params, loading: false });
       setReport(data);
     } catch (e) {
       setReport(null);
@@ -876,7 +885,15 @@ export function EndOfDayReportScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, saleDate, saleMonth, reportMode, branchId, cashierId, floatSessionId]);
+  }, [
+    apiPath,
+    saleDate,
+    saleMonth,
+    reportMode,
+    debouncedBranchId,
+    debouncedCashierId,
+    debouncedFloatSessionId,
+  ]);
 
   useEffect(() => {
     if (reportMode === "monthly" ? saleMonth : saleDate) load();

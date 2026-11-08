@@ -31,26 +31,20 @@ import {
 import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
-import {
-  disposePrintWindow,
-  openBlankPrintWindow,
-  printWindowFeatures,
-  showPrintPreparing,
-  PRINT_BLOCKED_MESSAGE,
-} from "@/lib/open-print-window";
+import { disposePrintWindow } from "@/lib/open-print-window";
 import { dispatchPrintJob, printSecondCopyIfConfigured, shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
 
 function ensureBatchPrintCache(cache = null) {
+  // Mutate the same object so session/batch caches keep warm promises across prints.
   if (cache && typeof cache === "object") {
-    return {
-      moduleSettingsPromise: cache.moduleSettingsPromise ?? null,
-      organizationPromise: cache.organizationPromise ?? null,
-      logoDataUrlPromise: cache.logoDataUrlPromise ?? null,
-      branchById: cache.branchById ?? new Map(),
-      customerByNum: cache.customerByNum ?? new Map(),
-      routeById: cache.routeById ?? new Map(),
-      userNameById: cache.userNameById ?? new Map(),
-    };
+    if (cache.branchById == null) cache.branchById = new Map();
+    if (cache.customerByNum == null) cache.customerByNum = new Map();
+    if (cache.routeById == null) cache.routeById = new Map();
+    if (cache.userNameById == null) cache.userNameById = new Map();
+    if (!("moduleSettingsPromise" in cache)) cache.moduleSettingsPromise = null;
+    if (!("organizationPromise" in cache)) cache.organizationPromise = null;
+    if (!("logoDataUrlPromise" in cache)) cache.logoDataUrlPromise = null;
+    return cache;
   }
   return {
     moduleSettingsPromise: null,
@@ -61,6 +55,16 @@ function ensureBatchPrintCache(cache = null) {
     routeById: new Map(),
     userNameById: new Map(),
   };
+}
+
+/** Shared across list/context-menu reprints in this browser tab. */
+let sessionSalePrintCache = null;
+
+export function getSessionSalePrintCache() {
+  if (!sessionSalePrintCache) {
+    sessionSalePrintCache = ensureBatchPrintCache(null);
+  }
+  return sessionSalePrintCache;
 }
 
 function getOrCreateCachedPromise(map, key, factory) {
@@ -300,7 +304,13 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
 
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
-  const batchCache = ensureBatchPrintCache(options.printCache);
+  // Reuse session cache when callers omit printCache (All sales Orders context menu).
+  const batchCache = ensureBatchPrintCache(options.printCache ?? getSessionSalePrintCache());
+  const hasUsableModuleSettings =
+    Boolean(fallbackModuleSettings?.sales) || Boolean(fallbackModuleSettings?.general);
+  const skipSettingsRefresh =
+    options.skipSettingsRefresh === true ||
+    (options.skipSettingsRefresh !== false && hasUsableModuleSettings);
 
   const documentType = await resolveOrderPrintType(
     fallbackModuleSettings,
@@ -311,19 +321,17 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
     return { ok: false, cancelled: true };
   }
 
+  // Do not open a blank iframe / write "Preparing…" before enrichment.
+  // Hidden iframes are not popup-blocked; early document.write + later rewrite
+  // made Chrome apply print media to the parent SPA (All Sales Orders looked
+  // like it fully reloaded after Print A4). Dispatch opens the frame when HTML is ready.
   let printWindow = options.printWindow ?? null;
-  // Prefer Centrix Print Agent for all document types — avoid opening a blank iframe
-  // before enrichment (passing printWindow forces browser printing in dispatchPrintJob).
   const offlineSale = isOfflineSalePrint(sale, options);
-  const deferPrintWindow =
-    !printWindow && shouldUsePrintAgentForDocument(documentType);
-  if (!printWindow && !deferPrintWindow && !options.deferBrowserWindow) {
-    printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
-    if (!printWindow) {
-      return { ok: false, error: PRINT_BLOCKED_MESSAGE };
+  if (shouldUsePrintAgentForDocument(documentType) || options.deferBrowserWindow) {
+    if (printWindow) {
+      disposePrintWindow(printWindow);
+      printWindow = null;
     }
-  } else if (printWindow) {
-    showPrintPreparing(printWindow);
   }
 
   try {
@@ -357,7 +365,7 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       uomById: options.uomById ?? null,
     });
     const moduleSettings =
-      options.skipSettingsRefresh && fallbackModuleSettings
+      skipSettingsRefresh && fallbackModuleSettings
         ? fallbackModuleSettings
         : await (
           batchCache.moduleSettingsPromise
@@ -502,6 +510,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
           moduleSettings,
           capabilities: options.capabilities,
           allowNetwork: kraAllowNetwork,
+          // List reprints already loaded /sales/{id} — don't sleep-retry for device.
+          waitForDevice: options.kraWaitForDevice === true,
           qrSize: documentType === "invoice" ? 140 : 100,
         }));
       } catch {

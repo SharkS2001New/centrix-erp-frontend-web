@@ -252,13 +252,24 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   );
 
   useEffect(() => {
-    if (!canUse) return;
-    apiRequest("/ai/status")
+    if (!canUse) return undefined;
+    let cancelled = false;
+    apiRequest("/ai/status", { loading: false, reportIssues: false, softFail: true })
       .then((res) => {
+        if (cancelled) return;
+        if (!res) {
+          setStatus({ enabled: false });
+          return;
+        }
         setStatus(res);
         if (res?.talk_voice) setTalkVoicePreference(res.talk_voice);
       })
-      .catch(() => setStatus({ enabled: false }));
+      .catch(() => {
+        if (!cancelled) setStatus({ enabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [canUse]);
 
   useEffect(() => {
@@ -422,6 +433,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       try {
         await apiRequest("/ai/feedback", {
           method: "POST",
+          reportIssues: false,
           body: {
             rating,
             conversation_id: conversationId || undefined,
@@ -574,6 +586,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
         const res = await apiRequest("/ai/chat", {
           method: "POST",
+          reportIssues: false,
           body: requestBody,
         });
         applyChatResponse(res);
@@ -626,9 +639,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       if (request.autoSend !== false) {
-        void sendRef.current?.(message, {
-          pageContextOverride: request.pageContext ?? null,
-          fromVoice: Boolean(request.fromVoice),
+        void Promise.resolve(
+          sendRef.current?.(message, {
+            pageContextOverride: request.pageContext ?? null,
+            fromVoice: Boolean(request.fromVoice),
+          }),
+        ).catch(() => {
+          /* send() already surfaces errors in-panel */
         });
         return;
       }

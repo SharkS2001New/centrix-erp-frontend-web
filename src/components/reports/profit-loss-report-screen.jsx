@@ -11,13 +11,16 @@ import {
   useTabPaneActive,
 } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { todayDashboardDateRange } from "@/lib/dashboard-dates";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   ReportFilterBar,
   ReportKpiGrid,
   ReportPageShell,
 } from "@/components/reports/report-screen-shared";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+
+const CACHE_SLOT = "profit-loss-report";
 
 function pct(part, whole) {
   if (!whole) return "—";
@@ -33,20 +36,36 @@ export function ProfitLossReportScreen({ definition }) {
   const { user, capabilities, isOrgWide } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => todayDashboardDateRange(), []);
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const cacheMatches =
+    cachedBundle && cachedBundle.apiPath === definition.apiPath;
+  const [rows, setRows] = useState(() => (cacheMatches ? cachedBundle.rows ?? [] : []));
+  const [loading, setLoading] = useState(() => !(cacheMatches && Array.isArray(cachedBundle.rows)));
   const [error, setError] = useState(null);
-  const [fromDate, setFromDate] = useState(defaultRange.from);
-  const [toDate, setToDate] = useState(defaultRange.to);
-  const [branchId, setBranchId] = useState("");
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatches ? cachedBundle.branchId ?? "" : "",
+  );
   const [branches, setBranches] = useState([]);
-  const [applied, setApplied] = useState({
-    fromDate: defaultRange.from,
-    toDate: defaultRange.to,
-    branchId: "",
-  });
-  const [filtersReady, setFiltersReady] = useState(false);
+  const [applied, setApplied] = useState(() =>
+    cacheMatches && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+          toDate: cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+          branchId: cacheMatches ? cachedBundle.branchId ?? "" : "",
+        },
+  );
+  const [filtersReady, setFiltersReady] = useState(() => Boolean(cacheMatches));
   const orgWide = Boolean(isOrgWide?.());
 
   useEffect(() => {
@@ -81,7 +100,16 @@ export function ProfitLossReportScreen({ definition }) {
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       // Page-local spinner only — do not hold the global shell overlay on this report.
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
-      setRows(res.data ?? []);
+      const nextRows = res.data ?? [];
+      setRows(nextRows);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        apiPath: definition.apiPath,
+        rows: nextRows,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -96,6 +124,7 @@ export function ProfitLossReportScreen({ definition }) {
 
   function refreshReport() {
     invalidateTabAwareDataLoad(paneHref);
+    clearTabPaneCache(paneHref, CACHE_SLOT);
     void loadReport();
   }
 
@@ -213,7 +242,7 @@ export function ProfitLossReportScreen({ definition }) {
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
         onReset={() => {
-          const range = todayDashboardDateRange();
+          const range = getReportsDefaultDateRange(capabilities?.module_settings);
           const bid = initialBranchId(user, isOrgWide);
           setFromDate(range.from);
           setToDate(range.to);

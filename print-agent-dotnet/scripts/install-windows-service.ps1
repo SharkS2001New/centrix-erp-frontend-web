@@ -4,9 +4,13 @@ param(
     [string]$ServiceName = "CentrixPrintAgent",
     [string]$TaskName = "CentrixPrintAgent",
     [string]$DisplayName = "Centrix Print Agent",
-    [switch]$DownloadWkhtml,
+    # Default ON so a fresh till install gets wkhtmltopdf without a second step.
+    [bool]$DownloadWkhtml = $true,
+    [switch]$SkipWkhtmlDownload,
     [switch]$SkipSumatraDownload
 )
+
+$DownloadWkhtml = $DownloadWkhtml -and -not $SkipWkhtmlDownload
 
 $ErrorActionPreference = "Stop"
 
@@ -86,10 +90,10 @@ function Ensure-WkhtmlTopdf {
 
     if (-not $DownloadWkhtml) {
         Write-Host ""
-        Write-Host "wkhtmltopdf was not bundled (no download requested)." -ForegroundColor Yellow
-        Write-Host "Install wkhtmltopdf manually from:" -ForegroundColor Yellow
+        Write-Host "wkhtmltopdf was not bundled (download skipped)." -ForegroundColor Yellow
+        Write-Host "Re-run: .\install-windows-service.ps1   (downloads by default)" -ForegroundColor Yellow
+        Write-Host "Or install from:" -ForegroundColor Yellow
         Write-Host "  https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe" -ForegroundColor Yellow
-        Write-Host "Then re-run install-windows-service.ps1, or set WKHTMLTOPDF_PATH to wkhtmltopdf.exe." -ForegroundColor Yellow
         Write-Host ""
         return $null
     }
@@ -99,27 +103,36 @@ function Ensure-WkhtmlTopdf {
     $url = "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe"
 
     New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
-    Write-Host "Downloading wkhtmltopdf (optional - pass -DownloadWkhtml only when needed)..."
+    Write-Host "Downloading wkhtmltopdf into Print Agent tools (one-time, required for fast silent printing)..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $installerPath -UseBasicParsing -TimeoutSec 600
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installerPath -UseBasicParsing -TimeoutSec 600
+    } catch {
+        Write-Host ("WARNING: wkhtmltopdf download failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host "Install manually, then re-run this installer." -ForegroundColor Yellow
+        return $null
+    }
 
     Write-Host "Installing wkhtmltopdf silently..."
     $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait -PassThru
     if ($installProcess.ExitCode -ne 0) {
-        throw ("wkhtmltopdf installer failed with exit code {0}." -f $installProcess.ExitCode)
+        Write-Host ("WARNING: wkhtmltopdf installer exit code {0}." -f $installProcess.ExitCode) -ForegroundColor Yellow
+        return $null
     }
 
     Start-Sleep -Seconds 2
     $sourceBin = Find-WkhtmlTopdfSystemBin
     if (-not $sourceBin) {
-        throw "wkhtmltopdf installer finished but wkhtmltopdf.exe was not found."
+        Write-Host "WARNING: wkhtmltopdf installer finished but wkhtmltopdf.exe was not found." -ForegroundColor Yellow
+        return $null
     }
 
     Copy-WkhtmlTopdfBin -SourceBin $sourceBin -TargetBinDir $binDir
     Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
 
     if (-not (Test-Path $wkhtmlExe)) {
-        throw "Failed to copy wkhtmltopdf into the Print Agent folder."
+        Write-Host "WARNING: Failed to copy wkhtmltopdf into the Print Agent folder." -ForegroundColor Yellow
+        return $null
     }
 
     Write-Host ("wkhtmltopdf installed: {0}" -f $wkhtmlExe)
@@ -200,7 +213,12 @@ Write-Host ""
 Write-Host "Centrix Print Agent installed and started as a Windows service." -ForegroundColor Green
 Write-Host "Health check: http://127.0.0.1:9247/v1/health"
 Write-Host ("SumatraPDF: {0}" -f $sumatraPath) -ForegroundColor Green
-if (-not $wkhtmlPath -or -not (Test-Path $wkhtmlPath)) {
-    Write-Host "wkhtmltopdf is missing - install it once, then re-run this script (or set WKHTMLTOPDF_PATH)." -ForegroundColor Yellow
+if ($wkhtmlPath -and (Test-Path $wkhtmlPath)) {
+    Write-Host ("wkhtmltopdf: {0}" -f $wkhtmlPath) -ForegroundColor Green
+} else {
+    Write-Host "wkhtmltopdf is missing - re-run this script with network access (download is on by default)." -ForegroundColor Yellow
 }
+Write-Host ""
+Write-Host "USB receipt printers: if Test print fails while health is OK, open services.msc ->" -ForegroundColor Cyan
+Write-Host "  Centrix Print Agent -> Log On -> This account (the Windows user who sees the printer) -> Restart." -ForegroundColor Cyan
 Write-Host "In Centrix: Administration -> Local printing -> Centrix Print Agent -> Test connection -> Save."

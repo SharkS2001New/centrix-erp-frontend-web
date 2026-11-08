@@ -1,4 +1,3 @@
-import QRCode from "qrcode";
 import { apiRequest } from "@/lib/api";
 import { isKraDeviceConfigured, isKraBypassedForOrderTotal, isKraFiscalizationActive } from "@/lib/finance-settings";
 
@@ -196,6 +195,8 @@ export async function kraReceiptQrDataUrl(link, { size = 120 } = {}) {
   const urlOnly = cleaned.match(/https:\/\/\S+/i)?.[0] ?? null;
   const candidates = urlOnly && urlOnly !== cleaned ? [cleaned, urlOnly] : [cleaned];
   const width = Math.max(72, Number(size) || 120);
+  // Lazy-load qrcode so sales/POS list chunks don't pay for it until print.
+  const { default: QRCode } = await import("qrcode");
   for (const value of candidates) {
     try {
       return await QRCode.toDataURL(value, {
@@ -391,6 +392,12 @@ export async function ensureKraQrForPrint(
     capabilities = null,
     allowNetwork = true,
     qrSize = 100,
+    /**
+     * When true (POS checkout right after fiscalize), poll a few times for the
+     * eTIMS verification link. List/context-menu reprints should pass false —
+     * the sale was just loaded and sleep-retries only delay the printer.
+     */
+    waitForDevice = false,
     /** @deprecated Ignored — missing QR never blocks print. */
     requireQrWhenFiscalized: _requireQrWhenFiscalized = false,
   } = {},
@@ -423,7 +430,7 @@ export async function ensureKraQrForPrint(
     let kraData = extractKraReceiptData(sale, kraReceipt);
 
     if (allowNetwork && sale?.id && !kraData?.signatureLink) {
-      const attempts = tryFetch || kraEnabled ? 4 : 1;
+      const attempts = waitForDevice && (tryFetch || kraEnabled) ? 4 : 1;
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         kraData = await resolveKraReceiptDataForSale(sale, kraReceipt);
         if (kraData?.signatureLink) break;
@@ -434,7 +441,7 @@ export async function ensureKraQrForPrint(
         ) {
           return { kraData: null, kraQrDataUrl: null };
         }
-        if (!(tryFetch || kraEnabled) || attempt >= attempts - 1) break;
+        if (!waitForDevice || !(tryFetch || kraEnabled) || attempt >= attempts - 1) break;
         await sleep(300 * (attempt + 1));
       }
     }

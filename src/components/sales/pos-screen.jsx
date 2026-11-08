@@ -1340,6 +1340,8 @@ function fastPosPrintOptions(sale, base = {}) {
     skipLogoFetch: true,
     // Just-completed checkout — don't block thermal print on stock-gate races.
     skipStockPrintGate: true,
+    // Checkout may still be waiting on eTIMS QR; list reprints opt out explicitly.
+    kraWaitForDevice: base.kraWaitForDevice ?? base.allowKraNetwork !== false,
   };
 }
 

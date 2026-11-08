@@ -29,7 +29,7 @@ import { CustomerReturnDetailModal } from "@/components/sales/customer-return-de
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
 import { ReturnStatusBadge, customerReturnReturnedByName } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
-import { defaultDateRange } from "@/lib/datetime";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -53,7 +53,10 @@ export function SalesReturnsScreen() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
-  const defaultRange = useMemo(() => defaultDateRange(30), []);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [page, setPage] = useState(1);

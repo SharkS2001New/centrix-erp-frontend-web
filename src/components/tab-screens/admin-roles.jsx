@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PermissionMatrix } from "@/components/admin/permission-matrix";
 import {
@@ -22,23 +28,39 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
 import { filterPermissionMatrixForCapabilities } from "@/lib/permission-matrix-filters";
 import { useConfirm } from "@/lib/use-confirm";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+
+const CACHE_SLOT = "admin-roles";
 
 export function AdminRolesScreen() {
   const confirm = useConfirm();
   const { adminPath } = useAdminApi();
   const { refreshCapabilities, capabilities } = useAuth();
-  const [roles, setRoles] = useState([]);
-  const [permissionGroups, setPermissionGroups] = useState([]);
-  const [permissionApplications, setPermissionApplications] = useState([]);
-  const [industryLabel, setIndustryLabel] = useState(null);
-  const [selectedRoleId, setSelectedRoleId] = useState(null);
+  const { paneHref } = useTabPaneActive();
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+
+  const [roles, setRoles] = useState(() => (cachedBundle ? cachedBundle.roles ?? [] : []));
+  const [permissionGroups, setPermissionGroups] = useState(() =>
+    cachedBundle ? cachedBundle.permissionGroups ?? [] : [],
+  );
+  const [permissionApplications, setPermissionApplications] = useState(() =>
+    cachedBundle ? cachedBundle.permissionApplications ?? [] : [],
+  );
+  const [industryLabel, setIndustryLabel] = useState(() =>
+    cachedBundle ? cachedBundle.industryLabel ?? null : null,
+  );
+  const [selectedRoleId, setSelectedRoleId] = useState(() =>
+    cachedBundle ? cachedBundle.selectedRoleId ?? null : null,
+  );
   const [assignedIds, setAssignedIds] = useState(() => new Set());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !(cachedBundle && (cachedBundle.roles?.length || cachedBundle.permissionGroups?.length)),
+  );
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [roleName, setRoleName] = useState("");
   const [formError, setFormError] = useState(null);
-  const initialRolePicked = useRef(false);
+  const initialRolePicked = useRef(Boolean(cachedBundle?.selectedRoleId));
 
   const selectedRole = useMemo(
     () => roles.find((r) => normalizeRoleId(r.id) === selectedRoleId) ?? null,
@@ -46,7 +68,10 @@ export function AdminRolesScreen() {
   );
 
   const loadRoles = useCallback(async () => {
-    const res = await apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } });
+    const res = await apiRequest(adminPath("/roles"), {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   }, [adminPath]);
 
@@ -56,7 +81,7 @@ export function AdminRolesScreen() {
   }, [capabilities]);
 
   const loadPermissionsCatalog = useCallback(async () => {
-    const res = await apiRequest(adminPath("/roles/permissions/matrix"));
+    const res = await apiRequest(adminPath("/roles/permissions/matrix"), { loading: false });
     const caps = capabilitiesRef.current;
     const capsIndustry =
       caps?.industry ??
@@ -67,7 +92,7 @@ export function AdminRolesScreen() {
       );
       setPermissionApplications([]);
       setPermissionGroups([]);
-      return;
+      return { applications: [], groups: [], industryLabel: null };
     }
     const filtered = filterPermissionMatrixForCapabilities(
       {
@@ -78,17 +103,23 @@ export function AdminRolesScreen() {
     );
     setPermissionApplications(filtered.applications);
     setPermissionGroups(filtered.groups);
+    let nextIndustryLabel = null;
     if (res.industry) {
-      setIndustryLabel(
+      nextIndustryLabel =
         res.industry === "hospitality"
           ? "Hotel & Hospitality"
           : res.industry === "commerce"
             ? "Retail & Distribution"
             : res.industry === "spa"
               ? "SPA & Kinyozi"
-              : res.industry,
-      );
+              : res.industry;
+      setIndustryLabel(nextIndustryLabel);
     }
+    return {
+      applications: filtered.applications,
+      groups: filtered.groups,
+      industryLabel: nextIndustryLabel,
+    };
   }, [adminPath]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
@@ -97,39 +128,51 @@ export function AdminRolesScreen() {
       setAssignedIds(new Set());
       return;
     }
-    const res = await apiRequest(adminPath(`/roles/${id}/permissions`));
+    const res = await apiRequest(adminPath(`/roles/${id}/permissions`), { loading: false });
     setAssignedIds(permissionIdSet(res.permission_ids));
-  }, []);
+  }, [adminPath]);
 
+  const depsKey = `${adminPath("/roles")}|bootstrap`;
+
+  const selectedRoleIdRef = useRef(selectedRoleId);
   useEffect(() => {
-    let cancelled = false;
+    selectedRoleIdRef.current = selectedRoleId;
+  }, [selectedRoleId]);
 
-    async function bootstrap() {
-      setLoading(true);
-      try {
-        const list = await loadRoles();
-        if (cancelled) return;
-        setRoles(list);
-        await loadPermissionsCatalog();
-        if (cancelled) return;
-        if (!initialRolePicked.current && list.length > 0) {
-          initialRolePicked.current = true;
-          setSelectedRoleId(normalizeRoleId(list[0].id));
-        }
-      } catch (e) {
-        if (!cancelled) {
-          notifyError(e instanceof ApiError ? e.message : "Failed to load roles");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+  const bootstrap = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Roles list + matrix in parallel — sequential wait was the main Roles lag.
+      const [list, matrix] = await Promise.all([loadRoles(), loadPermissionsCatalog()]);
+      setRoles(list);
+      let nextSelected = selectedRoleIdRef.current;
+      if (!initialRolePicked.current && list.length > 0) {
+        initialRolePicked.current = true;
+        nextSelected = normalizeRoleId(list[0].id);
+        setSelectedRoleId(nextSelected);
+        selectedRoleIdRef.current = nextSelected;
       }
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        roles: list,
+        permissionGroups: matrix?.groups ?? [],
+        permissionApplications: matrix?.applications ?? [],
+        industryLabel: matrix?.industryLabel ?? null,
+        selectedRoleId: nextSelected,
+      });
+      markTabAwareDataLoaded(paneHref, depsKey);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load roles");
+    } finally {
+      setLoading(false);
     }
+  }, [loadRoles, loadPermissionsCatalog, paneHref, depsKey]);
 
-    bootstrap();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadRoles, loadPermissionsCatalog]);
+  const hasData = roles.length > 0 || permissionGroups.length > 0;
+  useTabAwareDataLoad(bootstrap, {
+    depsKey,
+    hasData,
+    softEvictMs: 30_000,
+  });
 
   useEffect(() => {
     if (selectedRoleId == null) return;
@@ -209,6 +252,8 @@ export function AdminRolesScreen() {
       const nextId = list[0] ? normalizeRoleId(list[0].id) : null;
       setSelectedRoleId(nextId);
       if (nextId == null) setAssignedIds(new Set());
+      clearTabPaneCache(paneHref, CACHE_SLOT);
+      invalidateTabAwareDataLoad(paneHref);
       notifySuccess(`Role "${target.role_name}" deleted.`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to delete role");
@@ -236,6 +281,8 @@ export function AdminRolesScreen() {
       setRoles(list);
       setSelectedRoleId(normalizeRoleId(role.id));
       setAssignedIds(new Set());
+      clearTabPaneCache(paneHref, CACHE_SLOT);
+      invalidateTabAwareDataLoad(paneHref);
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to create role");
     } finally {

@@ -176,7 +176,7 @@ export function ExpensesScreen() {
         filters,
         extra,
       });
-      const expRes = await apiRequest("/expenses", { searchParams });
+      const expRes = await apiRequest("/expenses", { searchParams, loading: false });
       const parsed = parsePaginator(expRes);
       setExpenses(parsed.items);
       setTotalExpenses(parsed.total);
@@ -189,8 +189,8 @@ export function ExpensesScreen() {
   }, [page, pageSize, debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   // List first — do not wait for groups/users/summary.
-  useTabAwareDataLoad(loadExpenses);
-  useTabAwareDataLoad(loadReferenceData);
+  useTabAwareDataLoad(loadExpenses, { softEvictMs: 20_000 });
+  useTabAwareDataLoad(loadReferenceData, { softEvictMs: 30_000 });
 
   async function reloadAll() {
     const [statsRes] = await Promise.all([

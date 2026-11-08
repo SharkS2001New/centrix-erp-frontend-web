@@ -13,7 +13,7 @@ import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
-import { defaultDateRange } from "@/lib/datetime";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import {
   CatalogPageShell,
   Field,
@@ -36,7 +36,7 @@ const PAYMENT_STATUS = {
 export function AccountingCustomerInvoicesScreen() {
   const searchParams = useSearchParams();
   const presetCustomer = searchParams.get("customer");
-  const { hasPermission } = useAuth();
+  const { hasPermission, capabilities } = useAuth();
   const { currency, date } = useOrgFormat();
   const canManage =
     canManagePayments({ hasPermission })
@@ -49,7 +49,10 @@ export function AccountingCustomerInvoicesScreen() {
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
-  const defaultRange = useMemo(() => defaultDateRange(7), []);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [statusFilter, setStatusFilter] = useState("all");

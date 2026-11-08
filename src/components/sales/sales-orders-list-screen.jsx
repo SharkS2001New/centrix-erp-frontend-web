@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -17,7 +18,7 @@ import { filterByOrganization } from "@/lib/admin";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
-import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
+import { AiAnalyzeButton } from "@/components/ai/ai-analyze-button";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatNavLabel } from "@/lib/nav-label-format";
 import {
@@ -69,8 +70,12 @@ import {
   normalizeOrdersListSummary,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
-import { printSaleOrder, resolveOrderPrintType, warmSalePrintBatch, prepareSaleOrderPrintJob, dispatchPreparedSalePrintJob } from "@/components/sales/sale-order-print";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
+
+/** Print stack is heavy (invoice/receipt HTML + QR) — load only when printing. */
+function loadSaleOrderPrint() {
+  return import("@/components/sales/sale-order-print");
+}
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
@@ -88,15 +93,7 @@ import {
   orderListPrintAriaLabel,
   sortOrdersForList,
 } from "@/lib/sales-settings";
-import {
-  disposePrintWindow,
-  PRINT_BLOCKED_MESSAGE,
-} from "@/lib/open-print-window";
-import {
-  isSaleOrderBrowserPrintWindowRequired,
-  openSaleOrderPrintWindow,
-  shouldUsePrintAgentForDocument,
-} from "@/lib/print-dispatch";
+import { shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
 import { warmPrintAgentHealth } from "@/lib/print-agent";
 import { useConfirm } from "@/lib/use-confirm";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
@@ -122,10 +119,25 @@ import {
   RouteOrdersOpsShortcuts,
   RouteOrdersSummaryStats,
 } from "@/components/fulfillment/route-orders-ops-chrome";
-import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
-import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { ActionFeedbackBanner } from "@/components/shared/action-feedback-banner";
 import { usePosSession } from "@/contexts/pos-session-context";
+
+const BackofficeOrderEditModal = dynamic(
+  () =>
+    import("@/components/sales/backoffice-order-edit-modal").then(
+      (m) => m.BackofficeOrderEditModal,
+    ),
+  { ssr: false },
+);
+const SalePosPaymentPanel = dynamic(
+  () =>
+    import("@/components/sales/sale-pos-payment-panel").then((m) => m.SalePosPaymentPanel),
+  { ssr: false },
+);
+const AiInsightPanel = dynamic(
+  () => import("@/components/ai/ai-insight-panel").then((m) => m.AiInsightPanel),
+  { ssr: false },
+);
 
 /** First click on these columns should show newest / highest first. */
 const ORDERS_TABLE_SORT_FIRST_DIR = {
@@ -923,7 +935,7 @@ export default function SalesOrdersListScreen({
     setListLoading(true);
     try {
       const searchParams = buildOrdersListSearchParams(page, pageSize);
-      const res = await apiRequest("/sales", { searchParams });
+      const res = await apiRequest("/sales", { searchParams, loading: false });
       const parsed = parsePaginator(res);
       const list = sortOrdersForList(parsed.items, ordersListSort);
 
@@ -964,7 +976,8 @@ export default function SalesOrdersListScreen({
     return fetchAllPages("/sales", rest, { perPage: 200 });
   }, [buildOrdersListSearchParams]);
 
-  useTabAwareDataLoad(loadOrders, { refetchOnActivate: true });
+  // Keep the last loaded queue when switching tabs; Refresh / filter changes reload.
+  useTabAwareDataLoad(loadOrders);
 
   useEffect(() => {
     setPage(1);
@@ -975,7 +988,7 @@ export default function SalesOrdersListScreen({
     if (detailsById[key]?.items !== undefined) return detailsById[key];
     setDetailLoadingId(key);
     try {
-      const sale = await apiRequest(`/sales/${orderId}`);
+      const sale = await apiRequest(`/sales/${orderId}`, { loading: false });
       setDetailsById((prev) => ({ ...prev, [key]: sale }));
       return sale;
     } catch {
@@ -1062,6 +1075,14 @@ export default function SalesOrdersListScreen({
     setExpandedIds(new Set());
   }
 
+  function warmOrderPrintDetail(sale) {
+    if (!sale?.id) return;
+    if (saleHasPrintableItems(sale)) return;
+    const key = String(sale.id);
+    if (detailsById[key] && saleHasPrintableItems(detailsById[key])) return;
+    void loadOrderDetail(sale.id);
+  }
+
   function openOrderContextMenu(event, sale) {
     event.preventDefault();
     setContextMenu({
@@ -1070,6 +1091,8 @@ export default function SalesOrdersListScreen({
       y: event.clientY,
       includePrint: true,
     });
+    // Prefetch detail while the user reads the menu — Print then often skips the wait.
+    warmOrderPrintDetail(sale);
   }
 
   function openActionsMenuFromButton(event, sale) {
@@ -1082,6 +1105,7 @@ export default function SalesOrdersListScreen({
       y: rect.bottom + 4,
       includePrint: true,
     });
+    warmOrderPrintDetail(sale);
   }
 
   function viewOrder(sale) {
@@ -1157,16 +1181,6 @@ export default function SalesOrdersListScreen({
   async function printOrder(sale, documentType = null, { batch = false, printCache = null } = {}) {
     if (!sale?.id) return false;
 
-    const cachedType =
-      documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
-    // When Centrix Print Agent is configured, do not pre-open a browser window for
-    // thermal receipts — that forces browser printing and skips the agent.
-    const printWindow = openSaleOrderPrintWindow(cachedType);
-    if (isSaleOrderBrowserPrintWindowRequired(cachedType) && !printWindow) {
-      setActionMessage(PRINT_BLOCKED_MESSAGE);
-      return false;
-    }
-
     try {
       const key = String(sale.id);
       let detail = saleHasPrintableItems(sale) ? sale : (detailsById[key] ?? sale);
@@ -1175,10 +1189,13 @@ export default function SalesOrdersListScreen({
         if (loaded) detail = loaded;
       }
       if (!detail) {
-        disposePrintWindow(printWindow);
         setActionMessage("Could not load order details for print.");
         return false;
       }
+      const { printSaleOrder, getSessionSalePrintCache } = await loadSaleOrderPrint();
+      // Open the print iframe only when HTML is ready (inside printSaleOrder /
+      // dispatch). Pre-opening + rewriting the frame after detail/chunk load
+      // caused Chrome to remount the orders page after Print A4.
       const printed = await printSaleOrder(detail, {
         organization,
         organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
@@ -1186,21 +1203,21 @@ export default function SalesOrdersListScreen({
         capabilities,
         uomById,
         user,
-        printWindow,
-        printCache,
+        // Detail payload already embeds customer/cashier — avoid extra GETs.
+        customer: detail.customer ?? null,
+        printCache: printCache ?? getSessionSalePrintCache(),
         skipSaleRefresh: saleHasPrintableItems(detail),
-        skipSettingsRefresh: batch,
-        skipOrganizationRefresh: batch,
+        // Capabilities already carry print settings/org — batch path always skipped these;
+        // single context-menu print was re-fetching 4 settings endpoints + org + logo.
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
         skipStockPrintGate: true,
+        // Sale was just loaded (or already had lines) — don't sleep-poll eTIMS.
+        kraWaitForDevice: false,
         ...(documentType ? { documentType } : {}),
       });
-      if (!printed) {
-        disposePrintWindow(printWindow);
-        return false;
-      }
-      return true;
+      return Boolean(printed);
     } catch (e) {
-      disposePrintWindow(printWindow);
       setActionMessage(e instanceof Error ? e.message : "Print failed");
       return false;
     }
@@ -1213,6 +1230,12 @@ export default function SalesOrdersListScreen({
    */
   async function printOrdersInChunks(printable, documentType, { loadingBusy, printingBusy } = {}) {
     if (!printable.length) return { printed: 0, failed: 0, failureReasons: [] };
+
+    const {
+      warmSalePrintBatch,
+      prepareSaleOrderPrintJob,
+      dispatchPreparedSalePrintJob,
+    } = await loadSaleOrderPrint();
 
     const useAgentQueue = shouldUsePrintAgentForDocument(documentType);
     if (useAgentQueue) {
@@ -1598,6 +1621,7 @@ export default function SalesOrdersListScreen({
         capabilities,
       );
       if (!documentType || documentType === "both") {
+        const { resolveOrderPrintType } = await loadSaleOrderPrint();
         documentType = await resolveOrderPrintType(capabilities?.module_settings, null);
         if (!documentType) return;
       }
@@ -1844,9 +1868,15 @@ export default function SalesOrdersListScreen({
       onConvertToUnpaid: canConvertPaymentStatusOnQueue(sale, paymentQueueSlug, capabilities, "unpaid")
         ? () => void convertPaymentStatus(sale, "unpaid")
         : null,
-      onPrintThermal: () => printOrder(sale, "receipt"),
-      onPrintA4: () => printOrder(sale, "invoice"),
-      onPrintProforma: () => printOrder(sale, "proforma"),
+      onPrintThermal: () => {
+        void printOrder(sale, "receipt");
+      },
+      onPrintA4: () => {
+        void printOrder(sale, "invoice");
+      },
+      onPrintProforma: () => {
+        void printOrder(sale, "proforma");
+      },
       onAdvance:
         routeOrdersOnly || !hasPermission(P.sales.orders.edit)
           ? null
@@ -1899,7 +1929,6 @@ export default function SalesOrdersListScreen({
 
   return (
     <CatalogPageShell
-      navigationReady={!showTableLoading}
       title={
         shopDebtorsBucket === "unpaid"
           ? "Unpaid Debtors"

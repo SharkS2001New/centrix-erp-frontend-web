@@ -5,7 +5,7 @@
   "agentId": 0,
   "comstoreBaseUrl": "http://localhost:4000",
   "comstoreApiKey": "",
-  "longPollMs": 2000,
+  "longPollMs": 200,
   "heartbeatIntervalSeconds": 60,
   "commandTimeoutSeconds": 25,
   "autoStartComstore": false,

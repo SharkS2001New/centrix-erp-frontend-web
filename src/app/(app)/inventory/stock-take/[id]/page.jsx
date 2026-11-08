@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { InventoryStockTakeIdScreen } from "@/components/tab-screens/inventory-stock-take-id";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <InventoryStockTakeIdScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/inventory-stock-take-id"),
+  "InventoryStockTakeIdScreen",
+);

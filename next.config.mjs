@@ -42,6 +42,10 @@ const htmlDocumentHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Tree-shake heavy icon/chart barrels so route JS stays smaller (faster first paint).
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   async headers() {
     const rules = [
       {

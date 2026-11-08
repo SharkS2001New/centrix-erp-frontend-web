@@ -16,40 +16,101 @@ import {
   shouldUsePrintAgentForDocument,
 } from "@/lib/print-dispatch";
 
+/** Prefetch + reuse across context-menu prints in this tab. */
+const LPO_SUMMARY_TTL_MS = 60_000;
+/** @type {Map<string, { at: number, promise: Promise<object|null> }>} */
+const lpoSummaryCache = new Map();
+/** @type {Map<string, Promise<object|null>>} */
+const branchCache = new Map();
+/** @type {Map<string, Promise<object|null>>} */
+const supplierCache = new Map();
+
+function summaryCacheKey(lpoNo) {
+  return String(lpoNo ?? "");
+}
+
+function getCachedPromise(map, key, factory) {
+  if (key == null || key === "") return Promise.resolve(null);
+  const id = String(key);
+  if (map.has(id)) return map.get(id);
+  const promise = Promise.resolve()
+    .then(factory)
+    .catch(() => null);
+  map.set(id, promise);
+  return promise;
+}
+
+export function prefetchLpoPrintSummary(lpoNo) {
+  const key = summaryCacheKey(lpoNo);
+  if (!key) return Promise.resolve(null);
+  const hit = lpoSummaryCache.get(key);
+  if (hit && Date.now() - hit.at < LPO_SUMMARY_TTL_MS) {
+    return hit.promise;
+  }
+  const promise = apiRequest(`/lpo-mst/${lpoNo}/summary`, {
+    loading: false,
+    reportIssues: false,
+  }).catch(() => null);
+  lpoSummaryCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+
 async function loadLpoPrintPayload(lpoNo, options = {}) {
   const prefetched = options.lpoSummary;
   const summary =
     prefetched?.lpo != null
       ? prefetched
-      : await apiRequest(`/lpo-mst/${lpoNo}/summary`, { loading: false, reportIssues: false });
+      : await prefetchLpoPrintSummary(lpoNo);
+
+  if (!summary?.lpo) {
+    throw new Error("Could not load purchase order for print.");
+  }
 
   const orgId = options.organization?.id ?? options.capabilities?.organization_id;
   const branchId = options.user?.branch_id;
   const supplierId = summary?.lpo?.supplier_id;
+  const fallbackModuleSettings =
+    options.moduleSettings ?? options.capabilities?.module_settings ?? null;
+  const hasUsableModuleSettings =
+    Boolean(fallbackModuleSettings?.sales) ||
+    Boolean(fallbackModuleSettings?.general) ||
+    Boolean(fallbackModuleSettings?.procurement);
+  const skipSettingsRefresh =
+    options.skipSettingsRefresh === true ||
+    (options.skipSettingsRefresh !== false && hasUsableModuleSettings);
+  const organizationAlreadyUsable = Boolean(
+    options.organization?.org_name || options.organization?.name,
+  );
 
   const [organization, branch, supplier, settings] = await Promise.all([
-    options.organization?.org_name || options.organization?.name
-      ? Promise.resolve(options.organization)
+    organizationAlreadyUsable || options.skipOrganizationRefresh
+      ? Promise.resolve(options.organization ?? null)
       : orgId
         ? apiRequest(`/organizations/${orgId}`, { loading: false, reportIssues: false })
             .then((res) => res?.organization ?? res)
-            .catch(() => null)
-        : Promise.resolve(null),
+            .catch(() => options.organization ?? null)
+        : Promise.resolve(options.organization ?? null),
     branchId
-      ? apiRequest(`/branches/${branchId}`, { loading: false, reportIssues: false }).catch(() => null)
+      ? getCachedPromise(branchCache, branchId, () =>
+          apiRequest(`/branches/${branchId}`, { loading: false, reportIssues: false }),
+        )
       : Promise.resolve(null),
     options.supplier
       ? Promise.resolve(options.supplier)
       : supplierId
-        ? apiRequest(`/suppliers/${supplierId}`, { loading: false, reportIssues: false }).catch(() => null)
+        ? getCachedPromise(supplierCache, supplierId, () =>
+            apiRequest(`/suppliers/${supplierId}`, { loading: false, reportIssues: false }),
+          )
         : Promise.resolve(null),
-    options.printSettings && options.generalSettings
-      ? Promise.resolve({
-          sales: null,
-          general: options.generalSettings,
-          procurement: options.printSettings,
-        })
-      : fetchPrintModuleSettings(options.moduleSettings ?? options.capabilities?.module_settings ?? null),
+    skipSettingsRefresh && fallbackModuleSettings
+      ? Promise.resolve(fallbackModuleSettings)
+      : options.printSettings && options.generalSettings
+        ? Promise.resolve({
+            sales: null,
+            general: options.generalSettings,
+            procurement: options.printSettings,
+          })
+        : fetchPrintModuleSettings(fallbackModuleSettings),
   ]);
 
   const generalSettings = mergeGeneralSettings(settings);
@@ -58,7 +119,7 @@ async function loadLpoPrintPayload(lpoNo, options = {}) {
   let buyer = {};
   if (branch) {
     buyer = {
-      name: organization?.org_name,
+      name: organization?.org_name ?? organization?.name,
       address: branch.branch_address,
       phone: branch.branch_phone ?? branch.phone,
       email: branch.branch_email ?? branch.email,
@@ -67,7 +128,7 @@ async function loadLpoPrintPayload(lpoNo, options = {}) {
     };
   } else if (organization) {
     buyer = {
-      name: organization.org_name,
+      name: organization.org_name ?? organization.name,
       address: organization.org_address,
       phone: organization.primary_tel,
       email: organization.org_email,
@@ -134,5 +195,10 @@ export async function printLpoOrder(lpoNo, options = {}) {
 /** User-click handler: open print dialog without navigating away from the app. */
 export async function runLpoPrintClick(lpoNo, options = {}) {
   const variant = options.variant === "delivery_note" ? "delivery_note" : "lpo";
-  return printLpoOrder(lpoNo, { ...options, variant });
+  return printLpoOrder(lpoNo, {
+    ...options,
+    variant,
+    skipSettingsRefresh: options.skipSettingsRefresh !== false,
+    skipOrganizationRefresh: options.skipOrganizationRefresh !== false,
+  });
 }

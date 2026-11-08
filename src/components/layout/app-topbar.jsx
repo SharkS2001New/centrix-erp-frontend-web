@@ -1,21 +1,43 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
-import { GlobalModuleSearch } from "@/components/layout/global-module-search";
 import { BackgroundTaskHeaderBar } from "@/components/shared/background-task-header-bar";
-import { AccountingHelpTopbarButton } from "@/components/accounting/accounting-help";
-import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribution-help";
 import { BookOpen } from "lucide-react";
 import { openFirstLoginGuide } from "@/components/shared/first-login-guide";
 import { onboardingDemoStorageKey, readOnboardingDemoStatus, isEligibleForMonthlyCustomerDemo } from "@/lib/onboarding-guide";
-import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { isYearlyLicence, licenseAccessMode, rememberLicenceReturn, usesPackageOne, yearlyRenewalOpen } from "@/lib/organization-license";
 import { useEffect, useState } from "react";
+
+const GlobalModuleSearch = dynamic(
+  () => import("@/components/layout/global-module-search").then((m) => m.GlobalModuleSearch),
+  {
+    ssr: false,
+    loading: () => <div className="hidden h-9 w-48 max-w-full rounded-lg bg-black/5 sm:block" aria-hidden />,
+  },
+);
+const NotificationBell = dynamic(
+  () => import("@/components/layout/notification-bell").then((m) => m.NotificationBell),
+  {
+    ssr: false,
+    loading: () => <div className="app-topbar-icon-btn h-9 w-9" aria-hidden />,
+  },
+);
+const AccountingHelpTopbarButton = dynamic(
+  () =>
+    import("@/components/accounting/accounting-help").then((m) => m.AccountingHelpTopbarButton),
+  { ssr: false },
+);
+const DistributionHelpTopbarButton = dynamic(
+  () =>
+    import("@/components/fulfillment/distribution-help").then((m) => m.DistributionHelpTopbarButton),
+  { ssr: false },
+);
 
 function MenuIcon({ className }) {
   return (

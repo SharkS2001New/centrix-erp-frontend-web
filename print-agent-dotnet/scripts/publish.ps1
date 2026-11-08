@@ -52,6 +52,24 @@ if (-not $sumatra -or -not (Test-Path $sumatra)) {
     exit 1
 }
 
+# Prefer shipping wkhtmltopdf when the build machine already has it (offline tills).
+$wkPublishBin = Join-Path $publishDir "tools\wkhtmltopdf\bin"
+$wkPublishExe = Join-Path $wkPublishBin "wkhtmltopdf.exe"
+if (-not (Test-Path $wkPublishExe)) {
+    $wkCandidates = @(
+        (Join-Path $env:ProgramFiles "wkhtmltopdf\bin"),
+        (Join-Path ${env:ProgramFiles(x86)} "wkhtmltopdf\bin")
+    )
+    foreach ($bin in $wkCandidates) {
+        if ($bin -and (Test-Path (Join-Path $bin "wkhtmltopdf.exe"))) {
+            New-Item -ItemType Directory -Force -Path $wkPublishBin | Out-Null
+            Copy-Item -Path (Join-Path $bin "*") -Destination $wkPublishBin -Force
+            Write-Host ("Bundled existing wkhtmltopdf into publish: {0}" -f $wkPublishExe) -ForegroundColor Cyan
+            break
+        }
+    }
+}
+
 # Install helpers next to the exe (ready-zip consumers run these without the source tree).
 $scriptsOut = Join-Path $publishDir "scripts"
 New-Item -ItemType Directory -Force -Path $scriptsOut | Out-Null
@@ -68,6 +86,35 @@ New-Item -ItemType Directory -Force -Path $scriptsOut | Out-Null
 }
 Copy-Item (Join-Path $root "BUILD-AND-INSTALL.bat") $publishDir -Force -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $root "scripts\install-windows-service.ps1") $publishDir -Force
+
+# Ready-zip one-click installer (no .NET SDK — just admin + network for wkhtml if not bundled).
+$installBat = @"
+@echo off
+setlocal EnableExtensions
+title Centrix Print Agent - Install
+cd /d "%~dp0"
+net session >nul 2>&1
+if errorlevel 1 (
+  echo Requesting Administrator permission...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+if exist "%~dp0scripts\install-windows-service.ps1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install-windows-service.ps1"
+) else (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-windows-service.ps1"
+)
+set "EXITCODE=%ERRORLEVEL%"
+echo.
+if not "%EXITCODE%"=="0" (
+  echo FAILED with exit code %EXITCODE%.
+) else (
+  echo Done. Open http://127.0.0.1:9247/v1/health then Test connection in Centrix.
+)
+pause
+exit /b %EXITCODE%
+"@
+Set-Content -Path (Join-Path $publishDir "INSTALL.bat") -Value $installBat -Encoding ASCII
 
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
