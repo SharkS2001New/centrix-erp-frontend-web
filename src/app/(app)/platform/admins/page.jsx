@@ -180,51 +180,61 @@ export default function PlatformAdminsPage() {
           </div>
           <form className="space-y-3" onSubmit={(e) => void handleSubmit(e)}>
             {!editingId ? (
-              <Field label="Username">
+              <Field label="Username" required>
                 <input
-                  className={inputClassName}
+                  className={inputClassName()}
                   value={form.username}
                   onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
                   required
                   autoComplete="off"
+                  placeholder="e.g. ops.admin"
                 />
               </Field>
             ) : (
-              <p className="text-sm text-slate-600">
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-sm text-slate-600">
                 Username: <span className="font-medium text-slate-900">{form.username}</span>
               </p>
             )}
-            <Field label="Full name">
+            <Field label="Full name" required>
               <input
-                className={inputClassName}
+                className={inputClassName()}
                 value={form.full_name}
                 onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))}
                 required
+                placeholder="Full legal name"
               />
             </Field>
-            <Field label="Email">
+            <Field label="Email" required>
               <input
                 type="email"
-                className={inputClassName}
+                className={inputClassName()}
                 value={form.email}
                 onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                 required
+                placeholder="admin@example.com"
               />
             </Field>
-            <Field label={editingId ? "New password (optional)" : "Temporary password"}>
+            <Field
+              label={editingId ? "New password (optional)" : "Temporary password"}
+              required={!editingId}
+            >
               <PasswordInput
+                className={inputClassName()}
                 value={form.password}
                 onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
                 required={!editingId}
                 autoComplete="new-password"
+                placeholder={editingId ? "Leave blank to keep current password" : "Temporary password"}
               />
             </Field>
-            <Field label="Confirm password">
+            <Field label="Confirm password" required={!editingId || Boolean(form.password)}>
               <PasswordInput
+                className={inputClassName()}
                 value={form.password_confirmation}
                 onChange={(e) => setForm((p) => ({ ...p, password_confirmation: e.target.value }))}
                 required={!editingId || Boolean(form.password)}
                 autoComplete="new-password"
+                placeholder="Confirm password"
               />
             </Field>
 

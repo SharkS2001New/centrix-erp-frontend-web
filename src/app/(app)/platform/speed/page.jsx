@@ -506,7 +506,7 @@ export default function PlatformSpeedPage() {
       action={
         <div className="flex flex-wrap items-center gap-2">
           <select
-            className={inputClassName}
+            className={inputClassName()}
             value={range}
             onChange={(e) => setRange(e.target.value)}
             aria-label="Time range"

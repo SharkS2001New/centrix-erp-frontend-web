@@ -1176,7 +1176,7 @@ function UnmappedUserTable({ users, centrixEmployees, mapSelections, onSelect, o
                 <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
                 <td className="px-3 py-2">
                   <select
-                    className={inputClassName}
+                    className={inputClassName()}
                     value={mapSelections[no] ?? ""}
                     onChange={(e) => onSelect(no, e.target.value)}
                   >
