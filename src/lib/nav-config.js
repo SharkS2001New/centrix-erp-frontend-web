@@ -21,7 +21,7 @@ import {
   isCentrixPaymentsEnabled,
 } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
-import { platformNavItems } from "@/lib/platform-nav";
+import { hasPlatformAreaPermission, platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { isDrivingFeatureEnabled, isDrivingIndustry, isHospitalityIndustry, isSpaFeatureEnabled, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
@@ -1535,6 +1535,12 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   const superAdmin =
     typeof isSuperAdmin === "function" ? isSuperAdmin : () => false;
   if (item.superAdminOnly && !superAdmin()) return false;
+  if (
+    item.platformPermission &&
+    !hasPlatformAreaPermission(capabilities, item.platformPermission)
+  ) {
+    return false;
+  }
   if (
     shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin: superAdmin }) &&
     !item.superAdminOnly

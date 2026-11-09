@@ -33,6 +33,7 @@ export const NAV_HREF_ICONS = {
   "/platform/organizations": "building",
   "/platform/organizations/new": "plus",
   "/platform/setup-types": "package",
+  "/platform/admins": "users",
 
   // Dashboards
   "/dashboard": "dashboard",

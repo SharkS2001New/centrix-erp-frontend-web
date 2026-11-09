@@ -32,6 +32,18 @@ function triggerBrowserDownload(blob, filename) {
   URL.revokeObjectURL(objectUrl);
 }
 
+/** Cross-origin R2/CDN — avoid fetch+blob (CORS). Let the browser navigate/download. */
+function triggerExternalDownload(url, filename) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  link.target = "_blank";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 function filenameFromUrl(url) {
   try {
     const path = new URL(url).pathname;
@@ -70,10 +82,14 @@ export async function checkPrintAgentSourceAvailable() {
 
 /**
  * Download the .NET Windows print service zip (recommended for Windows tills).
+ * Falls back to the source build package when the ready zip is not hosted yet.
  */
-export async function downloadPrintAgentDotnet() {
+export async function downloadPrintAgentDotnet({ allowSourceFallback = true } = {}) {
   const res = await fetch("/api/print-agent/dotnet", { cache: "no-store", redirect: "follow" });
   if (!res.ok) {
+    if (allowSourceFallback) {
+      return downloadPrintAgentSource();
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(
       body.message ??
@@ -83,6 +99,9 @@ export async function downloadPrintAgentDotnet() {
 
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
   if (contentType.includes("application/json")) {
+    if (allowSourceFallback) {
+      return downloadPrintAgentSource();
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message ?? "Windows print service is not available.");
   }
@@ -151,45 +170,36 @@ export async function downloadPrintAgentMsi() {
     publicUrl = "";
   }
 
-  if (publicUrl) {
-    const res = await fetch(publicUrl, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(
-        `Could not download MSI from the configured URL (${res.status}). Use Download build package or ready installer under Administration → Local printing instead.`,
-      );
-    }
-    const blob = await res.blob();
-    const filename = filenameFromUrl(publicUrl);
-    triggerBrowserDownload(blob, filename);
-    return { filename, source: "r2" };
-  }
-
+  // Prefer same-origin Next proxy (handles PRINT_AGENT_MSI_URL / local / GitHub).
+  // Direct browser fetch of R2 often fails CORS even when the public URL is valid.
   const res = await fetch("/api/print-agent/msi", { cache: "no-store", redirect: "follow" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(
-      body.message ??
-        "MSI installer is not available. Use Download build package or Download ready installer under Administration → Local printing instead.",
-    );
+  if (res.ok) {
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const headerName = res.headers.get("X-Print-Agent-Msi");
+      const filename =
+        match?.[1] ??
+        (headerName && headerName !== "external" ? headerName : null) ??
+        (publicUrl ? filenameFromUrl(publicUrl) : "CentrixPrintAgent.msi");
+      triggerBrowserDownload(blob, filename);
+      return { filename, source: publicUrl ? "r2-proxy" : "local" };
+    }
   }
 
-  const contentType = (res.headers.get("content-type") || "").toLowerCase();
-  if (contentType.includes("application/json")) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? "MSI installer is not available on this server.");
+  if (publicUrl) {
+    const filename = filenameFromUrl(publicUrl);
+    triggerExternalDownload(publicUrl, filename);
+    return { filename, source: "r2-direct" };
   }
 
-  const blob = await res.blob();
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename="([^"]+)"/i);
-  const headerName = res.headers.get("X-Print-Agent-Msi");
-  const filename =
-    match?.[1] ??
-    (headerName && headerName !== "external" ? headerName : null) ??
-    "CentrixPrintAgent.msi";
-
-  triggerBrowserDownload(blob, filename);
-  return { filename, source: "local" };
+  const body = await res.json().catch(() => ({}));
+  throw new Error(
+    body.message ??
+      "MSI installer is not available. Use Download build package or Download ready installer under Administration → Local printing instead.",
+  );
 }
 
 /**
