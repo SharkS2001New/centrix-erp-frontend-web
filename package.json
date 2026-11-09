@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:critical": "node scripts/run-critical-tests.mjs",
     "test:e2e": "playwright test",
     "test:permissions": "node scripts/check-permission-codes.mjs scripts/permission-registry.snapshot.json",
     "sync:permission-snapshot": "node scripts/sync-permission-snapshot.mjs"

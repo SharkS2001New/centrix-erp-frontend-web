@@ -18,9 +18,10 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-echo "==> Running Web CI gates (lint / unit / permissions / build; e2e stays on Actions)"
+echo "==> Running Web CI gates (lint / critical / unit / permissions / build; e2e stays on Actions)"
 bash scripts/npm-audit-ci.sh
 npm run lint
+npm run test:critical
 npm test
 node scripts/check-permission-codes.mjs scripts/permission-registry.snapshot.json
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}" npm run build
