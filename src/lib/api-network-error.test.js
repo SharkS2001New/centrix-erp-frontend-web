@@ -41,4 +41,16 @@ describe("userFacingNetworkErrorMessage", () => {
       ),
     ).toBe(ATTENDANCE_AGENT_TIMEOUT_MESSAGE);
   });
+
+  it("returns Server is down for Centrix AI path fetch failures while online", () => {
+    expect(
+      userFacingNetworkErrorMessage(
+        new TypeError("Failed to fetch"),
+        NETWORK_CONNECTIVITY_MESSAGE,
+        "/ai/chat",
+      ),
+    ).toBe("Server is down");
+  });
 });
+
+

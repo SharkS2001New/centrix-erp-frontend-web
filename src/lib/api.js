@@ -464,14 +464,18 @@ export function isNetworkFetchError(error) {
 
 /** Replace raw fetch/network failures with a clear connectivity message. */
 export function userFacingNetworkErrorMessage(error, fallback = NETWORK_CONNECTIVITY_MESSAGE, apiPath = null) {
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   if (isNetworkFetchError(error)) {
     if (isAttendanceAgentApiPath(apiPath)) {
       return ATTENDANCE_AGENT_TIMEOUT_MESSAGE;
     }
+    if (isAiFeatureApiPath(apiPath) && !offline) {
+      return "Server is down";
+    }
     return NETWORK_CONNECTIVITY_MESSAGE;
   }
   if (error instanceof Error && error.message?.trim()) return error.message.trim();
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+  if (offline) {
     if (isAttendanceAgentApiPath(apiPath)) {
       return ATTENDANCE_AGENT_TIMEOUT_MESSAGE;
     }
@@ -710,11 +714,20 @@ async function performApiRequest(path, url, options = {}) {
       throw error;
     }
     // Don't surface browser "Failed to fetch" — tell the user to check connectivity.
+    // Centrix AI paths: when the AI/API host is unreachable (and the device is online), say the server is down.
     if (!(error instanceof ApiError) && isNetworkFetchError(error)) {
+      const offline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
       const message = isAttendanceAgentApiPath(apiPath)
         ? ATTENDANCE_AGENT_TIMEOUT_MESSAGE
-        : NETWORK_CONNECTIVITY_MESSAGE;
-      throw new ApiError(message, 0, { code: "network_unavailable" });
+        : isAiFeatureApiPath(apiPath) && !offline
+          ? "Server is down"
+          : NETWORK_CONNECTIVITY_MESSAGE;
+      throw new ApiError(
+        message,
+        0,
+        { code: isAiFeatureApiPath(apiPath) && !offline ? "ai_server_down" : "network_unavailable" },
+      );
     }
     if (trackIssues && !(error instanceof ApiError)) {
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
@@ -762,13 +775,27 @@ export async function aiChatStream(body, { onEvent, signal } = {}) {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    credentials: apiFetchCredentials(),
-    body: JSON.stringify(body),
-    signal,
-  });
+  let res;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      credentials: apiFetchCredentials(),
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new ApiError(NETWORK_CONNECTIVITY_MESSAGE, 0, { code: "network_unavailable" });
+    }
+    if (isNetworkFetchError(error)) {
+      throw new ApiError("Server is down", 0, { code: "ai_server_down" });
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -780,11 +807,14 @@ export async function aiChatStream(body, { onEvent, signal } = {}) {
         data = text;
       }
     }
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new ApiError("Server is down", res.status, data);
+    }
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
   }
 
   if (!res.body) {
-    throw new ApiError("AI stream ended without a response body.", res.status);
+    throw new ApiError("Server is down", res.status);
   }
 
   const reader = res.body.getReader();
@@ -815,7 +845,22 @@ export async function aiChatStream(body, { onEvent, signal } = {}) {
           donePayload = event;
         }
         if (event.event === "error") {
-          throw new ApiError(event.message || "AI request failed", 502, event);
+          const code = String(event.error_code ?? event.code ?? "").toLowerCase();
+          const down =
+            code === "unavailable" ||
+            code === "timeout" ||
+            code === "ai_busy" ||
+            code === "internal_error" ||
+            code === "malformed_response" ||
+            code === "provider_error" ||
+            /server is down|temporarily unavailable|timed out|busy right now|contacting the ai/i.test(
+              String(event.message ?? ""),
+            );
+          throw new ApiError(
+            down ? "Server is down" : event.message || "Server is down",
+            502,
+            event,
+          );
         }
       }
       boundary = buffer.indexOf("\n\n");

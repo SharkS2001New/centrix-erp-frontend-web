@@ -109,81 +109,6 @@ function LiveSpeedProbeModal({
                 ))}
               </ul>
             ) : null}
-
-            {tab === "health" ? (
-              <div className="space-y-4">
-                <Panel
-                  title="Infrastructure health"
-                  action={
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={reverbBusy}
-                        onClick={() => void sendReverbNotification()}
-                        className={`${SECONDARY_BTN_CLASS} px-4 py-2 disabled:opacity-50`}
-                      >
-                        {reverbBusy ? "Sending…" : "Send Reverb test"}
-                      </button>
-                      <PrimaryButton type="button" showIcon={false} onClick={() => void loadTab("health")} disabled={healthBusy}>
-                        {healthBusy ? "Running…" : "Run tests"}
-                      </PrimaryButton>
-                    </div>
-                  }
-                >
-                  <p className="mb-3 text-sm text-slate-600">
-                    Test this app pod, Reverb realtime, scheduler, queue workers, and sibling pods. Scheduler needs{" "}
-                    <code className="rounded bg-slate-100 px-1">schedule:run</code> every minute; queues need{" "}
-                    <code className="rounded bg-slate-100 px-1">queue:work</code> unless using the sync driver.
-                    Optional peer API bases are configured with <code className="rounded bg-slate-100 px-1">PLATFORM_PEER_HEALTH_URLS</code>.
-                  </p>
-                  {reverbTest ? (
-                    <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${reverbTest.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>
-                      <p className="font-medium">{reverbTest.ok ? "Reverb broadcast sent" : "Reverb test failed"}</p>
-                      <p className="mt-1">{reverbTest.message}</p>
-                      {reverbTest.notification_id ? <p className="mt-1 text-xs opacity-80">Notification #{reverbTest.notification_id}</p> : null}
-                    </div>
-                  ) : null}
-                  {tabData?.checks ? (
-                    <>
-                      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                        <StatusBadge status={tabData.ok ? "ok" : "critical"} />
-                        <span>Overall: <strong className="text-slate-900">{tabData.ok ? "Healthy" : "Issues found"}</strong></span>
-                        {tabData.centrix_version_label || tabData.centrix_version ? (
-                          <span>Centrix <strong className="text-slate-900">{tabData.centrix_version_label || `v${tabData.centrix_version}`}</strong></span>
-                        ) : null}
-                        <span>Host: {tabData.hostname ?? "—"}</span>
-                        <span>Checked: {tabData.checked_at ? new Date(tabData.checked_at).toLocaleString() : "—"}</span>
-                      </div>
-                      <div className="overflow-x-auto rounded-xl border border-slate-200">
-                        <table className="min-w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              <th className="px-4 py-2.5">Check</th>
-                              <th className="px-4 py-2.5">Status</th>
-                              <th className="px-4 py-2.5">Detail</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tabData.checks.map((check) => (
-                              <tr key={check.id} className="border-b border-slate-50 last:border-0">
-                                <td className="px-4 py-3 font-medium text-slate-900">{check.label}</td>
-                                <td className="px-4 py-3"><StatusBadge status={check.ok === true ? "ok" : check.ok === false ? "critical" : null} /></td>
-                                <td className="px-4 py-3 text-slate-600">{check.detail}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-slate-500">{healthBusy ? "Running infrastructure checks…" : "Run tests to probe this environment."}</p>
-                  )}
-                </Panel>
-                <p className="text-xs text-slate-500">
-                  Send Reverb test creates an in-app notification and broadcasts it to your private channel. Check that the bell updates without refreshing.
-                </p>
-              </div>
-            ) : null}
             {(advice.actions ?? []).length > 0 ? (
               <>
                 <p className="mt-3 text-xs font-semibold text-slate-400">Suggested actions</p>
@@ -884,6 +809,81 @@ export default function PlatformSpeedPage() {
               </div>
             ) : null}
           </Panel>
+        </div>
+      ) : null}
+
+      {tab === "health" ? (
+        <div className="space-y-4">
+          <Panel
+            title="Infrastructure health"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={reverbBusy}
+                  onClick={() => void sendReverbNotification()}
+                  className={`${SECONDARY_BTN_CLASS} px-4 py-2 disabled:opacity-50`}
+                >
+                  {reverbBusy ? "Sending…" : "Send Reverb test"}
+                </button>
+                <PrimaryButton type="button" showIcon={false} onClick={() => void loadTab("health")} disabled={healthBusy}>
+                  {healthBusy ? "Running…" : "Run tests"}
+                </PrimaryButton>
+              </div>
+            }
+          >
+            <p className="mb-3 text-sm text-slate-600">
+              Test this app pod, Reverb realtime, scheduler, queue workers, and sibling pods. Scheduler needs{" "}
+              <code className="rounded bg-slate-100 px-1">schedule:run</code> every minute; queues need{" "}
+              <code className="rounded bg-slate-100 px-1">queue:work</code> unless using the sync driver.
+              Optional peer API bases are configured with <code className="rounded bg-slate-100 px-1">PLATFORM_PEER_HEALTH_URLS</code>.
+            </p>
+            {reverbTest ? (
+              <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${reverbTest.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>
+                <p className="font-medium">{reverbTest.ok ? "Reverb broadcast sent" : "Reverb test failed"}</p>
+                <p className="mt-1">{reverbTest.message}</p>
+                {reverbTest.notification_id ? <p className="mt-1 text-xs opacity-80">Notification #{reverbTest.notification_id}</p> : null}
+              </div>
+            ) : null}
+            {tabData?.checks ? (
+              <>
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                  <StatusBadge status={tabData.ok ? "ok" : "critical"} />
+                  <span>Overall: <strong className="text-slate-900">{tabData.ok ? "Healthy" : "Issues found"}</strong></span>
+                  {tabData.centrix_version_label || tabData.centrix_version ? (
+                    <span>Centrix <strong className="text-slate-900">{tabData.centrix_version_label || `v${tabData.centrix_version}`}</strong></span>
+                  ) : null}
+                  <span>Host: {tabData.hostname ?? "—"}</span>
+                  <span>Checked: {tabData.checked_at ? new Date(tabData.checked_at).toLocaleString() : "—"}</span>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-2.5">Check</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tabData.checks.map((check) => (
+                        <tr key={check.id} className="border-b border-slate-50 last:border-0">
+                          <td className="px-4 py-3 font-medium text-slate-900">{check.label}</td>
+                          <td className="px-4 py-3"><StatusBadge status={check.ok === true ? "ok" : check.ok === false ? "critical" : null} /></td>
+                          <td className="px-4 py-3 text-slate-600">{check.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">{healthBusy ? "Running infrastructure checks…" : "Run tests to probe this environment."}</p>
+            )}
+          </Panel>
+          <p className="text-xs text-slate-500">
+            Send Reverb test creates an in-app notification and broadcasts it to your private channel. Check that the bell updates without refreshing.
+          </p>
         </div>
       ) : null}
 

@@ -76,10 +76,12 @@ export function PlatformSetupTypesPanel() {
   const confirm = useConfirm();
   const [profiles, setProfiles] = useState([]);
   const [businessTypeCatalog, setBusinessTypeCatalog] = useState([]);
+  const [businessTypeOwners, setBusinessTypeOwners] = useState({});
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("commerce");
+  const [createBusinessTypes, setCreateBusinessTypes] = useState([]);
   const [creating, setCreating] = useState(false);
   const [openKey, setOpenKey] = useState("");
   const activeProfile = profiles.find((profile) => profile.key === openKey) ?? null;
@@ -90,6 +92,11 @@ export function PlatformSetupTypesPanel() {
     try {
       const res = await apiRequest("/admin/setup-profiles");
       setBusinessTypeCatalog(Array.isArray(res?.business_type_catalog) ? res.business_type_catalog : []);
+      setBusinessTypeOwners(
+        res?.business_type_owners && typeof res.business_type_owners === "object"
+          ? res.business_type_owners
+          : {},
+      );
       setProfiles(
         Array.isArray(res?.data)
           ? res.data.map((profile) => ({
@@ -187,6 +194,7 @@ export function PlatformSetupTypesPanel() {
         body,
       });
       notifySuccess(`Saved ${profile.label}.`);
+      await load({ quiet: true });
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save this setup type.");
     } finally {
@@ -242,6 +250,21 @@ export function PlatformSetupTypesPanel() {
     };
   }
 
+  function ownerForBusinessType(value, exceptKey = "") {
+    const owner = businessTypeOwners?.[value];
+    if (!owner || owner.key === exceptKey) return null;
+    return owner;
+  }
+
+  function setCreateBusinessType(businessType, checked) {
+    setCreateBusinessTypes((current) => {
+      if (checked) {
+        return current.includes(businessType) ? current : [...current, businessType];
+      }
+      return current.filter((value) => value !== businessType);
+    });
+  }
+
   async function createSetup(event) {
     event.preventDefault();
     const trimmed = name.trim();
@@ -250,10 +273,15 @@ export function PlatformSetupTypesPanel() {
     try {
       const res = await apiRequest("/admin/setup-profiles", {
         method: "POST",
-        body: { name: trimmed, industry },
+        body: {
+          name: trimmed,
+          industry,
+          business_types: createBusinessTypes,
+        },
       });
       setName("");
-      setProfileTab(industry === "commerce" ? "sales" : "applications");
+      setCreateBusinessTypes([]);
+      setProfileTab("applications");
       setOpenKey(res?.data?.key ?? "");
       notifySuccess(`Created ${res?.data?.label || trimmed}.`);
       await load({ quiet: true });
@@ -265,6 +293,10 @@ export function PlatformSetupTypesPanel() {
   }
 
   async function removeSetup(profile) {
+    if (!profile?.custom) {
+      notifyError("Built-in setup types stay in the list.");
+      return;
+    }
     const ok = await confirm(
       confirmDeleteOptions(
         profile.label,
@@ -275,6 +307,7 @@ export function PlatformSetupTypesPanel() {
     setSavingKey(profile.key);
     try {
       await apiRequest(`/admin/setup-profiles/${profile.key}`, { method: "DELETE" });
+      if (openKey === profile.key) setOpenKey("");
       notifySuccess(`Deleted ${profile.label}.`);
       await load({ quiet: true });
     } catch (err) {
@@ -315,40 +348,88 @@ export function PlatformSetupTypesPanel() {
     activeProfile?.payroll_platform ?? defaultPayrollPlatformState();
   const profileModules = activeProfile ? enabledModulesForProfile(activeProfile) : {};
 
+  const createCatalog = businessTypeCatalog.filter((row) => row.industry === industry);
+
   return (
     <div className="space-y-3">
-      <form onSubmit={(event) => void createSetup(event)} className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <label className="block min-w-[16rem] flex-1 text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Name</span>
-          <input
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Pharmacy, Hardware, Lodge…"
-            maxLength={80}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
-          <select
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-            value={industry}
-            onChange={(event) => setIndustry(event.target.value)}
-          >
-            <option value="commerce">Retail & Distribution</option>
-            <option value="hospitality">Hotel & Hospitality</option>
-            <option value="spa">SPA & Kinyozi</option>
-            <option value="driving">Driving School</option>
-          </select>
-        </label>
-        <PrimaryButton type="submit" showIcon={false} disabled={creating || name.trim() === ""}>
-          {creating ? "Creating…" : "Create setup type"}
-        </PrimaryButton>
+      <form
+        onSubmit={(event) => void createSetup(event)}
+        className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block min-w-[16rem] flex-1 text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Name</span>
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Pharmacy, Hardware, Lodge…"
+              maxLength={80}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>
+            <select
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={industry}
+              onChange={(event) => {
+                setIndustry(event.target.value);
+                setCreateBusinessTypes([]);
+              }}
+            >
+              <option value="commerce">Retail & Distribution</option>
+              <option value="hospitality">Hotel & Hospitality</option>
+              <option value="spa">SPA & Kinyozi</option>
+              <option value="driving">Driving School</option>
+            </select>
+          </label>
+          <PrimaryButton type="submit" showIcon={false} disabled={creating || name.trim() === ""}>
+            {creating ? "Creating…" : "Create setup type"}
+          </PrimaryButton>
+        </div>
+        <fieldset>
+          <legend className="text-xs font-medium text-slate-600">
+            Business types for Instant trial
+          </legend>
+          <p className="mt-1 text-xs text-slate-500">
+            A business type can only belong to one setup type. Types already claimed elsewhere are
+            disabled.
+          </p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {createCatalog.map((row) => {
+              const owner = ownerForBusinessType(row.value);
+              const taken = Boolean(owner);
+              return (
+                <label
+                  key={row.value}
+                  className={`flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm ${
+                    taken ? "bg-slate-50 text-slate-400" : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-slate-300"
+                    checked={createBusinessTypes.includes(row.value)}
+                    disabled={taken}
+                    onChange={(event) => setCreateBusinessType(row.value, event.target.checked)}
+                  />
+                  <span>
+                    <span className="block">{row.label}</span>
+                    {taken ? (
+                      <span className="block text-xs text-slate-400">On {owner.label}</span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
       </form>
       <p className="text-sm text-slate-600">
         Tick the applications and menu parts each setup type includes, and which business types it
         appears under on Instant trial. Disabled applications stay hidden. These defaults are applied
-        when the setup is selected during website signup or on an existing organisation.
+        when the setup is selected during website signup. An organisation can still enable extra
+        applications or settings beyond this baseline.
       </p>
       {profiles.map((profile) => (
         <div key={profile.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -362,18 +443,31 @@ export function PlatformSetupTypesPanel() {
                   : profile.industry === "driving"
                     ? "Driving School"
                     : "Retail & Distribution"}
+              {profile.custom ? " · Custom" : ""}
             </p>
           </div>
-          <PrimaryButton
-            type="button"
-            showIcon={false}
-            onClick={() => {
-              setProfileTab("applications");
-              setOpenKey(profile.key);
-            }}
-          >
-            Configure setup type
-          </PrimaryButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              onClick={() => {
+                setProfileTab("applications");
+                setOpenKey(profile.key);
+              }}
+            >
+              Configure setup type
+            </PrimaryButton>
+            {profile.custom ? (
+              <button
+                type="button"
+                className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                disabled={savingKey === profile.key}
+                onClick={() => void removeSetup(profile)}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
         </div>
       ))}
       {activeProfile ? (
@@ -462,27 +556,42 @@ export function PlatformSetupTypesPanel() {
                   Business types (Instant trial)
                 </summary>
                 <p className="mt-1 text-xs text-slate-500">
-                  Choose which website business types show this setup. Leave all unticked to allow every business type in the industry.
+                  Choose which website business types show this setup. Each business type can only
+                  belong to one setup type. Leave all unticked to allow every unclaimed business type
+                  in the industry.
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {businessTypeCatalog
                     .filter((row) => row.industry === activeProfile.industry)
-                    .map((row) => (
-                      <label
-                        key={row.value}
-                        className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          className="rounded border-slate-300"
-                          checked={(activeProfile.business_types ?? []).includes(row.value)}
-                          onChange={(event) =>
-                            setBusinessType(activeProfile.key, row.value, event.target.checked)
-                          }
-                        />
-                        <span>{row.label}</span>
-                      </label>
-                    ))}
+                    .map((row) => {
+                      const owner = ownerForBusinessType(row.value, activeProfile.key);
+                      const taken = Boolean(owner);
+                      const checked = (activeProfile.business_types ?? []).includes(row.value);
+                      return (
+                        <label
+                          key={row.value}
+                          className={`flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm ${
+                            taken && !checked ? "bg-slate-50 text-slate-400" : ""
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 rounded border-slate-300"
+                            checked={checked}
+                            disabled={taken && !checked}
+                            onChange={(event) =>
+                              setBusinessType(activeProfile.key, row.value, event.target.checked)
+                            }
+                          />
+                          <span>
+                            <span className="block">{row.label}</span>
+                            {taken && !checked ? (
+                              <span className="block text-xs text-slate-400">On {owner.label}</span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
                 </div>
               </details>
               {GROUPS.filter((group) => menuGroupModuleOn(activeProfile, group)).map((group) => {

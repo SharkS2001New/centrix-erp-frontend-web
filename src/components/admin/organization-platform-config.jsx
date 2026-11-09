@@ -394,7 +394,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_returns_card: false,
     enable_mobile_orders_payments_card: false,
     enable_mobile_orders_expenses_card: false,
-    as_mobile_show_images: true,
+    as_mobile_show_images: deploymentProfile === "hotel_bar",
+    require_product_images: false,
     as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
@@ -486,7 +487,8 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
-    as_mobile_show_images: apiPayload.as_mobile_show_images !== false,
+    as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
+    require_product_images: Boolean(apiPayload.require_product_images),
     as_mobile_post_login_screen:
       apiPayload.as_mobile_post_login_screen === "operations_dashboard"
         ? "operations_dashboard"
@@ -803,9 +805,25 @@ export function OrganizationPlatformSalesSettings({
             </p>
             <Toggle
               label="Show product & customer images"
-              description="When off, the AS mobile app hides catalogue photos. Images are still stored on Cloudflare R2 and remain available in Centrix web."
-              checked={salesPlatform?.as_mobile_show_images !== false}
-              onChange={(v) => patch({ as_mobile_show_images: v })}
+              description="When off, the AS mobile app hides catalogue photos and the product image field (unless images are required below)."
+              checked={Boolean(salesPlatform?.as_mobile_show_images)}
+              onChange={(v) =>
+                patch({
+                  as_mobile_show_images: v,
+                  ...(!v ? { require_product_images: false } : {}),
+                })
+              }
+            />
+            <Toggle
+              label="Require product images"
+              description="When on, staff must upload a product photo when creating or updating products in the AS mobile app. Photo delete is blocked for that organization."
+              checked={Boolean(salesPlatform?.require_product_images)}
+              onChange={(v) =>
+                patch({
+                  require_product_images: v,
+                  ...(v ? { as_mobile_show_images: true } : {}),
+                })
+              }
             />
             <OrgRegisterField label="After login, open">
               <select

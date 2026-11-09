@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { userFacingAiErrorMessage } from "@/lib/ai-error-message";
 import { canUseAiInsights, formatInsightClipboard, aiInsightsBlockedReason } from "@/lib/ai-insights";
 import { PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
@@ -93,7 +94,7 @@ export function AiInsightPanel({
       }
       setInsight(res);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Analysis failed");
+      setError(userFacingAiErrorMessage(e, "Analysis failed"));
       setInsight(null);
     } finally {
       setBusy(false);
@@ -145,7 +146,7 @@ export function AiInsightPanel({
       setInsight(res);
       setQuestion("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Follow-up failed");
+      setError(userFacingAiErrorMessage(err, "Follow-up failed"));
     } finally {
       setBusy(false);
     }
@@ -172,7 +173,7 @@ export function AiInsightPanel({
           : `Nothing sent. ${ (res.skipped || []).join("; ") || "Configure recipients under AI settings." }`,
       );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send brief");
+      setError(userFacingAiErrorMessage(err, "Could not send brief"));
     } finally {
       setBusy(false);
     }

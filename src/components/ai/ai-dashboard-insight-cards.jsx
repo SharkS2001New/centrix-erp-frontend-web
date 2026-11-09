@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { userFacingAiErrorMessage } from "@/lib/ai-error-message";
 import { canUseAiInsights } from "@/lib/ai-insights";
 import { AiInsightPanel, AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
 import { StatCard } from "@/components/catalog/catalog-shared";
@@ -47,7 +48,7 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
           setCards([]);
           // Auth redirect soft-cancels; don't flash a scary AI error on logout.
           if (e instanceof ApiError && (e.status === 401 || e.authRedirect)) return;
-          setError(e instanceof ApiError ? e.message : "Could not load AI insight cards");
+          setError(userFacingAiErrorMessage(e, "Could not load AI insight cards"));
         }
       })
       .finally(() => {

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { apiRequest, aiChatStream } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { userFacingAiErrorMessage } from "@/lib/ai-error-message";
 import {
   canShowAiAssistant,
   isAiAssistantAvailable,
@@ -347,7 +348,12 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       const content = res.message || res.reply || "";
       if (res.success === false && content) {
-        setError(content);
+        setError(
+          userFacingAiErrorMessage(
+            { message: content, body: { error_code: res.error_code }, status: 502 },
+            content,
+          ),
+        );
         voiceAskedRef.current = false;
         notifyAiVoiceComplete({ detailed: false, needsPanel: false });
         return;
@@ -612,8 +618,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         });
         applyChatResponse(res);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "AI request failed";
-        setError(msg);
+        setError(userFacingAiErrorMessage(e));
         setLastFailedMessage(confirm || effectiveConfirm ? null : message);
         voiceAskedRef.current = false;
         notifyAiVoiceComplete({ detailed: false, needsPanel: false });
