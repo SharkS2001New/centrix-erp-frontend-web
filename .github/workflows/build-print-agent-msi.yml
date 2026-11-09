@@ -105,7 +105,7 @@ jobs:
               echo "- \`BACKUP_R2_SECRET_ACCESS_KEY\`"
               echo "- \`BACKUP_R2_BUCKET\`"
               echo "- \`BACKUP_R2_ENDPOINT\`"
-              echo "- \`BACKUP_R2_PUBLIC_URL\` (for download + Helm \`PRINT_AGENT_MSI_URL\`)"
+              echo "- \`BACKUP_R2_PUBLIC_URL\` (for public download URL / \`PRINT_AGENT_MSI_URL\`)"
               echo "- \`BACKUP_R2_REGION\` (optional; defaults to \`auto\`)"
               echo ""
               echo "The MSI is still available as a workflow artifact and GitHub Release asset."
@@ -192,65 +192,3 @@ jobs:
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  update-helm-msi-url:
-    needs: publish-r2
-    if: needs.publish-r2.outputs.public_url != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out pitchpredk3ssetup
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ github.repository_owner }}/pitchpredk3ssetup
-          path: pitchpredk3ssetup
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
-      - name: Set PRINT_AGENT_MSI_URL in Helm values
-        env:
-          PUBLIC_URL: ${{ needs.publish-r2.outputs.public_url }}
-        run: |
-          set -euo pipefail
-          FILE="pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml"
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path("pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml")
-          text = path.read_text()
-          url = os.environ["PUBLIC_URL"].strip()
-          marker = "PRINT_AGENT_MSI_URL:"
-          if marker in text:
-              lines = []
-              for line in text.splitlines(True):
-                  if line.lstrip().startswith(marker):
-                      indent = line[: len(line) - len(line.lstrip())]
-                      lines.append(f'{indent}PRINT_AGENT_MSI_URL: "{url}"\n')
-                  else:
-                      lines.append(line)
-              path.write_text("".join(lines))
-          else:
-              if not text.endswith("\n"):
-                  text += "\n"
-              text += (
-                  "\n# Runtime env for Next.js API routes (not baked at image build)\n"
-                  "env:\n"
-                  f'  PRINT_AGENT_MSI_URL: "{url}"\n'
-              )
-              path.write_text(text)
-          print(f"Updated {path} -> PRINT_AGENT_MSI_URL={url}")
-          PY
-
-      - name: Create Helm MSI URL update pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          path: pitchpredk3ssetup
-          branch: automation/centrix-erp-frontend-web-msi-url
-          delete-branch: true
-          add-paths: centrix-erp-frontend-web/values.yaml
-          commit-message: "chore(centrix-erp-frontend-web): point PRINT_AGENT_MSI_URL at R2 MSI"
-          title: "chore(centrix-erp-frontend-web): point PRINT_AGENT_MSI_URL at R2 MSI"
-          body: "Updates the Centrix ERP frontend Helm chart with the newly published print-agent MSI URL."
-          base: master

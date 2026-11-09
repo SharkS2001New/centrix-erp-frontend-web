@@ -49,10 +49,6 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           tags: type=sha,format=short
 
-      - name: Resolve image tag for Helm
-        id: image_tag
-        run: echo "value=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -74,33 +70,3 @@ jobs:
             NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT || '443' }}
             NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME || 'https' }}
             NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'https://app.centrixerp.co.ke' }}
-
-      - name: Check out pitchpredk3ssetup
-        if: github.event_name != 'pull_request'
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ github.repository_owner }}/pitchpredk3ssetup
-          path: pitchpredk3ssetup
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
-      - name: Update Helm image tag
-        if: github.event_name != 'pull_request'
-        run: |
-          TAG="${{ steps.image_tag.outputs.value }}"
-          FILE="pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml"
-          sed -i "s|^\([[:space:]]*tag:\).*|\1 ${TAG}|" "$FILE"
-          echo "Updated ${FILE} -> ${TAG}"
-
-      - name: Create Helm image update pull request
-        if: github.event_name != 'pull_request'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          path: pitchpredk3ssetup
-          branch: automation/centrix-erp-frontend-web-image
-          delete-branch: true
-          add-paths: centrix-erp-frontend-web/values.yaml
-          commit-message: "chore(centrix-erp-frontend-web): bump image tag to ${{ steps.image_tag.outputs.value }}"
-          title: "chore(centrix-erp-frontend-web): bump image tag to ${{ steps.image_tag.outputs.value }}"
-          body: "Updates the Centrix ERP frontend Helm chart to the newly published image."
-          base: master
