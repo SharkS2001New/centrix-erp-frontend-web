@@ -149,31 +149,40 @@ export default function ManageOrganizationPage() {
       industryProfiles[0]?.key ??
       deploymentProfile;
     setDeploymentProfile(nextProfile);
-    setEnabledModules(
-      modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false),
-    );
-    const preset = profilePresets.find((profile) => profile.key === nextProfile);
-    setSalesPlatform({
-      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
-      ...menuGroupStateFromProfile(preset),
-    });
-    setPayrollPlatform(
-      payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
-    );
+    // Keep current application customizations; use "Apply setup type defaults" to re-baseline.
   }
 
   function onProfileChange(nextProfile) {
     setIndustry(industryForProfile(nextProfile, industries, profilePresets));
     setDeploymentProfile(nextProfile);
-    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
-    const preset = profilePresets.find((profile) => profile.key === nextProfile);
+    // Keep current application customizations; use "Apply setup type defaults" to re-baseline.
+  }
+
+  async function applySetupTypeDefaults() {
+    const preset = profilePresets.find((profile) => profile.key === deploymentProfile);
+    const ok = await confirm({
+      title: "Apply setup type defaults?",
+      message:
+        "This replaces this organisation’s applications, sales platform, and payroll defaults with the selected setup type baseline. Per-org custom toggles will be overwritten.",
+      confirmLabel: "Apply defaults",
+    });
+    if (!ok) return;
+    setEnabledModules(
+      modulesForProfile(
+        profilePresets,
+        deploymentProfile,
+        moduleOptions,
+        salesPlatform?.enable_mobile_orders !== false,
+      ),
+    );
     setSalesPlatform({
-      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
+      ...defaultSalesPlatformState(deploymentProfile, preset?.default_sales_platform),
       ...menuGroupStateFromProfile(preset),
     });
     setPayrollPlatform(
       payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
     );
+    notifySuccess("Setup type defaults applied locally — save to persist.");
   }
 
   function toggleModule(key) {
@@ -205,6 +214,8 @@ export default function ManageOrganizationPage() {
           sales_platform: salesPlatform,
           payroll_platform: payrollPlatformToApi(payrollPlatform ?? defaultPayrollPlatformState()),
           is_active: orgActive,
+          // Applications payload is the org customization; never wipe from setup type on save.
+          apply_setup_defaults: false,
         },
       });
       await apiRequest(`/admin/organizations/${orgId}/settings/general`, {
@@ -414,10 +425,18 @@ export default function ManageOrganizationPage() {
               onStatusChange={({ is_active }) => setOrgActive(is_active)}
             />
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <PrimaryButton type="submit" disabled={saving}>
                 {saving ? "Saving…" : "Save configuration"}
               </PrimaryButton>
+              <button
+                type="button"
+                onClick={() => void applySetupTypeDefaults()}
+                disabled={saving}
+                className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Apply setup type defaults
+              </button>
               <Link
                 href="/platform"
                 className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
