@@ -291,10 +291,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   async function handleDownloadDotnet() {
     setDownloadingDotnet(true);
     try {
-      const result = await downloadPrintAgentDotnet();
+      const result = await downloadPrintAgentDotnet({ allowSourceFallback: true });
+      const isSource = result.source === "dotnet-source";
       notifySuccess(
-        `Downloaded ${result.filename}. Unzip on the till PC and run install-windows-service.ps1 as Administrator.`,
-        { duration: 10000 },
+        isSource
+          ? `Ready installer is not on the server yet — downloaded ${result.filename} (build package). Unzip and follow BUILD.md on a Windows PC.`
+          : `Downloaded ${result.filename}. Unzip on the till PC and run install-windows-service.ps1 as Administrator.`,
+        { duration: 12000 },
       );
     } catch (error) {
       notifyError(error instanceof Error ? error.message : "Could not download Windows print service.");

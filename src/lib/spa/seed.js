@@ -1,6 +1,12 @@
 import { shiftISO, todayISO, uid } from "@/lib/spa/format";
 
+/** Legacy global key — migrated into org-scoped keys on first load. */
 export const SPA_STORAGE_KEY = "centrix-spa-kinyozi-v1";
+
+export function spaStorageKeyForOrg(organizationId) {
+  const org = Number(organizationId) || 0;
+  return org > 0 ? `centrix-spa-kinyozi-v1:org:${org}` : SPA_STORAGE_KEY;
+}
 
 export function createSeed() {
   const clients = [

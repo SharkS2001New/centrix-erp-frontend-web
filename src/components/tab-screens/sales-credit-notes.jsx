@@ -27,7 +27,7 @@ import { CustomerReturnDetailModal } from "@/components/sales/customer-return-de
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
 import { ReturnStatusBadge, customerReturnReturnedByName } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
-import { defaultDateRange } from "@/lib/datetime";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -133,9 +133,14 @@ export function SalesCreditNotesScreen() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
-  const defaultRange = useMemo(() => defaultDateRange(30), []);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -156,11 +161,14 @@ export function SalesCreditNotesScreen() {
         q: debouncedSearch,
         extra: {
           status: statusFilter !== "all" ? statusFilter : undefined,
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
+          from_date: appliedFrom || undefined,
+          to_date: appliedTo || undefined,
         },
       });
-      const res = await apiRequest("/credit-notes", { searchParams: searchParamsApi });
+      const res = await apiRequest("/credit-notes", {
+        searchParams: searchParamsApi,
+        loading: false,
+      });
       const parsed = parsePaginator(res);
       setRows(parsed.items.map(resolveCreditNoteRow));
       setTotal(parsed.total);
@@ -171,13 +179,13 @@ export function SalesCreditNotesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, appliedFrom, appliedTo]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, appliedFrom, appliedTo]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -404,6 +412,18 @@ export function SalesCreditNotesScreen() {
             className={FILTER_CONTROL_CLASS}
             aria-label="To date"
           />
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={listLoading}
+            onClick={() => {
+              setPage(1);
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+            }}
+          >
+            Filter
+          </button>
         </FilterToolbar>
 
         {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}

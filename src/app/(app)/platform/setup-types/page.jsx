@@ -8,7 +8,7 @@ export default function PlatformSetupTypesPage() {
   return (
     <CatalogPageShell
       title="Setup types"
-      subtitle="Applications and menu groups for each setup type, such as Small shop. External POS is listed with the other applications."
+      subtitle="Per industry setup: tick applications, menu parts (Customers, Suppliers, etc.), and which business types appear on Instant trial. Unticked apps stay hidden."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Setup types" }]} />
       <PlatformSetupTypesPanel />

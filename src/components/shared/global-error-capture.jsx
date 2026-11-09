@@ -49,11 +49,13 @@ function isBenignClientFailure(reason) {
   if (isNetworkFetchError(reason) || isPermissionDeniedError(reason)) {
     return true;
   }
-  if (reason instanceof ApiError && reason.status > 0 && reason.status < 500) {
+  // ApiError is control-flow from apiRequest — already toasted / system-issued / in-panel.
+  // Treating only 4xx as benign left AI 5xx as "Runtime ApiError" overlays in Next.js.
+  if (reason instanceof ApiError) {
     return true;
   }
   const message = reason instanceof Error ? reason.message : String(reason ?? "");
-  return /failed to fetch|networkerror|load failed|network request failed|internet connection|product not found or is not available/i.test(
+  return /failed to fetch|networkerror|load failed|network request failed|internet connection|product not found or is not available|an error occurred in (ai|ai assistant)/i.test(
     message,
   );
 }
@@ -66,6 +68,7 @@ export function GlobalErrorCapture() {
       }
       const message = event.error instanceof Error ? event.error.message : event.message;
       if (isBenignClientFailure(event.error ?? message)) {
+        event.preventDefault?.();
         return;
       }
       void reportUnhandledError(message, {

@@ -530,6 +530,7 @@ export function buildOrderContextMenuItems({
         processingLabel: "Printing…",
         icon: "print",
         disabled: busy,
+        detach: true,
         onClick: onPrintThermal,
       });
       items.push({
@@ -538,6 +539,7 @@ export function buildOrderContextMenuItems({
         processingLabel: "Printing…",
         icon: "print",
         disabled: busy,
+        detach: true,
         onClick: onPrintA4,
       });
     } else {
@@ -547,6 +549,7 @@ export function buildOrderContextMenuItems({
         processingLabel: "Printing…",
         icon: "print",
         disabled: busy,
+        detach: true,
         onClick: onPrintA4,
       });
     }
@@ -558,6 +561,7 @@ export function buildOrderContextMenuItems({
       processingLabel: "Printing…",
       icon: "print",
       disabled: busy,
+      detach: true,
       onClick: onPrintProforma,
     });
   }
@@ -735,6 +739,17 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
 
   async function runMenuAction(item) {
     if (!item || item.disabled || processingRef.current) return;
+    // Print / background jobs: close immediately so the menu doesn't sit on
+    // "Printing…" while detail + settings + logo prep runs.
+    if (item.detach) {
+      onClose?.();
+      try {
+        void Promise.resolve(item.onClick?.()).catch(() => {});
+      } catch {
+        /* handlers surface errors themselves */
+      }
+      return;
+    }
     processingRef.current = true;
     setProcessingKey(item.key);
     try {

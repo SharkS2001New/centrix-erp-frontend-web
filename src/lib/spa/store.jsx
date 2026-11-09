@@ -1,16 +1,44 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { getStoredOrganization } from "@/lib/auth-storage";
 import { datePart, resolveSpaFeatures, stockStatus, todayISO, uid } from "@/lib/spa/format";
 import { importRemoteServicePhoto, isPublicImageUrl, servicePhoto } from "@/lib/spa/image";
-import { SPA_STORAGE_KEY, createSeed } from "@/lib/spa/seed";
+import { SPA_STORAGE_KEY, createSeed, spaStorageKeyForOrg } from "@/lib/spa/seed";
 
 const SpaContext = createContext(null);
+const PERSIST_DEBOUNCE_MS = 280;
+
+function resolveStorageKey() {
+  return spaStorageKeyForOrg(getStoredOrganization()?.id);
+}
+
+/** Drop heavy data-URL photos from the persisted snapshot so saves stay fast. */
+function leanPersistState(state) {
+  return {
+    ...state,
+    services: (state.services || []).map((service) => {
+      const image = String(service.image || "");
+      if (image.startsWith("data:")) {
+        const { image: _drop, ...rest } = service;
+        return rest;
+      }
+      return service;
+    }),
+  };
+}
 
 function loadState() {
   if (typeof window === "undefined") return createSeed();
   try {
-    const raw = window.localStorage.getItem(SPA_STORAGE_KEY);
+    const key = resolveStorageKey();
+    let raw = window.localStorage.getItem(key);
+    if (!raw && key !== SPA_STORAGE_KEY) {
+      raw = window.localStorage.getItem(SPA_STORAGE_KEY);
+      if (raw) {
+        window.localStorage.setItem(key, raw);
+      }
+    }
     if (!raw) return createSeed();
     const parsed = JSON.parse(raw);
     return { ...createSeed(), ...parsed, businessType: parsed.businessType ?? null };
@@ -23,6 +51,7 @@ export function SpaProvider({ children }) {
   const [state, setState] = useState(createSeed);
   const [ready, setReady] = useState(false);
   const photoAttempts = useRef(new Set());
+  const persistTimer = useRef(null);
 
   useEffect(() => {
     setState(loadState());
@@ -30,12 +59,16 @@ export function SpaProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    try {
-      window.localStorage.setItem(SPA_STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      /* A photo that does not fit stays in this session only. */
-    }
+    if (!ready) return undefined;
+    window.clearTimeout(persistTimer.current);
+    persistTimer.current = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(resolveStorageKey(), JSON.stringify(leanPersistState(state)));
+      } catch {
+        /* A photo that does not fit stays in this session only. */
+      }
+    }, PERSIST_DEBOUNCE_MS);
+    return () => window.clearTimeout(persistTimer.current);
   }, [ready, state]);
 
   useEffect(() => {
@@ -370,6 +403,7 @@ export function SpaProvider({ children }) {
             status: client.status === "New" ? "Active" : client.status,
           };
         });
+        const appointmentId = sale.appointmentId || "";
         setState((current) => ({
           ...current,
           sales: [completed, ...current.sales],
@@ -377,9 +411,17 @@ export function SpaProvider({ children }) {
           products,
           movements,
           clients,
+          appointments: appointmentId
+            ? current.appointments.map((item) =>
+                item.id === appointmentId ? { ...item, status: "completed" } : item,
+              )
+            : current.appointments,
           nextSale: current.nextSale + 1,
         }));
         return completed;
+      },
+      appointmentForCheckout(id) {
+        return state.appointments.find((item) => item.id === id) || null;
       },
       lowStock() {
         return state.products.filter((item) => stockStatus(item) !== "In stock");

@@ -532,8 +532,11 @@ async function hydrateKraRowsForPrint(rows) {
   }
 
   const { apiRequest } = await import("@/lib/api");
-  const fetched = await Promise.all(
-    needFetch.map(async (row) => {
+  const { mapWithConcurrency } = await import("@/lib/api-concurrency");
+  // Cap in-flight detail GETs — unbounded Promise.all stampeded the API on multi-select print.
+  const fetched = await mapWithConcurrency(
+    needFetch,
+    async (row) => {
       const id = kraReportRowId(row);
       try {
         const detail = await apiRequest(`/kra-responses/${id}`, {
@@ -551,7 +554,8 @@ async function hydrateKraRowsForPrint(rows) {
       } catch {
         return row;
       }
-    }),
+    },
+    4,
   );
 
   const byId = new Map(fetched.map((row) => [String(kraReportRowId(row)), row]));

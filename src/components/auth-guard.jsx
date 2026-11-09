@@ -7,8 +7,17 @@ import { hasAuthSession } from "@/lib/auth-storage";
 
 function AuthGuardPlaceholder({ message = "Loading…" }) {
   return (
-    <div className="app-shell-bg flex h-screen overflow-hidden" aria-busy="true" aria-live="polite">
-      <div className="flex flex-1 items-center justify-center">
+    <div
+      className="app-shell-bg flex h-screen overflow-hidden"
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+    >
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6">
+        <div
+          className="h-9 w-9 animate-spin rounded-full border-2 border-[var(--theme-border)] border-t-[var(--brand-blue,#185FA5)]"
+          aria-hidden
+        />
         <p className="theme-subtext text-sm">{message}</p>
       </div>
     </div>

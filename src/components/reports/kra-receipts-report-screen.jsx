@@ -35,7 +35,8 @@ import {
   ReportKpiGrid,
   ReportPageShell,
 } from "@/components/reports/report-screen-shared";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
+import { reportCacheMatchesPageSize } from "@/lib/reports/report-page-size";
 import { defaultReportBranchId } from "@/lib/reports/report-filters";
 import { KraResponseDetailDialog } from "@/components/reports/kra-invoice-preview-dialog";
 import { KraFailureReasonDialog } from "@/components/reports/kra-failure-reason-dialog";
@@ -53,10 +54,14 @@ import { KRA_REFUND_REASON_OPTIONS } from "@/lib/reports/report-filter-config";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import { readTabPaneCache, writeTabPaneCache, clearTabPaneCache } from "@/lib/tab-pane-session-cache";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
 
 const DEFAULT_PAGE_SIZE = 25;
+/** Heavy fiscal payloads — don't inherit the global 100-row preference. */
+const KRA_MAX_PAGE_SIZE = 50;
+const CACHE_SLOT = "kra-receipts-report";
 const KRA_INVOICE_COLUMNS_STORAGE_KEY = "centrix-erp-kra-invoices-visible-columns";
 
 /** Optional columns for KRA invoices — hidden by default; enable via Columns picker. */
@@ -107,7 +112,19 @@ function CreditSaleIcon({ className = "h-3.5 w-3.5" }) {
 
 function statusBadge(row) {
   const status = String(row.status ?? "").toLowerCase();
+  const payload = row?.response_payload && typeof row.response_payload === "object"
+    ? row.response_payload
+    : {};
+  const autoRetryExhausted =
+    payload.auto_retry_exhausted === true ||
+    payload.auto_retry_exhausted === 1 ||
+    payload.auto_retry_exhausted === "1" ||
+    Number(payload.auto_retry_count ?? 0) >= 3;
+
   if (status === "success") return { label: "Success", tone: "success" };
+  if (autoRetryExhausted && (status === "failed" || status === "pending")) {
+    return { label: "Needs manual retry", tone: "danger" };
+  }
   if (status === "failed") return { label: "Failed", tone: "danger" };
   if (status === "skipped") return { label: "Skipped", tone: "warning" };
   if (status === "pending") return { label: "Pending", tone: "warning" };
@@ -147,6 +164,8 @@ export function KraReceiptsReportScreen({ definition }) {
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const queryFilterOptions = useReportFilterOptions(definition.key);
+  // Follow org/platform reports_default_date_range_days (daily vs monthly, etc.).
+  // Wide windows stay fast because Filter/Apply gates the fetch — dates alone do not refetch.
   const defaultRange = useMemo(
     () => getReportsDefaultDateRange(capabilities?.module_settings),
     [capabilities?.module_settings],
@@ -158,22 +177,45 @@ export function KraReceiptsReportScreen({ definition }) {
       hasPermission?.("admin.manage") ||
       isOrgAdministrator(user, capabilities));
 
-  const [rows, setRows] = useState([]);
-  const [reportMeta, setReportMeta] = useState(null);
-  const [reportSummary, setReportSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(DEFAULT_PAGE_SIZE, {
+    maxSize: KRA_MAX_PAGE_SIZE,
+  }).pageSize;
+  const cacheMatchesDefinition =
+    cachedBundle &&
+    cachedBundle.reportKey === definition.key &&
+    cachedBundle.apiPath === definition.apiPath &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
+
+  const [rows, setRows] = useState(() => (cacheMatchesDefinition ? cachedBundle.rows ?? [] : []));
+  const [reportMeta, setReportMeta] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.reportMeta ?? null : null,
+  );
+  const [reportSummary, setReportSummary] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.reportSummary ?? null : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !(cacheMatchesDefinition && (cachedBundle.rows?.length || cachedBundle.reportMeta)),
+  );
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
-  const [fromDate, setFromDate] = useState(defaultRange.from);
-  const [toDate, setToDate] = useState(defaultRange.to);
-  const [branchId, setBranchId] = useState(defaultBranch);
-  const [queryFilters, setQueryFilters] = useState({
-    status: "",
-    channel: "",
-    document_type: "",
-    q: "",
+  const [page, setPage] = useState(() => (cacheMatchesDefinition ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(DEFAULT_PAGE_SIZE, {
+    maxSize: KRA_MAX_PAGE_SIZE,
   });
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
+  );
+  const [queryFilters, setQueryFilters] = useState(() =>
+    cacheMatchesDefinition
+      ? cachedBundle.queryFilters ?? { status: "", channel: "", document_type: "", q: "" }
+      : { status: "", channel: "", document_type: "", q: "" },
+  );
   const [branches, setBranches] = useState([]);
   const [previewRow, setPreviewRow] = useState(null);
   const [failureReasonRow, setFailureReasonRow] = useState(null);
@@ -193,12 +235,18 @@ export function KraReceiptsReportScreen({ definition }) {
   const [creditProgress, setCreditProgress] = useState(0);
   const [optionalColumnIds, setOptionalColumnIds] = useState(defaultOptionalColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [applied, setApplied] = useState({
-    fromDate: defaultRange.from,
-    toDate: defaultRange.to,
-    branchId: defaultBranch,
-    queryFilters: { status: "", channel: "", document_type: "", q: "" },
-  });
+  const [applied, setApplied] = useState(() =>
+    cacheMatchesDefinition && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatchesDefinition ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+          toDate: cacheMatchesDefinition ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+          branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? defaultBranch : defaultBranch,
+          queryFilters: cacheMatchesDefinition
+            ? cachedBundle.queryFilters ?? { status: "", channel: "", document_type: "", q: "" }
+            : { status: "", channel: "", document_type: "", q: "" },
+        },
+  );
   const screenMountedRef = useRef(false);
 
   const {
@@ -260,10 +308,13 @@ export function KraReceiptsReportScreen({ definition }) {
   }, []);
 
   const appliedKey = useMemo(() => JSON.stringify(applied), [applied]);
-  const depsKey = `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
+  const depsKey = pageSizeReady
+    ? `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`
+    : `${definition.apiPath}|page-size-pending`;
 
   useEffect(() => {
     let active = true;
+    let timer = null;
     setLiveReplayAvailability({ key: appliedKey, available: false });
 
     const filters = applied.queryFilters ?? {};
@@ -290,28 +341,25 @@ export function KraReceiptsReportScreen({ definition }) {
     if (filters.channel) searchParams.channel = filters.channel;
     if (filters.q) searchParams.q = filters.q;
 
-    apiRequest("/kra/live-replay-candidates", { searchParams, loading: false })
-      .then((response) => {
-        if (active) {
-          setLiveReplayAvailability({
-            key: appliedKey,
-            available: Array.isArray(response?.data) && response.data.length > 0,
-          });
-        }
-      })
-      .catch((e) => {
-        if (!active) return;
-        notifyError(
-          e instanceof ApiError
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : "Could not check for test-mode invoices in the selected date range.",
-        );
-      });
+    // Defer probe so the main report paints first; silence soft failures (don't toast).
+    timer = setTimeout(() => {
+      apiRequest("/kra/live-replay-candidates", { searchParams, loading: false, reportIssues: false })
+        .then((response) => {
+          if (active) {
+            setLiveReplayAvailability({
+              key: appliedKey,
+              available: Array.isArray(response?.data) && response.data.length > 0,
+            });
+          }
+        })
+        .catch(() => {
+          /* background probe — ignore */
+        });
+    }, 400);
 
     return () => {
       active = false;
+      if (timer) clearTimeout(timer);
     };
   }, [applied, appliedKey, canCreditKraSale, isInvoicesView]);
 
@@ -321,6 +369,7 @@ export function KraReceiptsReportScreen({ definition }) {
   }
 
   const loadReport = useCallback(async () => {
+    if (!pageSizeReady) return;
     setLoading(true);
     setError(null);
     try {
@@ -339,9 +388,26 @@ export function KraReceiptsReportScreen({ definition }) {
       }
       if (applied.queryFilters?.q) searchParams.q = applied.queryFilters.q;
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
-      setRows(normalizeReportRows(res));
-      setReportMeta(normalizeReportMeta(res, page, pageSize));
-      setReportSummary(normalizeReportSummary(res));
+      const nextRows = normalizeReportRows(res);
+      const nextMeta = normalizeReportMeta(res, page, pageSize);
+      const nextSummary = normalizeReportSummary(res);
+      setRows(nextRows);
+      setReportMeta(nextMeta);
+      setReportSummary(nextSummary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        reportKey: definition.key,
+        apiPath: definition.apiPath,
+        rows: nextRows,
+        reportMeta: nextMeta,
+        reportSummary: nextSummary,
+        page,
+        pageSize,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        queryFilters: applied.queryFilters,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
       clearSelection();
     } catch (e) {
@@ -352,9 +418,20 @@ export function KraReceiptsReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, depsKey, isInvoicesView, page, pageSize, paneHref, clearSelection]);
+  }, [
+    applied,
+    definition.apiPath,
+    definition.key,
+    depsKey,
+    isInvoicesView,
+    page,
+    pageSize,
+    pageSizeReady,
+    paneHref,
+    clearSelection,
+  ]);
 
-  const hasData = rows.length > 0 || reportMeta != null;
+  const hasData = pageSizeReady && (rows.length > 0 || reportMeta != null);
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
 
   function refreshReport() {
@@ -746,36 +823,53 @@ export function KraReceiptsReportScreen({ definition }) {
             },
           ]
         : []),
-      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
-      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "order_total", label: "eTIMS total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "eTIMS VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
     [isInvoicesView, multiBranch, showOptionalColumn],
   );
 
   const kpis = useMemo(() => {
-    const totalRows = reportMeta?.total ?? reportSummary?.row_count ?? rows.length;
+    const listedRows = reportMeta?.total ?? reportSummary?.row_count ?? rows.length;
+    // Money KPIs = live successful uploads only (matches backend lean_summary_money_scope).
+    const portalRows = rows.filter(
+      (row) => String(row.status ?? "").toLowerCase() === "success" && !isTestModeKraRow(row),
+    );
+    const uploadedCount =
+      reportSummary?.etims_invoice_count ?? portalRows.length;
+    const etimsTotal =
+      reportSummary?.order_total ?? sumField(portalRows, "order_total");
+    const etimsVat = reportSummary?.total_vat ?? sumField(portalRows, "total_vat");
     return [
       {
         id: "receipts",
-        label: "Receipts",
-        value: String(Math.round(Number(totalRows) || 0)),
+        label: "Listed receipts",
+        value: String(Math.round(Number(listedRows) || 0)),
+      },
+      {
+        id: "uploaded",
+        label: "eTIMS uploaded",
+        value: String(Math.round(Number(uploadedCount) || 0)),
       },
       {
         id: "total",
-        label: "Order total",
-        value: formatReportKes(reportSummary?.order_total ?? sumField(rows, "order_total")),
+        label: "eTIMS total",
+        value: formatReportKes(etimsTotal),
       },
       {
         id: "vat",
-        label: "VAT",
-        value: formatReportKes(reportSummary?.total_vat ?? sumField(rows, "total_vat")),
+        label: "eTIMS VAT",
+        value: formatReportKes(etimsVat),
       },
     ];
   }, [reportMeta, reportSummary, rows]);
 
   const footerTotals = useMemo(() => {
-    const orderTotal = reportSummary?.order_total ?? sumField(rows, "order_total");
-    const vatTotal = reportSummary?.total_vat ?? sumField(rows, "total_vat");
+    const portalRows = rows.filter(
+      (row) => String(row.status ?? "").toLowerCase() === "success" && !isTestModeKraRow(row),
+    );
+    const orderTotal = reportSummary?.order_total ?? sumField(portalRows, "order_total");
+    const vatTotal = reportSummary?.total_vat ?? sumField(portalRows, "total_vat");
     return {
       order_total: formatReportCell("order_total", orderTotal),
       total_vat: formatReportCell("total_vat", vatTotal),
@@ -874,6 +968,7 @@ export function KraReceiptsReportScreen({ definition }) {
           onReset={() => {
             const range = getReportsDefaultDateRange(capabilities?.module_settings);
             const bid = defaultReportBranchId(user, isOrgWide);
+            clearTabPaneCache(paneHref, CACHE_SLOT);
             setFromDate(range.from);
             setToDate(range.to);
             setBranchId(bid);
@@ -988,7 +1083,7 @@ export function KraReceiptsReportScreen({ definition }) {
                       {showOptionalColumn("channel") ? (
                         <th className="whitespace-nowrap px-4 py-3 text-left">Channel</th>
                       ) : null}
-                      <th className="whitespace-nowrap px-4 py-3 text-right">Order total</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right">eTIMS total</th>
                       <th className="whitespace-nowrap px-4 py-3 text-right">VAT</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Actions</th>
                     </tr>
@@ -1040,6 +1135,13 @@ export function KraReceiptsReportScreen({ definition }) {
                           <td className="whitespace-nowrap px-4 py-2.5">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {badge ? <ReportBadge label={badge.label} tone={badge.tone} /> : "—"}
+                              {Number(row?.response_payload?.auto_retry_count ?? 0) > 0 &&
+                              badge?.label !== "Needs manual retry" ? (
+                                <ReportBadge
+                                  label={`Auto-retry ${Number(row.response_payload.auto_retry_count)}/3`}
+                                  tone="warning"
+                                />
+                              ) : null}
                               {isInvoicesView && isTestModeKraRow(row) ? (
                                 <ReportBadge label="Test mode" tone="warning" />
                               ) : null}
@@ -1126,6 +1228,7 @@ export function KraReceiptsReportScreen({ definition }) {
               totalPages={reportMeta?.last_page ?? 1}
               total={reportMeta?.total ?? rows.length}
               pageSize={pageSize}
+              pageSizeOptions={pageSizeOptions}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}
             />

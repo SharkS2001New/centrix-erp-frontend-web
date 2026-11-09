@@ -22,6 +22,7 @@ import { PAYMENT_METHOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 
 const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_active: true };
 
@@ -130,6 +131,7 @@ export function AdminPaymentMethodsScreen() {
       } else {
         await apiRequest(adminPath("/payment-methods"), { method: "POST", body });
       }
+      invalidateReferenceResource("payment-methods");
       setDrawerOpen(false);
       await load();
     } catch (e) {
@@ -152,6 +154,7 @@ export function AdminPaymentMethodsScreen() {
         body: { is_active: nextActive },
         loading: false,
       });
+      invalidateReferenceResource("payment-methods");
       notifySuccess(
         nextActive
           ? `"${row.method_name}" enabled for this organization`
@@ -181,6 +184,7 @@ export function AdminPaymentMethodsScreen() {
     if (!ok) return;
     try {
       await apiRequest(adminPath(`/payment-methods/${row.id}`), { method: "DELETE" });
+      invalidateReferenceResource("payment-methods");
       await load();
       notifySuccess(`"${row.method_name}" deleted`);
     } catch (e) {

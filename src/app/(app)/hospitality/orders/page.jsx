@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { HospitalityOrdersScreen } from "@/components/tab-screens/hospitality-orders";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <HospitalityOrdersScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/hospitality-orders"),
+  "HospitalityOrdersScreen",
+);

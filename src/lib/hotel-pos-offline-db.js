@@ -108,7 +108,7 @@ export async function idbGetCatalogProduct(code) {
   return withStore("catalog", "readonly", (store) => store.get(String(code)));
 }
 
-export async function idbPutCatalogImage(productCode, blob, mime = "image/jpeg") {
+export async function idbPutCatalogImage(productCode, blob, mime = "image/jpeg", imageVersion = null) {
   const code = String(productCode ?? "").trim();
   if (!code || !blob) return;
   await withStore("catalog_images", "readwrite", (store) =>
@@ -116,6 +116,7 @@ export async function idbPutCatalogImage(productCode, blob, mime = "image/jpeg")
       product_code: code,
       blob,
       mime: mime || blob.type || "image/jpeg",
+      image_version: imageVersion ? String(imageVersion) : null,
       updated_at_ms: Date.now(),
     }),
   );
@@ -125,6 +126,12 @@ export async function idbGetCatalogImage(productCode) {
   return withStore("catalog_images", "readonly", (store) =>
     store.get(String(productCode ?? "")),
   );
+}
+
+export async function idbDeleteCatalogImage(productCode) {
+  const code = String(productCode ?? "").trim();
+  if (!code) return;
+  await withStore("catalog_images", "readwrite", (store) => store.delete(code));
 }
 
 export async function idbListCatalogImageCodes() {

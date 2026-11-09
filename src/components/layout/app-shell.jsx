@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { AuthGuard } from "@/components/auth-guard";
 import { WorkspaceGuard } from "@/components/auth/workspace-guard";
@@ -15,21 +16,43 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { WorkspaceTabBar } from "@/components/layout/workspace-tab-bar";
 import { TabWorkspaceMain } from "@/components/layout/tab-workspace-main";
-import { AccountingHelpDialog } from "@/components/accounting/accounting-help";
-import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
-import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { LoginWarningsBanner } from "@/components/shared/login-warnings-banner";
-import { WhatsNewLoginModal } from "@/components/shared/whats-new-login-modal";
-import { FirstLoginGuide } from "@/components/shared/first-login-guide";
 import {
   beginNavigationIntent,
   finishNavigation,
 } from "@/lib/app-loading";
 import { handleNavigationIntentClick } from "@/lib/navigation-intent";
+
+/** Defer non-critical chrome so the shell + page skeleton paint first. */
+const AiAssistPanel = dynamic(
+  () => import("@/components/ai/ai-assist-panel").then((m) => m.AiAssistPanel),
+  { ssr: false },
+);
+const OrderPrintTypePickerHost = dynamic(
+  () =>
+    import("@/components/sales/order-print-type-picker-host").then(
+      (m) => m.OrderPrintTypePickerHost,
+    ),
+  { ssr: false },
+);
+const AccountingHelpDialog = dynamic(
+  () =>
+    import("@/components/accounting/accounting-help").then((m) => m.AccountingHelpDialog),
+  { ssr: false },
+);
+const WhatsNewLoginModal = dynamic(
+  () =>
+    import("@/components/shared/whats-new-login-modal").then((m) => m.WhatsNewLoginModal),
+  { ssr: false },
+);
+const FirstLoginGuide = dynamic(
+  () => import("@/components/shared/first-login-guide").then((m) => m.FirstLoginGuide),
+  { ssr: false },
+);
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 

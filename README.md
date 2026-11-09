@@ -73,7 +73,7 @@ Then host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` o
 Do **not** bake the ~400MB MSI into the Docker image. CI uploads it to the **same R2 bucket** used for MySQL backups (`BACKUP_R2_*`), under prefix `print-agent/`.
 
 GitHub Actions secrets (frontend repo) — mirror Platform → Database backups / API `BACKUP_R2_*`.  
-Without them the MSI workflow still **builds**, uploads a **workflow artifact**, and publishes a **GitHub Release**; R2 + Helm `PRINT_AGENT_MSI_URL` updates are skipped with a warning.
+Without them the MSI workflow still **builds**, uploads a **workflow artifact**, and publishes a **GitHub Release**; R2 upload is skipped with a warning. Set frontend env `PRINT_AGENT_MSI_URL` to the public object URL when ready.
 
 | Secret | Same as |
 |--------|---------|
@@ -83,7 +83,6 @@ Without them the MSI workflow still **builds**, uploads a **workflow artifact**,
 | `BACKUP_R2_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `BACKUP_R2_PUBLIC_URL` | Backup R2 public/custom domain (no trailing slash) |
 | `BACKUP_R2_REGION` | Optional; default `auto` |
-| `PERSONAL_ACCESS_TOKEN` | Already used by Docker Publish; syncs `PRINT_AGENT_MSI_URL` into Helm |
 
 Object key (stable): `print-agent/CentrixPrintAgent.msi`  
 Public URL: `{BACKUP_R2_PUBLIC_URL}/print-agent/CentrixPrintAgent.msi`
@@ -194,6 +193,8 @@ docker build \
 docker run --rm -p 3000:3000 centrix-erp-frontend-web
 ```
 
-Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`. Each push also updates `tag` in `pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml` (same pattern as pitchpredictionswebsite).
+Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml` (image build/push only — Helm charts are not updated by this workflow).
 
-Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `repo` and `write:packages` scopes.
+**Branches:** develop on `master`; production tracks `main`. After **Web CI** succeeds on a `master` push, `.github/workflows/promote-to-main.yml` rebases that tip onto `main` and fast-forwards `main` only (never force-push). One-off local promote: `bash scripts/promote-to-main.sh` (from a clean `master`).
+
+Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `write:packages` / contents push scope (GHCR login + promote to `main` when branch protection blocks `GITHUB_TOKEN`).

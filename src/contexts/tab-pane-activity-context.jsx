@@ -86,6 +86,9 @@ export function useTabAwareInitialLoad(loadFn) {
 /** @type {Map<string, string>} */
 const loadedDepsByPane = new Map();
 
+/** @type {Map<string, number>} */
+const loadedAtByPane = new Map();
+
 /**
  * Fetch/reload while the pane is active when the load identity / depsKey changes.
  * Returning to a keep-alive tab does NOT refetch for the same deps — unless
@@ -96,6 +99,8 @@ const loadedDepsByPane = new Map();
  *   refetch on tab return even if loadFn identity churned while suspended
  * - useTabAwareDataLoad(loadFn, { refetchOnActivate: true }) — always reload when
  *   the pane becomes active again (list screens that must reflect other-tab edits)
+ * - useTabAwareDataLoad(loadFn, { refetchOnActivate: true, softEvictMs: 20000 }) —
+ *   skip activate refetch if the last load for this pane was within softEvictMs
  * - useTabAwareDataLoad(loadFn, { depsKey, hasData }) — skip when depsKey was already
  *   loaded for this pane and the screen still has (or restored) data
  *
@@ -112,6 +117,7 @@ export function useTabAwareDataLoad(loadFn, options) {
   const depsKey = options?.depsKey;
   const hasData = Boolean(options?.hasData);
   const refetchOnActivate = Boolean(options?.refetchOnActivate);
+  const softEvictMs = Number(options?.softEvictMs) > 0 ? Number(options.softEvictMs) : 0;
   const paneKey = paneKeyFromHref(paneHref);
 
   useEffect(() => {
@@ -127,8 +133,16 @@ export function useTabAwareDataLoad(loadFn, options) {
     const becameActive = !wasActiveRef.current;
     wasActiveRef.current = true;
 
+    const withinSoftEvict =
+      softEvictMs > 0 &&
+      loadedOnceRef.current &&
+      Date.now() - (loadedAtByPane.get(paneKey) ?? 0) < softEvictMs;
+
     if (depsKey != null) {
       if (!refetchOnActivate && loadedDepsByPane.get(paneKey) === depsKey && hasData) {
+        return undefined;
+      }
+      if (becameActive && refetchOnActivate && withinSoftEvict && hasData && loadedDepsByPane.get(paneKey) === depsKey) {
         return undefined;
       }
       let cancelled = false;
@@ -137,6 +151,7 @@ export function useTabAwareDataLoad(loadFn, options) {
           await loadFnRef.current();
           if (!cancelled) {
             loadedDepsByPane.set(paneKey, depsKey);
+            loadedAtByPane.set(paneKey, Date.now());
             loadedOnceRef.current = true;
           }
         } catch {
@@ -156,32 +171,43 @@ export function useTabAwareDataLoad(loadFn, options) {
       return undefined;
     }
 
+    if (becameActive && refetchOnActivate && withinSoftEvict) {
+      lastLoadedFnRef.current = loadFn;
+      return undefined;
+    }
+
     if (!becameActive && lastLoadedFnRef.current === loadFn) return undefined;
     lastLoadedFnRef.current = loadFn;
     void (async () => {
       try {
         await loadFn();
+        loadedAtByPane.set(paneKey, Date.now());
         loadedOnceRef.current = true;
       } catch {
         // Loaders should handle errors; never leave an unhandledrejection.
       }
     })();
     return undefined;
-  }, [isActive, loadFn, paneKey, depsKey, hasData, refetchOnActivate]);
+  }, [isActive, loadFn, paneKey, depsKey, hasData, refetchOnActivate, softEvictMs]);
 }
 
 /** Force the next depsKey-based activation to reload. */
 export function invalidateTabAwareDataLoad(paneHref) {
-  loadedDepsByPane.delete(paneKeyFromHref(paneHref));
+  const key = paneKeyFromHref(paneHref);
+  loadedDepsByPane.delete(key);
+  loadedAtByPane.delete(key);
 }
 
 /** After org settings save, other keep-alive tabs should refetch when reactivated. */
 export function invalidateAllTabAwareDataLoads() {
   loadedDepsByPane.clear();
+  loadedAtByPane.clear();
 }
 
 /** Mark deps as already loaded (e.g. after hydrating from tab pane cache). */
 export function markTabAwareDataLoaded(paneHref, depsKey) {
   if (depsKey == null) return;
-  loadedDepsByPane.set(paneKeyFromHref(paneHref), depsKey);
+  const key = paneKeyFromHref(paneHref);
+  loadedDepsByPane.set(key, depsKey);
+  loadedAtByPane.set(key, Date.now());
 }

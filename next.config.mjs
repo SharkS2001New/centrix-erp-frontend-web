@@ -45,6 +45,10 @@ const nextConfig = {
   // Emits a minimal self-contained server bundle at .next/standalone (only the
   // node_modules the runtime actually needs). Consumed by the production Dockerfile.
   output: "standalone",
+  // Tree-shake heavy icon/chart barrels so route JS stays smaller (faster first paint).
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   async headers() {
     const rules = [
       {

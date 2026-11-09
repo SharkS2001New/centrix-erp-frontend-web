@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -7,19 +8,55 @@ import { useAppRouter } from "@/lib/use-app-router";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { openAppPathAcrossWorkspaces } from "@/lib/workspace-navigation";
-import {
-  AssessmentsScreen,
-  AttendanceScreen,
-  CoursesScreen,
-  DrivingDashboard,
-  ExpensesScreen,
-  InstructorsScreen,
-  PaymentsScreen,
-  ReportsScreen,
-  ScheduleScreen,
-  StudentsScreen,
-  VehiclesScreen,
-} from "@/components/driving/screens";
+
+function ScreenFallback() {
+  return <p className="theme-subtext text-sm">Loading…</p>;
+}
+
+const DrivingDashboard = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.DrivingDashboard),
+  { loading: ScreenFallback },
+);
+const StudentsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.StudentsScreen),
+  { loading: ScreenFallback },
+);
+const CoursesScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.CoursesScreen),
+  { loading: ScreenFallback },
+);
+const ScheduleScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.ScheduleScreen),
+  { loading: ScreenFallback },
+);
+const InstructorsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.InstructorsScreen),
+  { loading: ScreenFallback },
+);
+const VehiclesScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.VehiclesScreen),
+  { loading: ScreenFallback },
+);
+const AttendanceScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.AttendanceScreen),
+  { loading: ScreenFallback },
+);
+const AssessmentsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.AssessmentsScreen),
+  { loading: ScreenFallback },
+);
+const PaymentsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.PaymentsScreen),
+  { loading: ScreenFallback },
+);
+const ExpensesScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.ExpensesScreen),
+  { loading: ScreenFallback },
+);
+const ReportsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.ReportsScreen),
+  { loading: ScreenFallback },
+);
 
 export default function DrivingSchoolPage() {
   const params = useParams();

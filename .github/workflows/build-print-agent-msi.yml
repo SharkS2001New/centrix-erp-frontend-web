@@ -105,7 +105,7 @@ jobs:
               echo "- \`BACKUP_R2_SECRET_ACCESS_KEY\`"
               echo "- \`BACKUP_R2_BUCKET\`"
               echo "- \`BACKUP_R2_ENDPOINT\`"
-              echo "- \`BACKUP_R2_PUBLIC_URL\` (for download + Helm \`PRINT_AGENT_MSI_URL\`)"
+              echo "- \`BACKUP_R2_PUBLIC_URL\` (for public download URL / \`PRINT_AGENT_MSI_URL\`)"
               echo "- \`BACKUP_R2_REGION\` (optional; defaults to \`auto\`)"
               echo ""
               echo "The MSI is still available as a workflow artifact and GitHub Release asset."
@@ -192,75 +192,3 @@ jobs:
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  update-helm-msi-url:
-    needs: publish-r2
-    if: needs.publish-r2.outputs.public_url != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out pitchpredk3ssetup
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ github.repository_owner }}/pitchpredk3ssetup
-          path: pitchpredk3ssetup
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
-      - name: Set PRINT_AGENT_MSI_URL in Helm values
-        env:
-          PUBLIC_URL: ${{ needs.publish-r2.outputs.public_url }}
-        run: |
-          set -euo pipefail
-          FILE="pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml"
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path("pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml")
-          text = path.read_text()
-          url = os.environ["PUBLIC_URL"].strip()
-          marker = "PRINT_AGENT_MSI_URL:"
-          if marker in text:
-              lines = []
-              for line in text.splitlines(True):
-                  if line.lstrip().startswith(marker):
-                      indent = line[: len(line) - len(line.lstrip())]
-                      lines.append(f'{indent}PRINT_AGENT_MSI_URL: "{url}"\n')
-                  else:
-                      lines.append(line)
-              path.write_text("".join(lines))
-          else:
-              if not text.endswith("\n"):
-                  text += "\n"
-              text += (
-                  "\n# Runtime env for Next.js API routes (not baked at image build)\n"
-                  "env:\n"
-                  f'  PRINT_AGENT_MSI_URL: "{url}"\n'
-              )
-              path.write_text(text)
-          print(f"Updated {path} -> PRINT_AGENT_MSI_URL={url}")
-          PY
-
-      - name: Commit and push Helm values
-        run: |
-          cd pitchpredk3ssetup
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add centrix-erp-frontend-web/values.yaml
-          if git diff --staged --quiet; then
-            echo "PRINT_AGENT_MSI_URL already up to date."
-            exit 0
-          fi
-          git commit -m "chore(centrix-erp-frontend-web): point PRINT_AGENT_MSI_URL at R2 MSI"
-          for attempt in 1 2 3 4 5; do
-            git pull --rebase origin master
-            if git push origin HEAD:master; then
-              echo "Push succeeded on attempt ${attempt}."
-              exit 0
-            fi
-            echo "Push rejected (attempt ${attempt}); retrying after rebase…"
-            sleep $((attempt * 2))
-          done
-          echo "Failed to push pitchpredk3ssetup after 5 attempts."
-          exit 1

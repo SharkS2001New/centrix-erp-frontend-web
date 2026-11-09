@@ -445,10 +445,13 @@ export default function PlatformDatabaseBackupsPage() {
   }
 
   async function handleCreateBackup() {
+    const r2Ready = Boolean(r2Status?.upload_ready);
     const ok = await confirm({
       title: "Run manual backup",
-      message: "Run a manual database backup now? This may take a minute on large databases.",
-      confirmLabel: "Run backup",
+      message: r2Ready
+        ? "Dump the database to a local file, then upload the SQL dump to Cloudflare R2. This may take a few minutes on large databases. Backup dumps are never stored as rows in MySQL — only as files on disk and in R2."
+        : "R2 offsite upload is not active. The dump will only be saved on the API server disk (not in MySQL). Configure Platform settings → Cloudflare R2 first if you need cloud storage. Continue with a local-only backup?",
+      confirmLabel: r2Ready ? "Run backup → R2" : "Run local backup",
     });
     if (!ok) return;
 
@@ -459,24 +462,58 @@ export default function PlatformDatabaseBackupsPage() {
         () =>
           apiRequest("/admin/database-backups", {
             method: "POST",
+            // Prefer queue so proxies don't kill long mysqldump + R2 upload requests.
             body: {
               send_email: true,
               upload_r2: true,
+              async: true,
             },
+            loading: false,
           }),
         {
-          message: "Please wait while the database backup runs. This may take a minute on large databases…",
+          message: r2Ready
+            ? "Dumping the database and uploading to Cloudflare R2…"
+            : "Please wait while the database backup runs…",
           timeoutMs: 3_900_000,
         },
       );
+      if (!res) return;
+
+      const filename = res.data?.filename || res.backup?.filename;
+      const r2Object = res.r2?.file_id || res.r2?.name || res.r2?.web_view_link;
+
       if (res.r2_error) {
-        setWarning(`Backup saved on server, but Cloudflare R2 upload failed: ${res.r2_error}`);
+        setWarning(
+          `Local dump${filename ? ` (${filename})` : ""} succeeded, but Cloudflare R2 upload failed: ${res.r2_error}`,
+        );
       } else if (res.r2_skipped_reason) {
-        setWarning(`Backup saved on server. Cloudflare R2 upload was skipped: ${res.r2_skipped_reason}`);
-      } else if (res.r2?.web_view_link) {
-        notifySuccess(`${res.message ?? "Database backup completed."} R2 object: ${res.r2.web_view_link}`);
+        setWarning(
+          `Local dump${filename ? ` (${filename})` : ""} saved. Cloudflare R2 upload was skipped: ${res.r2_skipped_reason}`,
+        );
+      } else if (res.r2) {
+        notifySuccess(
+          [
+            res.message ?? "Database backup completed and uploaded to Cloudflare R2.",
+            filename ? `File: ${filename}` : null,
+            r2Object ? `R2: ${r2Object}` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
       } else {
-        notifySuccess(res.message ?? "Database backup completed.");
+        notifySuccess(
+          [
+            res.message ?? "Database backup completed.",
+            filename ? `File: ${filename}` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+        if (r2Ready) {
+          setWarning(
+            "Backup finished, but the API did not return an R2 object. Check Platform settings → Cloudflare R2 and the API logs.",
+          );
+        }
       }
       await load();
     } catch (e) {
@@ -616,7 +653,13 @@ export default function PlatformDatabaseBackupsPage() {
             Restore…
           </button>
           <PrimaryButton type="button" showIcon={false} disabled={creating || restoring} onClick={handleCreateBackup}>
-            {creating ? "Running backup…" : "Run manual backup"}
+            {creating
+              ? r2Status?.upload_ready
+                ? "Backing up → R2…"
+                : "Running backup…"
+              : r2Status?.upload_ready
+                ? "Run manual backup → R2"
+                : "Run manual backup"}
           </PrimaryButton>
         </div>
       }
@@ -627,10 +670,14 @@ export default function PlatformDatabaseBackupsPage() {
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         Scheduled backups currently run <strong>{scheduleLabel}</strong> via the API cron job.
-        Files stay on the server
-        {r2Status?.upload_ready ? " and are copied to Cloudflare R2 after each run." : "."} Local
-        files older than {retentionDays} day{retentionDays === 1 ? "" : "s"} are pruned after each
-        backup. R2 SQL dump retention is configured separately under{" "}
+        Each run writes a <strong>.sql.gz file on the API server disk</strong>
+        {r2Status?.upload_ready
+          ? ", then uploads that dump to Cloudflare R2 (offsite). "
+          : ". "}
+        Dump files are <strong>not stored inside your MySQL database</strong> — only R2 connection
+        settings live in platform config. Local files older than {retentionDays} day
+        {retentionDays === 1 ? "" : "s"} are pruned after each backup. R2 SQL dump retention is
+        configured under{" "}
         <Link href="/platform/settings?tab=r2" className="font-medium text-[#185FA5] hover:underline">
           Platform settings → Cloudflare R2
         </Link>
@@ -752,10 +799,11 @@ export default function PlatformDatabaseBackupsPage() {
 
       <div className="mt-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">Available backups</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Available backups (on server)</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Newest first. Use <strong>Restore</strong> to open the restore popup, or download a file.
-            Fresh backups are sanitized for MySQL generated columns (e.g. <code>balance_due</code>).
+            Newest first — these are local dump files on the API server (also uploaded to R2 when
+            offsite is active). Use <strong>Restore</strong> or download a file. Fresh backups are
+            sanitized for MySQL generated columns (e.g. <code>balance_due</code>).
           </p>
         </div>
 

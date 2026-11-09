@@ -17,7 +17,6 @@ import {
   idbDeleteOutboxCheck,
   idbGetAllCatalog,
   idbGetCatalogProduct,
-  idbListCatalogImageCodes,
   idbGetLocalCheck,
   idbGetMeta,
   idbGetOutboxCheck,
@@ -40,6 +39,10 @@ const CATALOG_TTL_MS = 15 * 60 * 1000;
 const RESERVE_LOW = 8;
 const RESERVE_COUNT = 20;
 const IMAGE_WARM_CONCURRENCY = 8;
+
+/** Coalesce concurrent catalog warms (module switch / prepare / screen mount). */
+let catalogWarmInflight = null;
+let catalogWarmInflightKey = null;
 
 function roundMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -90,70 +93,88 @@ export function recalculateLocalHotelCheck(check) {
 export async function warmHotelPosOfflineCatalog({
   force = false,
   outletId = null,
-  warmImages = true,
+  // Default off: public R2/CDN image_url + browser cache is enough while online.
+  // Eager /image/file → IndexedDB warm saturates the API and false-trips offline lock.
+  warmImages = false,
 } = {}) {
   const channelKey = outletId != null ? `outlet:${outletId}` : "outlet:default";
-  const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
-  const lastChannel = String((await idbGetMeta("catalog_channel_key")) ?? "");
-  const channelChanged = lastChannel !== channelKey;
-  if (!force && !channelChanged && last && Date.now() - last < CATALOG_TTL_MS) {
-    return { skipped: true, count: (await idbGetAllCatalog()).length };
+  const inflightKey = `${channelKey}|force:${force ? 1 : 0}|images:${warmImages ? 1 : 0}`;
+  if (catalogWarmInflight && catalogWarmInflightKey === inflightKey) {
+    return catalogWarmInflight;
   }
 
-  const products = [];
-  let outlet = null;
-  let menuChannel = null;
-  let offset = 0;
-  let hasMore = true;
-  let pages = 0;
-  while (hasMore && pages < 40) {
-    const res = await fetchHotelPosCatalog({
-      q: "",
-      perPage: 100,
-      popularDays: 5,
-      offset,
-      outletId: outletId || undefined,
-    });
-    const batch = Array.isArray(res?.items) ? res.items : [];
-    for (const item of batch) {
-      if (item?.product_code) products.push(item);
+  catalogWarmInflightKey = inflightKey;
+  catalogWarmInflight = (async () => {
+    const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
+    const lastChannel = String((await idbGetMeta("catalog_channel_key")) ?? "");
+    const channelChanged = lastChannel !== channelKey;
+    if (!force && !channelChanged && last && Date.now() - last < CATALOG_TTL_MS) {
+      return { skipped: true, count: (await idbGetAllCatalog()).length };
     }
-    if (res?.outlet) outlet = res.outlet;
-    if (res?.menu_channel) menuChannel = res.menu_channel;
-    hasMore = Boolean(res?.has_more);
-    offset = res?.next_offset ?? offset + batch.length;
-    pages += 1;
-    if (!batch.length) break;
-  }
 
-  await idbClearStore("catalog");
-  await idbPutCatalogProducts(products);
-  await idbSetMeta("catalog_warmed_at", Date.now());
-  await idbSetMeta("catalog_count", products.length);
-  await idbSetMeta("catalog_channel_key", channelKey);
-  await idbSetMeta(
-    "catalog_menu_channel",
-    menuChannel ?? outlet?.menu_channel ?? null,
-  );
-  await idbSetMeta("catalog_outlet_id", outlet?.id ?? outletId ?? null);
+    const products = [];
+    let outlet = null;
+    let menuChannel = null;
+    let offset = 0;
+    let hasMore = true;
+    let pages = 0;
+    while (hasMore && pages < 40) {
+      const res = await fetchHotelPosCatalog({
+        q: "",
+        perPage: 100,
+        popularDays: 5,
+        offset,
+        outletId: outletId || undefined,
+      });
+      const batch = Array.isArray(res?.items) ? res.items : [];
+      for (const item of batch) {
+        if (item?.product_code) products.push(item);
+      }
+      if (res?.outlet) outlet = res.outlet;
+      if (res?.menu_channel) menuChannel = res.menu_channel;
+      hasMore = Boolean(res?.has_more);
+      offset = res?.next_offset ?? offset + batch.length;
+      pages += 1;
+      if (!batch.length) break;
+    }
 
-  if (warmImages) {
-    void warmHotelPosOfflineImages(products).catch((err) => {
-      console.warn("Hotel POS image warm failed", err);
-    });
-  }
+    await idbClearStore("catalog");
+    await idbPutCatalogProducts(products);
+    await idbSetMeta("catalog_warmed_at", Date.now());
+    await idbSetMeta("catalog_count", products.length);
+    await idbSetMeta("catalog_channel_key", channelKey);
+    await idbSetMeta(
+      "catalog_menu_channel",
+      menuChannel ?? outlet?.menu_channel ?? null,
+    );
+    await idbSetMeta("catalog_outlet_id", outlet?.id ?? outletId ?? null);
 
-  return {
-    skipped: false,
-    count: products.length,
-    outlet,
-    menu_channel: menuChannel ?? outlet?.menu_channel ?? null,
-  };
+    if (warmImages) {
+      void warmHotelPosOfflineImages(products).catch((err) => {
+        console.warn("Hotel POS image warm failed", err);
+      });
+    }
+
+    return {
+      skipped: false,
+      count: products.length,
+      outlet,
+      menu_channel: menuChannel ?? outlet?.menu_channel ?? null,
+    };
+  })().finally(() => {
+    if (catalogWarmInflightKey === inflightKey) {
+      catalogWarmInflight = null;
+      catalogWarmInflightKey = null;
+    }
+  });
+
+  return catalogWarmInflight;
 }
 
 /**
  * Download authenticated product photos into IndexedDB for offline tiles.
- * @param {Array<{ product_code: string, has_image?: boolean, image_url?: string }>} products
+ * Keeps existing blobs when image_version matches; re-fetches only after path/upload change.
+ * @param {Array<{ product_code: string, has_image?: boolean, image_url?: string, image_version?: string|null }>} products
  */
 export async function warmHotelPosOfflineImages(products = []) {
   const withImages = (products ?? []).filter(
@@ -162,14 +183,17 @@ export async function warmHotelPosOfflineImages(products = []) {
   if (!withImages.length) return { warmed: 0 };
 
   const { resolveHotelPosCachedImageUrl } = await import("@/lib/hotel-pos-image-cache");
-  const already = new Set(await idbListCatalogImageCodes().catch(() => []));
-  const missing = withImages.filter((p) => !already.has(String(p.product_code)));
-  let warmed = already.size;
+  let warmed = 0;
 
-  for (let i = 0; i < missing.length; i += IMAGE_WARM_CONCURRENCY) {
-    const slice = missing.slice(i, i + IMAGE_WARM_CONCURRENCY);
+  for (let i = 0; i < withImages.length; i += IMAGE_WARM_CONCURRENCY) {
+    const slice = withImages.slice(i, i + IMAGE_WARM_CONCURRENCY);
     const urls = await Promise.all(
-      slice.map((p) => resolveHotelPosCachedImageUrl(String(p.product_code)).catch(() => null)),
+      slice.map((p) =>
+        resolveHotelPosCachedImageUrl(String(p.product_code), {
+          fallbackUrl: p.image_url ?? null,
+          imageVersion: p.image_version ?? null,
+        }).catch(() => null),
+      ),
     );
     warmed += urls.filter(Boolean).length;
   }
@@ -252,7 +276,7 @@ export async function listFailedHotelOutboxChecks() {
 }
 
 export async function prepareHotelPosOfflineReady({ outletId = null } = {}) {
-  const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: true });
+  const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: false });
   const numbers = await ensureHotelPosOfflineCheckNumbers({ force: false, outletId });
   return {
     catalogCount: catalog.count ?? 0,
@@ -393,6 +417,7 @@ export function addProductToHotelCheckInMemory(check, product, qty = 1) {
       vat_amount: lineVatAmount(lineTotal, vatPct),
       sort_order: lines.length + 1,
       image_url: product.image_url ?? null,
+      image_version: product.image_version ?? null,
     });
   }
   return recalculateLocalHotelCheck({
@@ -457,6 +482,7 @@ export function mergeHotelCheckFromServer(serverCheck, optimisticCheck, pendingP
       ...serverLine,
       client_key: clientKey,
       image_url: opt.image_url ?? serverLine.image_url,
+      image_version: opt.image_version ?? serverLine.image_version ?? null,
     };
   });
 

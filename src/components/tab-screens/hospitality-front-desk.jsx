@@ -9,6 +9,7 @@ import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
 import { postFolioPaymentsFromPanel } from "@/lib/hospitality-folio-payments";
 import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { fetchPaymentMethodsCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
   Field,
@@ -42,7 +43,7 @@ export function HospitalityFrontDeskScreen() {
 }
 
 function FrontDeskManager() {
-  const { capabilities } = useAuth();
+  const { capabilities, organization } = useAuth();
   const foliosEnabled = isHospitalityServiceEnabled(capabilities, "folios");
   const confirm = useConfirm();
   const [tab, setTab] = useState("arrivals");
@@ -78,13 +79,9 @@ function FrontDeskManager() {
   useEffect(() => {
     if (!foliosEnabled) return undefined;
     let cancelled = false;
-    apiRequest("/payment-methods", {
-      searchParams: { per_page: 50, "filter[is_active]": 1 },
-      loading: false,
-      reportIssues: false,
-    })
-      .then((res) => {
-        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res?.data ?? []));
+    fetchPaymentMethodsCached(organization?.id)
+      .then((rows) => {
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(rows));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);
@@ -92,20 +89,16 @@ function FrontDeskManager() {
     return () => {
       cancelled = true;
     };
-  }, [foliosEnabled]);
+  }, [foliosEnabled, organization?.id]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ soft = false } = {}) => {
+    if (!soft) setLoading(true);
     try {
-      const [a, d, h, r] = await Promise.all([
-        apiRequest("/hospitality/front-desk/arrivals"),
-        apiRequest("/hospitality/front-desk/departures"),
-        apiRequest("/hospitality/front-desk/in-house"),
-        apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
-      ]);
-      setArrivals(a?.data ?? []);
-      setDepartures(d?.data ?? []);
-      setInHouse(h?.data ?? []);
-      setRooms(r?.data ?? r ?? []);
+      const board = await apiRequest("/hospitality/front-desk/board", { loading: false });
+      setArrivals(board?.arrivals ?? []);
+      setDepartures(board?.departures ?? []);
+      setInHouse(board?.in_house ?? []);
+      setRooms(board?.rooms ?? []);
       setArrivalRoomById({});
       setInHouseRoomById({});
     } catch (e) {

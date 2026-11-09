@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { useAuth } from "@/contexts/auth-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 async function copyText(value) {
@@ -34,7 +35,9 @@ async function copyText(value) {
 /**
  * User-based 2FA setup under My profile: email OTP or Google Authenticator.
  */
-export function ProfileTwoFactorSection() {
+export function ProfileTwoFactorSection({ onEnabled } = {}) {
+  const { isSuperAdmin } = useAuth();
+  const platformAdmin = Boolean(isSuperAdmin?.());
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -114,6 +117,7 @@ export function ProfileTwoFactorSection() {
       setMode(null);
       setEmailCode("");
       notifySuccess("Email two-factor authentication enabled.");
+      onEnabled?.();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Invalid code.");
     } finally {
@@ -149,6 +153,7 @@ export function ProfileTwoFactorSection() {
       setTotpQrDataUrl("");
       setTotpCode("");
       notifySuccess("Authenticator two-factor authentication enabled.");
+      onEnabled?.();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Invalid authenticator code.");
     } finally {
@@ -200,9 +205,10 @@ export function ProfileTwoFactorSection() {
       <div>
         <h2 className="text-sm font-semibold text-slate-900">Two-factor authentication</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Protect your own account with email or Google Authenticator when signing in. You enable or
-          disable this yourself. Email codes are sent from the platform email set by the Centrix
-          super admin.
+          Protect your own account with email or Google Authenticator when signing in.
+          {platformAdmin
+            ? " Platform administrators must keep 2FA enabled."
+            : " You enable or disable this yourself. Email codes are sent from the platform email set by the Centrix super admin."}
         </p>
       </div>
 
@@ -243,7 +249,7 @@ export function ProfileTwoFactorSection() {
         </div>
       ) : null}
 
-      {mode === null && enabled ? (
+      {mode === null && enabled && !platformAdmin ? (
         <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={() => setMode("disable")}>
           Disable 2FA
         </button>

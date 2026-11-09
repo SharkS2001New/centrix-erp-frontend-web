@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { useAuth } from "@/contexts/auth-context";
@@ -43,7 +44,6 @@ import {
   searchHotelPosOfflineCatalog,
   updateLocalHotelCheckLineQty,
   warmHotelPosOfflineCatalog,
-  warmHotelPosOfflineImages,
 } from "@/lib/hotel-pos-offline";
 import { idbClearLocalCheck, idbGetAllCatalog, idbPutCatalogProducts, idbSaveLocalCheck } from "@/lib/hotel-pos-offline-db";
 import {
@@ -59,16 +59,30 @@ import {
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { fetchPaymentMethodsCached } from "@/lib/reference-data-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PosActionButton } from "@/components/sales/pos-action-button";
-import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { HotelPosProductImage } from "@/components/hospitality/hotel-pos-product-image";
-import { HotelPosProductsPopup } from "@/components/hospitality/hotel-pos-products-popup";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
+
+const HotelPosPaymentPanel = dynamic(
+  () =>
+    import("@/components/hospitality/hotel-pos-payment-panel").then((m) => ({
+      default: m.HotelPosPaymentPanel,
+    })),
+  { ssr: false },
+);
+const HotelPosProductsPopup = dynamic(
+  () =>
+    import("@/components/hospitality/hotel-pos-products-popup").then((m) => ({
+      default: m.HotelPosProductsPopup,
+    })),
+  { ssr: false },
+);
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import {
   buildHospitalityCheckPrintOptions,
@@ -194,6 +208,8 @@ const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
         <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
           <HotelPosProductImage
             productCode={product.product_code}
+            imageUrl={product.image_url}
+            imageVersion={product.image_version}
             offlineMode={offlineMode}
             alt={product.product_name}
             className="h-full w-full object-cover"
@@ -380,8 +396,8 @@ export function HotelBarPosScreen() {
           if (p?.product_code) m.set(String(p.product_code), p);
         }
         replaceCatalogMap(m);
-        void primeHotelPosImageCacheFromIndexedDb([...m.keys()]);
-        void warmHotelPosOfflineImages([...m.values()]).catch(() => {});
+        // Memory-prime any photos already in IndexedDB; do not re-download all images.
+        void primeHotelPosImageCacheFromIndexedDb([...m.values()]);
       } catch (e) {
         // ignore
       }
@@ -393,11 +409,9 @@ export function HotelBarPosScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/payment-methods", {
-      searchParams: { per_page: 50, "filter[is_active]": 1 },
-    })
-      .then((res) => {
-        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res.data ?? []));
+    fetchPaymentMethodsCached(organization?.id)
+      .then((rows) => {
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(rows));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);
@@ -405,7 +419,7 @@ export function HotelBarPosScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organization?.id]);
 
   useEffect(() => {
     setGridColumns(hotelSettings.gridColumns);
@@ -447,8 +461,9 @@ export function HotelBarPosScreen() {
   }, [sellingLocked]);
 
   useEffect(() => {
-    if (!roomChargeEnabled || offlineMode) {
-      setOpenFolios([]);
+    // Defer open-folio fetch until room-charge UI is actually used.
+    if (!roomChargeEnabled || offlineMode || (!chargeToRoom && !payOpen)) {
+      if (!roomChargeEnabled || offlineMode) setOpenFolios([]);
       return;
     }
     let cancelled = false;
@@ -462,7 +477,7 @@ export function HotelBarPosScreen() {
     return () => {
       cancelled = true;
     };
-  }, [roomChargeEnabled, offlineMode]);
+  }, [roomChargeEnabled, offlineMode, chargeToRoom, payOpen]);
 
   function applySelectedFolio(folioId) {
     const id = String(folioId ?? "");
@@ -546,7 +561,13 @@ export function HotelBarPosScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const settings = await fetchHotelPosSettings();
+        const tablesLikely =
+          isHospitalityServiceEnabled(capabilities, "table_pos") ||
+          isHospitalityServiceEnabled(capabilities, "floor_tables");
+        const [settings, tablesRes] = await Promise.all([
+          fetchHotelPosSettings(),
+          tablesLikely ? listHotelFloorTables().catch(() => null) : Promise.resolve(null),
+        ]);
         if (cancelled) return;
         if (settings?.hotel_pos_collect_payment != null) {
           setCollectPayment(Boolean(settings.hotel_pos_collect_payment));
@@ -571,10 +592,15 @@ export function HotelBarPosScreen() {
         if (settings?.outlet) {
           setMenuOutlet(settings.outlet);
         }
-        if (settings?.table_pos_enabled || settings?.floor_tables_enabled) {
-          const tablesRes = await listHotelFloorTables();
+        const wantTables = Boolean(
+          settings?.table_pos_enabled || settings?.floor_tables_enabled || tablesLikely,
+        );
+        if (wantTables && tablesRes) {
+          setFloorTables(Array.isArray(tablesRes?.data) ? tablesRes.data : []);
+        } else if (wantTables && !tablesRes) {
+          const retry = await listHotelFloorTables().catch(() => null);
           if (!cancelled) {
-            setFloorTables(Array.isArray(tablesRes?.data) ? tablesRes.data : []);
+            setFloorTables(Array.isArray(retry?.data) ? retry.data : []);
           }
         } else {
           setFloorTables([]);
@@ -586,7 +612,7 @@ export function HotelBarPosScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [capabilities]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 220);
@@ -700,10 +726,7 @@ export function HotelBarPosScreen() {
                   try {
                     await idbPutCatalogProducts(batch);
                     upsertCatalogMapItems(batch);
-                    void warmHotelPosOfflineImages(batch).catch(() => {});
-                    void primeHotelPosImageCacheFromIndexedDb(
-                      batch.map((p) => p.product_code),
-                    );
+                    void primeHotelPosImageCacheFromIndexedDb(batch);
                   } catch {
                     /* ignore */
                   }
@@ -744,8 +767,7 @@ export function HotelBarPosScreen() {
             try {
               await idbPutCatalogProducts(batch);
               upsertCatalogMapItems(batch);
-              void warmHotelPosOfflineImages(batch).catch(() => {});
-              void primeHotelPosImageCacheFromIndexedDb(batch.map((p) => p.product_code));
+              void primeHotelPosImageCacheFromIndexedDb(batch);
             } catch {
               /* ignore */
             }
@@ -2158,6 +2180,8 @@ export function HotelBarPosScreen() {
                           <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--theme-surface-muted)] ring-1 ring-[var(--theme-border)]">
                             <HotelPosProductImage
                               productCode={line.product_code}
+                              imageUrl={line.image_url}
+                              imageVersion={line.image_version}
                               offlineMode={offlineMode}
                               alt={line.description}
                               className="h-full w-full object-cover"

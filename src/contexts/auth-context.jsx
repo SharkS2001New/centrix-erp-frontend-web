@@ -48,6 +48,7 @@ import {
   capabilitiesVersionChanged,
   isBrowserReloadNavigation,
 } from "@/lib/capabilities-sync";
+import { isBrowserPrintDialogOpen } from "@/lib/open-print-window";
 import {
   clearLicenseWarningDismissed,
   licenseFromAuthState,
@@ -123,6 +124,10 @@ export function AuthProvider({ children }) {
           dedupe: force ? false : undefined,
           cache: force ? "no-store" : undefined,
         });
+        // Soft-cancelled auth redirect resolves undefined — keep cache.
+        if (!caps) {
+          return cached;
+        }
         if (gen !== capabilitiesRefreshGen.current) {
           return caps;
         }
@@ -333,41 +338,8 @@ export function AuthProvider({ children }) {
       });
   }, [refreshCapabilities]);
 
-  useEffect(() => {
-    if (!hasAuthSession()) return undefined;
-    const isPosSession = loginChannel === POS_LOGIN_CHANNEL;
-    const refreshOnFocus = () => {
-      refreshCapabilities({
-        maxAgeMs: isPosSession ? POS_CAPABILITIES_REFRESH_MS : CAPABILITIES_REFRESH_MS,
-      }).catch(() => {});
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshOnFocus();
-      }
-    };
-
-    window.addEventListener("focus", refreshOnFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", refreshOnFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [refreshCapabilities, loginChannel]);
-
-  useEffect(() => {
-    if (!hasAuthSession() || loginChannel !== POS_LOGIN_CHANNEL) return undefined;
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      refreshCapabilities({ maxAgeMs: POS_CAPABILITIES_REFRESH_MS }).catch(() => {});
-    }, POS_CAPABILITIES_REFRESH_MS);
-
-    return () => window.clearInterval(interval);
-  }, [refreshCapabilities, loginChannel]);
-
+  // Focus / visibility: version stamp only (cheap). Full capabilities refresh only when
+  // the stamp changes — avoids remounting POS on print blur/focus.
   useEffect(() => {
     if (!hasAuthSession()) return undefined;
 
@@ -375,6 +347,7 @@ export function AuthProvider({ children }) {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
+      if (isBrowserPrintDialogOpen()) return;
       try {
         const stamp = await apiRequest("/erp/capabilities/version", {
           loading: false,
@@ -400,14 +373,20 @@ export function AuthProvider({ children }) {
       }
     };
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void syncIfAccessChanged();
+      }
+    };
+
     const interval = window.setInterval(syncIfAccessChanged, CAPABILITIES_VERSION_POLL_MS);
     window.addEventListener("focus", syncIfAccessChanged);
-    document.addEventListener("visibilitychange", syncIfAccessChanged);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncIfAccessChanged);
-      document.removeEventListener("visibilitychange", syncIfAccessChanged);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [refreshCapabilities]);
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import {
   CatalogPageShell,
   Field,
@@ -23,7 +23,6 @@ import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { filterByOrganization } from "@/lib/admin";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { normalizePaymentsBreakdownSearchQuery } from "@/lib/payments-breakdown-search";
 import { formatPaymentsBreakdownOrderLabel } from "@/lib/sales";
@@ -101,15 +100,6 @@ function formatPaidAt(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function sessionLabel(session) {
-  if (!session) return "—";
-  const till = session.till_number || session.till_name || "Till";
-  const status = String(session.status || "").trim();
-  const cashier = session.cashier_name ? ` · ${session.cashier_name}` : "";
-  const date = session.session_date ? ` · ${session.session_date}` : "";
-  return `${till}${cashier}${date}${status ? ` (${status})` : ""}`;
 }
 
 function rowSessionText(row) {
@@ -239,10 +229,14 @@ export function PaymentsBreakdownScreen({
   const [branches, setBranches] = useState([]);
   const [cashiers, setCashiers] = useState([]);
   const [cashierId, setCashierId] = useState("");
-  const [floatSessionId, setFloatSessionId] = useState("");
   const [q, setQ] = useState("");
-  const debouncedQ = useDebouncedValue(q, 300);
-  const searchQ = normalizePaymentsBreakdownSearchQuery(debouncedQ);
+  /** Applied filters drive fetch — draft inputs only hit the API when Filter is clicked. */
+  const [appliedFromDate, setAppliedFromDate] = useState(initialRange.from);
+  const [appliedToDate, setAppliedToDate] = useState(initialRange.to);
+  const [appliedBranchId, setAppliedBranchId] = useState("");
+  const [appliedCashierId, setAppliedCashierId] = useState("");
+  const [appliedQ, setAppliedQ] = useState("");
+  const searchQ = normalizePaymentsBreakdownSearchQuery(appliedQ);
   const [methodCode, setMethodCode] = useState("CASH");
   /** Print/CSV: current tender tab only, or every visible tab. */
   const [printScope, setPrintScope] = useState("active");
@@ -250,8 +244,20 @@ export function PaymentsBreakdownScreen({
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const loadAbortRef = useRef(null);
+  /** Skip one effect cycle when method_code is synced from a response that already has the right rows. */
+  const suppressLoadForMethodSyncRef = useRef(false);
 
   const showBranchFilter = isMultiBranchCatalog(user);
+
+  function applyFilters() {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedBranchId(branchId);
+    setAppliedCashierId(cashierId);
+    setAppliedQ(q);
+    setPage(1);
+  }
 
   useEffect(() => {
     if (!organizationId) return;
@@ -284,49 +290,63 @@ export function PaymentsBreakdownScreen({
   }, [cashiers, branchId]);
 
   const load = useCallback(async () => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
     try {
       const res = await apiRequest(apiPath, {
         searchParams: {
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
-          branch_id: branchId || undefined,
-          cashier_id: cashierId || undefined,
-          float_session_id: hideSessionFilter ? undefined : floatSessionId || undefined,
+          from_date: appliedFromDate || undefined,
+          to_date: appliedToDate || undefined,
+          branch_id: appliedBranchId || undefined,
+          cashier_id: appliedCashierId || undefined,
           method_code: methodCode || undefined,
           q: searchQ || undefined,
           page,
           per_page: pageSize,
         },
+        loading: false,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setData(res);
       const nextMethods = Array.isArray(res?.methods) ? res.methods : [];
       if (nextMethods.length > 0 && !nextMethods.some((m) => m.method_code === methodCode)) {
+        // Need rows for a different tender — one follow-up fetch via methodCode effect.
         setMethodCode(nextMethods[0].method_code);
       } else if (res?.method_code && res.method_code !== methodCode) {
+        // Server already returned the corrected tender's rows — sync tab without refetch.
+        suppressLoadForMethodSyncRef.current = true;
         setMethodCode(res.method_code);
       }
     } catch (e) {
+      if (controller.signal.aborted || isAbortError(e)) return;
       notifyError(e instanceof ApiError ? e.message : "Failed to load payments breakdown");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [
-    fromDate,
-    toDate,
-    branchId,
-    cashierId,
-    floatSessionId,
+    appliedFromDate,
+    appliedToDate,
+    appliedBranchId,
+    appliedCashierId,
     methodCode,
     searchQ,
     page,
     pageSize,
     apiPath,
-    hideSessionFilter,
   ]);
 
   useEffect(() => {
+    if (suppressLoadForMethodSyncRef.current) {
+      suppressLoadForMethodSyncRef.current = false;
+      return undefined;
+    }
     void load();
+    return () => {
+      loadAbortRef.current?.abort();
+    };
   }, [load]);
 
   const reportRefresh = useReportRefreshUi({
@@ -348,19 +368,6 @@ export function PaymentsBreakdownScreen({
   );
   const rows = data?.data ?? [];
   const summary = data?.summary ?? {};
-  const sessions = useMemo(() => data?.sessions ?? [], [data?.sessions]);
-
-  const sessionOptions = useMemo(() => {
-    if (!cashierId) return sessions;
-    return sessions.filter((s) => String(s.cashier_id) === cashierId);
-  }, [sessions, cashierId]);
-
-  useEffect(() => {
-    if (!floatSessionId) return;
-    if (!sessionOptions.some((s) => String(s.id) === floatSessionId)) {
-      setFloatSessionId("");
-    }
-  }, [sessionOptions, floatSessionId]);
 
   const tabs = useMemo(
     () =>
@@ -388,27 +395,26 @@ export function PaymentsBreakdownScreen({
 
   const exportBaseParams = useMemo(
     () => ({
-      from_date: fromDate || undefined,
-      to_date: toDate || undefined,
-      branch_id: branchId || undefined,
-      cashier_id: cashierId || undefined,
-      float_session_id: floatSessionId || undefined,
+      from_date: appliedFromDate || undefined,
+      to_date: appliedToDate || undefined,
+      branch_id: appliedBranchId || undefined,
+      cashier_id: appliedCashierId || undefined,
       q: searchQ || undefined,
     }),
-    [fromDate, toDate, branchId, cashierId, floatSessionId, searchQ],
+    [appliedFromDate, appliedToDate, appliedBranchId, appliedCashierId, searchQ],
   );
 
   const branchName = useMemo(() => {
-    if (!branchId) return "All branches";
-    const match = branches.find((b) => String(b.id) === String(branchId));
-    return match?.branch_name ?? match?.name ?? `Branch ${branchId}`;
-  }, [branchId, branches]);
+    if (!appliedBranchId) return "All branches";
+    const match = branches.find((b) => String(b.id) === String(appliedBranchId));
+    return match?.branch_name ?? match?.name ?? `Branch ${appliedBranchId}`;
+  }, [appliedBranchId, branches]);
 
   const cashierName = useMemo(() => {
-    if (!cashierId) return "All cashiers";
-    const match = cashierOptions.find((c) => c.value === cashierId);
-    return match?.label ?? `Cashier ${cashierId}`;
-  }, [cashierId, cashierOptions]);
+    if (!appliedCashierId) return "All cashiers";
+    const match = cashierOptions.find((c) => c.value === appliedCashierId);
+    return match?.label ?? `Cashier ${appliedCashierId}`;
+  }, [appliedCashierId, cashierOptions]);
 
   const getExportRows = useCallback(async () => {
     const exportTabs =
@@ -510,7 +516,7 @@ export function PaymentsBreakdownScreen({
   }, [printScope, methodName]);
 
   const exportFilename = useMemo(() => {
-    const range = `${fromDate || "from"}-${toDate || "to"}`;
+    const range = `${appliedFromDate || "from"}-${appliedToDate || "to"}`;
     if (printScope === "active") {
       const slug = String(methodCode || "tab")
         .toLowerCase()
@@ -518,16 +524,12 @@ export function PaymentsBreakdownScreen({
       return `payments-breakdown-${slug}-${range}`;
     }
     return `payments-breakdown-all-${range}`;
-  }, [printScope, methodCode, fromDate, toDate]);
+  }, [printScope, methodCode, appliedFromDate, appliedToDate]);
 
   const exportExtraLines = useMemo(() => {
     const lines = [`Cashier: ${cashierName}`];
-    if (floatSessionId) {
-      const session = sessions.find((s) => String(s.id) === String(floatSessionId));
-      lines.push(`Session: ${sessionLabel(session)}`);
-    }
-    if (debouncedQ.trim()) {
-      lines.push(`Search: ${debouncedQ.trim()}`);
+    if (appliedQ.trim()) {
+      lines.push(`Search: ${appliedQ.trim()}`);
     }
     if (printScope === "active") {
       lines.push(`Tab: ${methodName}`);
@@ -537,15 +539,7 @@ export function PaymentsBreakdownScreen({
       );
     }
     return lines;
-  }, [
-    cashierName,
-    floatSessionId,
-    sessions,
-    debouncedQ,
-    printScope,
-    methodName,
-    methods,
-  ]);
+  }, [cashierName, appliedQ, printScope, methodName, methods]);
 
   return (
     <CatalogPageShell
@@ -575,8 +569,8 @@ export function PaymentsBreakdownScreen({
             footerRow={null}
             estimatedRowCount={exportEstimatedRows}
             meta={{
-              fromDate,
-              toDate,
+              fromDate: appliedFromDate,
+              toDate: appliedToDate,
               branchName,
               extraLines: exportExtraLines,
             }}
@@ -593,9 +587,9 @@ export function PaymentsBreakdownScreen({
           <input
             type="date"
             value={fromDate}
-            onChange={(e) => {
-              setFromDate(e.target.value);
-              setPage(1);
+            onChange={(e) => setFromDate(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyFilters();
             }}
             className={FILTER_CONTROL_CLASS}
           />
@@ -604,9 +598,9 @@ export function PaymentsBreakdownScreen({
           <input
             type="date"
             value={toDate}
-            onChange={(e) => {
-              setToDate(e.target.value);
-              setPage(1);
+            onChange={(e) => setToDate(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyFilters();
             }}
             className={FILTER_CONTROL_CLASS}
           />
@@ -618,8 +612,6 @@ export function PaymentsBreakdownScreen({
               onChange={(e) => {
                 setBranchId(e.target.value);
                 setCashierId("");
-                setFloatSessionId("");
-                setPage(1);
               }}
               className={FILTER_CONTROL_CLASS}
               options={[
@@ -635,11 +627,7 @@ export function PaymentsBreakdownScreen({
         <Field label="Cashier">
           <FilterSelect
             value={cashierId}
-            onChange={(e) => {
-              setCashierId(e.target.value);
-              setFloatSessionId("");
-              setPage(1);
-            }}
+            onChange={(e) => setCashierId(e.target.value)}
             className={FILTER_CONTROL_CLASS}
             options={[
               { value: "", label: "All cashiers" },
@@ -650,32 +638,10 @@ export function PaymentsBreakdownScreen({
             ]}
           />
         </Field>
-        {!hideSessionFilter ? (
-          <Field label="Till session">
-            <FilterSelect
-              value={floatSessionId}
-              onChange={(e) => {
-                setFloatSessionId(e.target.value);
-                setPage(1);
-              }}
-              className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
-              options={[
-                { value: "", label: "All sessions in range" },
-                ...sessionOptions.map((session) => ({
-                  value: String(session.id),
-                  label: sessionLabel(session),
-                })),
-              ]}
-            />
-          </Field>
-        ) : null}
         <Field label="Search">
           <SearchInput
             value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setQ(e.target.value)}
             placeholder={
               activeIsMpesa
                 ? "Customer, amount, order #, or M-Pesa code…"
@@ -684,6 +650,9 @@ export function PaymentsBreakdownScreen({
             className="w-56 shrink-0 sm:w-64"
           />
         </Field>
+        <PrimaryButton type="button" showIcon={false} onClick={applyFilters} disabled={loading}>
+          Filter
+        </PrimaryButton>
       </FilterToolbar>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

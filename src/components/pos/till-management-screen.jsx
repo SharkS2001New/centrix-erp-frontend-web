@@ -8,7 +8,7 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import { filterByOrganization } from "@/lib/admin";
-import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
   Field,
@@ -60,6 +60,36 @@ const TABS = [
 
 const HISTORY_PAGE_SIZE = 10;
 const TILLS_PAGE_SIZE = 10;
+
+/** Prefer loaded till list; fall back to fields embedded on the session payload. */
+function resolveSessionTill(row, tillById) {
+  if (row?.till_id != null && tillById.has(row.till_id)) {
+    return tillById.get(row.till_id);
+  }
+  if (row?.till && typeof row.till === "object") return row.till;
+  if (row?.till_number || row?.till_name) {
+    return {
+      id: row.till_id,
+      till_number: row.till_number,
+      till_name: row.till_name,
+    };
+  }
+  return null;
+}
+
+function resolveSessionCashier(row, userById) {
+  if (row?.cashier_id != null && userById.has(row.cashier_id)) {
+    return userById.get(row.cashier_id);
+  }
+  if (row?.cashier && typeof row.cashier === "object") return row.cashier;
+  if (typeof row?.cashier === "string" && row.cashier.trim()) {
+    return { id: row.cashier_id, full_name: row.cashier.trim() };
+  }
+  if (row?.cashier_name) {
+    return { id: row.cashier_id, full_name: String(row.cashier_name) };
+  }
+  return null;
+}
 
 function TabBar({ active, onChange }) {
   return (
@@ -286,23 +316,24 @@ export function TillManagementScreen() {
     setMetaLoading(true);
     setPageError(null);
     try {
-      const [tillRes, branchesData, usersData, sessionRes, paybillRes] = await Promise.all([
-        apiRequest("/tills", { searchParams: { per_page: 200 } }),
+      // Critical path only — cashiers for tills/locks; paybills load in the background
+      // because they are only needed when adding/editing a till.
+      const [tillRes, branchesData, usersData, sessionRes] = await Promise.all([
+        apiRequest("/tills", { searchParams: { per_page: 200 }, loading: false }),
         fetchBranchesCached(organizationId),
-        fetchUsersCached(organizationId),
+        fetchSalesCapableUsersCached(organizationId),
         apiRequest("/till-float-sessions", {
           searchParams: {
             per_page: 200,
             "filter[status]": "open",
             "filter[session_date]": todayKey,
           },
+          loading: false,
         }).catch(() => ({ data: [] })),
-        apiRequest("/mpesa-paybill-accounts", { loading: false }).catch(() => ({ data: [] })),
       ]);
       setTills(tillRes.data ?? []);
       setBranches(filterByOrganization(branchesData, organizationId));
       setUsers(filterByOrganization(usersData, organizationId));
-      setPaybillAccounts(Array.isArray(paybillRes?.data) ? paybillRes.data : []);
       const sessions = sessionRes.data ?? [];
       setOpenSessions(sessions);
       // X-reports load lazily on float expand/select — avoid N+1 on list load.
@@ -313,6 +344,14 @@ export function TillManagementScreen() {
     } finally {
       setMetaLoading(false);
     }
+
+    void apiRequest("/mpesa-paybill-accounts", { loading: false, reportIssues: false })
+      .then((paybillRes) => {
+        setPaybillAccounts(Array.isArray(paybillRes?.data) ? paybillRes.data : []);
+      })
+      .catch(() => {
+        setPaybillAccounts([]);
+      });
   }, [organizationId, todayKey]);
 
   const ensureSessionXReport = useCallback(async (sessionId) => {
@@ -362,7 +401,10 @@ export function TillManagementScreen() {
       if (historyStatus) params["filter[status]"] = historyStatus;
       if (historyFromDate) params.from_date = historyFromDate;
       if (historyToDate) params.to_date = historyToDate;
-      const sessionRes = await apiRequest("/till-float-sessions", { searchParams: params });
+      const sessionRes = await apiRequest("/till-float-sessions", {
+        searchParams: params,
+        loading: false,
+      });
       setHistoryRows(sessionRes.data ?? []);
       setHistoryTotal(Number(sessionRes.total ?? sessionRes.meta?.total ?? 0));
       setHistoryTotalPages(Math.max(1, Number(sessionRes.last_page ?? sessionRes.meta?.last_page ?? 1)));
@@ -408,6 +450,7 @@ export function TillManagementScreen() {
 
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const tillById = useMemo(() => new Map(tills.map((t) => [t.id, t])), [tills]);
   const openByTill = useMemo(() => indexOpenSessionsByTill(openSessions), [openSessions]);
   const openSessionsByTill = useMemo(() => groupOpenSessionsByTill(openSessions), [openSessions]);
   const localDeviceId = useMemo(() => getPosDeviceIdentifier(), []);
@@ -457,11 +500,13 @@ export function TillManagementScreen() {
     const q = historySearch.trim().toLowerCase();
     if (!q) return historyRows;
     return historyRows.filter((row) => {
-      const till = tills.find((t) => t.id === row.till_id);
-      const cashier = userById.get(row.cashier_id);
-      return `${row.id} ${tillDisplayName(till)} ${cashier?.full_name ?? ""}`.toLowerCase().includes(q);
+      const till = resolveSessionTill(row, tillById);
+      const cashier = resolveSessionCashier(row, userById);
+      return `${row.id} ${tillDisplayName(till)} ${cashier?.full_name ?? cashier?.username ?? ""}`
+        .toLowerCase()
+        .includes(q);
     });
-  }, [historyRows, historySearch, tills, userById]);
+  }, [historyRows, historySearch, tillById, userById]);
 
   const historySafePage = Math.min(historyPage, historyTotalPages);
   const historySlice = filteredHistory;
@@ -1002,8 +1047,8 @@ export function TillManagementScreen() {
                   </thead>
                   <tbody>
                     {historySlice.map((row) => {
-                      const till = tills.find((t) => t.id === row.till_id);
-                      const cashier = userById.get(row.cashier_id);
+                      const till = resolveSessionTill(row, tillById);
+                      const cashier = resolveSessionCashier(row, userById);
                       const isOpen = String(row.status).toLowerCase() === "open";
                       const isSuspended = String(row.status).toLowerCase() === "suspended";
                       const canReopen = canReopenTillSession(row, todayKey);
@@ -1114,8 +1159,8 @@ export function TillManagementScreen() {
             ? () => {
                 openFloatCorrection(
                   breakdownSession.session,
-                  tills.find((t) => t.id === breakdownSession.session.till_id),
-                  userById.get(breakdownSession.session.cashier_id),
+                  resolveSessionTill(breakdownSession.session, tillById),
+                  resolveSessionCashier(breakdownSession.session, userById),
                 );
                 setBreakdownSession(null);
               }

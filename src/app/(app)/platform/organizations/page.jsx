@@ -75,6 +75,7 @@ export default function PlatformOrganizationsPage() {
                 <tr>
                   <th className="px-5 py-3">Company code</th>
                   <th className="px-5 py-3">Organization</th>
+                  <th className="px-5 py-3">Business type</th>
                   <th className="px-5 py-3">Industry</th>
                   <th className="px-5 py-3">Setup type</th>
                   <th className="px-5 py-3">Registration</th>
@@ -89,11 +90,14 @@ export default function PlatformOrganizationsPage() {
                   <tr key={org.id}>
                     <td className="px-5 py-3 font-mono text-xs">{org.company_code}</td>
                     <td className="px-5 py-3">{org.org_name}</td>
+                    <td className="px-5 py-3 text-slate-600">{org.business_type ?? "—"}</td>
                     <td className="px-5 py-3 text-slate-600">
                       {org.industry_label ??
                         (org.industry === "hospitality" ? "Hotel & Hospitality" : "Retail & Distribution")}
                     </td>
-                    <td className="px-5 py-3 text-slate-600">{org.deployment_profile ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {org.deployment_profile_label ?? org.deployment_profile ?? "—"}
+                    </td>
                     <td className="px-5 py-3">
                       {org.registration_source === "self_registered" ? (
                         <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800">

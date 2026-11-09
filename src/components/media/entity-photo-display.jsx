@@ -4,13 +4,10 @@ import { useEffect, useState } from "react";
 import { getToken } from "@/lib/auth-storage";
 import { apiFetchCredentials } from "@/lib/auth-config";
 import { apiBaseOrigin, resolveCustomerMediaUrl, resolveProtectedFileUrl } from "@/lib/api";
-
-function isDisplayableImageBlob(blob) {
-  if (!blob || blob.size <= 0) return false;
-  if (blob.type.startsWith("image/")) return true;
-  // Some PHP/file servers return octet-stream for JPEG uploads.
-  return blob.type === "" || blob.type === "application/octet-stream";
-}
+import {
+  peekEntityPhotoCache,
+  resolveEntityPhotoUrl,
+} from "@/lib/entity-photo-cache";
 
 export function EntityPhotoDisplay({
   fileUrl,
@@ -20,57 +17,72 @@ export function EntityPhotoDisplay({
   placeholderClassName = "px-2 text-center text-xs text-slate-400",
   compact = false,
 }) {
-  const [src, setSrc] = useState(null);
+  const tryUrls = [
+    resolveProtectedFileUrl(fileUrl),
+    resolveProtectedFileUrl(imageUrl),
+    resolveCustomerMediaUrl(imageUrl),
+  ].filter(Boolean);
+  const uniqueUrls = [...new Set(tryUrls)];
+  const warm =
+    imageUrl?.startsWith("blob:") || imageUrl?.startsWith("data:")
+      ? imageUrl
+      : uniqueUrls.map((u) => peekEntityPhotoCache(u)).find(Boolean) ?? null;
+
+  const [src, setSrc] = useState(warm);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let objectUrl = null;
+    let cancelled = false;
     setFailed(false);
-    setSrc(null);
 
     async function load() {
-      if (!imageUrl && !fileUrl) return;
+      if (!imageUrl && !fileUrl) {
+        setSrc(null);
+        return;
+      }
 
       if (imageUrl?.startsWith("blob:") || imageUrl?.startsWith("data:")) {
         setSrc(imageUrl);
         return;
       }
 
-      const token = getToken();
-      const tryUrls = [
+      const urls = [
         resolveProtectedFileUrl(fileUrl),
         resolveProtectedFileUrl(imageUrl),
         resolveCustomerMediaUrl(imageUrl),
       ].filter(Boolean);
-      const uniqueUrls = [...new Set(tryUrls)];
+      const unique = [...new Set(urls)];
 
-      for (const url of uniqueUrls) {
-        try {
-          const headers = { Accept: "image/*,*/*" };
-          if (token) headers.Authorization = `Bearer ${token}`;
-          const res = await fetch(url, {
-            headers,
-            credentials: apiFetchCredentials(),
-            cache: "no-store",
-          });
-          if (!res.ok) continue;
-          const blob = await res.blob();
-          if (!isDisplayableImageBlob(blob)) continue;
-          objectUrl = URL.createObjectURL(blob);
+      const peeked = unique.map((u) => peekEntityPhotoCache(u)).find(Boolean);
+      if (peeked) {
+        if (!cancelled) setSrc(peeked);
+        return;
+      }
+
+      if (!cancelled) setSrc(null);
+
+      const token = getToken();
+      const headers = { Accept: "image/*,*/*" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const credentials = apiFetchCredentials();
+
+      for (const url of unique) {
+        const objectUrl = await resolveEntityPhotoUrl(url, { headers, credentials });
+        if (cancelled) return;
+        if (objectUrl) {
           setSrc(objectUrl);
           return;
-        } catch {
-          /* try next */
         }
       }
 
-      setFailed(true);
+      if (!cancelled) setFailed(true);
     }
 
     load();
 
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      cancelled = true;
+      // Object URLs are owned by the session cache — do not revoke here.
     };
   }, [fileUrl, imageUrl]);
 
@@ -103,7 +115,7 @@ export function EntityPhotoDisplay({
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} className={className} />
+    <img src={src} alt={alt} className={className} loading="lazy" decoding="async" />
   );
 }
 

@@ -52,11 +52,18 @@ export function buildLpoListMenuItems({
 
   if (canView) {
     items.push({ key: "view", label: "View purchase order", icon: "view", onClick: onView });
-    items.push({ key: "print-lpo", label: "Print LPO", icon: "print", onClick: onPrintLpo });
+    items.push({
+      key: "print-lpo",
+      label: "Print LPO",
+      icon: "print",
+      detach: true,
+      onClick: onPrintLpo,
+    });
     items.push({
       key: "print-dn",
       label: "Print delivery note",
       icon: "print",
+      detach: true,
       onClick: onPrintDeliveryNote,
     });
   }

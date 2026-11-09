@@ -145,7 +145,7 @@ export function SuppliersScreen() {
         q: debouncedSearch,
         extra,
       });
-      const listRes = await apiRequest("/suppliers", { searchParams });
+      const listRes = await apiRequest("/suppliers", { searchParams, loading: false });
       const parsed = parsePaginator(listRes);
       setSuppliers(parsed.items);
       setTotalSuppliers(parsed.total);
@@ -158,8 +158,8 @@ export function SuppliersScreen() {
   }, [page, pageSize, debouncedSearch, statusFilter]);
 
   // List first — do not wait for dashboard/refs.
-  useTabAwareDataLoad(loadSuppliers);
-  useTabAwareDataLoad(loadReferenceData);
+  useTabAwareDataLoad(loadSuppliers, { softEvictMs: 20_000 });
+  useTabAwareDataLoad(loadReferenceData, { softEvictMs: 30_000 });
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadSuppliers()]);

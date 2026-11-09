@@ -36,8 +36,24 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
   });
   const fullyOnline = status === "online";
   const canFlushOutbox = enabled && browserOnline && apiOnline;
-  /** No internet → lock the till (do not sell). */
-  const sellingLocked = enabled && (status === "offline" || browserOnline === false);
+  /**
+   * Lock only after a short grace so a transient /health failure during catalog
+   * load does not flash “lost internet” while Retail keeps working.
+   */
+  const [sellingLocked, setSellingLocked] = useState(false);
+  useEffect(() => {
+    if (!enabled) {
+      setSellingLocked(false);
+      return undefined;
+    }
+    const offline = status === "offline" || browserOnline === false;
+    if (!offline) {
+      setSellingLocked(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSellingLocked(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, [enabled, status, browserOnline]);
   /** @deprecated alias — kept for callers that gated room charge / local catalog */
   const offlineMode = sellingLocked;
   const [pendingSync, setPendingSync] = useState(0);
@@ -194,7 +210,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
               await warmHotelPosOfflineCatalog({
                 force: true,
                 outletId: outletIdRef.current,
-                warmImages: true,
+                warmImages: false,
               });
               await ensureHotelPosOfflineCheckNumbers({ force: false, outletId: outletIdRef.current });
             }
@@ -316,7 +332,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
       void warmHotelPosOfflineCatalog({
         force: false,
         outletId: outletIdRef.current,
-        warmImages: true,
+        warmImages: false,
       });
       void ensureHotelPosOfflineCheckNumbers({ force: false, outletId: outletIdRef.current });
       void refreshCounts();

@@ -130,6 +130,7 @@ function HospitalityRoomsManager() {
   const [assignForm, setAssignForm] = useState(EMPTY_ASSIGN);
 
   const [ratePlans, setRatePlans] = useState([]);
+  const [plansLoaded, setPlansLoaded] = useState(false);
   const [planDrawer, setPlanDrawer] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN);
@@ -137,14 +138,18 @@ function HospitalityRoomsManager() {
 
   const loadData = useCallback(async () => {
     try {
-      const [typesRes, roomsRes, plansRes] = await Promise.all([
-        apiRequest("/hospitality/room-types", { searchParams: { per_page: 100 } }),
-        apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
-        apiRequest("/hospitality/rate-plans"),
+      const [typesRes, roomsRes] = await Promise.all([
+        apiRequest("/hospitality/room-types", {
+          searchParams: { per_page: 100 },
+          loading: false,
+        }),
+        apiRequest("/hospitality/rooms", {
+          searchParams: { per_page: 200 },
+          loading: false,
+        }),
       ]);
       setRoomTypes(catalogRows(typesRes));
       setRooms(catalogRows(roomsRes));
-      setRatePlans(catalogRows(plansRes));
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load rooms");
     } finally {
@@ -152,7 +157,23 @@ function HospitalityRoomsManager() {
     }
   }, []);
 
+  const loadRatePlans = useCallback(async () => {
+    try {
+      const plansRes = await apiRequest("/hospitality/rate-plans", { loading: false });
+      setRatePlans(catalogRows(plansRes));
+      setPlansLoaded(true);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load rate plans");
+    }
+  }, []);
+
   useTabAwareDataLoad(loadData);
+
+  const needsRatePlans = tab === "plans" || planDrawer;
+  useTabAwareDataLoad(loadRatePlans, {
+    depsKey: needsRatePlans ? "plans" : "skip",
+    hasData: plansLoaded || !needsRatePlans,
+  });
 
   const typeById = useMemo(() => new Map(roomTypes.map((t) => [String(t.id), t])), [roomTypes]);
   const availableRooms = useMemo(
@@ -381,7 +402,7 @@ function HospitalityRoomsManager() {
         notifySuccess("Rate plan created");
       }
       setPlanDrawer(false);
-      await loadData();
+      await loadRatePlans();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -394,7 +415,7 @@ function HospitalityRoomsManager() {
     try {
       await apiRequest(`/hospitality/rate-plans/${row.id}`, { method: "DELETE" });
       notifySuccess("Rate plan deleted");
-      await loadData();
+      await loadRatePlans();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }

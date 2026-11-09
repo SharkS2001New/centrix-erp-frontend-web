@@ -9,12 +9,14 @@ import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
 import { postFolioPaymentsFromPanel } from "@/lib/hospitality-folio-payments";
 import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
+import { fetchPaymentMethodsCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
   Field,
   FilterSelect,
   FormDrawer,
   inputClassName,
+  PaginationBar,
   PrimaryButton,
   SearchableSelect,
   SecondaryButton,
@@ -40,6 +42,10 @@ function FoliosManager() {
   const { capabilities, user, organization } = useAuth();
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("open");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [charge, setCharge] = useState({ charge_type: "other", description: "", amount: "" });
@@ -61,13 +67,9 @@ function FoliosManager() {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/payment-methods", {
-      searchParams: { per_page: 50, "filter[is_active]": 1 },
-      loading: false,
-      reportIssues: false,
-    })
-      .then((res) => {
-        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(res?.data ?? []));
+    fetchPaymentMethodsCached(organization?.id)
+      .then((rows) => {
+        if (!cancelled) setActivePaymentMethods(listActiveOrgPaymentMethods(rows));
       })
       .catch(() => {
         if (!cancelled) setActivePaymentMethods([]);
@@ -75,26 +77,43 @@ function FoliosManager() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [organization?.id]);
 
   const load = useCallback(async () => {
     try {
       const res = await apiRequest("/hospitality/folios", {
-        searchParams: { status: status || undefined, per_page: 100 },
+        searchParams: {
+          status: status || undefined,
+          per_page: pageSize,
+          page,
+        },
+        loading: false,
       });
       setRows(res?.data ?? []);
+      setTotal(Number(res?.total ?? 0));
+      setLastPage(Math.max(1, Number(res?.last_page ?? 1)));
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load folios");
+      setRows([]);
+      setTotal(0);
+      setLastPage(1);
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, page, pageSize]);
 
-  useTabAwareDataLoad(load);
+  useTabAwareDataLoad(load, {
+    depsKey: `${status}|${page}|${pageSize}`,
+    hasData: rows.length > 0 || !loading,
+  });
+
+  useEffect(() => {
+    setPage(1);
+  }, [status, pageSize]);
 
   async function openDetail(id) {
     try {
-      const res = await apiRequest(`/hospitality/folios/${id}`);
+      const res = await apiRequest(`/hospitality/folios/${id}`, { loading: false });
       setDetail(res?.folio ?? null);
       setCharge({ charge_type: "other", description: "", amount: "" });
       setPaymentOpen(false);
@@ -219,41 +238,51 @@ function FoliosManager() {
       {loading ? (
         <p className="theme-subtext text-sm">Loading…</p>
       ) : (
-        <div className={TABLE_SHELL_CLASS}>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className={TABLE_HEAD_ROW_CLASS}>
-                <th className="px-3 py-2 text-left">Folio</th>
-                <th className="px-3 py-2 text-left">Guest</th>
-                <th className="px-3 py-2 text-left">Room</th>
-                <th className="px-3 py-2 text-right">Balance</th>
-                <th className="px-3 py-2 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className={`${TABLE_BODY_ROW_CLASS} cursor-pointer`}
-                  onClick={() => void openDetail(row.id)}
-                >
-                  <td className="px-3 py-2 font-medium">{row.folio_number}</td>
-                  <td className="px-3 py-2">{row.guest_name}</td>
-                  <td className="px-3 py-2">{row.room_number || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{Number(row.balance).toFixed(2)}</td>
-                  <td className="px-3 py-2 capitalize">{row.status?.replace("_", " ")}</td>
+        <>
+          <div className={TABLE_SHELL_CLASS}>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className={TABLE_HEAD_ROW_CLASS}>
+                  <th className="px-3 py-2 text-left">Folio</th>
+                  <th className="px-3 py-2 text-left">Guest</th>
+                  <th className="px-3 py-2 text-left">Room</th>
+                  <th className="px-3 py-2 text-right">Balance</th>
+                  <th className="px-3 py-2 text-left">Status</th>
                 </tr>
-              ))}
-              {!rows.length ? (
-                <tr>
-                  <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
-                    No folios.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={`${TABLE_BODY_ROW_CLASS} cursor-pointer`}
+                    onClick={() => void openDetail(row.id)}
+                  >
+                    <td className="px-3 py-2 font-medium">{row.folio_number}</td>
+                    <td className="px-3 py-2">{row.guest_name}</td>
+                    <td className="px-3 py-2">{row.room_number || "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{Number(row.balance).toFixed(2)}</td>
+                    <td className="px-3 py-2 capitalize">{row.status?.replace("_", " ")}</td>
+                  </tr>
+                ))}
+                {!rows.length ? (
+                  <tr>
+                    <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
+                      No folios.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={page}
+            totalPages={lastPage}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </>
       )}
 
       <FormDrawer open={Boolean(detail)} onClose={() => setDetail(null)} title={detail?.folio_number || "Folio"}>

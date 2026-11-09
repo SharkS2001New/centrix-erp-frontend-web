@@ -43,6 +43,8 @@ const TabWorkspaceContext = createContext({
   workspaceId: null,
   tabs: [],
   activeHref: "/",
+  /** Destination pane while router.pathname catches up after tab reuse. */
+  pendingPaneHref: null,
   openTab: () => {},
   closeTab: () => {},
   activateTab: () => {},
@@ -66,6 +68,10 @@ export function TabWorkspaceProvider({ children }) {
   const { capabilities, organization, user, isSuperAdmin } = useAuth();
   const enabled = isTabWorkspaceEnabled(capabilities);
   const [tabStore, setTabStore] = useState({});
+  /** Show the destination keep-alive pane before usePathname() updates. */
+  const [pendingPaneHref, setPendingPaneHref] = useState(null);
+  /** Path we left when setting pendingPaneHref — used to detect superseded nav. */
+  const pendingFromPathRef = useRef(null);
   const titleOverridesRef = useRef(new Map());
   const prevWorkspaceIdRef = useRef(null);
 
@@ -135,6 +141,8 @@ export function TabWorkspaceProvider({ children }) {
   useEffect(() => {
     if (prevWorkspaceIdRef.current !== null && prevWorkspaceIdRef.current !== workspaceId) {
       titleOverridesRef.current = new Map();
+      pendingFromPathRef.current = null;
+      setPendingPaneHref(null);
     }
     prevWorkspaceIdRef.current = workspaceId;
   }, [workspaceId]);
@@ -262,6 +270,23 @@ export function TabWorkspaceProvider({ children }) {
     );
   }, [enabled, pathname, workspaceId]);
 
+  // Clear optimistic pane once the live route catches up, or if navigation was superseded.
+  useEffect(() => {
+    if (!pendingPaneHref) return;
+    const live = pathOnlyFromHref(pathname);
+    const pending = pathOnlyFromHref(pendingPaneHref);
+    if (live === pending) {
+      setPendingPaneHref(null);
+      pendingFromPathRef.current = null;
+      return;
+    }
+    const from = pendingFromPathRef.current;
+    if (from && live !== from) {
+      setPendingPaneHref(null);
+      pendingFromPathRef.current = null;
+    }
+  }, [pathname, pendingPaneHref]);
+
   const switchToHref = useCallback(
     (href) => {
       const normalized = hrefFromLinkProp(href);
@@ -303,12 +328,25 @@ export function TabWorkspaceProvider({ children }) {
           }),
         );
 
+        // Cross-path reuse: tab chrome updates immediately, but usePathname() lags.
+        // Activate the destination pane now so Unpaid doesn't stay visible under an
+        // "All Orders" tab until the router catches up.
+        if (pathOnlyFromHref(currentHref) !== pathOnlyFromHref(normalized)) {
+          pendingFromPathRef.current = pathOnlyFromHref(currentHref);
+          setPendingPaneHref(normalized);
+        } else {
+          pendingFromPathRef.current = null;
+          setPendingPaneHref(null);
+        }
+
         // Reusing a mounted tab — no loading skeleton / no refetch intent.
         finishNavigation();
         if (!isCurrent) router.push(normalized);
         return true;
       }
 
+      pendingFromPathRef.current = null;
+      setPendingPaneHref(null);
       if (!isCurrent) router.push(normalized);
       return false;
     },
@@ -485,6 +523,7 @@ export function TabWorkspaceProvider({ children }) {
       workspaceId,
       tabs,
       activeHref: storeActiveHref,
+      pendingPaneHref,
       openTab: upsertTab,
       closeTab,
       activateTab,
@@ -499,6 +538,7 @@ export function TabWorkspaceProvider({ children }) {
       workspaceId,
       tabs,
       storeActiveHref,
+      pendingPaneHref,
       upsertTab,
       closeTab,
       activateTab,

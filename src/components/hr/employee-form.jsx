@@ -7,7 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchBranchesCached,
   fetchEmployeesCached,
-  fetchUsersCached,
+  fetchActiveUsersCached,
   invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { Field, FormModal, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -72,7 +72,7 @@ export function useEmployeeFormResources() {
         apiRequest("/positions", { searchParams: { per_page: 200 } }),
         apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
         fetchBranchesCached(orgId),
-        fetchUsersCached(orgId),
+        fetchActiveUsersCached(orgId),
         fetchEmployeesCached(orgId),
       ]);
       const value = (i, fallback = []) =>

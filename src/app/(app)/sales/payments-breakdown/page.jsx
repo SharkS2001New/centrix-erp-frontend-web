@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { SalesPaymentsBreakdownScreen } from "@/components/tab-screens/sales-payments-breakdown";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <SalesPaymentsBreakdownScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/sales-payments-breakdown"),
+  "SalesPaymentsBreakdownScreen",
+);

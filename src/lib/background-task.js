@@ -1,9 +1,15 @@
-import { apiRequest, ApiError, apiFetchBlob } from "@/lib/api";
+import { apiRequest, ApiError, apiFetchBlob, isNetworkFetchError } from "@/lib/api";
 import { humanizeBackgroundTaskError, resolveImportTaskError } from "@/lib/background-task-errors";
 
 /** @param {string} taskId */
 export function fetchBackgroundTask(taskId) {
   return apiRequest(`/background-tasks/${taskId}`, { loading: false, reportIssues: false });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /** @param {string} taskId */
@@ -41,8 +47,11 @@ export async function waitForBackgroundTask(taskId, opts = {}) {
   let intervalMs = opts.intervalMs ?? 400;
   const maxIntervalMs = opts.maxIntervalMs ?? 1500;
   const timeoutMs = opts.timeoutMs ?? 1_800_000;
+  const maxNetworkRetries = opts.maxNetworkRetries ?? 8;
   const { onProgress, signal } = opts;
   const started = Date.now();
+  let consecutiveNetworkFailures = 0;
+  let lastKnownProgress = 1;
 
   while (Date.now() - started < timeoutMs) {
     if (signal?.aborted) {
@@ -51,7 +60,34 @@ export async function waitForBackgroundTask(taskId, opts = {}) {
       throw error;
     }
 
-    const task = await fetchBackgroundTask(taskId);
+    let task;
+    try {
+      task = await fetchBackgroundTask(taskId);
+      consecutiveNetworkFailures = 0;
+    } catch (error) {
+      // Transient proxy/Wi‑Fi blips must not kill a still-running queue job with
+      // "check your internet connection" — the server often keeps working.
+      if (isNetworkFetchError(error) || (error instanceof ApiError && error.status === 0)) {
+        consecutiveNetworkFailures += 1;
+        if (consecutiveNetworkFailures > maxNetworkRetries) {
+          throw new ApiError(
+            "Lost connection while waiting for the background task. The job may still be running — open the task panel or try again in a minute.",
+            0,
+            { code: "background_task_poll_unavailable" },
+          );
+        }
+        onProgress?.({
+          status: "running",
+          progress: lastKnownProgress,
+          progress_message: "Reconnecting to task status…",
+        });
+        await sleep(Math.min(5000, 400 * consecutiveNetworkFailures));
+        continue;
+      }
+      throw error;
+    }
+
+    lastKnownProgress = Math.max(lastKnownProgress, Number(task.progress ?? 0) || 1);
     onProgress?.(task);
     if (task.status === "completed" || task.status === "failed" || task.status === "cancelled") {
       return task;

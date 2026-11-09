@@ -23,7 +23,7 @@ public sealed class AgentConfig
     public string ComstoreApiKey { get; set; } = "";
 
     [JsonPropertyName("pollIntervalSeconds")]
-    public double PollIntervalSeconds { get; set; } = 0.25;
+    public double PollIntervalSeconds { get; set; } = 0.05;
 
     [JsonPropertyName("heartbeatIntervalSeconds")]
     public int HeartbeatIntervalSeconds { get; set; } = 30;
@@ -32,7 +32,7 @@ public sealed class AgentConfig
     public int CommandTimeoutSeconds { get; set; } = 22;
 
     [JsonPropertyName("longPollMs")]
-    public int LongPollMs { get; set; } = 400;
+    public int LongPollMs { get; set; } = 200;
 
     /// <summary>When true, agent starts Comstore if /api/health fails. Default false — start Comstore via Windows.</summary>
     [JsonPropertyName("autoStartComstore")]
@@ -115,7 +115,7 @@ public sealed class AgentConfig
         if (CommandTimeoutSeconds > 55) CommandTimeoutSeconds = 55;
         if (LongPollMs < 0) LongPollMs = 0;
         if (LongPollMs > 10_000) LongPollMs = 10_000;
-        if (PollIntervalSeconds <= 0) PollIntervalSeconds = 0.25;
+        if (PollIntervalSeconds <= 0) PollIntervalSeconds = 0.05;
         if (ComstoreReadyTimeoutSeconds < 5) ComstoreReadyTimeoutSeconds = 45;
         if (ComstoreReadyTimeoutSeconds > 120) ComstoreReadyTimeoutSeconds = 120;
     }

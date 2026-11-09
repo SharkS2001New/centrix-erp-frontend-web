@@ -30,7 +30,7 @@ import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
-import { fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchActiveUsersCached } from "@/lib/reference-data-cache";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
 import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
@@ -112,6 +112,8 @@ export function ExpensesScreen() {
   const [userFilter, setUserFilter] = useState("all");
   const [fromDate, setFromDate] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
   const [toDate, setToDate] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
+  const [appliedTo, setAppliedTo] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
   const [statusFilter, setStatusFilter] = useState("active");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
@@ -135,7 +137,7 @@ export function ExpensesScreen() {
       const [groupRes, pmRes, usersData, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 200 } }),
-        fetchUsersCached(user?.organization_id),
+        fetchActiveUsersCached(user?.organization_id),
         apiRequest("/expenses/summary").catch(() => null),
       ]);
       setGroups(groupRes.data ?? []);
@@ -164,7 +166,7 @@ export function ExpensesScreen() {
         status: statusFilter,
         ...(hasUrlDateRange
           ? { from_date: urlFromDate, to_date: urlToDate }
-          : { from_date: fromDate, to_date: toDate }),
+          : { from_date: appliedFrom, to_date: appliedTo }),
       };
 
       const searchParams = buildPageParams({
@@ -176,7 +178,7 @@ export function ExpensesScreen() {
         filters,
         extra,
       });
-      const expRes = await apiRequest("/expenses", { searchParams });
+      const expRes = await apiRequest("/expenses", { searchParams, loading: false });
       const parsed = parsePaginator(expRes);
       setExpenses(parsed.items);
       setTotalExpenses(parsed.total);
@@ -186,11 +188,11 @@ export function ExpensesScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   // List first — do not wait for groups/users/summary.
-  useTabAwareDataLoad(loadExpenses);
-  useTabAwareDataLoad(loadReferenceData);
+  useTabAwareDataLoad(loadExpenses, { softEvictMs: 20_000 });
+  useTabAwareDataLoad(loadReferenceData, { softEvictMs: 30_000 });
 
   async function reloadAll() {
     const [statsRes] = await Promise.all([
@@ -238,7 +240,7 @@ export function ExpensesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, pageSize, sort, sortDir]);
 
   const activeSortLabel = sort
     ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
@@ -450,8 +452,8 @@ export function ExpensesScreen() {
                 },
                 extra: {
                   status: statusFilter,
-                  from_date: hasUrlDateRange ? urlFromDate : fromDate,
-                  to_date: hasUrlDateRange ? urlToDate : toDate,
+                  from_date: hasUrlDateRange ? urlFromDate : appliedFrom,
+                  to_date: hasUrlDateRange ? urlToDate : appliedTo,
                 },
               })
             }
@@ -492,7 +494,7 @@ export function ExpensesScreen() {
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
           options={[
-            { value: "all", label: "All users" },
+            { value: "all", label: "All active users" },
             ...users
               .slice()
               .sort((a, b) =>
@@ -522,6 +524,18 @@ export function ExpensesScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={listLoading || hasUrlDateRange}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
         <FilterSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}

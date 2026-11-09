@@ -153,10 +153,13 @@ export default function ManageOrganizationPage() {
       modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false),
     );
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
-    setSalesPlatform((prev) => ({
-      ...(nextIndustry === "hospitality" ? defaultSalesPlatformState(nextProfile) : prev ?? {}),
+    setSalesPlatform({
+      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
       ...menuGroupStateFromProfile(preset),
-    }));
+    });
+    setPayrollPlatform(
+      payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
+    );
   }
 
   function onProfileChange(nextProfile) {
@@ -164,7 +167,13 @@ export default function ManageOrganizationPage() {
     setDeploymentProfile(nextProfile);
     setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
-    setSalesPlatform((prev) => ({ ...(prev ?? {}), ...menuGroupStateFromProfile(preset) }));
+    setSalesPlatform({
+      ...defaultSalesPlatformState(nextProfile, preset?.default_sales_platform),
+      ...menuGroupStateFromProfile(preset),
+    });
+    setPayrollPlatform(
+      payrollPlatformFromApi(preset?.default_payroll_platform ?? defaultPayrollPlatformState()),
+    );
   }
 
   function toggleModule(key) {
@@ -292,8 +301,23 @@ export default function ManageOrganizationPage() {
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Demo data</p>
             <p className="mt-1 text-xs text-slate-600">
-              Platform admin only. This fills the organisation you are managing. It does not create another company.
-              Day-to-day settings stay in that organisation&apos;s Administration module.
+              Platform admin only. This fills the organisation you are managing with sample records that match its
+              current industry / setup type. It does not create another company. Day-to-day settings stay in that
+              organisation&apos;s Administration module.
+            </p>
+            <p className="mt-2 text-xs text-slate-600">
+              {deploymentProfile === "hotel_bar"
+                ? "Hotel & Bar: menu items with photos, floor tables, and outlets for Hotel POS."
+                : deploymentProfile === "driving_school"
+                  ? "Driving school: sample students, courses, vehicles, lessons, and payments."
+                  : deploymentProfile === "spa_kinyozi"
+                    ? "SPA & Kinyozi: sample appointments load in the SPA browser workspace (no product photos)."
+                    : industryForProfile(deploymentProfile) === "commerce" ||
+                        ["small_shop", "wholesale_retail", "supermarket", "distribution", "custom"].includes(
+                          deploymentProfile,
+                        )
+                      ? "Commerce: industry-matched sample products with photos and opening stock for POS / inventory testing."
+                      : "Uses the sample set configured for this organisation profile."}
             </p>
             {demoGeneratedAt ? (
               <p className="mt-2 text-xs text-slate-500">Last generated {demoGeneratedAt}</p>
@@ -369,7 +393,13 @@ export default function ManageOrganizationPage() {
               onProfileChange={onProfileChange}
               enableTabWorkspace={enableTabWorkspace}
               onEnableTabWorkspaceChange={setEnableTabWorkspace}
-              salesPlatform={salesPlatform ?? defaultSalesPlatformState()}
+              salesPlatform={
+                salesPlatform ??
+                defaultSalesPlatformState(
+                  deploymentProfile,
+                  profilePresets.find((profile) => profile.key === deploymentProfile)?.default_sales_platform,
+                )
+              }
               onSalesChange={setSalesPlatform}
               payrollPlatform={payrollPlatform ?? defaultPayrollPlatformState()}
               onPayrollChange={setPayrollPlatform}

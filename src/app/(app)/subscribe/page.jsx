@@ -148,7 +148,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/erp/organization/billing")
+    apiRequest("/erp/organization/billing?payment_options=1", { loading: false })
       .then((res) => {
         if (cancelled) return;
         const billing = res.data ?? {};
@@ -205,16 +205,41 @@ export default function SubscribePage({ presentation = "page", locked = false })
 
   const closeForLater = useCallback(() => {
     dismissLicenseWarning();
-    if (isModal && licenseAccessMode(organizationLicense) === "expired") {
-      const returnPath = freePlanHome(organizationLicense);
+    let back = isModal ? takeLicenceReturnPath() : null;
+    const modeNow = licenseAccessMode(organizationLicense);
+    let backAllowed = Boolean(back) && (
+      !licenceNeedsPayment(organizationLicense)
+      || isFreePlanPath(back, organizationLicense)
+    );
+
+    if (isModal) {
+      const returnPath = backAllowed
+        ? back
+        : licenceNeedsPayment(organizationLicense) || modeNow === "expired"
+          ? freePlanHome(organizationLicense)
+          : null;
+      if (modeNow === "expired") {
+        const path = returnPath || freePlanHome(organizationLicense);
+        window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
+          detail: { organizationId: organization?.id, path },
+        }));
+      }
+
+      if (returnPath) {
+        router.replace(returnPath);
+        return;
+      }
+
+      router.replace(modeNow === "expired" ? freePlanHome(organizationLicense) : "/dashboard");
+      return;
+    }
+
+    if (modeNow === "expired") {
+      const returnPath = backAllowed ? back : freePlanHome(organizationLicense);
       window.dispatchEvent(new CustomEvent("centrix:expired-license-prompt-dismissed", {
         detail: { organizationId: organization?.id, path: returnPath },
       }));
       router.replace(returnPath);
-      return;
-    }
-    if (isModal && typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
       return;
     }
     const workspaceId = getStoredWorkspace();
@@ -226,9 +251,8 @@ export default function SubscribePage({ presentation = "page", locked = false })
       router.replace(workspaceHomePath(workspaceId, capabilities) || "/pos");
       return;
     }
-    const back = takeLicenceReturnPath();
-    const modeNow = licenseAccessMode(organizationLicense);
-    const backAllowed = Boolean(back) && (
+    back = takeLicenceReturnPath();
+    backAllowed = Boolean(back) && (
       !licenceNeedsPayment(organizationLicense)
       || isFreePlanPath(back, organizationLicense)
     );
@@ -356,6 +380,17 @@ export default function SubscribePage({ presentation = "page", locked = false })
       setWatching(Boolean(res.stk && res.checkout?.id));
       setNotice(res.message || "Check your phone for the M-Pesa prompt.");
     } catch (err) {
+      if (
+        err instanceof ApiError
+        && err.status === 409
+        && err.body?.prompt_already_pending
+        && err.body?.checkout?.id
+      ) {
+        setCheckoutId(err.body.checkout.id);
+        setWatching(true);
+        setNotice("Checking the status of your existing M-Pesa prompt.");
+        return;
+      }
       setNotice(err instanceof ApiError ? err.message : "Could not start M-Pesa.");
     } finally {
       stkPromptInFlight.current = false;
@@ -586,7 +621,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
         </button>
       </div>
       <div className={`mx-auto max-w-[96rem] px-4 pb-16 sm:px-8 ${isModal ? "pt-12" : "min-h-full pt-16"}`}>
-        {authLoading || (step === "checkout" && paymentOptionsLoading) ? (
+        {authLoading ? (
           <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
             <div className="theme-panel flex items-center gap-3 rounded-xl border px-5 py-4 shadow-sm">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--theme-border)] border-t-[var(--theme-primary)]" aria-hidden="true" />
@@ -625,13 +660,11 @@ export default function SubscribePage({ presentation = "page", locked = false })
             onBack={isLocked
               ? () => setStep("plans")
               : charge.kind === "renew"
-                ? closeForLater
+                ? null
                 : () => setStep("plans")}
             backLabel={isLocked
               ? "‹ Choose a plan"
-              : charge.kind === "renew"
-                ? "Close"
-                : "‹ Configure your plan"}
+              : "‹ Configure your plan"}
             onPay={() => void payNow()}
             onStartEquity={() => void startEquity()}
             onVerifyEquity={() => void verifyEquity()}
@@ -876,9 +909,11 @@ function CheckoutStep({
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
-        {backLabel}
-                </button>
+      {onBack ? (
+        <button type="button" onClick={onBack} className="theme-link text-sm font-medium">
+          {backLabel}
+        </button>
+      ) : null}
       <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section>
           <h2 className="theme-heading text-base font-semibold">Choose a payment method</h2>

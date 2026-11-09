@@ -31,6 +31,31 @@ Copy-Item (Join-Path $publishDir "*") $OutDir -Recurse -Force
 Copy-Item (Join-Path $PSScriptRoot "install-windows-service.ps1") $OutDir -Force
 Copy-Item (Join-Path $PSScriptRoot "uninstall-windows-service.ps1") $OutDir -Force
 
+# Ready-folder one-click install (Finance download zip users).
+$installBat = @"
+@echo off
+setlocal EnableExtensions
+title Centrix KRA Agent - Install
+cd /d "%~dp0"
+net session >nul 2>&1
+if errorlevel 1 (
+  echo Requesting Administrator permission...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-windows-service.ps1"
+set "EXITCODE=%ERRORLEVEL%"
+echo.
+if not "%EXITCODE%"=="0" (
+  echo FAILED with exit code %EXITCODE%.
+) else (
+  echo Done. Keep Comstore running. Health: http://127.0.0.1:9261/
+)
+pause
+exit /b %EXITCODE%
+"@
+Set-Content -Path (Join-Path $OutDir "INSTALL.bat") -Value $installBat -Encoding ASCII
+
 $installBat = Join-Path $OutDir "INSTALL.bat"
 @"
 @echo off

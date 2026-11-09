@@ -34,29 +34,38 @@ export function HospitalityOutletsScreen() {
   const [tableForm, setTableForm] = useState({ code: "", label: "", seats: "4", zone: "" });
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadOutlets = useCallback(async () => {
     try {
-      const res = await apiRequest("/hospitality/outlets");
+      const res = await apiRequest("/hospitality/outlets", { loading: false });
       const list = res?.data ?? [];
       setOutlets(list);
-      const outletId = selectedOutletId || list[0]?.id;
-      if (outletId) setSelectedOutletId(String(outletId));
-      if (tablesEnabled && outletId) {
-        const t = await apiRequest("/hospitality/floor-tables", {
-          searchParams: { outlet_id: outletId },
-        });
-        setTables(t?.data ?? []);
-      } else {
-        setTables([]);
-      }
+      setSelectedOutletId((current) => current || (list[0]?.id ? String(list[0].id) : ""));
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load outlets");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadTables = useCallback(async () => {
+    if (!tablesEnabled || !selectedOutletId) {
+      setTables([]);
+      return;
+    }
+    try {
+      const t = await apiRequest("/hospitality/floor-tables", {
+        searchParams: { outlet_id: selectedOutletId },
+        loading: false,
+      });
+      setTables(t?.data ?? []);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load tables");
+      setTables([]);
+    }
   }, [selectedOutletId, tablesEnabled]);
 
-  useTabAwareDataLoad(load);
+  useTabAwareDataLoad(loadOutlets);
+  useTabAwareDataLoad(loadTables);
 
   async function saveOutlet(e) {
     e.preventDefault();
@@ -85,7 +94,7 @@ export function HospitalityOutletsScreen() {
         notifySuccess("Outlet created");
       }
       setDrawerOpen(false);
-      await load();
+      await loadOutlets();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -110,7 +119,7 @@ export function HospitalityOutletsScreen() {
       });
       notifySuccess("Table created");
       setTableForm({ code: "", label: "", seats: "4", zone: "" });
-      await load();
+      await loadTables();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Table save failed");
     } finally {
@@ -124,7 +133,7 @@ export function HospitalityOutletsScreen() {
         method: "PATCH",
         body: { is_active: !table.is_active },
       });
-      await load();
+      await loadTables();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Update failed");
     }
@@ -212,7 +221,7 @@ export function HospitalityOutletsScreen() {
                     label: o.name,
                   }))}
                 />
-                <SecondaryButton onClick={() => void load()}>Refresh tables</SecondaryButton>
+                <SecondaryButton onClick={() => void loadTables()}>Refresh tables</SecondaryButton>
               </div>
               <form
                 className="grid gap-2 rounded-xl border border-[var(--theme-border)] p-3 sm:grid-cols-5"

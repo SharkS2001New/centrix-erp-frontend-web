@@ -25,9 +25,16 @@ import {
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+  reportCacheMatchesPageSize,
+} from "@/lib/reports/report-page-size";
 
-const DEFAULT_PAGE_SIZE = 25;
+const CACHE_SLOT = "custom-report";
 
 export function CustomReportScreen({ templateId }) {
   const { user, organization, capabilities, hasPermission, hasNavPermission, isModuleEnabled, isSuperAdmin } =
@@ -44,48 +51,88 @@ export function CustomReportScreen({ templateId }) {
       isModuleEnabled,
     });
   const multiBranch = isMultiBranchCatalog(capabilities);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  ).pageSize;
+  const cacheMatches =
+    cachedBundle &&
+    String(cachedBundle.templateId) === String(templateId) &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
+
   const [definition, setDefinition] = useState(null);
-  const [rows, setRows] = useState([]);
-  const [reportMeta, setReportMeta] = useState(null);
-  const [reportSummary, setReportSummary] = useState(null);
+  const [rows, setRows] = useState(() => (cacheMatches ? cachedBundle.rows ?? [] : []));
+  const [reportMeta, setReportMeta] = useState(() =>
+    cacheMatches ? cachedBundle.reportMeta ?? null : null,
+  );
+  const [reportSummary, setReportSummary] = useState(() =>
+    cacheMatches ? cachedBundle.reportSummary ?? null : null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [branchId, setBranchId] = useState("");
+  const [page, setPage] = useState(() => (cacheMatches ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatches ? cachedBundle.branchId ?? "" : "",
+  );
   const [branches, setBranches] = useState([]);
-  const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
+  const [applied, setApplied] = useState(() =>
+    cacheMatches && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatches ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+          toDate: cacheMatches ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+          branchId: cacheMatches ? cachedBundle.branchId ?? "" : "",
+        },
+  );
   const [viewMode, setViewMode] = useState("table");
 
   useEffect(() => {
-    apiRequest(`/reports/builder/templates/${templateId}`, {
-      searchParams: { workspace_id: workspaceId },
-      loading: false,
-    })
-      .then((res) => setDefinition(res.definition))
+    Promise.all([
+      apiRequest(`/reports/builder/templates/${templateId}`, {
+        searchParams: { workspace_id: workspaceId },
+        loading: false,
+      }),
+      fetchBranchesCached().catch(() => []),
+    ])
+      .then(([res, list]) => {
+        setDefinition(res.definition);
+        setBranches(list ?? []);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load report"));
   }, [templateId, workspaceId]);
 
   useEffect(() => {
-    fetchBranchesCached()
-      .then((list) => setBranches(list ?? []))
-      .catch(() => setBranches([]));
-  }, []);
-
-  useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
+    if (!user?.branch_id || branchId) return;
+    const next = String(user.branch_id);
+    setBranchId(next);
+    setApplied((prev) => (prev.branchId ? prev : { ...prev, branchId: next }));
   }, [user?.branch_id, branchId]);
 
   const appliedKey = useMemo(
     () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
     [applied],
   );
-  const depsKey = `${templateId}|${definition?.apiPath ?? ""}|${page}|${pageSize}|${appliedKey}|${workspaceId}`;
+  const depsKey = pageSizeReady
+    ? `${templateId}|${definition?.apiPath ?? ""}|${page}|${pageSize}|${appliedKey}|${workspaceId}`
+    : `${templateId}|page-size-pending`;
 
   const loadReport = useCallback(async () => {
-    if (!definition) return;
+    if (!definition || !pageSizeReady) return;
     setLoading(true);
     setError(null);
     try {
@@ -100,9 +147,24 @@ export function CustomReportScreen({ templateId }) {
       }
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
-      setRows(normalizeReportRows(res));
-      setReportMeta(normalizeReportMeta(res, page, pageSize));
-      setReportSummary(normalizeReportSummary(res));
+      const nextRows = normalizeReportRows(res);
+      const nextMeta = normalizeReportMeta(res, page, pageSize);
+      const nextSummary = normalizeReportSummary(res);
+      setRows(nextRows);
+      setReportMeta(nextMeta);
+      setReportSummary(nextSummary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        templateId,
+        rows: nextRows,
+        reportMeta: nextMeta,
+        reportSummary: nextSummary,
+        page,
+        pageSize,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -112,18 +174,19 @@ export function CustomReportScreen({ templateId }) {
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, workspaceId, page, pageSize, paneHref, depsKey]);
+  }, [definition, applied, workspaceId, page, pageSize, pageSizeReady, paneHref, depsKey]);
 
   function handlePageSizeChange(next) {
     setPageSize(next);
     setPage(1);
   }
 
-  const hasData = rows.length > 0 || reportMeta != null;
+  const hasData = pageSizeReady && (rows.length > 0 || reportMeta != null);
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
 
   function refreshReport() {
     invalidateTabAwareDataLoad(paneHref);
+    clearTabPaneCache(paneHref, CACHE_SLOT);
     void loadReport();
   }
 
@@ -299,6 +362,7 @@ export function CustomReportScreen({ templateId }) {
             totalPages={totalPages}
             total={reportMeta?.total ?? rows.length}
             pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
             onChange={setPage}
             onPageSizeChange={handlePageSizeChange}
           />

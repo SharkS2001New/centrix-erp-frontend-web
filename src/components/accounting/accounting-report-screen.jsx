@@ -20,7 +20,17 @@ import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { CatalogPageShell, Field, PaginationBar, PrimaryButton, SearchInput, formatShortDate, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { defaultReportDateRange } from "@/lib/reports/report-filters";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { resolveListPageSize, useListPageSize } from "@/lib/use-list-page-controls";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+import {
+  REPORT_DEFAULT_PAGE_SIZE,
+  REPORT_LIST_PAGE_SIZE_OPTIONS,
+  reportCacheMatchesPageSize,
+} from "@/lib/reports/report-page-size";
+
+const CACHE_SLOT = "accounting-report";
 
 function formatCell(key, value) {
   if (value == null || value === "") return "—";
@@ -71,78 +81,147 @@ export function AccountingReportScreen({
   backHref = "/accounting",
   emptyLabel = "No rows for this filter.",
   intro = null,
+  /** Offset days for `defaultReportDateRange`, or omit for calendar-month (TB/BS/P&L). */
   defaultDateRangeDays = null,
+  /** When true, use org/platform `sales.reports_default_date_range_days` (daily vs monthly). */
+  useReportsDefaultRange = false,
 }) {
   const { user, capabilities, isOrgWide } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const monthRange = useMemo(
-    () => (defaultDateRangeDays != null ? defaultReportDateRange(defaultDateRangeDays) : defaultAccountingDateRange()),
-    [defaultDateRangeDays],
-  );
-  const [rows, setRows] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [meta, setMeta] = useState(null);
+  const monthRange = useMemo(() => {
+    if (useReportsDefaultRange) {
+      return getReportsDefaultDateRange(capabilities?.module_settings);
+    }
+    if (defaultDateRangeDays != null) {
+      return defaultReportDateRange(defaultDateRangeDays);
+    }
+    return defaultAccountingDateRange();
+  }, [useReportsDefaultRange, defaultDateRangeDays, capabilities?.module_settings]);
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const initialPageSize = resolveListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  ).pageSize;
+  const cacheMatches =
+    cachedBundle &&
+    cachedBundle.apiPath === apiPath &&
+    reportCacheMatchesPageSize(cachedBundle, initialPageSize);
+
+  const [rows, setRows] = useState(() => (cacheMatches ? cachedBundle.rows ?? [] : []));
+  const [summary, setSummary] = useState(() => (cacheMatches ? cachedBundle.summary ?? null : null));
+  const [meta, setMeta] = useState(() => (cacheMatches ? cachedBundle.meta ?? null : null));
   const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !(cacheMatches && (cachedBundle.rows?.length || cachedBundle.meta || cachedBundle.summary)),
+  );
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const [fromDate, setFromDate] = useState(monthRange.from);
-  const [toDate, setToDate] = useState(monthRange.to);
-  const [branchId, setBranchId] = useState("");
-  const [accountId, setAccountId] = useState("");
+  const [page, setPage] = useState(() => (cacheMatches ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize, pageSizeOptions, pageSizeReady } = useListPageSize(
+    REPORT_DEFAULT_PAGE_SIZE,
+    REPORT_LIST_PAGE_SIZE_OPTIONS,
+  );
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatches ? cachedBundle.fromDate ?? monthRange.from : monthRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatches ? cachedBundle.toDate ?? monthRange.to : monthRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatches ? cachedBundle.branchId ?? "" : "",
+  );
+  const [accountId, setAccountId] = useState(() =>
+    cacheMatches ? cachedBundle.accountId ?? "" : "",
+  );
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
+  const [applied, setApplied] = useState(() =>
+    cacheMatches && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: cacheMatches ? cachedBundle.fromDate ?? monthRange.from : monthRange.from,
+          toDate: cacheMatches ? cachedBundle.toDate ?? monthRange.to : monthRange.to,
+          branchId: cacheMatches ? cachedBundle.branchId ?? "" : "",
+          accountId: cacheMatches ? cachedBundle.accountId ?? "" : "",
+          search: "",
+        },
+  );
   const [branches, setBranches] = useState([]);
 
   useEffect(() => {
-    fetchBranchesCached()
-      .then((rows) => setBranches(rows ?? []))
-      .catch(() => setBranches([]));
-  }, []);
-
-  useEffect(() => {
-    if (!showAccountFilter) return;
-    apiRequest("/chart-of-accounts", { searchParams: { per_page: 200 } })
-      .then((res) => setAccounts(res.data ?? []))
-      .catch(() => setAccounts([]));
+    const branchPromise = fetchBranchesCached().catch(() => []);
+    const accountsPromise = showAccountFilter
+      ? apiRequest("/chart-of-accounts", { searchParams: { per_page: 200 }, loading: false })
+          .then((res) => res.data ?? [])
+          .catch(() => [])
+      : Promise.resolve([]);
+    Promise.all([branchPromise, accountsPromise]).then(([branchList, accountList]) => {
+      setBranches(branchList ?? []);
+      setAccounts(accountList ?? []);
+    });
   }, [showAccountFilter]);
 
   useEffect(() => {
     // Only scope to home branch for branch-limited users; org-wide / single-branch
     // catalogs default to all posted activity (no silent branch filter).
     if (!multiBranch || isOrgWide?.() || branchId || !user?.branch_id) return;
-    setBranchId(String(user.branch_id));
+    const next = String(user.branch_id);
+    setBranchId(next);
+    setApplied((prev) => (prev.branchId === next ? prev : { ...prev, branchId: next }));
   }, [user?.branch_id, branchId, multiBranch, isOrgWide]);
 
-  const depsKey = `${apiPath}|${page}|${fromDate}|${toDate}|${branchId}|${accountId}|${enableSearch ? debouncedSearch : ""}`;
+  const appliedKey = useMemo(() => JSON.stringify(applied), [applied]);
+  const depsKey = pageSizeReady
+    ? `${apiPath}|${page}|${pageSize}|${appliedKey}`
+    : `${apiPath}|page-size-pending`;
 
   const loadReport = useCallback(async () => {
+    if (!pageSizeReady) return;
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: 50, page };
-      if (fromDate) searchParams.from_date = fromDate;
-      if (toDate) searchParams.to_date = toDate;
-      if (branchId) searchParams.branch_id = branchId;
-      if (accountId) searchParams.account_id = accountId;
-      if (enableSearch && debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
+      const searchParams = { per_page: pageSize, page };
+      if (applied.fromDate) searchParams.from_date = applied.fromDate;
+      if (applied.toDate) searchParams.to_date = applied.toDate;
+      if (applied.branchId) searchParams.branch_id = applied.branchId;
+      if (applied.accountId) searchParams.account_id = applied.accountId;
+      if (enableSearch && String(applied.search ?? "").trim()) {
+        searchParams.q = String(applied.search).trim();
+      }
 
       const res = await apiRequest(apiPath, { searchParams, loading: false });
+      let nextRows;
+      let nextMeta;
       if (res?.current_page != null || res?.last_page != null || res?.total != null) {
         const parsed = parsePaginator(res);
-        setRows(parsed.items);
-        setMeta({
+        nextRows = parsed.items;
+        nextMeta = {
           last_page: parsed.totalPages,
           total: parsed.total,
           current_page: parsed.page,
           per_page: parsed.perPage,
-        });
+        };
       } else {
-        setRows(normalizeReportRows(res));
-        setMeta(res.meta ?? null);
+        nextRows = normalizeReportRows(res);
+        nextMeta = res.meta ?? null;
       }
-      setSummary(res.summary ?? null);
+      const nextSummary = res.summary ?? null;
+      setRows(nextRows);
+      setMeta(nextMeta);
+      setSummary(nextSummary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        apiPath,
+        rows: nextRows,
+        meta: nextMeta,
+        summary: nextSummary,
+        page,
+        pageSize,
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        accountId: applied.accountId,
+        applied,
+      });
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -152,17 +231,30 @@ export function AccountingReportScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, accountId, enableSearch, debouncedSearch, paneHref, depsKey]);
+  }, [apiPath, page, pageSize, pageSizeReady, applied, enableSearch, paneHref, depsKey]);
 
   useEffect(() => {
     setPage(1);
+    setApplied((prev) => (prev.search === debouncedSearch ? prev : { ...prev, search: debouncedSearch }));
   }, [debouncedSearch]);
 
-  const hasData = rows.length > 0 || meta != null || summary != null;
+  const hasData = pageSizeReady && (rows.length > 0 || meta != null || summary != null);
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function applyFilters() {
+    setPage(1);
+    setApplied({
+      fromDate,
+      toDate,
+      branchId,
+      accountId,
+      search: debouncedSearch,
+    });
+  }
 
   function refreshReport() {
     invalidateTabAwareDataLoad(paneHref);
+    clearTabPaneCache(paneHref, CACHE_SLOT);
     void loadReport();
   }
 
@@ -175,10 +267,10 @@ export function AccountingReportScreen({
 
   const reportRefresh = useReportRefreshUi({ loading, hasRows: rows.length > 0 });
 
-  const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
-    ?? (branchId ? "" : "All branches");
+  const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
+    ?? (applied.branchId ? "" : "All branches");
 
-  const accountLabel = accounts.find((a) => String(a.id) === accountId);
+  const accountLabel = accounts.find((a) => String(a.id) === applied.accountId);
 
   const exportColumns = useMemo(() => {
     if (!columns.length) return [];
@@ -194,15 +286,16 @@ export function AccountingReportScreen({
 
   const exportSearchParams = useMemo(() => {
     const searchParams = {};
-    if (fromDate) searchParams.from_date = fromDate;
-    if (toDate) searchParams.to_date = toDate;
-    if (branchId) searchParams.branch_id = branchId;
-    if (accountId) searchParams.account_id = accountId;
-    if (enableSearch && debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
+    if (applied.fromDate) searchParams.from_date = applied.fromDate;
+    if (applied.toDate) searchParams.to_date = applied.toDate;
+    if (applied.branchId) searchParams.branch_id = applied.branchId;
+    if (applied.accountId) searchParams.account_id = applied.accountId;
+    if (enableSearch && String(applied.search ?? "").trim()) {
+      searchParams.q = String(applied.search).trim();
+    }
     return searchParams;
-  }, [accountId, branchId, debouncedSearch, enableSearch, fromDate, toDate]);
+  }, [applied, enableSearch]);
 
-  const pageSize = meta?.per_page ?? 50;
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
   const showPagination = Boolean(meta) && (totalPages > 1 || total > pageSize);
@@ -224,8 +317,8 @@ export function AccountingReportScreen({
                 searchParams: exportSearchParams,
               }}
               meta={{
-                fromDate,
-                toDate,
+                fromDate: applied.fromDate,
+                toDate: applied.toDate,
                 branchName: branchLabel,
                 extraLines: accountLabel ? [`Account: ${accountOptionLabel(accountLabel)}`] : [],
               }}
@@ -255,10 +348,7 @@ export function AccountingReportScreen({
               type="date"
               className={inputClassName()}
               value={fromDate}
-              onChange={(e) => {
-                setPage(1);
-                setFromDate(e.target.value);
-              }}
+              onChange={(e) => setFromDate(e.target.value)}
             />
           </Field>
           <Field label="To">
@@ -266,40 +356,36 @@ export function AccountingReportScreen({
               type="date"
               className={inputClassName()}
               value={toDate}
-              onChange={(e) => {
-                setPage(1);
-                setToDate(e.target.value);
-              }}
+              onChange={(e) => setToDate(e.target.value)}
             />
           </Field>
           {multiBranch ? (
             <Field label="Branch">
               <SearchableSelect
-  className={inputClassName()}
-  value={branchId}
-  nativeEvent
-  onChange={((e) => {
-                  setPage(1);
-                  setBranchId(e.target.value);
-                })}
-  options={branches.map((b) => ({ value: b.id, label: b.branch_name }))}
-/>
+                className={inputClassName()}
+                value={branchId}
+                nativeEvent
+                onChange={(e) => setBranchId(e.target.value)}
+                options={branches.map((b) => ({ value: b.id, label: b.branch_name }))}
+              />
             </Field>
           ) : null}
           {showAccountFilter ? (
             <Field label="Account">
               <SearchableSelect
-  className={inputClassName()}
-  value={accountId}
-  nativeEvent
-  onChange={((e) => {
-                  setPage(1);
-                  setAccountId(e.target.value);
-                })}
-  options={accounts.map((a) => ({ value: a.id, label: accountOptionLabel(a) }))}
-/>
+                className={inputClassName()}
+                value={accountId}
+                nativeEvent
+                onChange={(e) => setAccountId(e.target.value)}
+                options={accounts.map((a) => ({ value: a.id, label: accountOptionLabel(a) }))}
+              />
             </Field>
           ) : null}
+          <div className="flex items-end pb-0.5">
+            <PrimaryButton type="button" showIcon={false} onClick={applyFilters} disabled={loading}>
+              Apply
+            </PrimaryButton>
+          </div>
         </div>
       }
       banner={
@@ -371,7 +457,18 @@ export function AccountingReportScreen({
           </div>
         )}
         {showPagination ? (
-          <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} />
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
+            onChange={setPage}
+            onPageSizeChange={(next) => {
+              setPageSize(next);
+              setPage(1);
+            }}
+          />
         ) : null}
       </div>
     </CatalogPageShell>

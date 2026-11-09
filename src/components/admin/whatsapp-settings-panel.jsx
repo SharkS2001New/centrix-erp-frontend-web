@@ -59,7 +59,9 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
     ])
       .then(([res, usersData, branchesData]) => {
         if (res) setForm(whatsappFormFromApi(res));
-        setUsers(Array.isArray(usersData) ? usersData : []);
+        setUsers(
+          (Array.isArray(usersData) ? usersData : []).filter((u) => u?.is_active !== false),
+        );
         setBranches(Array.isArray(branchesData) ? branchesData : []);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load WhatsApp settings"))

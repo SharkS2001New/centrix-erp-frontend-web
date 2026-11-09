@@ -14,7 +14,7 @@ import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { buildReportExportRequest, queueReportExport } from "@/lib/report-export-api";
 import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
 import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
-import { AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
+import { AiAnalyzeButton } from "@/components/ai/ai-analyze-button";
 
 /**
  * @param {object} props

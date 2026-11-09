@@ -31,7 +31,10 @@ import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
-import { isHttpImageUrl } from "@/components/products/product-image-field";
+import {
+  isImportableImageUrl,
+  resolveProductImageUrlForEditor,
+} from "@/components/products/product-image-field";
 import { productPhotoFileUrl } from "@/components/media/entity-photo-display";
 
 export function ProductsCodeEditScreen() {
@@ -121,11 +124,13 @@ export function ProductsCodeEditScreen() {
       setServerForm(next);
       setForm(next);
       setImageFile(null);
-      setImageUrlDraft("");
-      setImageSource("upload");
       setImageRemoved(false);
       const hasImage = hotelCatalogue && Boolean(product.image_path || product.image_url);
+      // Only a public import source belongs in Image URL — never the local /image/file link.
+      const currentUrl = hotelCatalogue ? resolveProductImageUrlForEditor(product) : "";
       setHadStoredImage(hasImage);
+      setImageUrlDraft(currentUrl);
+      setImageSource(isImportableImageUrl(currentUrl) ? "url" : "upload");
       if (hasImage) {
         setImagePreview(productPhotoFileUrl(productCode));
       } else {
@@ -182,17 +187,23 @@ export function ProductsCodeEditScreen() {
     setImageFile(file || null);
   }, []);
 
-  const onImageSourceChange = useCallback((next) => {
-    setIsDirty(true);
-    setImageSource(next);
-    if (next === "url") {
-      setImageFile(null);
-      setImagePreview((prev) => {
-        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-        return null;
-      });
-    }
-  }, []);
+  const onImageSourceChange = useCallback(
+    (next) => {
+      setIsDirty(true);
+      setImageSource(next);
+      if (next === "url") {
+        setImageFile(null);
+        // Keep showing the stored photo; seed the URL field with whatever is current.
+        setImageUrlDraft((prev) => {
+          const trimmed = String(prev ?? "").trim();
+          if (trimmed) return trimmed;
+          if (hadStoredImage && productCode) return productPhotoFileUrl(productCode);
+          return "";
+        });
+      }
+    },
+    [hadStoredImage, productCode],
+  );
 
   const onImageUrlChange = useCallback((value) => {
     setIsDirty(true);
@@ -264,9 +275,13 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
-      setFormError("Enter a public http or https image URL.");
-      return;
+    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
+      if (!isImportableImageUrl(imageUrlDraft)) {
+        setFormError(
+          "Paste a public image link (http/https). The app’s local /image/file URL cannot be used here.",
+        );
+        return;
+      }
     }
 
     setSaving(true);
@@ -278,7 +293,7 @@ export function ProductsCodeEditScreen() {
         method: "PUT",
         body,
       });
-      if (hotelCatalogue && imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+      if (hotelCatalogue && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(productCode, imageUrlDraft);
       } else if (hotelCatalogue && imageFile) {
         await uploadProductImage(productCode, imageFile);

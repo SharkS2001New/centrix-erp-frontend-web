@@ -1,4 +1,5 @@
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/platform-shell-access";
 import { canAccessRoute } from "@/lib/route-access";
 import { pathBelongsToWorkspace, workspacesFromCapabilities } from "@/lib/workspaces";
 
@@ -47,6 +48,25 @@ export function resolveNotificationLinkAccess(actionUrl, { capabilities, ctx, st
   }
 
   const pathOnly = normalizedUrl.split("?")[0];
+  if (ctx && isPlatformShellUser(ctx) && isPlatformShellRoute(pathOnly)) {
+    if (!canAccessRoute(pathOnly, ctx)) {
+      return {
+        canOpen: false,
+        normalizedUrl,
+        message: "You do not have permission to open this screen.",
+        targetWorkspaceLabel: null,
+      };
+    }
+
+    return {
+      canOpen: true,
+      normalizedUrl,
+      message: null,
+      targetWorkspaceLabel: null,
+      targetWorkspaceId: null,
+    };
+  }
+
   const workspaces = workspacesFromCapabilities(capabilities);
   const currentWorkspaceId = storedWorkspaceId ?? getStoredWorkspace() ?? null;
   const owningWorkspaces = workspaces.filter((workspace) =>

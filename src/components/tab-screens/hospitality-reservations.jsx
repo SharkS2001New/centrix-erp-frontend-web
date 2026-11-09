@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   Field,
@@ -78,6 +79,7 @@ function ReservationsManager() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("booked");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [rackFrom, setRackFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [drawer, setDrawer] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -91,46 +93,64 @@ function ReservationsManager() {
     return out;
   }, [rackFrom]);
 
-  const load = useCallback(async () => {
+  const loadCatalog = useCallback(async () => {
     try {
-      const [res, types, rms, plans] = await Promise.all([
-        apiRequest("/hospitality/reservations", {
-          searchParams: { status: status || undefined, q: q || undefined, per_page: 100 },
+      const [types, rms, plans] = await Promise.all([
+        apiRequest("/hospitality/room-types", {
+          searchParams: { per_page: 100 },
+          loading: false,
         }),
-        apiRequest("/hospitality/room-types", { searchParams: { per_page: 100 } }),
-        apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
-        apiRequest("/hospitality/rate-plans"),
+        apiRequest("/hospitality/rooms", {
+          searchParams: { per_page: 200 },
+          loading: false,
+        }),
+        apiRequest("/hospitality/rate-plans", { loading: false }),
       ]);
-      setRows(res?.data ?? []);
       setRoomTypes(types?.data ?? types ?? []);
       setRooms(rms?.data ?? rms ?? []);
       setRatePlans(plans?.data ?? []);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load room catalogue");
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiRequest("/hospitality/reservations", {
+        searchParams: {
+          status: status || undefined,
+          q: debouncedQ || undefined,
+          per_page: 100,
+        },
+        loading: false,
+      });
+      setRows(res?.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load reservations");
     } finally {
       setLoading(false);
     }
-  }, [status, q]);
+  }, [status, debouncedQ]);
 
   const loadRack = useCallback(async () => {
     try {
-      const [res, rms] = await Promise.all([
-        apiRequest("/hospitality/reservations", {
-          searchParams: {
-            overlap_from: rackFrom,
-            overlap_to: rackTo,
-            per_page: 200,
-          },
-        }),
-        apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
-      ]);
+      const res = await apiRequest("/hospitality/reservations", {
+        searchParams: {
+          overlap_from: rackFrom,
+          overlap_to: rackTo,
+          per_page: 200,
+        },
+        loading: false,
+      });
       setRackRows(res?.data ?? []);
-      setRooms(rms?.data ?? rms ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load room rack");
+    } finally {
+      setLoading(false);
     }
   }, [rackFrom, rackTo]);
 
+  useTabAwareDataLoad(loadCatalog);
   useTabAwareDataLoad(view === "rack" ? loadRack : load);
 
   const roomsForType = useMemo(

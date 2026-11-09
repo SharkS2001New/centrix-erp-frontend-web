@@ -251,15 +251,27 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     ],
   );
 
+  // Defer /ai/status until the panel is opened (capabilities already gate canUse).
   useEffect(() => {
-    if (!canUse) return;
-    apiRequest("/ai/status")
+    if (!canUse || !open) return undefined;
+    let cancelled = false;
+    apiRequest("/ai/status", { loading: false, reportIssues: false, softFail: true })
       .then((res) => {
+        if (cancelled) return;
+        if (!res) {
+          setStatus({ enabled: false });
+          return;
+        }
         setStatus(res);
         if (res?.talk_voice) setTalkVoicePreference(res.talk_voice);
       })
-      .catch(() => setStatus({ enabled: false }));
-  }, [canUse]);
+      .catch(() => {
+        if (!cancelled) setStatus({ enabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canUse, open]);
 
   useEffect(() => {
     if (!open) {
@@ -273,9 +285,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     };
   }, []);
 
+  const streamingReply = Boolean(messages.some((m) => m.streaming));
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, open, pendingAction, formSpec, actionResult]);
+    // Instant scroll while tokens arrive; smooth only when the turn settles.
+    bottomRef.current?.scrollIntoView({ behavior: streamingReply ? "auto" : "smooth" });
+  }, [messages, open, pendingAction, formSpec, actionResult, streamingReply]);
 
   const clearActionState = useCallback(() => {
     setPendingAction(null);
@@ -422,6 +436,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       try {
         await apiRequest("/ai/feedback", {
           method: "POST",
+          reportIssues: false,
           body: {
             rating,
             conversation_id: conversationId || undefined,
@@ -493,7 +508,11 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       const effectiveConfirm = confirm || typedConfirm;
       try {
         // Voice: shorter history + skip stream for a faster complete spoken reply.
-        const history = messages.slice(fromVoice ? -8 : -6);
+        // Trim turn text so payload stays small (backend also caps history in fast mode).
+        const history = messages.slice(-6).map((m) => ({
+          role: m.role,
+          content: String(m.content ?? "").slice(0, 2500),
+        }));
         const effectivePageContext =
           pageContextOverride ??
           pageContext ??
@@ -516,6 +535,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           voice_mode: fromVoice || undefined,
         };
 
+        // Stream by default — do not wait for /ai/status (capabilities already gate the panel).
         const useStream =
           !fromVoice &&
           !effectiveConfirm &&
@@ -524,6 +544,24 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
         if (useStream) {
           let accumulated = "";
+          let pendingFlush = null;
+          const flushStreamText = () => {
+            pendingFlush = null;
+            const snapshot = accumulated;
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.role === "assistant") {
+                next[next.length - 1] = {
+                  ...last,
+                  content: snapshot,
+                  streaming: true,
+                };
+              }
+              return next;
+            });
+          };
           setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true }]);
 
           const done = await aiChatStream(requestBody, {
@@ -534,23 +572,18 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               if (event.event === "delta" && event.content) {
                 accumulated += event.content;
                 setStreamStatus(null);
-                setMessages((prev) => {
-                  if (prev.length === 0) return prev;
-                  const next = [...prev];
-                  const last = next[next.length - 1];
-                  if (last?.role === "assistant") {
-                    next[next.length - 1] = {
-                      ...last,
-                      content: accumulated,
-                      streaming: true,
-                    };
-                  }
-                  return next;
-                });
+                // Batch React updates to one paint per frame — keeps the UI snappy under high token rates.
+                if (pendingFlush == null) {
+                  pendingFlush = requestAnimationFrame(flushStreamText);
+                }
               }
             },
           });
 
+          if (pendingFlush != null) {
+            cancelAnimationFrame(pendingFlush);
+            pendingFlush = null;
+          }
           setStreamStatus(null);
           setMessages((prev) => {
             if (prev.length === 0) return prev;
@@ -574,6 +607,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
         const res = await apiRequest("/ai/chat", {
           method: "POST",
+          reportIssues: false,
           body: requestBody,
         });
         applyChatResponse(res);
@@ -626,9 +660,13 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       }
 
       if (request.autoSend !== false) {
-        void sendRef.current?.(message, {
-          pageContextOverride: request.pageContext ?? null,
-          fromVoice: Boolean(request.fromVoice),
+        void Promise.resolve(
+          sendRef.current?.(message, {
+            pageContextOverride: request.pageContext ?? null,
+            fromVoice: Boolean(request.fromVoice),
+          }),
+        ).catch(() => {
+          /* send() already surfaces errors in-panel */
         });
         return;
       }

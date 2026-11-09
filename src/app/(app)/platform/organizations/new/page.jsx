@@ -11,6 +11,7 @@ import {
   modulesForProfile,
   defaultSalesPlatformState,
   defaultPayrollPlatformState,
+  payrollPlatformFromApi,
   payrollPlatformToApi,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
@@ -40,6 +41,16 @@ import {
 } from "@/lib/platform-billing";
 import { menuGroupStateFromProfile } from "@/lib/menu-groups";
 import { notifyError, notifySuccess } from "@/lib/notify";
+
+function salesDefaultsForProfile(profile, profiles = []) {
+  const profileDefaults = profiles.find((row) => row.key === profile)?.default_sales_platform;
+  return defaultSalesPlatformState(profile, profileDefaults);
+}
+
+function payrollDefaultsForProfile(profile, profiles = []) {
+  const profileDefaults = profiles.find((row) => row.key === profile)?.default_payroll_platform;
+  return payrollPlatformFromApi(profileDefaults);
+}
 
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
@@ -133,10 +144,11 @@ export default function RegisterOrganizationPage() {
             profiles,
             initialProfile,
             modules,
-            defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false,
+            salesDefaultsForProfile(initialProfile, profiles).enable_mobile_orders !== false,
           ),
         );
-        setSalesPlatform(defaultSalesPlatformState(initialProfile));
+        setSalesPlatform(salesDefaultsForProfile(initialProfile, profiles));
+        setPayrollPlatform(payrollDefaultsForProfile(initialProfile, profiles));
       })
       .catch((err) => {
         setOptionsError(
@@ -180,14 +192,15 @@ export default function RegisterOrganizationPage() {
         profilePresets,
         nextProfile,
         moduleOptions,
-        defaultSalesPlatformState(nextProfile).enable_mobile_orders !== false,
+        salesDefaultsForProfile(nextProfile).enable_mobile_orders !== false,
       ),
     );
     const preset = profilePresets.find((profile) => profile.key === nextProfile);
     setSalesPlatform({
-      ...defaultSalesPlatformState(nextProfile),
+      ...salesDefaultsForProfile(nextProfile),
       ...menuGroupStateFromProfile(preset),
     });
+    setPayrollPlatform(payrollDefaultsForProfile(nextProfile, profilePresets));
   }
 
   function onIndustryChange(nextIndustry) {
@@ -229,10 +242,11 @@ export default function RegisterOrganizationPage() {
     setIndustry(industryForProfile(nextProfile, industries, profilePresets));
     setDeploymentProfile(nextProfile);
     if (template.sales_platform) {
-      setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...template.sales_platform });
+      setSalesPlatform({ ...salesDefaultsForProfile(nextProfile), ...template.sales_platform });
     } else {
-      setSalesPlatform(defaultSalesPlatformState(nextProfile));
+      setSalesPlatform(salesDefaultsForProfile(nextProfile));
     }
+    setPayrollPlatform(payrollDefaultsForProfile(nextProfile, profilePresets));
     if (template.enabled_modules && Object.keys(template.enabled_modules).length > 0) {
       setEnabledModules(template.enabled_modules);
     } else {
@@ -248,10 +262,15 @@ export default function RegisterOrganizationPage() {
       setIndustry(industryForProfile(nextProfile, industries, profilePresets));
       setDeploymentProfile(nextProfile);
       if (snapshot.sales_platform) {
-        setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...snapshot.sales_platform });
+        setSalesPlatform({ ...salesDefaultsForProfile(nextProfile), ...snapshot.sales_platform });
       } else {
-        setSalesPlatform(defaultSalesPlatformState(nextProfile));
+        setSalesPlatform(salesDefaultsForProfile(nextProfile));
       }
+      setPayrollPlatform(
+        snapshot.payroll_platform
+          ? payrollPlatformFromApi(snapshot.payroll_platform)
+          : payrollDefaultsForProfile(nextProfile, profilePresets),
+      );
       if (snapshot.enabled_modules && Object.keys(snapshot.enabled_modules).length > 0) {
         setEnabledModules(snapshot.enabled_modules);
       } else if (snapshot.applications) {

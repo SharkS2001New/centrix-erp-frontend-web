@@ -5,6 +5,22 @@ export const PRINT_BLOCKED_MESSAGE =
 
 const printFrameByWindow = new WeakMap();
 
+/** True while a browser print dialog from our hidden iframe is open. */
+let browserPrintDepth = 0;
+
+/** Auth/focus handlers should skip work while the system print dialog is up. */
+export function isBrowserPrintDialogOpen() {
+  return browserPrintDepth > 0;
+}
+
+function beginBrowserPrintSession() {
+  browserPrintDepth += 1;
+}
+
+function endBrowserPrintSession() {
+  browserPrintDepth = Math.max(0, browserPrintDepth - 1);
+}
+
 export function printWindowFeatures(documentType = "receipt") {
   return documentType === "invoice" || documentType === "proforma"
     ? "width=860,height=960"
@@ -30,6 +46,15 @@ function createHiddenPrintFrame(width = 420, height = 1200) {
 
 function isIframePrintWindow(win) {
   return Boolean(win && printFrameByWindow.has(win));
+}
+
+function isAppTopWindow(win) {
+  if (!win || typeof window === "undefined") return false;
+  try {
+    return win === window || win === window.top;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -66,6 +91,9 @@ export function disposePrintWindow(win) {
     return;
   }
 
+  // Never close the ERP tab if a detached/stale handle points at the top window.
+  if (isAppTopWindow(win)) return;
+
   if (!win.closed) {
     try {
       win.close();
@@ -101,12 +129,34 @@ function writeHtmlToDocument(doc, htmlContent) {
 }
 
 function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
+  if (isAppTopWindow(win)) {
+    // Refuse to replace the ERP document — that feels like a full page reload.
+    onReady?.();
+    return;
+  }
+
   const frame = printFrameByWindow.get(win);
   if (frame) {
-    // Write into the iframe document directly so it stays same-origin with the app.
-    // Blob URLs are opaque and block onafterprint / afterprint handlers from the parent.
+    // Prefer srcdoc so we don't document.open/write twice on the same frame
+    // (early "Preparing…" + final HTML). document.write can also make Chrome
+    // apply print media to the parent and remount the SPA after the dialog.
+    try {
+      let ready = false;
+      const done = () => {
+        if (ready) return;
+        ready = true;
+        frame.onload = null;
+        window.setTimeout(onReady, 0);
+      };
+      frame.onload = done;
+      frame.srcdoc = htmlContent;
+      // Some engines skip onload for srcdoc — don't hang the print path.
+      window.setTimeout(done, 50);
+      return;
+    } catch {
+      // Fall through to document.write for older engines.
+    }
     writeHtmlToDocument(win.document, htmlContent);
-    // Defer past React commit / microtask boundaries (avoids Chrome "callback no longer runnable").
     window.setTimeout(onReady, 0);
     return;
   }
@@ -131,7 +181,7 @@ function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
 function scheduleBrowserPrint(win, options = {}) {
   const settleTimeoutMs = Number(options.settleTimeoutMs ?? 8_000);
   return new Promise((resolve) => {
-    if (!win || win.closed) {
+    if (!win || win.closed || isAppTopWindow(win)) {
       resolve(false);
       return;
     }
@@ -140,15 +190,17 @@ function scheduleBrowserPrint(win, options = {}) {
     const finish = (ok) => {
       if (settled) return;
       settled = true;
+      endBrowserPrintSession();
       resolve(Boolean(ok));
     };
 
+    beginBrowserPrintSession();
     attachPrintCloseHandlers(win, () => finish(true));
     // Headless / cancelled dialogs / iframe paths may never fire afterprint.
     window.setTimeout(() => finish(true), Math.max(1_500, settleTimeoutMs));
 
     window.setTimeout(() => {
-      if (win.closed) {
+      if (win.closed || isAppTopWindow(win)) {
         finish(false);
         return;
       }
@@ -174,7 +226,7 @@ export function fillPrintWindow(
   htmlContent,
   { autoPrint = true, skipBaseline = false, settleTimeoutMs } = {},
 ) {
-  if (!win || win.closed) return Promise.resolve(false);
+  if (!win || win.closed || isAppTopWindow(win)) return Promise.resolve(false);
 
   const preparedHtml = skipBaseline
     ? String(htmlContent ?? "")
@@ -190,7 +242,7 @@ export function fillPrintWindow(
         resolve(true);
         return;
       }
-      if (win.closed) {
+      if (win.closed || isAppTopWindow(win)) {
         resolve(false);
         return;
       }
@@ -202,7 +254,7 @@ export function fillPrintWindow(
 }
 
 export function showPrintPreparing(win, message = "Preparing document…") {
-  if (!win || win.closed) return Promise.resolve(false);
+  if (!win || win.closed || isAppTopWindow(win)) return Promise.resolve(false);
   return fillPrintWindow(
     win,
     `<!DOCTYPE html><html><head><title>Print</title></head><body style="font-family:system-ui,sans-serif;padding:24px;color:#334155;">${message}</body></html>`,

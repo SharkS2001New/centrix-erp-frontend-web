@@ -17,6 +17,15 @@ function saleHasKraVerificationLink(sale) {
   return Boolean(extractKraReceiptData(sale)?.signatureLink);
 }
 
+/** Tab-session cache — context-menu prints were hitting 4 settings endpoints every click. */
+const PRINT_SETTINGS_TTL_MS = 90_000;
+/** @type {{ at: number, value: Record<string, unknown> } | null} */
+let printSettingsSessionCache = null;
+
+export function clearPrintModuleSettingsCache() {
+  printSettingsSessionCache = null;
+}
+
 /**
  * Load print-related module settings from the API so live prints match Admin → Printouts.
  * Falls back to cached capabilities when an individual request fails.
@@ -25,6 +34,13 @@ function saleHasKraVerificationLink(sale) {
 export async function fetchPrintModuleSettings(fallback = null) {
   const merged =
     fallback && typeof fallback === "object" ? { ...fallback } : {};
+
+  if (
+    printSettingsSessionCache &&
+    Date.now() - printSettingsSessionCache.at < PRINT_SETTINGS_TTL_MS
+  ) {
+    return { ...merged, ...printSettingsSessionCache.value };
+  }
 
   const [salesResult, generalResult, procurementResult, financeResult] = await Promise.allSettled([
     apiRequest("/erp/settings/sales", { loading: false, reportIssues: false }),
@@ -46,6 +62,7 @@ export async function fetchPrintModuleSettings(fallback = null) {
     merged.finance = sectionFromResponse(financeResult.value, "finance");
   }
 
+  printSettingsSessionCache = { at: Date.now(), value: { ...merged } };
   return merged;
 }
 

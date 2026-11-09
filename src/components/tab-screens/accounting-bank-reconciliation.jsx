@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, apiUploadForm, ApiError } from "@/lib/api";
 import {
   CatalogPageShell,
   SearchableSelect,
@@ -45,6 +45,8 @@ export function AccountingBankReconciliationScreen() {
     notes: "",
     csv: "",
   });
+  const [statementPreview, setStatementPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,51 @@ export function AccountingBankReconciliationScreen() {
 
   useTabAwareDataLoad(load);
 
+  async function previewStatementUpload(file) {
+    setPreviewing(true);
+    try {
+      const preview = await apiUploadForm("/accounting/bank-statement-preview", { file });
+      setStatementPreview(preview);
+      setForm((prev) => ({
+        ...prev,
+        csv: "",
+        statement_balance:
+          preview.closing_balance != null
+            ? String(preview.closing_balance)
+            : prev.statement_balance,
+        period_end: preview.period_end || prev.period_end,
+        period_start: preview.period_start || prev.period_start,
+      }));
+      notifySuccess(`Parsed ${preview.line_count ?? 0} statement line(s).`);
+    } catch (e) {
+      setStatementPreview(null);
+      notifyError(e instanceof ApiError ? e.message : "Failed to parse statement");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function previewCsvPaste() {
+    if (!form.csv.trim()) {
+      notifyError("Paste CSV text or upload a file first.");
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const preview = await apiUploadForm("/accounting/bank-statement-preview", {
+        csv: form.csv.trim(),
+        format: "csv",
+      });
+      setStatementPreview(preview);
+      notifySuccess(`Parsed ${preview.line_count ?? 0} statement line(s).`);
+    } catch (e) {
+      setStatementPreview(null);
+      notifyError(e instanceof ApiError ? e.message : "Failed to parse CSV");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function handleCreate(event) {
     event.preventDefault();
     if (!form.chart_of_account_id) {
@@ -71,22 +118,43 @@ export function AccountingBankReconciliationScreen() {
       return;
     }
 
+    if (statementPreview?.ties_out === false) {
+      const ok = await confirm({
+        title: "Statement does not tie out",
+        message: `Opening + activity does not equal closing (difference ${formatAccountingAmount(statementPreview.difference)}). Create with these lines anyway?`,
+        confirmLabel: "Create unbalanced",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+
     setCreating(true);
     try {
+      const body = {
+        chart_of_account_id: Number(form.chart_of_account_id),
+        title: form.title || null,
+        period_start: form.period_start || form.period_end,
+        period_end: form.period_end,
+        statement_balance: parseDecimalInput(form.statement_balance),
+        notes: form.notes || null,
+        imported_filename: statementPreview?.filename || undefined,
+        confirm_unbalanced: statementPreview?.ties_out === false,
+      };
+      if (statementPreview?.lines?.length) {
+        body.statement_lines = statementPreview.lines;
+        if (statementPreview.opening_balance != null) {
+          body.opening_balance = statementPreview.opening_balance;
+        }
+      } else if (form.csv.trim()) {
+        body.csv = form.csv.trim();
+      }
+
       const created = await apiRequest("/accounting/bank-reconciliations", {
         method: "POST",
-        body: {
-          chart_of_account_id: Number(form.chart_of_account_id),
-          title: form.title || null,
-          period_start: form.period_start || form.period_end,
-          period_end: form.period_end,
-          statement_balance: parseDecimalInput(form.statement_balance),
-          notes: form.notes || null,
-          csv: form.csv.trim() || undefined,
-        },
+        body,
       });
       notifySuccess("Bank reconciliation started.");
-      const tab = form.csv.trim() ? "?tab=statement" : "";
+      const tab = statementPreview?.lines?.length || form.csv.trim() ? "?tab=reconcile" : "";
       router.push(`/accounting/bank-reconciliation/${created.id}${tab}`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to create reconciliation");
@@ -229,40 +297,106 @@ export function AccountingBankReconciliationScreen() {
             </label>
             <label className="block text-sm md:col-span-2">
               <span className="mb-1 block font-medium text-slate-700">
-                Import statement CSV (optional)
+                Import bank statement (optional)
               </span>
               <input
                 type="file"
-                accept=".csv,.txt,text/csv"
+                accept=".pdf,.csv,.txt,.ofx,.qfx,application/pdf,text/csv"
                 className="mb-2 block w-full text-sm text-slate-600"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  try {
-                    const text = await readTextFile(file);
-                    setForm((prev) => ({ ...prev, csv: text }));
-                  } catch {
-                    notifyError("Could not read the CSV file.");
+                  const name = file.name.toLowerCase();
+                  if (name.endsWith(".csv") || name.endsWith(".txt")) {
+                    try {
+                      const text = await readTextFile(file);
+                      setForm((prev) => ({ ...prev, csv: text }));
+                      setStatementPreview(null);
+                    } catch {
+                      notifyError("Could not read the file.");
+                    }
+                  } else {
+                    await previewStatementUpload(file);
                   }
                   e.target.value = "";
                 }}
               />
               <textarea
                 value={form.csv}
-                onChange={(e) => setForm((prev) => ({ ...prev, csv: e.target.value }))}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, csv: e.target.value }));
+                  setStatementPreview(null);
+                }}
                 rows={5}
                 placeholder={"date,description,reference,amount\n2026-06-01,Deposit,DEP-1,1500"}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Paste CSV text or choose a .csv file. Supported columns: date / transaction date, description / narrative, reference, amount (or debit/credit).
+                PDF (digital text), OFX/QFX, or CSV. Preview first so opening + activity can tie to closing.
               </p>
+              <button
+                type="button"
+                disabled={previewing || !form.csv.trim()}
+                onClick={() => void previewCsvPaste()}
+                className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {previewing ? "Parsing…" : "Preview CSV"}
+              </button>
             </label>
+            {statementPreview ? (
+              <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                      statementPreview.ties_out
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : statementPreview.ties_out === false
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    {statementPreview.ties_out
+                      ? "Ties out"
+                      : statementPreview.ties_out === false
+                        ? `Difference ${formatAccountingAmount(statementPreview.difference)}`
+                        : "Tie-out unknown"}
+                  </span>
+                  {statementPreview.bank ? (
+                    <span className="text-xs text-slate-600">{statementPreview.bank}</span>
+                  ) : null}
+                  <span className="text-xs text-slate-600">
+                    {statementPreview.line_count} lines
+                  </span>
+                </div>
+                <div className="mt-2 max-h-40 overflow-auto rounded border border-slate-200 bg-white">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-100 text-left text-slate-500">
+                      <tr>
+                        <th className="px-2 py-1">Date</th>
+                        <th className="px-2 py-1">Description</th>
+                        <th className="px-2 py-1 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(statementPreview.lines ?? []).slice(0, 30).map((line, idx) => (
+                        <tr key={`${line.line_date}-${idx}`} className="border-t border-slate-100">
+                          <td className="px-2 py-1">{line.line_date}</td>
+                          <td className="px-2 py-1">{line.description}</td>
+                          <td className="px-2 py-1 text-right">
+                            {formatAccountingAmount(line.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={creating}
+              disabled={creating || previewing}
               className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#134a84] disabled:opacity-60"
             >
               {creating ? "Creating…" : "Create & open"}

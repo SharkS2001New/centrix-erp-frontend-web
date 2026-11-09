@@ -132,6 +132,42 @@ function unavailableResponse() {
   );
 }
 
+function filenameFromRemoteUrl(url) {
+  try {
+    const base = new URL(url).pathname.split("/").filter(Boolean).at(-1);
+    if (base && base.toLowerCase().endsWith(".msi")) return base;
+  } catch {
+    /* ignore */
+  }
+  return "CentrixPrintAgent.msi";
+}
+
+async function proxyRemoteMsi(url) {
+  const upstream = await fetch(url, { cache: "no-store", redirect: "follow" });
+  if (!upstream.ok || !upstream.body) {
+    return Response.json(
+      {
+        message: `Configured PRINT_AGENT_MSI_URL is not reachable (${upstream.status}). Re-upload the MSI to R2 or clear the broken URL.`,
+        available: false,
+      },
+      { status: 502 },
+    );
+  }
+
+  const filename = filenameFromRemoteUrl(url);
+  const headers = {
+    "Content-Type": "application/octet-stream",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+    "X-Print-Agent-Msi": filename,
+  };
+  const length = upstream.headers.get("content-length");
+  if (length) headers["Content-Length"] = length;
+
+  // Same-origin proxy — avoids browser CORS failures on R2 public URLs.
+  return new Response(upstream.body, { headers });
+}
+
 async function serveLocalMsi(msi) {
   const stream = createReadStream(msi.filePath);
   return new Response(Readable.toWeb(stream), {
@@ -175,7 +211,16 @@ async function proxyGithubMsi(asset) {
 
 /** HEAD — UI can probe whether the MSI is available without downloading it. */
 export async function HEAD() {
-  if (externalMsiUrl()) {
+  const remote = externalMsiUrl();
+  if (remote) {
+    try {
+      const probe = await fetch(remote, { method: "HEAD", cache: "no-store", redirect: "follow" });
+      if (!probe.ok) {
+        return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+      }
+    } catch {
+      return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
     return new Response(null, {
       status: 200,
       headers: { "X-Print-Agent-Msi": "external", "Cache-Control": "no-store" },
@@ -223,7 +268,7 @@ export async function HEAD() {
 export async function GET() {
   const remote = externalMsiUrl();
   if (remote) {
-    return Response.redirect(remote, 302);
+    return proxyRemoteMsi(remote);
   }
 
   const local = await resolveLocalMsi();

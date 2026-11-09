@@ -41,6 +41,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { customerExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 import { fetchRoutesCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
@@ -386,7 +387,7 @@ export function CustomersListScreen() {
         sortDir,
         extra: { status },
       });
-      const custRes = await apiRequest("/customers", { searchParams });
+      const custRes = await apiRequest("/customers", { searchParams, loading: false });
       const parsed = parsePaginator(custRes);
       setCustomers(parsed.items);
       setTotalCustomers(parsed.total);
@@ -413,13 +414,12 @@ export function CustomersListScreen() {
     });
   }, [debouncedSearch, deletedFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
-
-  useEffect(() => {
-    void loadCustomers();
-  }, [loadCustomers]);
+  useTabAwareDataLoad(loadReferenceData);
+  useTabAwareDataLoad(loadCustomers, {
+    depsKey: `${page}|${pageSize}|${debouncedSearch}|${deletedFilter}|${sort}|${sortDir}`,
+    hasData: customers.length > 0,
+    softEvictMs: 20_000,
+  });
 
   const resetColumns = useCallback(() => {
     setVisibleColumnIds(defaultVisibleColumnIds());

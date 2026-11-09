@@ -5,7 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 export const LIST_PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100];
 export const LIST_PAGE_SIZE_STORAGE_KEY = "centrix-erp-list-page-size";
 
-function readStoredPageSize(defaultSize) {
+function pageSizeOptionsFor(maxSize) {
+  return maxSize == null
+    ? LIST_PAGE_SIZE_OPTIONS
+    : LIST_PAGE_SIZE_OPTIONS.filter((n) => n <= maxSize);
+}
+
+export function readStoredPageSize(defaultSize) {
   if (typeof window === "undefined") return defaultSize;
   try {
     const raw = localStorage.getItem(LIST_PAGE_SIZE_STORAGE_KEY);
@@ -15,6 +21,31 @@ function readStoredPageSize(defaultSize) {
     /* ignore */
   }
   return defaultSize;
+}
+
+/**
+ * Resolve rows-per-page synchronously (SSR-safe default; client reads localStorage).
+ * Use before first fetch/paint so lists do not flash default → stored size.
+ */
+export function resolveListPageSize(defaultSize = 10, { persist = true, maxSize = null } = {}) {
+  const pageSizeOptions = pageSizeOptionsFor(maxSize);
+  const clampedDefault = pageSizeOptions.includes(defaultSize)
+    ? defaultSize
+    : (pageSizeOptions[pageSizeOptions.length - 1] ?? defaultSize);
+  if (!persist) {
+    return { pageSize: clampedDefault, pageSizeOptions, clampedDefault };
+  }
+  const stored = readStoredPageSize(clampedDefault);
+  if (pageSizeOptions.includes(stored)) {
+    return { pageSize: stored, pageSizeOptions, clampedDefault };
+  }
+  // Preference exceeds this screen's maxSize — use the largest allowed option
+  // instead of snapping back to the screen default (avoids 100 → 20 flash).
+  if (maxSize != null && stored > maxSize) {
+    const capped = pageSizeOptions[pageSizeOptions.length - 1] ?? clampedDefault;
+    return { pageSize: capped, pageSizeOptions, clampedDefault };
+  }
+  return { pageSize: clampedDefault, pageSizeOptions, clampedDefault };
 }
 
 function readStoredSort(storageKey) {
@@ -31,22 +62,44 @@ function readStoredSort(storageKey) {
   }
 }
 
-/** Rows-per-page preference. Pass `{ persist: false }` to keep session-only (resets to default on reload). */
-export function useListPageSize(defaultSize = 10, { persist = true } = {}) {
-  const [pageSize, setPageSizeState] = useState(defaultSize);
+/**
+ * Rows-per-page preference.
+ * Pass `{ persist: false }` to keep session-only (resets to default on reload).
+ * Pass `{ maxSize: 50 }` to cap options (e.g. heavy reports shouldn't inherit global 100).
+ *
+ * Stored preference is applied on the first render (lazy useState) so the first
+ * network request and first paint already use the correct page size.
+ */
+export function useListPageSize(defaultSize = 10, { persist = true, maxSize = null } = {}) {
+  const pageSizeOptions = pageSizeOptionsFor(maxSize);
+  const clampedDefault = pageSizeOptions.includes(defaultSize)
+    ? defaultSize
+    : (pageSizeOptions[pageSizeOptions.length - 1] ?? defaultSize);
 
+  const [pageSize, setPageSizeState] = useState(() => {
+    if (!persist) return clampedDefault;
+    return resolveListPageSize(defaultSize, { persist, maxSize }).pageSize;
+  });
+
+  // Re-clamp when maxSize / default changes — do not re-read storage after mount
+  // (that was causing paint-with-default then jump-to-stored).
   useEffect(() => {
-    if (!persist) {
-      setPageSizeState(defaultSize);
-      return;
-    }
-    setPageSizeState(readStoredPageSize(defaultSize));
-  }, [defaultSize, persist]);
+    const options = pageSizeOptionsFor(maxSize);
+    setPageSizeState((current) => {
+      if (!persist) return clampedDefault;
+      if (options.includes(current)) return current;
+      if (maxSize != null && current > maxSize) {
+        return options[options.length - 1] ?? clampedDefault;
+      }
+      return clampedDefault;
+    });
+  }, [clampedDefault, persist, maxSize]);
 
   const setPageSize = useCallback(
     (size) => {
+      const options = pageSizeOptionsFor(maxSize);
       const n = Number(size);
-      if (!LIST_PAGE_SIZE_OPTIONS.includes(n)) return;
+      if (!options.includes(n)) return;
       setPageSizeState(n);
       if (!persist) return;
       try {
@@ -55,10 +108,11 @@ export function useListPageSize(defaultSize = 10, { persist = true } = {}) {
         /* ignore */
       }
     },
-    [persist],
+    [persist, maxSize],
   );
 
-  return { pageSize, setPageSize };
+  // Always ready: size is resolved synchronously on first render (no deferred hydrate).
+  return { pageSize, setPageSize, pageSizeOptions, pageSizeReady: true };
 }
 
 const EMPTY_FIRST_DIR = Object.freeze({});
@@ -73,8 +127,9 @@ const EMPTY_FIRST_DIR = Object.freeze({});
  */
 export function useTableSort(storageKey, options = {}) {
   const firstDirByColumn = options.firstDirByColumn ?? EMPTY_FIRST_DIR;
-  const [sort, setSort] = useState(null);
-  const [sortDir, setSortDir] = useState("asc");
+  // Sync hydrate (like page size) — avoids default-sort fetch then stored-sort refetch.
+  const [sort, setSort] = useState(() => readStoredSort(storageKey).sort);
+  const [sortDir, setSortDir] = useState(() => readStoredSort(storageKey).sortDir);
 
   useEffect(() => {
     const stored = readStoredSort(storageKey);

@@ -55,6 +55,8 @@ export function InventoryDamagesScreen() {
   const [listLoading, setListLoading] = useState(true);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(initialRange.from);
+  const [appliedTo, setAppliedTo] = useState(initialRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const [deletingId, setDeletingId] = useState(null);
@@ -77,9 +79,9 @@ export function InventoryDamagesScreen() {
         page,
         perPage: pageSize,
         filters: { branch_id: branchId },
-        extra: { from_date: fromDate, to_date: toDate },
+        extra: { from_date: appliedFrom, to_date: appliedTo },
       });
-      const res = await apiRequest("/damages", { searchParams });
+      const res = await apiRequest("/damages", { searchParams, loading: false });
       const parsed = parsePaginator(res);
       setRows(parsed.items);
       setTotal(parsed.total);
@@ -99,7 +101,7 @@ export function InventoryDamagesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [branchId, fromDate, toDate, page, pageSize, user?.organization_id]);
+  }, [branchId, appliedFrom, appliedTo, page, pageSize, user?.organization_id]);
 
   useTabAwareDataLoad(loadRows);
   useTabAwareDataLoad(loadReferenceData);
@@ -148,7 +150,7 @@ export function InventoryDamagesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, pageSize]);
+  }, [appliedFrom, appliedTo, pageSize]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -203,8 +205,8 @@ export function InventoryDamagesScreen() {
             getSearchParams={() => ({
               per_page: 200,
               "filter[branch_id]": branchId,
-              from_date: fromDate,
-              to_date: toDate,
+              from_date: appliedFrom,
+              to_date: appliedTo,
             })}
             disabled={tableLoading}
           />
@@ -231,6 +233,18 @@ export function InventoryDamagesScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={loading || listLoading}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
         <p className="pb-2 text-xs text-slate-500">
           {total} record{total === 1 ? "" : "s"} in range
         </p>

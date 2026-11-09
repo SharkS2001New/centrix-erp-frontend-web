@@ -265,7 +265,7 @@ export function InventoryStockScreen() {
         q: debouncedSearch,
         extra: listExtra,
       });
-      const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams });
+      const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams, loading: false });
       const parsed = parsePaginator(stockRes);
       setStockRows(parsed.items);
       setTotalStockRows(parsed.total);

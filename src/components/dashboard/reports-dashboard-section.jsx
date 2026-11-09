@@ -40,7 +40,7 @@ export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true
     setError(null);
     const searchParams = { from_date: fromDate, to_date: toDate };
     if (branchId) searchParams.branch_id = branchId;
-    apiRequest("/reports/dashboard", { searchParams })
+    apiRequest("/reports/dashboard", { searchParams, loading: false })
       .then((data) => {
         if (!cancelled) setDashboard(data);
       })
@@ -84,11 +84,14 @@ export function ReportsDashboardSection({
   const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);
+  const [appliedFrom, setAppliedFrom] = useState(controlledFrom ?? defaults.from);
+  const [appliedTo, setAppliedTo] = useState(controlledTo ?? defaults.to);
   const [branchId, setBranchId] = useState(controlledBranch ?? "");
   const [branches, setBranches] = useState([]);
 
-  const effectiveFrom = controlledFrom ?? fromDate;
-  const effectiveTo = controlledTo ?? toDate;
+  const datesAreControlled = controlledFrom !== undefined;
+  const effectiveFrom = datesAreControlled ? controlledFrom : appliedFrom;
+  const effectiveTo = datesAreControlled ? controlledTo : appliedTo;
   const effectiveBranch = controlledBranch ?? branchId;
 
   const applyFromDate = useCallback((nextFrom) => {
@@ -108,6 +111,17 @@ export function ReportsDashboardSection({
     setFromDate(clamped.from);
     setToDate(clamped.to);
   }, [fromDate]);
+
+  const applyDateFilters = useCallback(() => {
+    const clamped = clampDashboardDateRange(fromDate, toDate, {
+      minInclusiveDays: 1,
+      changed: "from",
+    });
+    setFromDate(clamped.from);
+    setToDate(clamped.to);
+    setAppliedFrom(clamped.from);
+    setAppliedTo(clamped.to);
+  }, [fromDate, toDate]);
 
   const { dashboard, loading, error, reload } = useReportsDashboard({
     fromDate: effectiveFrom,
@@ -210,6 +224,8 @@ export function ReportsDashboardSection({
           onFromDateChange={applyFromDate}
           onToDateChange={applyToDate}
           onBranchChange={setBranchId}
+          onApply={applyDateFilters}
+          applyDisabled={loading}
           onRefresh={reload}
           refreshing={loading}
           minRangeDays={1}

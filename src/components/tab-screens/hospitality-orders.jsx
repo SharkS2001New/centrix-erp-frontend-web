@@ -232,6 +232,7 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
           per_page: pageSize,
           page,
         },
+        loading: false,
       });
       setRows(res?.checks ?? []);
       setTotal(Number(res?.total ?? 0));

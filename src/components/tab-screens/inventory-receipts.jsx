@@ -34,6 +34,8 @@ export function InventoryReceiptsScreen() {
   const [listLoading, setListLoading] = useState(false);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(initialRange.from);
+  const [appliedTo, setAppliedTo] = useState(initialRange.to);
   const [batchQuery, setBatchQuery] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
@@ -49,10 +51,10 @@ export function InventoryReceiptsScreen() {
         extra: {
           ...(q
             ? { q }
-            : { from_date: fromDate, to_date: toDate }),
+            : { from_date: appliedFrom, to_date: appliedTo }),
         },
       });
-      const res = await apiRequest("/stock-receipts", { searchParams });
+      const res = await apiRequest("/stock-receipts", { searchParams, loading: false });
       const parsed = parsePaginator(res);
       setRows(parsed.items);
       setTotal(parsed.total);
@@ -63,13 +65,13 @@ export function InventoryReceiptsScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [batchQuery, branchId, fromDate, toDate, page, pageSize]);
+  }, [batchQuery, branchId, appliedFrom, appliedTo, page, pageSize]);
 
   useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, pageSize, batchQuery]);
+  }, [appliedFrom, appliedTo, pageSize, batchQuery]);
 
   const grouped = useMemo(() => groupStockReceipts(rows), [rows]);
 
@@ -102,7 +104,7 @@ export function InventoryReceiptsScreen() {
               "filter[branch_id]": branchId,
               ...(batchQuery.trim()
                 ? { q: batchQuery.trim() }
-                : { from_date: fromDate, to_date: toDate }),
+                : { from_date: appliedFrom, to_date: appliedTo }),
             })}
             disabled={loading}
           />
@@ -131,6 +133,18 @@ export function InventoryReceiptsScreen() {
             disabled={Boolean(batchQuery.trim())}
           />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={loading || listLoading || Boolean(batchQuery.trim())}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
         <Field label="Search batch / invoice / SKU">
           <input
             className={inputClassName()}

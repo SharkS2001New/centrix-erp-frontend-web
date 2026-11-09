@@ -72,6 +72,42 @@ function unavailableResponse() {
   );
 }
 
+function filenameFromRemoteUrl(url) {
+  try {
+    const base = new URL(url).pathname.split("/").filter(Boolean).at(-1);
+    if (base && base.toLowerCase().endsWith(".zip")) return base;
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_ZIP;
+}
+
+async function proxyRemoteZip(url) {
+  const upstream = await fetch(url, { cache: "no-store", redirect: "follow" });
+  if (!upstream.ok || !upstream.body) {
+    return Response.json(
+      {
+        message: `Configured PRINT_AGENT_DOTNET_URL is not reachable (${upstream.status}). Fix the R2/public URL or remove it so source download can be used.`,
+        available: false,
+      },
+      { status: 502 },
+    );
+  }
+
+  const filename = filenameFromRemoteUrl(url);
+  const headers = {
+    "Content-Type": "application/zip",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+    "X-Print-Agent-Dotnet": filename,
+  };
+  const length = upstream.headers.get("content-length");
+  if (length) headers["Content-Length"] = length;
+
+  // Proxy through this origin so the browser never hits R2 CORS on fetch+blob.
+  return new Response(upstream.body, { headers });
+}
+
 async function serveLocalZip(zip) {
   const stream = createReadStream(zip.filePath);
   return new Response(Readable.toWeb(stream), {
@@ -86,7 +122,16 @@ async function serveLocalZip(zip) {
 }
 
 export async function HEAD() {
-  if (externalZipUrl()) {
+  const remote = externalZipUrl();
+  if (remote) {
+    try {
+      const probe = await fetch(remote, { method: "HEAD", cache: "no-store", redirect: "follow" });
+      if (!probe.ok) {
+        return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+      }
+    } catch {
+      return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
     return new Response(null, {
       status: 200,
       headers: { "X-Print-Agent-Dotnet": "external", "Cache-Control": "no-store" },
@@ -113,7 +158,7 @@ export async function HEAD() {
 export async function GET() {
   const remote = externalZipUrl();
   if (remote) {
-    return Response.redirect(remote, 302);
+    return proxyRemoteZip(remote);
   }
 
   const local = await resolveLocalZip();

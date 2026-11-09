@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { FulfillmentRoutesIdScreen } from "@/components/tab-screens/fulfillment-routes-id";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <FulfillmentRoutesIdScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/fulfillment-routes-id"),
+  "FulfillmentRoutesIdScreen",
+);

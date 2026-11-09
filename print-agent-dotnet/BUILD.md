@@ -14,9 +14,9 @@ Do this on a **Windows 10/11 x64** PC.
 6. Click **Yes** if Windows asks for Administrator permission
 7. Wait until it says **SUCCESS**
 
-The installer **does not download wkhtmltopdf** by default. Install it once yourself (link below), or the build will pick it up from `Program Files\wkhtmltopdf` automatically.
+The installer **downloads and bundles wkhtmltopdf by default** (needs network once). It also reuses `Program Files\wkhtmltopdf` when already installed. To skip the download: `.\scripts\install-windows-service.ps1 -SkipWkhtmlDownload`.
 
-**wkhtmltopdf (one-time, for receipt rendering):**  
+**wkhtmltopdf (auto on install; manual fallback):**  
 https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
 
 **SumatraPDF (silent PDF → printer):** bundled automatically by publish / BUILD-AND-INSTALL into:

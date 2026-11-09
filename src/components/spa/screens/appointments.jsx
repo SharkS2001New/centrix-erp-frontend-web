@@ -192,6 +192,11 @@ export function AppointmentsScreen() {
                   staff={spa.staff}
                   onBook={(draft) => router.push(bookingHref(draft))}
                   onEdit={(item) => router.push(bookingHref(item))}
+                  onStart={(item) => {
+                    spa.setAppointmentStatus(item.id, "in_progress");
+                    toast.success("Service started.");
+                  }}
+                  onCheckout={(item) => router.push(`/spa/pos?appointment=${encodeURIComponent(item.id)}`)}
                   onCancel={(item) => { spa.setAppointmentStatus(item.id, "cancelled"); toast.success("Appointment cancelled."); }}
                   onMenu={(event, items) => setMenu({ x: event.clientX, y: event.clientY, items })}
                 />
@@ -206,7 +211,7 @@ export function AppointmentsScreen() {
   );
 }
 
-function ScheduleColumn({ column, view, date, hour, items, nowTop, clients, services, staff, onBook, onEdit, onCancel, onMenu }) {
+function ScheduleColumn({ column, view, date, hour, items, nowTop, clients, services, staff, onBook, onEdit, onCancel, onStart, onCheckout, onMenu }) {
   return (
     <div
       className="relative h-full min-h-0 overflow-hidden border-l border-[var(--theme-border)] bg-[var(--theme-surface)]"
@@ -220,10 +225,17 @@ function ScheduleColumn({ column, view, date, hour, items, nowTop, clients, serv
         if (booking) {
           const item = items.find((row) => row.id === booking.getAttribute("data-appointment"));
           if (!item) return;
-          onMenu(event, [
-            { label: "Edit appointment", onSelect: () => onEdit(item) },
-            { label: "Cancel booking", onSelect: () => onCancel(item) },
-          ]);
+          const actions = [{ label: "Edit appointment", onSelect: () => onEdit(item) }];
+          if (item.status === "booked") {
+            actions.push({ label: "Start service", onSelect: () => onStart?.(item) });
+          }
+          if (item.status === "booked" || item.status === "in_progress") {
+            actions.push({ label: "Checkout at till", onSelect: () => onCheckout?.(item) });
+          }
+          if (item.status !== "cancelled" && item.status !== "completed") {
+            actions.push({ label: "Cancel booking", onSelect: () => onCancel(item) });
+          }
+          onMenu(event, actions);
           return;
         }
         const draft = slotFromClick(event, column, view, date, hour);

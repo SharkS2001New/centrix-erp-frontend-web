@@ -1,11 +1,9 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { InventoryTransfersScreen } from "@/components/tab-screens/inventory-transfers";
+import { createTabHostedPage } from "@/components/layout/tab-hosted-page";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <InventoryTransfersScreen />;
-}
+export default createTabHostedPage(
+  () => import("@/components/tab-screens/inventory-transfers"),
+  "InventoryTransfersScreen",
+);

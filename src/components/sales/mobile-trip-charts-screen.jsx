@@ -10,6 +10,7 @@ import {
   FilterToolbar,
   PrimaryButton,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
@@ -32,6 +33,9 @@ function formatDisplayDate(dateStr) {
   return d.toLocaleDateString("en-KE", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
 }
 
+const FILTER_APPLY_BTN_CLASS =
+  "inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9] disabled:opacity-50";
+
 export default function MobileTripChartsScreen() {
   const { capabilities, organization, generalSettings, user } = useAuth();
   const allowed = shouldShowMobileTripCharts(capabilities);
@@ -44,6 +48,8 @@ export default function MobileTripChartsScreen() {
 
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [search, setSearch] = useState("");
   const [sheets, setSheets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +64,8 @@ export default function MobileTripChartsScreen() {
     setError(null);
     try {
       const res = await apiRequest("/sales/mobile-loading-sheets", {
-        searchParams: { from_date: fromDate, to_date: toDate },
+        searchParams: { from_date: appliedFrom, to_date: appliedTo },
+        loading: false,
       });
       setSheets(res.data ?? []);
     } catch (e) {
@@ -67,12 +74,17 @@ export default function MobileTripChartsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [appliedFrom, appliedTo]);
 
   useEffect(() => {
     if (!allowed) return;
     void loadSheets();
   }, [allowed, loadSheets]);
+
+  function applyFilters() {
+    setAppliedFrom(fromDate);
+    setAppliedTo(toDate);
+  }
 
   const filteredSheets = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -218,6 +230,22 @@ export default function MobileTripChartsScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={applyFilters}
+          className={FILTER_APPLY_BTN_CLASS}
+        >
+          Filter
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void loadSheets()}
+          className={SECONDARY_BTN_CLASS}
+        >
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
         <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search route or date…" />
       </FilterToolbar>
 

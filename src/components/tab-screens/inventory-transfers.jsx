@@ -117,6 +117,8 @@ export function InventoryTransfersScreen() {
   const initialRange = defaultDateRange(30);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(initialRange.from);
+  const [appliedTo, setAppliedTo] = useState(initialRange.to);
   const [reasonRow, setReasonRow] = useState(null);
 
   const load = useCallback(async () => {
@@ -125,12 +127,13 @@ export function InventoryTransfersScreen() {
     try {
       const res = await apiRequest("/reports/stock-transfers", {
         searchParams: {
-          from_date: fromDate,
-          to_date: toDate,
+          from_date: appliedFrom,
+          to_date: appliedTo,
           per_page: pageSize,
           page,
           ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
         },
+        loading: false,
       });
       const parsed = parsePaginator(res);
       const items = parsed.items;
@@ -161,7 +164,7 @@ export function InventoryTransfersScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [fromDate, toDate, page, pageSize, appliedSearch, user?.organization_id]);
+  }, [appliedFrom, appliedTo, page, pageSize, appliedSearch, user?.organization_id]);
 
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
   const listRefresh = useListRefreshUi({
@@ -175,7 +178,7 @@ export function InventoryTransfersScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, pageSize, appliedSearch]);
+  }, [appliedFrom, appliedTo, pageSize, appliedSearch]);
 
   function applySearch() {
     setPage(1);
@@ -204,8 +207,8 @@ export function InventoryTransfersScreen() {
             totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
-              from_date: fromDate,
-              to_date: toDate,
+              from_date: appliedFrom,
+              to_date: appliedTo,
               ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
             })}
             disabled={tableLoading}
@@ -241,6 +244,18 @@ export function InventoryTransfersScreen() {
         <Field label="To">
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={listLoading}
+          onClick={() => {
+            setPage(1);
+            setAppliedFrom(fromDate);
+            setAppliedTo(toDate);
+          }}
+        >
+          Filter
+        </button>
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}

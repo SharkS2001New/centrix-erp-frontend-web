@@ -14,16 +14,17 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
 ]);
 
 /**
- * Intentional per-report date overrides (days offset from today for defaultReportDateRange).
- * Reports not listed here use the org setting `reports_default_date_range_days`.
- * Use 0 for today only; use 6 for last 7 inclusive days.
+ * Rare per-report overrides as **offset days** for `defaultReportDateRange`
+ * (0 = today only, 6 = last 7 inclusive days).
+ *
+ * Almost every report should follow org/platform
+ * `sales.reports_default_date_range_days` (daily vs monthly, etc.).
+ * Only list keys here when the product requires a fixed analytical window —
+ * not for speed (use Filter/Apply + page-size gates instead).
  */
 export const REPORT_DEFAULT_DATE_RANGE_DAYS = {
+  // Aging-style views: a short rolling window is part of the report meaning.
   "ar-aging": 6,
-  "top-debtors": 6,
-  "accounts-receivable": 6,
-  "profit-loss": 0,
-  "profit-loss-by-product": 0,
 };
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */

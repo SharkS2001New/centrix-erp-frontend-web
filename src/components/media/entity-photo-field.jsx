@@ -36,7 +36,9 @@ export function EntityPhotoField({
                 if (file) onFileSelect(file);
               }}
             />
-            <p className="text-xs text-slate-500">JPEG, PNG or WebP, up to 5 MB.</p>
+            <p className="text-xs text-slate-500">
+              JPEG, PNG or WebP, up to 5 MB — compressed automatically before upload.
+            </p>
             {previewUrl && onRemove ? (
               <button
                 type="button"

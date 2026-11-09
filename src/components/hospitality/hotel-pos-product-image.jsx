@@ -2,49 +2,93 @@
 
 import { memo, useEffect, useState } from "react";
 import {
+  hotelPosExternalImageUrl,
+  hotelPosImageVersionFromUrl,
   peekHotelPosCachedImageUrl,
   resolveHotelPosCachedImageUrl,
 } from "@/lib/hotel-pos-image-cache";
 
 /**
- * Prefers session/IndexedDB cached photo; fetches once and stores in IndexedDB.
+ * Online: prefer catalogue public R2/CDN URL (browser cache).
+ * Offline / no public URL: session memory → IndexedDB → authenticated /image/file.
  */
 export const HotelPosProductImage = memo(function HotelPosProductImage({
   productCode,
+  imageUrl,
+  imageVersion = null,
   offlineMode = false,
   alt = "Product",
   className = "h-full w-full object-cover",
   placeholderClassName = "flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400",
 }) {
-  const [src, setSrc] = useState(() => peekHotelPosCachedImageUrl(productCode));
+  const version =
+    imageVersion || hotelPosImageVersionFromUrl(imageUrl) || null;
+  const [src, setSrc] = useState(() => peekHotelPosCachedImageUrl(productCode, version));
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const immediate = peekHotelPosCachedImageUrl(productCode);
+    setFailed(false);
+
+    const external = hotelPosExternalImageUrl(imageUrl);
+    const immediate = peekHotelPosCachedImageUrl(productCode, version);
     if (immediate) {
       setSrc(immediate);
       return undefined;
     }
-    setSrc(null);
-    if (!productCode) return undefined;
+    if (external && !offlineMode) {
+      // Online: public R2/CDN URL is enough (browser HTTP cache). Do not hammer
+      // authenticated /image/file → IndexedDB on every tile — that slowed module switches.
+      setSrc(external);
+      return undefined;
+    }
 
-    void resolveHotelPosCachedImageUrl(productCode).then((url) => {
-      if (!cancelled && url) setSrc(url);
+    setSrc(null);
+    if (!productCode) {
+      setFailed(true);
+      return undefined;
+    }
+
+    void resolveHotelPosCachedImageUrl(productCode, {
+      fallbackUrl: imageUrl,
+      imageVersion: version,
+    }).then((url) => {
+      if (cancelled) return;
+      if (url) {
+        setSrc(url);
+        return;
+      }
+      if (external) {
+        setSrc(external);
+        return;
+      }
+      setFailed(true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [productCode]);
+  }, [imageUrl, imageVersion, offlineMode, productCode, version]);
+
+  const handleImageError = () => {
+    const external = hotelPosExternalImageUrl(imageUrl);
+    // Cached blob failed — fall back to the catalogue remote URL once.
+    if (src && external && src !== external) {
+      setSrc(external);
+      return;
+    }
+    setSrc(null);
+    setFailed(true);
+  };
 
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={alt} className={className} />
+      <img src={src} alt={alt} className={className} onError={handleImageError} />
     );
   }
 
-  if (offlineMode) {
+  if (offlineMode || failed) {
     return <span className={placeholderClassName}>No photo</span>;
   }
 

@@ -13,6 +13,7 @@ import { DeleteProductDialog } from "@/components/products/delete-product-dialog
 import { ProductImportExport } from "@/components/products/product-import-export";
 import {
   KraProductUploadToolbar,
+  normalizeKraFailedProducts,
   submitKraProductRegistration,
 } from "@/components/products/kra-product-upload-bar";
 import { useQueuedTask } from "@/lib/use-queued-task";
@@ -345,6 +346,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const [kraUploadBusy, setKraUploadBusy] = useState(false);
   const [kraUploadMessage, setKraUploadMessage] = useState(null);
   const [kraUploadError, setKraUploadError] = useState(null);
+  const [kraFailedProducts, setKraFailedProducts] = useState([]);
   const { runQueuedTask: runKraTask, overlayNode: kraOverlay } = useQueuedTask(
     "Please wait while products are registered on the KRA device…",
   );
@@ -634,7 +636,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
           fields: "lean",
         },
       });
-      const prodRes = await apiRequest("/products", { searchParams });
+      const prodRes = await apiRequest("/products", { searchParams, loading: false });
       if (requestId !== loadSeqRef.current) return;
       const parsed = parsePaginator(prodRes);
       // Product API already overlays live branch stock with reservations deducted
@@ -698,13 +700,14 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
 
   useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    void loadProducts();
-  }, [loadProducts]);
+  const productsDepsKey = `${filterKey}|${queryPage}|${pageSize}|${sort}|${sortDir}`;
+  useTabAwareDataLoad(loadProducts, {
+    depsKey: productsDepsKey,
+    hasData: hasLoadedOnce || products.length > 0,
+    softEvictMs: 20_000,
+  });
 
-  useEffect(() => {
-    void loadCatalogStats();
-  }, [loadCatalogStats]);
+  useTabAwareDataLoad(loadCatalogStats, { softEvictMs: 30_000 });
 
   function openDeleteDialog(product) {
     setDeletingProduct(product);
@@ -845,6 +848,10 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const pageSlice = enriched;
   const grouped = useMemo(() => groupProducts(pageSlice), [pageSlice]);
   const showCategoryHeaders = categoryFilter === "all";
+  const kraFailedCodeSet = useMemo(
+    () => new Set(kraFailedProducts.map((row) => String(row.product_code || "").trim()).filter(Boolean)),
+    [kraFailedProducts],
+  );
   const pageRowIds = useMemo(() => pageSlice.map((p) => p.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -994,6 +1001,24 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     }
   }
 
+  function applyKraUploadResult(res, { fallbackCount = 0 } = {}) {
+    const failed = normalizeKraFailedProducts(
+      res?.failed_products ?? res?.skipped_products ?? res?.task?.result?.failed_products,
+    ).filter((row) => (row.reason ?? "") !== "already_registered");
+    setKraFailedProducts(failed);
+    setKraUploadMessage(
+      res?.message ??
+        `Uploaded ${res?.registered_count ?? fallbackCount} item(s) to KRA device.`,
+    );
+    if (failed.length > 0) {
+      setKraUploadError(
+        failed.length === 1
+          ? "1 product still needs a manual KRA upload (auto-retry finished)."
+          : `${failed.length} products still need a manual KRA upload (auto-retry finished).`,
+      );
+    }
+  }
+
   async function handleKraUploadSelected() {
     if (selected.size === 0) {
       setKraUploadError("Select at least one product.");
@@ -1002,16 +1027,20 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     setKraUploadBusy(true);
     setKraUploadMessage(null);
     setKraUploadError(null);
+    setKraFailedProducts([]);
     try {
       const res = await runKraTask(
         () => submitKraProductRegistration({ productCodes: [...selected] }),
         { message: "Please wait while selected products are registered on the KRA device…" },
       );
-      setKraUploadMessage(
-        res.message ??
-          `Uploaded ${res.registered_count ?? selected.size} item(s) to KRA device.`,
-      );
+      applyKraUploadResult(res, { fallbackCount: selected.size });
     } catch (e) {
+      const failed = normalizeKraFailedProducts(
+        e instanceof ApiError
+          ? (e.body?.result?.failed_products ?? e.body?.result?.skipped_products)
+          : [],
+      );
+      setKraFailedProducts(failed);
       setKraUploadError(e instanceof ApiError ? e.message : "KRA upload failed");
     } finally {
       setKraUploadBusy(false);
@@ -1022,16 +1051,20 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     setKraUploadBusy(true);
     setKraUploadMessage(null);
     setKraUploadError(null);
+    setKraFailedProducts([]);
     try {
       const res = await runKraTask(
         () => submitKraProductRegistration({ all: true }),
         { message: "Please wait while the catalogue is registered on the KRA device…" },
       );
-      setKraUploadMessage(
-        res.message ??
-          `Uploaded ${res.registered_count ?? 0} item(s) to KRA device.`,
-      );
+      applyKraUploadResult(res);
     } catch (e) {
+      const failed = normalizeKraFailedProducts(
+        e instanceof ApiError
+          ? (e.body?.result?.failed_products ?? e.body?.result?.skipped_products)
+          : [],
+      );
+      setKraFailedProducts(failed);
       setKraUploadError(e instanceof ApiError ? e.message : "KRA upload failed");
     } finally {
       setKraUploadBusy(false);
@@ -1088,7 +1121,9 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
             busy={kraUploadBusy}
             message={kraUploadMessage}
             error={kraUploadError}
+            failedProducts={kraFailedProducts}
             onUploadAll={handleKraUploadAll}
+            onClearFailed={() => setKraFailedProducts([])}
           />
         </div>
       ) : null}
@@ -1290,6 +1325,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
                       onPriceSaved={deletedMode ? undefined : reloadAll}
                       deletedMode={deletedMode}
                       hotelCatalogue={hotelCatalogue}
+                      kraFailedCodes={kraFailedCodeSet}
                     />
                   ))
                 )}
@@ -1367,6 +1403,7 @@ function CategoryGroup({
   onPriceSaved,
   deletedMode = false,
   hotelCatalogue = false,
+  kraFailedCodes = null,
 }) {
   const categoryKey = `category:${categoryName}`;
   const categoryCollapsed = isCollapsed(categoryKey);
@@ -1408,6 +1445,7 @@ function CategoryGroup({
               onPriceSaved={onPriceSaved}
               deletedMode={deletedMode}
               hotelCatalogue={hotelCatalogue}
+              kraUploadFailed={Boolean(kraFailedCodes?.has(String(p.product_code)))}
             />
           )),
         )}
@@ -1428,6 +1466,7 @@ function ProductRow({
   onPriceSaved,
   deletedMode = false,
   hotelCatalogue = false,
+  kraUploadFailed = false,
 }) {
   return (
     <tr className={`${TABLE_BODY_ROW_CLASS} bg-[var(--theme-surface)]`}>
@@ -1491,6 +1530,7 @@ function ProductRow({
               col.id,
               deletedMode ? undefined : onPriceSaved,
               hotelCatalogue,
+              kraUploadFailed,
             )
           )}
         </td>
@@ -1499,15 +1539,25 @@ function ProductRow({
   );
 }
 
-function renderProductCell(product, columnId, onPriceSaved, hotelCatalogue = false) {
+function renderProductCell(product, columnId, onPriceSaved, hotelCatalogue = false, kraUploadFailed = false) {
   switch (columnId) {
     case "product":
       return (
-        <ProductNameCell
-          product={product}
-          showPhoto={hotelCatalogue}
-          deleted={Boolean(product.deleted_at)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <ProductNameCell
+            product={product}
+            showPhoto={hotelCatalogue}
+            deleted={Boolean(product.deleted_at)}
+          />
+          {kraUploadFailed ? (
+            <span
+              className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900"
+              title="KRA auto-retry finished — select this product and upload manually"
+            >
+              KRA failed
+            </span>
+          ) : null}
+        </div>
       );
     case "unit_price":
       return (

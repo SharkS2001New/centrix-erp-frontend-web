@@ -383,11 +383,11 @@ function AdvancedDataImportPlatformFields({ salesPlatform, onPatch, industry = "
   );
 }
 
-export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
+export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail", profileDefaults = null) {
   const mobileProfiles = new Set(["wholesale_retail", "distribution"]);
   const driverProfiles = new Set(["distribution", "wholesale_retail"]);
 
-  return {
+  const defaults = {
     show_checkout_on_create_order: defaultBackofficeCheckoutOnCreate(deploymentProfile),
     show_pos_checkout_on_create: true,
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
@@ -463,6 +463,9 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     convert_to_unpaid_statuses: [],
     customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
+  return profileDefaults
+    ? { ...defaults, ...salesPlatformFromApi(profileDefaults) }
+    : defaults;
 }
 
 export function salesPlatformFromApi(apiPayload) {
@@ -647,12 +650,13 @@ export function payrollPlatformToApi(state = {}) {
   };
 }
 
-function OrganizationPayrollPlatformSettings({
+export function OrganizationPayrollPlatformSettings({
   payrollPlatform,
   onChange,
   enabledModules = {},
+  allowInactiveApplications = false,
 }) {
-  const hrEnabled = Boolean(enabledModules.hr_payroll);
+  const hrEnabled = allowInactiveApplications || Boolean(enabledModules.hr_payroll);
   const state = payrollPlatform ?? defaultPayrollPlatformState();
 
   function patch(partial) {
@@ -662,7 +666,7 @@ function OrganizationPayrollPlatformSettings({
   return (
     <PlatformFormSection
       title="Payroll"
-      description="Platform-only Kenya payroll rules for this organization. Tenant HR settings cannot override these."
+      description="Platform-only Kenya payroll rules. Tenant HR settings cannot override these."
     >
       {!hrEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -716,8 +720,9 @@ export function OrganizationPlatformSalesSettings({
   onChange,
   enabledModules = {},
   deploymentProfile = "wholesale_retail",
+  allowInactiveApplications = false,
 }) {
-  const salesEnabled = Boolean(enabledModules.sales);
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const description =
     "Platform-only checkout mode for backoffice, mobile application access, and payment integrations.";
@@ -917,10 +922,11 @@ export function OrganizationOrdersListSettings({
   onChange,
   enabledModules = {},
   industry = "commerce",
+  allowInactiveApplications = false,
 }) {
   const isHospitality = industry === "hospitality";
-  const salesEnabled = Boolean(enabledModules.sales);
-  const hospitalityEnabled = Boolean(
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
+  const hospitalityEnabled = allowInactiveApplications || Boolean(
     enabledModules.hospitality ||
       enabledModules["hospitality.backend"] ||
       enabledModules["hospitality.bar_pos"],
@@ -966,9 +972,10 @@ export function OrganizationOrderWorkflowSettings({
   salesPlatform,
   onChange,
   enabledModules = {},
+  allowInactiveApplications = false,
 }) {
   const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const salesEnabled = Boolean(enabledModules.sales);
+  const salesEnabled = allowInactiveApplications || Boolean(enabledModules.sales);
   const distributionEnabled = Boolean(enabledModules.distribution);
   const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
@@ -1711,7 +1718,7 @@ function OrganizationHotelServicesPanel({
       {mode === "manage" && organizationId ? (
         <PlatformFormSection
           title="Hotel POS demo data"
-          description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated. Remove deletes the hotel/bar menu, demo tables, and all Hotel POS orders so you can start with real data. Outlets, rooms, and reservations are kept."
+          description="Seed ~38 Hotel & Bar menu items with photos (kitchen food, hotel drinks, bar alcohol & softs), floor tables, and outlets for POS testing. Photos are stored on the organisation media disk (local or R2). Safe to re-run — existing HTL-* codes are updated. Remove deletes the hotel/bar menu, demo tables, and all Hotel POS orders so you can start with real data. Outlets, rooms, and reservations are kept."
         >
           <div className="flex flex-wrap gap-3">
             <button
@@ -2062,8 +2069,10 @@ export function OrganizationModuleToggles({
       title="Applications"
       description={
         isHotelProfile
-          ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
-          : "Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
+          ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus optional Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
+          : deploymentProfile === "spa_kinyozi"
+            ? "SPA & Kinyozi tenants get the salon workspace and Administration. Accounting and HR are not part of this setup."
+            : "Choose which applications appear on the login workspace screen for this organization. Applications follow the organisation’s industry and setup type. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
       }
     >
       <div className="space-y-4">

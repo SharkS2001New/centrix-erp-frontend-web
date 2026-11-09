@@ -28,7 +28,7 @@ import {
   useLpoListPermissions,
 } from "@/components/lpo/lpo-list-actions";
 import { LpoApprovalStripRow } from "@/components/lpo/lpo-workflow";
-import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { prefetchLpoPrintSummary, runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge, LPO_STATUS } from "@/components/lpo/lpo-shared";
@@ -199,6 +199,10 @@ export function LpoScreen() {
     router.push(`/lpo/${row.lpo_no}`);
   }
 
+  function warmLpoPrint(row) {
+    if (row?.lpo_no) void prefetchLpoPrintSummary(row.lpo_no);
+  }
+
   function openLpoContextMenu(event, row) {
     event.preventDefault();
     setContextMenu({
@@ -206,6 +210,7 @@ export function LpoScreen() {
       x: event.clientX,
       y: event.clientY,
     });
+    warmLpoPrint(row);
   }
 
   function openActionsMenuFromButton(event, row) {
@@ -217,6 +222,7 @@ export function LpoScreen() {
       x: Math.max(8, rect.right - 240),
       y: rect.bottom + 4,
     });
+    warmLpoPrint(row);
   }
 
   async function printLpo(row, variant = "lpo") {
@@ -228,6 +234,9 @@ export function LpoScreen() {
         user,
         capabilities,
         organization,
+        moduleSettings: capabilities?.module_settings,
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
       });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Print failed");
@@ -336,7 +345,6 @@ export function LpoScreen() {
 
   return (
     <CatalogPageShell
-      navigationReady={!tableLoading}
       title="Purchase orders (LPO)"
       subtitle="Procure from suppliers — links to supplier accounts payable and stock receipt"
       action={

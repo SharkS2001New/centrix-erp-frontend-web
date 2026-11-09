@@ -1,40 +1,61 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { ApiError, apiRequest } from "@/lib/api";
 import { drivingGet, drivingSend } from "@/lib/driving/api";
+import {
+  fetchDrivingCoursesCached,
+  fetchDrivingInstructorsCached,
+  fetchDrivingVehiclesCached,
+  invalidateDrivingReference,
+} from "@/lib/driving/reference-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AppNavLink } from "@/components/layout/app-nav-link";
-import { FilterSelect } from "@/components/catalog/catalog-shared";
+import { FilterSelect, PaginationBar } from "@/components/catalog/catalog-shared";
 import { RecordFormActions, RecordFormDialog, useRecordExit } from "@/components/record-form-page";
 import { ServiceReceiptDialog } from "@/components/service-receipt-dialog";
 import { buildDrivingFeeReceipt } from "@/lib/service-receipt";
 import { Card, DataTable, DayBoard, DrivingSelect, Empty, Field, FormCard, FormSection, MarkPad, PageTitle, PersonName, ScreenHeader, SearchField, Sparkline, Stat, StatusBadge, Toolbar, inputClass, money, primaryButtonClass } from "@/components/driving/ui";
 
+function useDebouncedValue(value, delay = 280) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 function useLoad(loader, key) {
   const loaderRef = useRef(loader);
+  const requestIdRef = useRef(0);
   useEffect(() => {
-  loaderRef.current = loader;
+    loaderRef.current = loader;
   });
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    setError("");
-    loaderRef.current()
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load this page.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [key, tick]);
+  const load = useMemo(
+    () => async () => {
+      const requestId = ++requestIdRef.current;
+      setError("");
+      try {
+        const res = await loaderRef.current();
+        if (requestId !== requestIdRef.current) return;
+        setData(res);
+      } catch (err) {
+        if (requestId !== requestIdRef.current) return;
+        setError(err instanceof ApiError ? err.message : "Could not load this page.");
+      }
+    },
+    // key identity changes when filters change; loader lives in ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key, tick],
+  );
+  useTabAwareDataLoad(load, { depsKey: `${key}|${tick}`, hasData: data != null });
   return { data, error, reload: () => setTick((n) => n + 1) };
 }
 
@@ -71,6 +92,7 @@ export function DrivingDashboard() {
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!dash) return <p className="text-sm theme-subtext">Loading the school…</p>;
   const schedule = dash.upcoming_lessons || [];
+  const attention = dash.attention || {};
   return (
     <div className="space-y-4">
       <ScreenHeader title={`Good ${partOfDay()}, ${greetingName(user)}`} subtitle="Here's what is happening at the school today. Collected money is receipts, not profit." />
@@ -81,6 +103,25 @@ export function DrivingDashboard() {
         <Stat label="Collected today" value={money(dash.revenue_collected_today)} hint="Receipts minus refunds" />
         <Stat label="Pending payments" value={money(dash.outstanding_balances)} />
       </div>
+      {(attention.lessons_pending_today || attention.open_invoices || attention.vehicles_attention) ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card>
+            <p className="theme-subtext text-xs">Still on today’s board</p>
+            <p className="theme-heading mt-1 text-lg font-semibold tabular-nums">{attention.lessons_pending_today || 0}</p>
+            <AppNavLink href="/driving-school/schedule" className="mt-2 inline-block text-sm font-medium text-[var(--theme-primary)]">Open schedule</AppNavLink>
+          </Card>
+          <Card>
+            <p className="theme-subtext text-xs">Open fee invoices</p>
+            <p className="theme-heading mt-1 text-lg font-semibold tabular-nums">{attention.open_invoices || 0}</p>
+            <AppNavLink href="/driving-school/payments" className="mt-2 inline-block text-sm font-medium text-[var(--theme-primary)]">Collect fees</AppNavLink>
+          </Card>
+          <Card>
+            <p className="theme-subtext text-xs">Vehicles needing attention</p>
+            <p className="theme-heading mt-1 text-lg font-semibold tabular-nums">{attention.vehicles_attention || 0}</p>
+            <AppNavLink href="/driving-school/vehicles" className="mt-2 inline-block text-sm font-medium text-[var(--theme-primary)]">Fleet</AppNavLink>
+          </Card>
+        </div>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-5">
         <Card className="xl:col-span-3">
           <div className="flex items-center justify-between gap-3">
@@ -170,8 +211,8 @@ export function StudentsScreen() {
 function StudentFormScreen() {
   const { exitTo } = useRecordExit("Add student");
   const [form, setForm] = useState(EMPTY_STUDENT);
-  const courseLoad = useLoad(() => drivingGet("/courses"), "student-form-courses");
-  const instructorLoad = useLoad(() => drivingGet("/instructors"), "student-form-instructors");
+  const courseLoad = useLoad(() => fetchDrivingCoursesCached().then((rows) => ({ data: rows })), "student-form-courses");
+  const instructorLoad = useLoad(() => fetchDrivingInstructorsCached().then((rows) => ({ data: rows })), "student-form-instructors");
   const courses = rowsOf(courseLoad.data).filter((course) => course.is_active !== false);
   const instructors = rowsOf(instructorLoad.data);
   const packages = courses.find((course) => String(course.id) === String(form.course_id))?.packages || [];
@@ -201,6 +242,7 @@ function StudentFormScreen() {
     try {
       await drivingSend("/students", "POST", body);
       notifySuccess("Student registered and enrolled.");
+      invalidateDrivingReference();
       exitTo("/driving-school/students");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not register the student.");
@@ -249,17 +291,30 @@ function StudentFormScreen() {
 
 function StudentListScreen() {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [courseFilter, setCourseFilter] = useState("");
-  const { data, error } = useLoad(() => drivingGet("/students"), "students");
-  const courseLoad = useLoad(() => drivingGet("/courses"), "student-courses");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { data, error } = useLoad(
+    () =>
+      drivingGet("/students", {
+        q: debouncedQuery.trim() || undefined,
+        course_id: courseFilter || undefined,
+        per_page: pageSize,
+        page,
+      }),
+    `students:${debouncedQuery}|${courseFilter}|${page}|${pageSize}`,
+  );
+  const courseLoad = useLoad(() => fetchDrivingCoursesCached().then((rows) => ({ data: rows })), "student-courses");
   const courses = rowsOf(courseLoad.data).filter((course) => course.is_active !== false);
-  const students = rowsOf(data).filter((student) => {
-    const enrolment = activeEnrolment(student);
-    const haystack = `${student.full_name} ${student.phone} ${student.student_number}`.toLowerCase();
-    if (query && !haystack.includes(query.trim().toLowerCase())) return false;
-    if (courseFilter && String(enrolment?.course?.id) !== courseFilter) return false;
-    return true;
-  });
+  const students = rowsOf(data);
+  const total = Number(data?.total ?? students.length);
+  const lastPage = Math.max(1, Number(data?.last_page ?? 1));
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, courseFilter, pageSize]);
+
   return (
     <div>
       <ScreenHeader title="Students" subtitle="The register shows who is enrolled. Add a student when you are ready to set up their course and package.">
@@ -279,11 +334,30 @@ function StudentListScreen() {
             { key: "phone", label: "Phone", render: (student) => student.phone },
             { key: "course", label: "Course", render: (student) => activeEnrolment(student)?.course?.name || "—" },
             { key: "package", label: "Package", render: (student) => activeEnrolment(student)?.package?.name || "—" },
+            {
+              key: "progress",
+              label: "Progress",
+              render: (student) => {
+                const enrolment = activeEnrolment(student);
+                if (!enrolment) return "—";
+                const done = Number(enrolment.lessons_completed || 0);
+                const need = Number(enrolment.lessons_required || 0);
+                return need > 0 ? `${done}/${need}` : String(done);
+              },
+            },
             { key: "status", label: "Status", render: (student) => <StatusBadge value={student.status} /> },
             { key: "outstanding", label: "Outstanding", render: (student) => money(student.outstanding) },
           ]}
         />
       </Card>
+      <PaginationBar
+        page={page}
+        totalPages={lastPage}
+        total={total}
+        pageSize={pageSize}
+        onChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 }
@@ -307,6 +381,7 @@ function CourseFormScreen() {
     try {
       await drivingSend("/courses", "POST", { ...form, price: Number(form.price) || 0 });
       notifySuccess("Course saved with a Standard package.");
+      invalidateDrivingReference("courses");
       exitTo("/driving-school/courses");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save the course.");
@@ -332,7 +407,7 @@ function CourseFormScreen() {
 
 function PackageFormScreen() {
   const { exitTo } = useRecordExit("Add package");
-  const { data } = useLoad(() => drivingGet("/courses"), "package-courses");
+  const { data } = useLoad(() => fetchDrivingCoursesCached().then((rows) => ({ data: rows })), "package-courses");
   const courses = rowsOf(data);
   const [pkg, setPkg] = useState({ course_id: "", name: "", price: "", registration_fee: "", practical_lessons: 10, theory_lessons: 8 });
   async function savePackage(event) {
@@ -350,6 +425,7 @@ function PackageFormScreen() {
         theory_lessons: Number(pkg.theory_lessons) || 0,
       });
       notifySuccess("Package saved.");
+      invalidateDrivingReference("courses");
       exitTo("/driving-school/courses");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save the package.");
@@ -376,7 +452,7 @@ function PackageFormScreen() {
 }
 
 function CourseListScreen() {
-  const { data, error } = useLoad(() => drivingGet("/courses"), "courses");
+  const { data, error } = useLoad(() => fetchDrivingCoursesCached().then((rows) => ({ data: rows })), "courses");
   const courses = rowsOf(data);
   return (
     <div>
@@ -413,14 +489,24 @@ function shiftDate(value, days) {
 function LessonFormScreen() {
   const { exitTo } = useRecordExit("Book lesson");
   const [studentQuery, setStudentQuery] = useState("");
+  const debouncedStudentQuery = useDebouncedValue(studentQuery);
   const [form, setForm] = useState({ student_id: "", instructor_id: "", vehicle_id: "", lesson_type: "practical", starts_at: "", duration_minutes: 60, location: "" });
-  const studentLoad = useLoad(() => drivingGet("/students", { per_page: 100 }), "lesson-form-students");
-  const instructorLoad = useLoad(() => drivingGet("/instructors"), "lesson-form-instructors");
-  const vehicleLoad = useLoad(() => drivingGet("/vehicles"), "lesson-form-vehicles");
+  const studentLoad = useLoad(
+    () =>
+      drivingGet("/students", {
+        status: "active",
+        lean: 1,
+        per_page: 50,
+        q: debouncedStudentQuery.trim() || undefined,
+      }),
+    `lesson-form-students:${debouncedStudentQuery}`,
+  );
+  const instructorLoad = useLoad(() => fetchDrivingInstructorsCached().then((rows) => ({ data: rows })), "lesson-form-instructors");
+  const vehicleLoad = useLoad(() => fetchDrivingVehiclesCached().then((rows) => ({ data: rows })), "lesson-form-vehicles");
   const students = rowsOf(studentLoad.data);
-  const instructors = rowsOf(instructorLoad.data);
-  const vehicles = rowsOf(vehicleLoad.data);
-  const visibleStudents = students.filter((student) => `${student.full_name} ${student.phone || ""} ${student.student_number || ""}`.toLowerCase().includes(studentQuery.trim().toLowerCase()));
+  const instructors = rowsOf(instructorLoad.data).filter((row) => row.status !== "inactive");
+  const vehicles = rowsOf(vehicleLoad.data).filter((row) => row.status === "available" || !row.status);
+  const visibleStudents = students;
   async function save(event) {
     event.preventDefault();
     if (!form.student_id || !form.instructor_id) {
@@ -495,13 +581,33 @@ export function ScheduleScreen() {
 
 function ScheduleListScreen() {
   const [date, setDate] = useState(todayDate);
-  const { data, error } = useLoad(() => drivingGet("/lessons", { from: date, to: date }), `lessons:${date}`);
-  const instructorLoad = useLoad(() => drivingGet("/instructors"), "schedule-instructors");
+  const [busyLessonId, setBusyLessonId] = useState(null);
+  const { data, error, reload } = useLoad(() => drivingGet("/lessons", { from: date, to: date }), `lessons:${date}`);
+  const instructorLoad = useLoad(() => fetchDrivingInstructorsCached().then((rows) => ({ data: rows })), "schedule-instructors");
   const instructors = rowsOf(instructorLoad.data);
   const lessons = rowsOf(data);
+
+  async function updateLessonStatus(lesson, status) {
+    setBusyLessonId(lesson.id);
+    try {
+      await drivingSend(`/lessons/${lesson.id}`, "PUT", {
+        status,
+        attendance: status === "completed" ? "present" : status === "no_show" ? "absent" : undefined,
+      });
+      notifySuccess(
+        status === "completed" ? "Lesson marked complete." : status === "no_show" ? "Marked no-show." : "Lesson cancelled.",
+      );
+      reload();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not update the lesson.");
+    } finally {
+      setBusyLessonId(null);
+    }
+  }
+
   return (
     <div>
-      <ScreenHeader title="Appointments & schedule" subtitle="Lessons for the day, arranged by instructor. Overlapping times for the same student, instructor, or vehicle are refused.">
+      <ScreenHeader title="Appointments & schedule" subtitle="Lessons for the day, arranged by instructor. Mark Done, No-show, or Cancel on the board. Overlaps for the same student, instructor, or vehicle are refused.">
         <button type="button" className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" onClick={() => setDate((current) => shiftDate(current, -1))}>Previous</button>
         <input className={`${inputClass} w-40`} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         <button type="button" className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" onClick={() => setDate((current) => shiftDate(current, 1))}>Next</button>
@@ -509,7 +615,16 @@ function ScheduleListScreen() {
       </ScreenHeader>
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Card>
-        {lessons.length === 0 && instructors.length === 0 ? <Empty>No lessons booked for this day.</Empty> : <DayBoard lessons={lessons} instructors={instructors} />}
+        {lessons.length === 0 && instructors.length === 0 ? (
+          <Empty>No lessons booked for this day.</Empty>
+        ) : (
+          <DayBoard
+            lessons={lessons}
+            instructors={instructors}
+            busyLessonId={busyLessonId}
+            onLessonAction={(lesson, status) => void updateLessonStatus(lesson, status)}
+          />
+        )}
       </Card>
     </div>
   );
@@ -542,6 +657,8 @@ function DirectoryFormScreen({ title, path, fields, backHref }) {
     try {
       await drivingSend(path, "POST", body);
       notifySuccess("Saved.");
+      if (path.includes("instructor")) invalidateDrivingReference("instructors");
+      if (path.includes("vehicle")) invalidateDrivingReference("vehicles");
       exitTo(backHref);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save.");
@@ -651,7 +768,10 @@ export function AttendanceScreen() {
   const [verification, setVerification] = useState("none");
   const [mark, setMark] = useState("");
   const { data, error, reload } = useLoad(() => drivingGet("/attendance", { date }), `attendance:${date}`);
-  const studentLoad = useLoad(() => drivingGet("/students", { status: "active", per_page: 100 }), "attendance-students");
+  const studentLoad = useLoad(
+    () => drivingGet("/students", { status: "active", lean: 1, per_page: 100 }),
+    "attendance-students",
+  );
   const students = rowsOf(studentLoad.data);
   const logs = rowsOf(data);
   const selected = students.find((student) => String(student.id) === String(studentId)) || null;
@@ -755,7 +875,10 @@ export function AttendanceScreen() {
 
 function AssessmentFormScreen() {
   const { exitTo } = useRecordExit("Record assessment");
-  const students = useLoad(() => drivingGet("/students"), "assessment-form-students").data;
+  const students = useLoad(
+    () => drivingGet("/students", { status: "active", lean: 1, per_page: 100 }),
+    "assessment-form-students",
+  ).data;
   const [form, setForm] = useState({ student_id: "", kind: "practical", title: "School practical check", score: "", assessed_on: "" });
   async function save(event) {
     event.preventDefault();
@@ -984,10 +1107,13 @@ export function ReportsScreen() {
   const [report, setReport] = useState("revenue");
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(todayDate);
-  const spec = DRIVING_REPORTS[report];
+  const [appliedFrom, setAppliedFrom] = useState(monthStart);
+  const [appliedTo, setAppliedTo] = useState(todayDate);
+  const [appliedReport, setAppliedReport] = useState("revenue");
+  const spec = DRIVING_REPORTS[appliedReport];
   const { data, error } = useLoad(
-    () => drivingGet("/reports", { report, from, to }),
-    `${report}:${from}:${to}`,
+    () => drivingGet("/reports", { report: appliedReport, from: appliedFrom, to: appliedTo }),
+    `${appliedReport}:${appliedFrom}:${appliedTo}`,
   );
   const rows = rowsOf(data);
   const moneyKeys = spec.money || [];
@@ -998,10 +1124,31 @@ export function ReportsScreen() {
       <Toolbar>
         <input className="theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none" type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} aria-label="From" />
         <input className="theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none" type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} aria-label="To" />
+        <button
+          type="button"
+          className="theme-secondary-btn rounded-lg px-3 py-2 text-sm font-medium"
+          onClick={() => {
+            setAppliedFrom(from);
+            setAppliedTo(to);
+            setAppliedReport(report);
+          }}
+        >
+          Filter
+        </button>
       </Toolbar>
       <div className="mb-4 flex flex-wrap gap-2">
         {Object.entries(DRIVING_REPORTS).map(([key, item]) => (
-          <button key={key} type="button" className={`rounded-full px-3 py-1.5 text-sm ${report === key ? "theme-primary-btn" : "theme-secondary-btn"}`} onClick={() => setReport(key)}>{item.label}</button>
+          <button
+            key={key}
+            type="button"
+            className={`rounded-full px-3 py-1.5 text-sm ${report === key ? "theme-primary-btn" : "theme-secondary-btn"}`}
+            onClick={() => {
+              setReport(key);
+              setAppliedReport(key);
+            }}
+          >
+            {item.label}
+          </button>
         ))}
       </div>
       {moneyKeys.length > 0 ? (
