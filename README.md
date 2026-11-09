@@ -195,6 +195,6 @@ docker run --rm -p 3000:3000 centrix-erp-frontend-web
 
 Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml` (image build/push only — Helm charts are not updated by this workflow).
 
-**Branches:** develop on `master`; production tracks `main`. After **Web CI** succeeds on a `master` push, `.github/workflows/promote-to-main.yml` rebases that tip onto `main` and fast-forwards `main` only (never force-push). One-off local promote: `bash scripts/promote-to-main.sh` (from a clean `master`).
+**Branches:** develop on `master`; production tracks `main`. Every successful **Web CI** push to `master` rebases onto `main`, fast-forwards `main` (never force), then syncs `master` to the same tip. Pushes to `main` sync `master` forward so it is never left behind. Manual one-off: `bash scripts/promote-to-main.sh` or Actions → **Promote to main**.
 
-Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `write:packages` / contents push scope (GHCR login + promote to `main` when branch protection blocks `GITHUB_TOKEN`).
+Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `write:packages` / contents push scope (GHCR login + promote/sync when branch protection blocks `GITHUB_TOKEN`).
