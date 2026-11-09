@@ -394,6 +394,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_returns_card: false,
     enable_mobile_orders_payments_card: false,
     enable_mobile_orders_expenses_card: false,
+    as_mobile_show_images: true,
+    as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
     mobile_enable_driver_attendance: false,
@@ -484,6 +486,11 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
+    as_mobile_show_images: apiPayload.as_mobile_show_images !== false,
+    as_mobile_post_login_screen:
+      apiPayload.as_mobile_post_login_screen === "operations_dashboard"
+        ? "operations_dashboard"
+        : "module_home",
     mobile_enable_field_attendance: Boolean(apiPayload.mobile_enable_field_attendance),
     mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
     mobile_enable_driver_attendance: Boolean(apiPayload.mobile_enable_driver_attendance),
@@ -790,6 +797,42 @@ export function OrganizationPlatformSalesSettings({
             checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
           />
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              AS / shop mobile app (Centrix ERP AS)
+            </p>
+            <Toggle
+              label="Show product & customer images"
+              description="When off, the AS mobile app hides catalogue photos. Images are still stored on Cloudflare R2 and remain available in Centrix web."
+              checked={salesPlatform?.as_mobile_show_images !== false}
+              onChange={(v) => patch({ as_mobile_show_images: v })}
+            />
+            <OrgRegisterField label="After login, open">
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                value={
+                  salesPlatform?.as_mobile_post_login_screen === "operations_dashboard"
+                    ? "operations_dashboard"
+                    : "module_home"
+                }
+                onChange={(e) =>
+                  patch({
+                    as_mobile_post_login_screen: e.target.value,
+                  })
+                }
+              >
+                <option value="module_home">
+                  Module home (industry tiles — Products, POS, Customers…)
+                </option>
+                <option value="operations_dashboard">
+                  Operations dashboard (summary first)
+                </option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Platform-controlled landing page for the AS mobile app after a successful sign-in.
+              </p>
+            </OrgRegisterField>
+          </div>
           {mobileOrdersEnabled ? (
             <div className="ml-4 space-y-3 border-l border-slate-200 pl-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
