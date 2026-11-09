@@ -15,7 +15,10 @@ const ALLOWED_FILES = new Set([
 ]);
 
 export async function GET(_request, { params }) {
-  const name = params?.name;
+  // Next.js 16 breaking change: route-handler `params` is a Promise and
+  // must be awaited. Synchronously destructuring yields `undefined` here
+  // and the request falls through to the 404 branch for every file.
+  const { name } = await params;
   if (!name || !ALLOWED_FILES.has(name)) {
     return Response.json({ message: "File not found" }, { status: 404 });
   }
