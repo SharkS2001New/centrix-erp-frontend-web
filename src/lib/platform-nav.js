@@ -257,12 +257,18 @@ export function hasPlatformAreaPermission(capabilities, area) {
 /** Flat list for sidebar nav (preserves group labels). Visibility filters by permission at runtime. */
 export function platformNavItems() {
   return PLATFORM_LINK_GROUPS.flatMap((section) =>
-    section.links.map((link) => ({
-      ...link,
-      group: section.label,
-      superAdminOnly: true,
-      platformPermission: link.permission ?? null,
-    })),
+    section.links.map((link) => {
+      // Platform area codes (tenants, billing, …) must not be copied onto `permission`.
+      // Sidebar ERP checks (hasNavPermission) always return false for platform-shell users,
+      // which would hide every platform link after area attributes were added.
+      const { permission, ...rest } = link;
+      return {
+        ...rest,
+        group: section.label,
+        superAdminOnly: true,
+        platformPermission: permission ?? null,
+      };
+    }),
   );
 }
 

@@ -1605,6 +1605,11 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, checkPermission)) return false;
+  // Platform shell links are gated only by platformPermission / superAdminOnly above.
+  // Do not also require ERP RBAC — platform-shell hasNavPermission is always false.
+  if (item.platformPermission) {
+    return true;
+  }
   if (item.permissionAny?.length) {
     if (!item.permissionAny.some((code) => checkPermission(code))) return false;
   } else if (item.permission && !checkPermission(item.permission)) return false;
