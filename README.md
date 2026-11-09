@@ -164,12 +164,14 @@ npm start
 
 ## Testing
 
-Vitest covers RBAC helpers (`approval-permissions`, route access). CI runs `npm test` on every pull request.
+Every Web CI push/PR runs **Smoke** (lint + build + Playwright smoke) plus **Critical** (POS / offline / hotel / KRA / RBAC / checkout — fails if any Critical test is skipped) and the full Vitest suite.
 
 ```bash
-npm test              # run once (CI)
+npm run test:critical # always-on deploy gate (fails on skipped)
+npm test              # full unit suite
 npm run test:watch    # local watch mode
 npm run lint
+npm run test:e2e      # Playwright smoke (needs build + start in CI)
 ```
 
 When the API sibling checkout is available, verify frontend permission codes against the backend registry:
@@ -195,6 +197,6 @@ docker run --rm -p 3000:3000 centrix-erp-frontend-web
 
 Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml` (image build/push only — Helm charts are not updated by this workflow).
 
-**Branches:** develop on `master`; production tracks `main`. Every successful **Web CI** push to `master` rebases onto `main`, fast-forwards `main` (never force), then syncs `master` to the same tip. Pushes to `main` sync `master` forward so it is never left behind. Manual one-off: `bash scripts/promote-to-main.sh` or Actions → **Promote to main**.
+**Branches:** develop on `master`; production tracks `main`. After **Web CI** `check` (not waiting on e2e): push to `master` rebases onto `main`, FF `main`, syncs `master`; push to `main` (or when `main` is ahead) updates `master` from `main`. Branches stay rebased together. Manual: `bash scripts/promote-to-main.sh` or Actions → **Promote to main**.
 
 Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `write:packages` / contents push scope (GHCR login + promote/sync when branch protection blocks `GITHUB_TOKEN`).

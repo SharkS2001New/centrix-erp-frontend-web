@@ -1,5 +1,7 @@
-# master push → after build, rebase onto main, FF main, sync master to same tip.
-# main push  → after build, sync master forward so it is never behind main.
+# Deploy/promote gate: audit + Smoke + Critical (must-pass POS/RBAC/KRA paths).
+# master push → after gates, rebase onto main, FF main, sync master to same tip.
+# main push  → after gates, sync master forward so it is never behind main.
+# Full vitest still runs on every push; Critical additionally fails on any skip.
 name: Web CI
 
 on:
@@ -26,7 +28,10 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -37,17 +42,50 @@ jobs:
       - run: npm ci
       - name: npm audit (high)
         run: bash scripts/npm-audit-ci.sh
+
+  smoke:
+    name: Smoke tests
+    if: >-
+      github.event_name == 'pull_request' ||
+      !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
       - run: npm run lint
-      - run: npm test
-      - run: node scripts/check-permission-codes.mjs scripts/permission-registry.snapshot.json
       - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Playwright smoke
+        run: npm run test:e2e
         env:
           CI: true
           NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+
+  critical:
+    name: Critical tests
+    if: >-
+      github.event_name == 'pull_request' ||
+      !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Critical suite (fail on skipped)
+        run: npm run test:critical
+      - name: Full unit suite
+        run: npm test
+      - name: Permission registry check
+        run: npm run test:permissions
 
   # After every successful master push: rebase onto main, FF main, then sync master
   # to the same tip so master is never left behind. Never force-push main.
@@ -58,7 +96,9 @@ jobs:
       github.ref == 'refs/heads/master' &&
       !contains(github.event.head_commit.message, '[skip ci]')
     needs:
-      - build
+      - audit
+      - smoke
+      - critical
     runs-on: ubuntu-latest
     concurrency:
       group: sync-main-master
@@ -194,7 +234,9 @@ jobs:
       github.ref == 'refs/heads/main' &&
       !contains(github.event.head_commit.message, '[skip ci]')
     needs:
-      - build
+      - audit
+      - smoke
+      - critical
     runs-on: ubuntu-latest
     concurrency:
       group: sync-main-master
