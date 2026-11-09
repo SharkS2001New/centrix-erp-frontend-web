@@ -32,7 +32,6 @@ import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import {
-  isHttpImageUrl,
   isImportableImageUrl,
   resolveProductImageUrlForEditor,
 } from "@/components/products/product-image-field";
@@ -127,10 +126,10 @@ export function ProductsCodeEditScreen() {
       setImageFile(null);
       setImageRemoved(false);
       const hasImage = hotelCatalogue && Boolean(product.image_path || product.image_url);
+      // Only a public import source belongs in Image URL — never the local /image/file link.
       const currentUrl = hotelCatalogue ? resolveProductImageUrlForEditor(product) : "";
       setHadStoredImage(hasImage);
       setImageUrlDraft(currentUrl);
-      // Open on Image URL when a remote/CDN link is stored so the current URL is visible.
       setImageSource(isImportableImageUrl(currentUrl) ? "url" : "upload");
       if (hasImage) {
         setImagePreview(productPhotoFileUrl(productCode));
@@ -276,14 +275,13 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (
-      hotelCatalogue &&
-      imageSource === "url" &&
-      String(imageUrlDraft ?? "").trim() &&
-      !isHttpImageUrl(imageUrlDraft)
-    ) {
-      setFormError("Enter a public http or https image URL.");
-      return;
+    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
+      if (!isImportableImageUrl(imageUrlDraft)) {
+        setFormError(
+          "Paste a public image link (http/https). The app’s local /image/file URL cannot be used here.",
+        );
+        return;
+      }
     }
 
     setSaving(true);

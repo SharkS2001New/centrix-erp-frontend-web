@@ -26,13 +26,16 @@ export function isImportableImageUrl(value) {
   return isHttpImageUrl(value) && !isProductImageFileApiUrl(value);
 }
 
-/** Prefer the remote source path; otherwise the catalogue image_url (often /image/file). */
+/**
+ * Value for the Image URL input only — a public web/CDN link the user pasted so we
+ * can download into storage. Never the local/API /image/file serve URL.
+ */
 export function resolveProductImageUrlForEditor(product) {
   if (!product) return "";
-  const path = String(product.image_path ?? "").trim();
-  if (isHttpImageUrl(path)) return path;
-  const url = String(product.image_url ?? "").trim();
-  if (isHttpImageUrl(url)) return url;
+  for (const key of ["image_path", "image_url", "image_source_url", "remote_image_url"]) {
+    const value = String(product[key] ?? "").trim();
+    if (isImportableImageUrl(value)) return value;
+  }
   return "";
 }
 
@@ -149,9 +152,8 @@ export function ProductImageField({
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none ring-[#185FA5] focus:ring-2"
                 />
                 <p className="text-xs text-slate-500">
-                  {isProductImageFileApiUrl(imageUrl)
-                    ? "Current photo URL is shown above. Paste a new public image link to replace it, then save."
-                    : "Current image URL is shown above. Edit or paste a new direct link, then save — we download and store it for POS."}
+                  Paste a public http(s) image link (CDN, R2, or any direct photo URL). On save we
+                  download and store it for POS — do not paste the app&apos;s local /image/file URL.
                 </p>
               </>
             )}

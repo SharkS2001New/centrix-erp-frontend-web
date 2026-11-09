@@ -40,6 +40,10 @@ const RESERVE_LOW = 8;
 const RESERVE_COUNT = 20;
 const IMAGE_WARM_CONCURRENCY = 8;
 
+/** Coalesce concurrent catalog warms (module switch / prepare / screen mount). */
+let catalogWarmInflight = null;
+let catalogWarmInflightKey = null;
+
 function roundMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
@@ -89,65 +93,82 @@ export function recalculateLocalHotelCheck(check) {
 export async function warmHotelPosOfflineCatalog({
   force = false,
   outletId = null,
-  warmImages = true,
+  // Default off: public R2/CDN image_url + browser cache is enough while online.
+  // Eager /image/file → IndexedDB warm saturates the API and false-trips offline lock.
+  warmImages = false,
 } = {}) {
   const channelKey = outletId != null ? `outlet:${outletId}` : "outlet:default";
-  const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
-  const lastChannel = String((await idbGetMeta("catalog_channel_key")) ?? "");
-  const channelChanged = lastChannel !== channelKey;
-  if (!force && !channelChanged && last && Date.now() - last < CATALOG_TTL_MS) {
-    return { skipped: true, count: (await idbGetAllCatalog()).length };
+  const inflightKey = `${channelKey}|force:${force ? 1 : 0}|images:${warmImages ? 1 : 0}`;
+  if (catalogWarmInflight && catalogWarmInflightKey === inflightKey) {
+    return catalogWarmInflight;
   }
 
-  const products = [];
-  let outlet = null;
-  let menuChannel = null;
-  let offset = 0;
-  let hasMore = true;
-  let pages = 0;
-  while (hasMore && pages < 40) {
-    const res = await fetchHotelPosCatalog({
-      q: "",
-      perPage: 100,
-      popularDays: 5,
-      offset,
-      outletId: outletId || undefined,
-    });
-    const batch = Array.isArray(res?.items) ? res.items : [];
-    for (const item of batch) {
-      if (item?.product_code) products.push(item);
+  catalogWarmInflightKey = inflightKey;
+  catalogWarmInflight = (async () => {
+    const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
+    const lastChannel = String((await idbGetMeta("catalog_channel_key")) ?? "");
+    const channelChanged = lastChannel !== channelKey;
+    if (!force && !channelChanged && last && Date.now() - last < CATALOG_TTL_MS) {
+      return { skipped: true, count: (await idbGetAllCatalog()).length };
     }
-    if (res?.outlet) outlet = res.outlet;
-    if (res?.menu_channel) menuChannel = res.menu_channel;
-    hasMore = Boolean(res?.has_more);
-    offset = res?.next_offset ?? offset + batch.length;
-    pages += 1;
-    if (!batch.length) break;
-  }
 
-  await idbClearStore("catalog");
-  await idbPutCatalogProducts(products);
-  await idbSetMeta("catalog_warmed_at", Date.now());
-  await idbSetMeta("catalog_count", products.length);
-  await idbSetMeta("catalog_channel_key", channelKey);
-  await idbSetMeta(
-    "catalog_menu_channel",
-    menuChannel ?? outlet?.menu_channel ?? null,
-  );
-  await idbSetMeta("catalog_outlet_id", outlet?.id ?? outletId ?? null);
+    const products = [];
+    let outlet = null;
+    let menuChannel = null;
+    let offset = 0;
+    let hasMore = true;
+    let pages = 0;
+    while (hasMore && pages < 40) {
+      const res = await fetchHotelPosCatalog({
+        q: "",
+        perPage: 100,
+        popularDays: 5,
+        offset,
+        outletId: outletId || undefined,
+      });
+      const batch = Array.isArray(res?.items) ? res.items : [];
+      for (const item of batch) {
+        if (item?.product_code) products.push(item);
+      }
+      if (res?.outlet) outlet = res.outlet;
+      if (res?.menu_channel) menuChannel = res.menu_channel;
+      hasMore = Boolean(res?.has_more);
+      offset = res?.next_offset ?? offset + batch.length;
+      pages += 1;
+      if (!batch.length) break;
+    }
 
-  if (warmImages) {
-    void warmHotelPosOfflineImages(products).catch((err) => {
-      console.warn("Hotel POS image warm failed", err);
-    });
-  }
+    await idbClearStore("catalog");
+    await idbPutCatalogProducts(products);
+    await idbSetMeta("catalog_warmed_at", Date.now());
+    await idbSetMeta("catalog_count", products.length);
+    await idbSetMeta("catalog_channel_key", channelKey);
+    await idbSetMeta(
+      "catalog_menu_channel",
+      menuChannel ?? outlet?.menu_channel ?? null,
+    );
+    await idbSetMeta("catalog_outlet_id", outlet?.id ?? outletId ?? null);
 
-  return {
-    skipped: false,
-    count: products.length,
-    outlet,
-    menu_channel: menuChannel ?? outlet?.menu_channel ?? null,
-  };
+    if (warmImages) {
+      void warmHotelPosOfflineImages(products).catch((err) => {
+        console.warn("Hotel POS image warm failed", err);
+      });
+    }
+
+    return {
+      skipped: false,
+      count: products.length,
+      outlet,
+      menu_channel: menuChannel ?? outlet?.menu_channel ?? null,
+    };
+  })().finally(() => {
+    if (catalogWarmInflightKey === inflightKey) {
+      catalogWarmInflight = null;
+      catalogWarmInflightKey = null;
+    }
+  });
+
+  return catalogWarmInflight;
 }
 
 /**
@@ -255,7 +276,7 @@ export async function listFailedHotelOutboxChecks() {
 }
 
 export async function prepareHotelPosOfflineReady({ outletId = null } = {}) {
-  const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: true });
+  const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: false });
   const numbers = await ensureHotelPosOfflineCheckNumbers({ force: false, outletId });
   return {
     catalogCount: catalog.count ?? 0,

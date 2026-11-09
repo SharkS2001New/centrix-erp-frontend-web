@@ -44,7 +44,6 @@ import {
   searchHotelPosOfflineCatalog,
   updateLocalHotelCheckLineQty,
   warmHotelPosOfflineCatalog,
-  warmHotelPosOfflineImages,
 } from "@/lib/hotel-pos-offline";
 import { idbClearLocalCheck, idbGetAllCatalog, idbPutCatalogProducts, idbSaveLocalCheck } from "@/lib/hotel-pos-offline-db";
 import {
@@ -397,8 +396,8 @@ export function HotelBarPosScreen() {
           if (p?.product_code) m.set(String(p.product_code), p);
         }
         replaceCatalogMap(m);
+        // Memory-prime any photos already in IndexedDB; do not re-download all images.
         void primeHotelPosImageCacheFromIndexedDb([...m.values()]);
-        void warmHotelPosOfflineImages([...m.values()]).catch(() => {});
       } catch (e) {
         // ignore
       }
@@ -727,7 +726,6 @@ export function HotelBarPosScreen() {
                   try {
                     await idbPutCatalogProducts(batch);
                     upsertCatalogMapItems(batch);
-                    void warmHotelPosOfflineImages(batch).catch(() => {});
                     void primeHotelPosImageCacheFromIndexedDb(batch);
                   } catch {
                     /* ignore */
@@ -769,7 +767,6 @@ export function HotelBarPosScreen() {
             try {
               await idbPutCatalogProducts(batch);
               upsertCatalogMapItems(batch);
-              void warmHotelPosOfflineImages(batch).catch(() => {});
               void primeHotelPosImageCacheFromIndexedDb(batch);
             } catch {
               /* ignore */

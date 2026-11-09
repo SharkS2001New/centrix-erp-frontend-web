@@ -29,7 +29,7 @@ import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
-import { isHttpImageUrl, isImportableImageUrl } from "@/components/products/product-image-field";
+import { isImportableImageUrl } from "@/components/products/product-image-field";
 
 export function ProductsNewScreen() {
   const { capabilities, user } = useAuth();
@@ -203,9 +203,13 @@ export function ProductsNewScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
-      setFormError("Enter a public http or https image URL.");
-      return;
+    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
+      if (!isImportableImageUrl(imageUrlDraft)) {
+        setFormError(
+          "Paste a public image link (http/https). The app’s local /image/file URL cannot be used here.",
+        );
+        return;
+      }
     }
 
     setSaving(true);

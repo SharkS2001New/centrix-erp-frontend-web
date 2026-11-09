@@ -9,9 +9,8 @@ import {
 } from "@/lib/hotel-pos-image-cache";
 
 /**
- * Prefers session/IndexedDB cached photo (R2 → API → local PC).
- * Falls back to the catalogue remote/CDN URL so tiles still render while import runs.
- * Refreshes only when imageVersion / image path changes after upload or replace.
+ * Online: prefer catalogue public R2/CDN URL (browser cache).
+ * Offline / no public URL: session memory → IndexedDB → authenticated /image/file.
  */
 export const HotelPosProductImage = memo(function HotelPosProductImage({
   productCode,
@@ -38,16 +37,9 @@ export const HotelPosProductImage = memo(function HotelPosProductImage({
       return undefined;
     }
     if (external && !offlineMode) {
-      // Show the saved remote/CDN/R2 URL immediately while /image/file imports to storage.
+      // Online: public R2/CDN URL is enough (browser HTTP cache). Do not hammer
+      // authenticated /image/file → IndexedDB on every tile — that slowed module switches.
       setSrc(external);
-      if (productCode) {
-        void resolveHotelPosCachedImageUrl(productCode, {
-          fallbackUrl: imageUrl,
-          imageVersion: version,
-        }).then((url) => {
-          if (!cancelled && url) setSrc(url);
-        });
-      }
       return undefined;
     }
 
