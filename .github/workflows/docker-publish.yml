@@ -12,8 +12,10 @@ on:
       - "docs/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/build-print-agent-msi.yml"
-      - "print-agent/**"
-      - "print-agent-dotnet/**"
+      # NOTE: print-agent/** and print-agent-dotnet/** are intentionally NOT
+      # ignored. Both are baked into the runtime image (see Dockerfile) and
+      # served at runtime by /api/print-agent/file/[name] and
+      # /api/print-agent/dotnet-source. Changes to them must rebuild the image.
       - "attendance-agent/**"
       - "attendance-agent-dotnet/**"
       - "kra-agent/**"
@@ -27,8 +29,6 @@ on:
       - "docs/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/build-print-agent-msi.yml"
-      - "print-agent/**"
-      - "print-agent-dotnet/**"
       - "attendance-agent/**"
       - "attendance-agent-dotnet/**"
       - "kra-agent/**"

@@ -39,5 +39,10 @@ attendance-agent
 attendance-agent-dotnet
 kra-agent
 kra-agent-dotnet
-print-agent
-print-agent-dotnet
+
+# NOTE: print-agent/ and print-agent-dotnet/ are intentionally NOT excluded here.
+# They are read at runtime by:
+#   - src/app/api/print-agent/file/[name]/route.js      (reads ./print-agent/<file>)
+#   - src/app/api/print-agent/bootstrap/route.js        (bootstrap installer)
+#   - src/app/api/print-agent/dotnet-source/route.js    (zips ./print-agent-dotnet)
+# They are copied into the runtime image from the Dockerfile's final stage.

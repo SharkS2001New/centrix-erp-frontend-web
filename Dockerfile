@@ -63,6 +63,13 @@ COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
+# Runtime assets served by Node route handlers from process.cwd():
+#   - print-agent/              → /api/print-agent/file/[name] + bootstrap installer
+#   - print-agent-dotnet/       → /api/print-agent/dotnet-source (zipped on demand)
+# Must sit next to server.js (which is /app from the standalone output).
+COPY --from=builder --chown=node:node /app/print-agent ./print-agent
+COPY --from=builder --chown=node:node /app/print-agent-dotnet ./print-agent-dotnet
+
 USER node
 
 EXPOSE 3000
