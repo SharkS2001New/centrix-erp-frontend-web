@@ -1,4 +1,5 @@
 import { apiFetchBlob, apiRequest, apiUploadForm } from "@/lib/api";
+import { runQueuedTask } from "@/lib/background-task";
 
 const BASE = "/admin/platform-marketing-portfolios";
 
@@ -57,18 +58,34 @@ export async function deleteMarketingPortfolio(id) {
   return apiRequest(`${BASE}/${id}`, { method: "DELETE" });
 }
 
-export async function generateMarketingPortfolio(id, body = {}) {
-  return apiRequest(`${BASE}/${id}/generate`, {
-    method: "POST",
-    body,
-  });
+export async function generateMarketingPortfolio(id, body = {}, opts = {}) {
+  return runQueuedTask(
+    () =>
+      apiRequest(`${BASE}/${id}/generate`, {
+        method: "POST",
+        body,
+      }),
+    {
+      timeoutMs: 180_000,
+      intervalMs: 1200,
+      ...opts,
+    },
+  );
 }
 
-export async function regenerateMarketingSection(id, body) {
-  return apiRequest(`${BASE}/${id}/regenerate-section`, {
-    method: "POST",
-    body,
-  });
+export async function regenerateMarketingSection(id, body, opts = {}) {
+  return runQueuedTask(
+    () =>
+      apiRequest(`${BASE}/${id}/regenerate-section`, {
+        method: "POST",
+        body,
+      }),
+    {
+      timeoutMs: 120_000,
+      intervalMs: 1000,
+      ...opts,
+    },
+  );
 }
 
 export async function shareMarketingPortfolio(id) {

@@ -276,7 +276,7 @@ export default function MarketingPortfolioEditorPage() {
             {busy === "save" ? "Saving…" : "Save"}
           </button>
           <PrimaryButton disabled={!!busy} onClick={() => void onGenerate()}>
-            {busy === "generate" ? "Generating…" : "Generate portfolio"}
+            {busy === "generate" ? "Generating (queued)…" : "Generate portfolio"}
           </PrimaryButton>
           <button type="button" className={SECONDARY_BTN_CLASS} disabled={!!busy} onClick={() => void onShare()}>
             Share link
