@@ -64,11 +64,15 @@ COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
 # Runtime assets served by Node route handlers from process.cwd():
-#   - print-agent/              → /api/print-agent/file/[name] + bootstrap installer
-#   - print-agent-dotnet/       → /api/print-agent/dotnet-source (zipped on demand)
+#   - print-agent/                 → /api/print-agent/file/[name] + bootstrap installer
+#   - print-agent-dotnet/          → /api/print-agent/dotnet-source (zipped on demand)
+#   - attendance-agent-dotnet/     → /api/attendance-agent/package (zipped on demand)
+#   - kra-agent-dotnet/            → /api/kra-agent/package (zipped on demand)
 # Must sit next to server.js (which is /app from the standalone output).
 COPY --from=builder --chown=node:node /app/print-agent ./print-agent
 COPY --from=builder --chown=node:node /app/print-agent-dotnet ./print-agent-dotnet
+COPY --from=builder --chown=node:node /app/attendance-agent-dotnet ./attendance-agent-dotnet
+COPY --from=builder --chown=node:node /app/kra-agent-dotnet ./kra-agent-dotnet
 
 USER node
 

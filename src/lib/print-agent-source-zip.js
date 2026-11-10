@@ -10,6 +10,7 @@ const SKIP_DIR_NAMES = new Set([
   "bin",
   "obj",
   "publish",
+  "release",
   "node_modules",
   ".git",
   ".vs",
@@ -171,8 +172,17 @@ export async function zipDirectoryStore(rootDir, zipRootName = "print-agent-dotn
 }
 
 export async function ensureSourceRootExists(rootDir) {
-  const stats = await stat(rootDir);
-  if (!stats.isDirectory()) {
-    throw new Error("print-agent-dotnet folder missing on this server.");
+  try {
+    const stats = await stat(rootDir);
+    if (!stats.isDirectory()) {
+      throw new Error(`${path.basename(rootDir)} folder missing on this server.`);
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      throw new Error(
+        `${path.basename(rootDir)} is not installed on this server. Redeploy the web app image so agent downloads are available.`,
+      );
+    }
+    throw error;
   }
 }

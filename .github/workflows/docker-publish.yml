@@ -12,14 +12,12 @@ on:
       - "docs/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/build-print-agent-msi.yml"
-      # NOTE: print-agent/** and print-agent-dotnet/** are intentionally NOT
-      # ignored. Both are baked into the runtime image (see Dockerfile) and
-      # served at runtime by /api/print-agent/file/[name] and
-      # /api/print-agent/dotnet-source. Changes to them must rebuild the image.
+      # NOTE: print-agent/**, print-agent-dotnet/**, attendance-agent-dotnet/**,
+      # and kra-agent-dotnet/** are intentionally NOT ignored. They are baked into
+      # the runtime image (see Dockerfile) and zipped/served by /api/*-agent routes.
+      # Changes to them must rebuild the image. Legacy Node agent trees can skip.
       - "attendance-agent/**"
-      - "attendance-agent-dotnet/**"
       - "kra-agent/**"
-      - "kra-agent-dotnet/**"
   pull_request:
     branches:
       - master
@@ -30,9 +28,7 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/build-print-agent-msi.yml"
       - "attendance-agent/**"
-      - "attendance-agent-dotnet/**"
       - "kra-agent/**"
-      - "kra-agent-dotnet/**"
   # Nightly schedule removed — it rebuilt the same sha-tagged image for zero
   # benefit. Re-enable only if base image CVE patching becomes a requirement.
 
