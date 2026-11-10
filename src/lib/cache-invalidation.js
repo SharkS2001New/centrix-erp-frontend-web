@@ -63,6 +63,8 @@ export function handleCacheInvalidation(method, path) {
     return;
   }
   if (/^\/routes(\/|$)/.test(normalized)) {
+    invalidateReference("routes-v3");
+    invalidateReference("routes-v2");
     invalidateReference("routes");
     return;
   }

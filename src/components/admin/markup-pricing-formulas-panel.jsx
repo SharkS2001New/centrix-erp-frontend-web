@@ -33,7 +33,8 @@ import {
 } from "@/lib/pricing-formula";
 
 const FORMULA_KEYS = ["retail_line", "wholesale_line", "route_retail", "route_wholesale"];
-const PREVIEW_QTY = 1;
+/** Retail formula compare stays at 1 small unit (once-on-line vs per-qty). */
+const RETAIL_PREVIEW_QTY = 1;
 
 function formatTierQtyRange(tier, uom) {
   const small = smallPackagingLabel(uom);
@@ -41,7 +42,25 @@ function formatTierQtyRange(tier, uom) {
   return `${tier.min_qty}–${to} ${small}`;
 }
 
-function resolveActiveTier(tiers, isRetail, qty = PREVIEW_QTY) {
+/**
+ * Wholesale bag tiers often start above 1kg (e.g. 12.5–25). Preview one full pack
+ * (conversion_factor) so the wholesale tier + route_wholesale formula both apply.
+ */
+function resolvePreviewQty(isRetail, productUom, retailPackage) {
+  if (isRetail) return RETAIL_PREVIEW_QTY;
+  const conversion = Math.max(1, Number(productUom?.conversion_factor ?? 1));
+  const tiers = tiersForRetailPackage(retailPackage, productUom);
+  const wholesale = tiersWithPriceMode(tiers, "wholesale");
+  if (wholesale.length) {
+    const packTier =
+      wholesale.find((tier) => (tier.measure_level || "small") === "full") ?? wholesale[0];
+    const minQty = Math.max(0, Number(packTier?.min_qty ?? 0));
+    return Math.max(conversion > 1 ? conversion : 1, minQty || 0);
+  }
+  return conversion > 1 ? conversion : 1;
+}
+
+function resolveActiveTier(tiers, isRetail, qty) {
   const applicable = isRetail ? tiers : tiersWithPriceMode(tiers, "wholesale");
   return tierForQuantity(applicable, qty, { extendPastMax: isRetail });
 }
@@ -55,7 +74,7 @@ function tiersMatch(a, b) {
   );
 }
 
-function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, productUom }) {
+function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, productUom, previewQty }) {
   useEffect(() => {
     if (!open) return undefined;
     function onKeyDown(e) {
@@ -117,7 +136,16 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-xs text-slate-500">Quantity</dt>
-            <dd className="font-medium tabular-nums">{PREVIEW_QTY} small unit</dd>
+            <dd className="font-medium tabular-nums">
+              {Number(preview.base_qty ?? previewQty)} {smallPackagingLabel(productUom)}
+              {!isRetail && Number(preview.pack_qty ?? 0) > 0 ? (
+                <span className="font-normal text-slate-500">
+                  {" "}
+                  ({Number(preview.pack_qty)} pack
+                  {Number(preview.pack_qty) === 1 ? "" : "s"})
+                </span>
+              ) : null}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">Session</dt>
@@ -132,10 +160,10 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
         {tier ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
-              Markup used at qty {PREVIEW_QTY}
+              Package tier used at qty {Number(preview.base_qty ?? previewQty)}
             </p>
             <p className="mt-1 font-medium text-emerald-950">
-              {formatSaleKes(preview.tier_markup)} tier markup
+              {formatSaleKes(preview.tier_markup)} package markup
               {preview.markup_apps > 1 ? (
                 <span className="font-normal text-emerald-900">
                   {" "}
@@ -150,7 +178,9 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
           </div>
         ) : preview.has_retail_package ? (
           <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            No retail tier applies at quantity {PREVIEW_QTY} for this session.
+            No {isRetail ? "retail" : "wholesale"} package tier applies at quantity{" "}
+            {Number(preview.base_qty ?? previewQty)}. Catalog wholesale price is used before route
+            markup.
           </p>
         ) : null}
 
@@ -166,7 +196,7 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
                     <th className="px-3 py-2 font-medium">Mode</th>
                     <th className="px-3 py-2 font-medium">Qty range</th>
                     <th className="px-3 py-2 font-medium">Measure</th>
-                    <th className="px-3 py-2 font-medium">Markup</th>
+                    <th className="px-3 py-2 font-medium">Package markup</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,7 +235,7 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
             <dd className="font-medium tabular-nums">{formatSaleKes(preview.aggregate_wholesale)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Tier markup × applications</dt>
+            <dt className="text-xs text-slate-500">Package markup × applications</dt>
             <dd className="font-medium tabular-nums">
               {formatSaleKes(preview.tier_markup)} × {preview.markup_apps}
             </dd>
@@ -215,8 +245,19 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
             <dd className="font-medium tabular-nums">{formatSaleKes(preview.line_before_route)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Route markup</dt>
+            <dt className="text-xs text-slate-500">Route markup (configured)</dt>
             <dd className="font-medium tabular-nums">{formatSaleKes(preview.route_markup)}</dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs text-slate-500">Route adds to this line</dt>
+            <dd className="font-medium tabular-nums text-emerald-800">
+              {formatSaleKes(
+                Math.max(
+                  0,
+                  Number(preview.line_total ?? 0) - Number(preview.line_before_route ?? 0),
+                ),
+              )}
+            </dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-xs text-slate-500">Line total</dt>
@@ -251,20 +292,30 @@ function MarkupPreviewDialog({ open, onClose, preview, isRetail, routeLabel, pro
   );
 }
 
-function SelectedProductMarkupPanel({ retailPackage, productUom, isRetail, loading }) {
+function SelectedProductMarkupPanel({
+  retailPackage,
+  productUom,
+  isRetail,
+  loading,
+  previewQty,
+  routeMarkup = 0,
+  routeLabel = "",
+}) {
   const tiers = useMemo(
     () => tiersForRetailPackage(retailPackage, productUom),
     [retailPackage, productUom],
   );
   const activeTier = useMemo(
-    () => (tiers.length ? resolveActiveTier(tiers, isRetail, PREVIEW_QTY) : null),
-    [tiers, isRetail],
+    () => (tiers.length ? resolveActiveTier(tiers, isRetail, previewQty) : null),
+    [tiers, isRetail, previewQty],
   );
   const markupApps = useMemo(() => {
     if (!activeTier) return 0;
-    if (isRetail) return retailMarkupApplications(PREVIEW_QTY, activeTier, productUom);
+    if (isRetail) return retailMarkupApplications(previewQty, activeTier, productUom);
     return 1;
-  }, [activeTier, isRetail, productUom]);
+  }, [activeTier, isRetail, productUom, previewQty]);
+  const conversion = Math.max(1, Number(productUom?.conversion_factor ?? 1));
+  const packQty = conversion > 1 ? previewQty / conversion : previewQty;
 
   if (loading) {
     return <p className="text-xs text-slate-500">Loading retail package…</p>;
@@ -291,7 +342,7 @@ function SelectedProductMarkupPanel({ retailPackage, productUom, isRetail, loadi
       {activeTier ? (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Markup at qty {PREVIEW_QTY} ({isRetail ? "retail" : "wholesale"} session)
+            Package markup at qty {previewQty} ({isRetail ? "retail" : "wholesale"} session)
           </p>
           <p className="mt-1 text-sm font-medium text-slate-900">
             {formatSaleKes(activeTier.markup_price)}
@@ -306,9 +357,34 @@ function SelectedProductMarkupPanel({ retailPackage, productUom, isRetail, loadi
         </div>
       ) : (
         <p className="text-xs text-slate-600">
-          No {isRetail ? "retail" : "wholesale"} tier applies at quantity {PREVIEW_QTY}.
+          No {isRetail ? "retail" : "wholesale"} package tier applies at quantity {previewQty}.
+          Catalog wholesale price is used before route markup.
         </p>
       )}
+
+      {Number(routeMarkup) > 0 ? (
+        <div className="rounded-md border border-sky-200 bg-sky-50/80 px-2.5 py-2 text-xs text-sky-950">
+          <p className="font-semibold uppercase tracking-wide text-sky-800">
+            Route markup {routeLabel ? `(${routeLabel})` : ""}
+          </p>
+          <p className="mt-1 font-medium tabular-nums">
+            {formatSaleKes(routeMarkup)}
+            {!isRetail ? (
+              <span className="font-normal text-sky-900">
+                {" "}
+                × {Number(packQty.toFixed(4))} pack
+                {Math.abs(packQty - 1) < 0.0001 ? "" : "s"} (default wholesale formula)
+              </span>
+            ) : (
+              <span className="font-normal text-sky-900"> once on line (default retail formula)</span>
+            )}
+          </p>
+          <p className="mt-0.5 text-[11px] text-sky-800">
+            This is separate from package tier markup above. Click Preview markup to see the full
+            line total.
+          </p>
+        </div>
+      ) : null}
 
       {tiers.length > 1 ? (
         <div>
@@ -340,7 +416,7 @@ function SelectedProductMarkupPanel({ retailPackage, productUom, isRetail, loadi
                   {formatTierQtyRange(tier, productUom)}
                   {" · "}
                   {measureLevelLabel(productUom, tier.measure_level || "small")}
-                  {" · markup "}
+                  {" · package markup "}
                   <span className="font-semibold tabular-nums">{formatSaleKes(tier.markup_price)}</span>
                   {active ? (
                     <span className="ml-1 text-[10px] font-semibold uppercase">used now</span>
@@ -485,7 +561,10 @@ function MarkupFormulasHelpDialog({ open, onClose }) {
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs">
               <li>Enable “Add route markup prices” under Prices &amp; discounts if you use routes.</li>
               <li>Pick a preset chip under each formula, or click a named value to insert it.</li>
-              <li>Pick a product and use Preview on a product (always qty 1) to compare results before saving.</li>
+              <li>
+                Pick a product and use Preview on a product (retail = 1 small unit; wholesale = one
+                full pack) to compare results before saving.
+              </li>
               <li>Click Save on the Sales settings page when finished.</li>
             </ol>
           </div>
@@ -534,15 +613,24 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
 
+  const selectedRoute = useMemo(
+    () => routes.find((row) => String(row.id) === String(routeId)) ?? null,
+    [routeId, routes],
+  );
+  const selectedRouteMarkup = Number(selectedRoute?.route_markup_price ?? 0);
   const selectedRouteLabel = useMemo(() => {
-    if (!routeId) return "";
-    const route = routes.find((row) => String(row.id) === String(routeId));
-    if (!route) return "";
-    const name = route.route_name ?? route.name ?? `Route #${route.id}`;
+    if (!selectedRoute) return "";
+    const name = selectedRoute.route_name ?? selectedRoute.name ?? `Route #${selectedRoute.id}`;
     const markup =
-      route.route_markup_price != null ? ` (+${formatSaleKes(route.route_markup_price)})` : "";
+      selectedRoute.route_markup_price != null
+        ? ` (+${formatSaleKes(selectedRoute.route_markup_price)})`
+        : "";
     return `${name}${markup}`;
-  }, [routeId, routes]);
+  }, [selectedRoute]);
+  const previewQty = useMemo(
+    () => resolvePreviewQty(isRetail, productUom, retailPackage),
+    [isRetail, productUom, retailPackage],
+  );
 
   const loadProductContext = useCallback(
     async (product) => {
@@ -668,7 +756,7 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
         method: "POST",
         body: {
           product_code: selectedProduct.product_code,
-          qty: PREVIEW_QTY,
+          qty: previewQty,
           is_retail: isRetail,
           route_id: routeId ? Number(routeId) : null,
           pricing_formulas: formulas,
@@ -694,6 +782,7 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
         isRetail={isRetail}
         routeLabel={selectedRouteLabel}
         productUom={productUom}
+        previewQty={previewQty}
       />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -804,8 +893,9 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
       <div className="space-y-3 border-t border-[var(--theme-border)] pt-4">
         <h4 className="theme-heading text-sm font-semibold">Preview on a product</h4>
         <p className="theme-subtext text-xs">
-          Pick an item with a retail package. Preview always uses quantity{" "}
-          <strong>1 small unit</strong> so you can compare once-on-line vs per-qty presets fairly.
+          Pick an item with a retail package. Retail preview uses{" "}
+          <strong>1 small unit</strong>; wholesale preview uses{" "}
+          <strong>one full pack</strong> so bag wholesale tiers and route markup both apply.
         </p>
         <div className="grid gap-3 lg:grid-cols-2">
           <Field label="Product">
@@ -902,6 +992,9 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
             productUom={productUom}
             isRetail={isRetail}
             loading={packageLoading}
+            previewQty={previewQty}
+            routeMarkup={selectedRouteMarkup}
+            routeLabel={selectedRouteLabel}
           />
         ) : null}
 

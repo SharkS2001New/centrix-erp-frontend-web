@@ -158,29 +158,76 @@ export function fetchBranchesCached(organizationId) {
   }, { ttlMs: REFERENCE_TTL_MS });
 }
 
-export function fetchRoutesCached(organizationId) {
+async function loadRoutesWithMarkup(organizationId) {
   const orgId = resolveOrgId(organizationId);
-  const key = orgCacheKey(orgId, "routes");
-  return fetchOrgCached(key, async () => {
-    // Use the permission-free reference picker (same as users/uoms). The CRUD
-    // /routes resource requires sales.view|fulfillment.view and 403'd Mobile
-    // Orders filters for queue-view-only roles.
+  // Prefer full /routes (always includes route_markup_price) for Create order /
+  // POS pricing. Fall back to permission-free reference picker for roles that
+  // cannot open the CRUD resource (queue-view-only, etc.).
+  let rows = [];
+  try {
+    const res = await apiRequest("/routes", {
+      searchParams: { per_page: 200, is_active: 1 },
+      loading: false,
+      reportIssues: false,
+    });
+    rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+  } catch (error) {
+    if (!(error instanceof ApiError && (error.status === 403 || error.status === 401))) {
+      throw error;
+    }
+    const res = await apiRequest("/reference/routes", {
+      searchParams: { per_page: 200 },
+      loading: false,
+      reportIssues: false,
+    });
+    rows = res.data ?? [];
+  }
+
+  rows = rows.filter(
+    (route) =>
+      (!orgId || route.organization_id === orgId) &&
+      (route.is_active == null || Boolean(route.is_active)),
+  );
+
+  // If reference fallback omitted markup (older API), merge from a second /routes try.
+  if (rows.some((route) => route.route_markup_price == null)) {
     try {
-      const res = await apiRequest("/reference/routes", {
-        searchParams: { per_page: 200 },
+      const full = await apiRequest("/routes", {
+        searchParams: { per_page: 200, is_active: 1 },
         loading: false,
         reportIssues: false,
       });
-    return (res.data ?? []).filter(
-        (route) => !orgId || route.organization_id === orgId,
+      const byId = new Map(
+        (Array.isArray(full?.data) ? full.data : []).map((route) => [String(route.id), route]),
       );
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 403) {
-        return [];
-      }
-      throw error;
+      rows = rows.map((route) => {
+        const rich = byId.get(String(route.id));
+        if (!rich || rich.route_markup_price == null) {
+          return { ...route, route_markup_price: Number(route.route_markup_price ?? 0) };
+        }
+        return {
+          ...route,
+          route_markup_price: Number(rich.route_markup_price ?? 0),
+        };
+      });
+    } catch {
+      rows = rows.map((route) => ({
+        ...route,
+        route_markup_price: Number(route.route_markup_price ?? 0),
+      }));
     }
-  }, { ttlMs: REFERENCE_TTL_MS });
+  }
+
+  return rows;
+}
+
+export function fetchRoutesCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  // v3: always resolve route_markup_price (Create order / POS route pricing).
+  const key = orgCacheKey(orgId, "routes-v3");
+  return fetchOrgCached(key, () => loadRoutesWithMarkup(orgId), {
+    ttlMs: REFERENCE_TTL_MS,
+  });
 }
 
 export function fetchRetailPackagesCached(organizationId) {

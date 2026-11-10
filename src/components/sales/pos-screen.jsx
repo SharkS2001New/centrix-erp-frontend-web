@@ -9244,6 +9244,8 @@ export function PosScreen({ standalone = false }) {
       if (!ok) return;
     }
     setIsRouteOrder(routeOrder);
+    // Allow entry-form reprice from the new route markup (do not keep a typed catalog price).
+    setUnitPriceTouched(false);
     if (!routeOrder) {
       setSelectedRouteId("");
     }
@@ -9282,6 +9284,8 @@ export function PosScreen({ standalone = false }) {
       if (!ok) return;
     }
     setSelectedRouteId(routeId);
+    // Entry unit price must pick up route markup (see unitPriceTouched gate).
+    setUnitPriceTouched(false);
     const nextMarkup = routeId
       ? Number(routes.find((r) => String(r.id) === String(routeId))?.route_markup_price ?? 0)
       : 0;
