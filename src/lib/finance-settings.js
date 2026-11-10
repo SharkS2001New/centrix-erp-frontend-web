@@ -78,8 +78,8 @@ export function mergeFinanceSettings(moduleSettings) {
 
 export const KRA_SALES_SCOPE_OPTIONS = [
   { value: "off", label: "Off", description: "Do not use KRA for sales" },
-  { value: "mobile", label: "Mobile only", description: "Centrix AS / field sales" },
-  { value: "erp", label: "ERP only", description: "POS and backoffice" },
+  { value: "mobile", label: "Mobile only", description: "Field sales mobile orders" },
+  { value: "erp", label: "ERP only", description: "POS, hotel till, and backoffice" },
   { value: "both", label: "Both", description: "Mobile and ERP sales" },
 ];
 

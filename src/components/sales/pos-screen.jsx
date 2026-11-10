@@ -4123,6 +4123,7 @@ export function PosScreen({ standalone = false }) {
         capabilities?.module_settings,
         capabilities,
         cartSummary?.total ?? cartSummary?.amountDue,
+        "pos",
       ),
     [capabilities, cartSummary?.total, cartSummary?.amountDue],
   );
@@ -4140,6 +4141,7 @@ export function PosScreen({ standalone = false }) {
       capabilities?.module_settings,
       capabilities,
       cartSummary?.total ?? cartSummary?.amountDue,
+      "pos",
     );
   }, [
     standalone,
@@ -13024,6 +13026,7 @@ export function PosScreen({ standalone = false }) {
               capabilities?.module_settings,
               capabilities,
               summary?.total,
+              "pos",
             );
       if (isPreviousOrderCashEdit && checkoutCart?.held_order_num) {
         if (body.customer_num) {

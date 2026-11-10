@@ -991,8 +991,9 @@ export function FinanceSettingsPanel({
                       })}
                     </div>
                     <p className="theme-subtext mt-1 text-xs">
-                      Tick one option. Mobile is Centrix AS / field sales; ERP is POS and
-                      backoffice. When off, sales use normal VAT calculations without calling
+                      Tick one option. Mobile only fiscalizes field-sales orders
+                      (channel=mobile). ERP covers POS, hotel till, and backoffice. AS Walk-in
+                      POS uses the ERP channel. When off, sales use normal VAT without calling
                       the device.
                     </p>
                   </Field>

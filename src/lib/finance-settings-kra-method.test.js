@@ -147,6 +147,47 @@ describe("kra sales scope", () => {
     expect(shouldSubmitKraOnCheckout(settings, null, 1000, "mobile")).toBe(false);
     expect(shouldSubmitKraOnCheckout(settings, null, 1000)).toBe(true);
   });
+
+  it("mobile-only scope fiscalizes field sales and skips POS", () => {
+    const settings = {
+      finance: {
+        enable_kra_device: true,
+        kra_sales_scope: "mobile",
+      },
+    };
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "mobile")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "centrix_as_mobile")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "pos")).toBe(false);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "backend")).toBe(false);
+  });
+
+  it("erp-only scope fiscalizes POS/backoffice/hotel and skips mobile", () => {
+    const settings = {
+      finance: {
+        enable_kra_device: true,
+        kra_sales_scope: "erp",
+      },
+    };
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "pos")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "external_pos")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "backend")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "hotel_pos")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000)).toBe(true); // blank → POS
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "mobile")).toBe(false);
+  });
+
+  it("both scope fiscalizes every sales channel", () => {
+    const settings = {
+      finance: {
+        enable_kra_device: true,
+        kra_sales_scope: "both",
+      },
+    };
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "mobile")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "pos")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "backend")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "hotel_pos")).toBe(true);
+  });
 });
 
 describe("canDownloadKraAgent", () => {
