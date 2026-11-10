@@ -39,7 +39,7 @@ describe("hotel login channel labels", () => {
     expect(availableLoginChannelsFromCapabilities(hotelCaps).map((c) => c.label)).toEqual([
       "Centrix ERP",
       "CentrixAsMobile",
-      "Field Mobile (sales / driver)",
+      "CentrixFieldSales",
       "Managers App",
     ]);
   });

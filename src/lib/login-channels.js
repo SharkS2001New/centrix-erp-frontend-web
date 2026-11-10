@@ -5,7 +5,7 @@ export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice" },
   { value: "pos", label: "POS (external terminal)" },
   { value: "centrix_as_mobile", label: "CentrixAsMobile" },
-  { value: "mobile", label: "Field Mobile (sales / driver)" },
+  { value: "mobile", label: "CentrixFieldSales" },
   { value: "manager", label: "Manager app" },
 ];
 
