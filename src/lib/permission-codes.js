@@ -94,6 +94,10 @@ export const P = {
     loading_sheets: { view: "sales.loading_sheets.view" },
     field_attendance: { view: "sales.field_attendance.view", create: "sales.field_attendance.create" },
   },
+  /** CentrixAsMobile shop app — Roles → Centrix AS Mobile (allow/block sign-in). */
+  centrix_as_mobile: {
+    app: { access: "centrix_as_mobile.app.access" },
+  },
   mobile_sales: {
     dashboard: { view: "mobile_sales.dashboard.view" },
     orders: { view: "mobile_sales.orders.view", create: "mobile_sales.orders.create", edit: "mobile_sales.orders.edit" },

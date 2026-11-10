@@ -11,9 +11,10 @@ const hotelCaps = {
   modules: {
     "hospitality.backend": true,
     "hospitality.bar_pos": true,
+    "sales.mobile": true,
     admin: true,
   },
-  allowed_login_channels: ["backoffice", "manager"],
+  allowed_login_channels: ["backoffice", "centrix_as_mobile", "mobile", "manager"],
 };
 
 const retailCaps = {
@@ -28,14 +29,17 @@ const retailCaps = {
 };
 
 describe("hotel login channel labels", () => {
-  it("labels hotel channels as Centrix ERP and Managers App", () => {
+  it("labels hotel channels as Centrix ERP, CentrixAsMobile, and Managers App", () => {
     expect(loginChannelLabel("backoffice", hotelCaps)).toBe("Centrix ERP");
+    expect(loginChannelLabel("centrix_as_mobile", hotelCaps)).toBe("CentrixAsMobile");
     expect(loginChannelLabel("manager", hotelCaps)).toBe("Managers App");
-    expect(formatLoginChannels(["backoffice", "manager"], hotelCaps)).toBe(
-      "Centrix ERP, Managers App",
+    expect(formatLoginChannels(["backoffice", "centrix_as_mobile", "manager"], hotelCaps)).toBe(
+      "Centrix ERP, CentrixAsMobile, Managers App",
     );
     expect(availableLoginChannelsFromCapabilities(hotelCaps).map((c) => c.label)).toEqual([
       "Centrix ERP",
+      "CentrixAsMobile",
+      "Field Mobile (sales / driver)",
       "Managers App",
     ]);
   });

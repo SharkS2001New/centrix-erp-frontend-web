@@ -1159,12 +1159,8 @@ export function AdminUsersScreen() {
               {isSpaIndustry(effectiveCapabilities)
                 ? "Staff sign in on the web to Administration and SPA & Kinyozi. Salon access follows the user’s role."
                 : hospitalityPosEnabled
-                  ? "Centrix ERP is web sign-in. Managers App is the mobile manager app. Modules are not chosen here — they come from the user’s role and permissions."
-                  : mobileAppEnabled
-                    ? "Only channels enabled for this organization are listed. Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
-                    : posEnabled
-                      ? "Only channels enabled for this organization are listed. External POS and backoffice are available; mobile orders are disabled."
-                      : "Only channels enabled for this organization are listed. Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
+                  ? "Centrix ERP is web sign-in. Tick CentrixAsMobile to allow the AS shop app. Managers App is the mobile manager app."
+                  : "Only channels enabled for this organization are listed. Tick CentrixAsMobile to allow sign-in on the AS shop app; Field Mobile is for sales/driver."}
             </p>
           </Field>
           {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (

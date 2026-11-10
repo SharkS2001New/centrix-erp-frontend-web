@@ -4,7 +4,8 @@ import { isSpaIndustry } from "@/lib/org-settings-tabs";
 export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice" },
   { value: "pos", label: "POS (external terminal)" },
-  { value: "mobile", label: "Mobile app (field sales / driver)" },
+  { value: "centrix_as_mobile", label: "CentrixAsMobile" },
+  { value: "mobile", label: "Field Mobile (sales / driver)" },
   { value: "manager", label: "Manager app" },
 ];
 
@@ -20,6 +21,7 @@ export function isHotelLoginChannelContext(capabilities) {
 export function loginChannelLabel(value, capabilities) {
   if (isHotelLoginChannelContext(capabilities)) {
     if (value === "backoffice") return "Centrix ERP";
+    if (value === "centrix_as_mobile") return "CentrixAsMobile";
     if (value === "manager") return "Managers App";
   }
   if (isSpaIndustry(capabilities) && value === "backoffice") {
@@ -49,9 +51,22 @@ export function allowedLoginChannelValues(capabilities) {
     allowed.add("pos");
   }
   if (
+    capabilities?.modules?.["sales.backend"] ||
+    capabilities?.modules?.["sales.pos"] ||
+    capabilities?.modules?.["sales.mobile"] ||
+    capabilities?.modules?.["hospitality.bar_pos"] ||
+    capabilities?.modules?.["hospitality.backend"]
+  ) {
+    allowed.add("centrix_as_mobile");
+  }
+  if (
     (
       capabilities?.mobile_orders_enabled !== false &&
-      capabilities?.modules?.["sales.mobile"] &&
+      (
+        capabilities?.modules?.["sales.mobile"] ||
+        capabilities?.modules?.["hospitality.bar_pos"] ||
+        capabilities?.modules?.["hospitality.backend"]
+      ) &&
       capabilities?.module_settings?.sales?.enable_mobile_orders !== false
     ) ||
     capabilities?.driver_mobile_enabled === true

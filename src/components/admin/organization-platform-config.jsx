@@ -2600,10 +2600,10 @@ export function OrganizationUsersPanel({
                     </label>
                   ))}
                 </div>
-                {enabledModules["hospitality.backend"] || enabledModules["hospitality.bar_pos"] ? (
+                {enabledModules["hospitality.backend"] || enabledModules["hospitality.bar_pos"] || enabledModules["sales.pos"] || enabledModules["sales.backend"] ? (
                   <p className="mt-2 text-xs text-slate-500">
-                    Centrix ERP is web sign-in. Managers App is the mobile manager app. Which
-                    modules a user can open is controlled by their role and permissions.
+                    Tick CentrixAsMobile to allow the AS shop app. Managers App is the mobile
+                    manager app. Field Mobile is for sales/driver when enabled.
                   </p>
                 ) : null}
               </div>
