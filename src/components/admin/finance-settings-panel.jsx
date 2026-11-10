@@ -944,28 +944,56 @@ export function FinanceSettingsPanel({
               {form.enable_kra_device ? (
                 <>
                   <Field label="Use KRA device for sales">
-                    <select
-                      className={inputClassName()}
-                      value={normalizeKraSalesScope(form)}
-                      onChange={(e) => {
-                        const scope = normalizeKraSalesScope({ kra_sales_scope: e.target.value });
-                        setForm((f) => ({
-                          ...f,
-                          kra_sales_scope: scope,
-                          default_submit_kra: scope !== "off",
-                        }));
-                      }}
+                    <div
+                      className="flex flex-wrap items-stretch gap-2"
+                      role="radiogroup"
+                      aria-label="Use KRA device for sales"
                     >
-                      {KRA_SALES_SCOPE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      {KRA_SALES_SCOPE_OPTIONS.map((option) => {
+                        const selected = normalizeKraSalesScope(form) === option.value;
+                        return (
+                          <label
+                            key={option.value}
+                            className={`flex min-w-[7.5rem] flex-1 cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${
+                              selected
+                                ? "border-[var(--theme-primary)] bg-[var(--theme-surface-muted)]"
+                                : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={selected}
+                              onChange={() => {
+                                // One option at a time — ticking another replaces the current choice.
+                                const scope = normalizeKraSalesScope({
+                                  kra_sales_scope: option.value,
+                                });
+                                setForm((f) => ({
+                                  ...f,
+                                  kra_sales_scope: scope,
+                                  default_submit_kra: scope !== "off",
+                                }));
+                              }}
+                            />
+                            <span>
+                              <span className="theme-heading block text-sm font-medium">
+                                {option.label}
+                              </span>
+                              {option.description ? (
+                                <span className="theme-subtext mt-0.5 block text-[11px] leading-snug">
+                                  {option.description}
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
                     <p className="theme-subtext mt-1 text-xs">
-                      Choose which sales channels send completed orders to the fiscal device.
-                      Mobile is Centrix AS / field sales; ERP is POS and backoffice. When off,
-                      sales use normal VAT calculations without calling the device.
+                      Tick one option. Mobile is Centrix AS / field sales; ERP is POS and
+                      backoffice. When off, sales use normal VAT calculations without calling
+                      the device.
                     </p>
                   </Field>
                   <Field label="Bypass KRA for orders at or above (KES)">

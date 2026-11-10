@@ -77,10 +77,10 @@ export function mergeFinanceSettings(moduleSettings) {
 }
 
 export const KRA_SALES_SCOPE_OPTIONS = [
-  { value: "off", label: "Off — do not use KRA for sales" },
-  { value: "mobile", label: "Mobile sales only" },
-  { value: "erp", label: "ERP sales only (POS & backoffice)" },
-  { value: "both", label: "Both mobile and ERP sales" },
+  { value: "off", label: "Off", description: "Do not use KRA for sales" },
+  { value: "mobile", label: "Mobile only", description: "Centrix AS / field sales" },
+  { value: "erp", label: "ERP only", description: "POS and backoffice" },
+  { value: "both", label: "Both", description: "Mobile and ERP sales" },
 ];
 
 /** @param {Record<string, unknown>} finance */
