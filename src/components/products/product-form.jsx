@@ -36,7 +36,7 @@ import {
   defaultProductBranchId,
   isMultiBranchCatalog,
 } from "@/lib/catalog-scope";
-import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHotelCatalogueContext, productImagesEnabled } from "@/lib/catalog-mode";
 import {
   fetchBranchesCached,
   fetchCategoriesCached,
@@ -491,6 +491,7 @@ export const ProductFormFields = memo(function ProductFormFields({
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const multiBranch = isMultiBranchCatalog(capabilities);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const categoryById = useMemo(
@@ -632,9 +633,9 @@ export const ProductFormFields = memo(function ProductFormFields({
         />
       </Field>
 
-      {hotelCatalogue ? (
+      {showProductImages ? (
         <ProductImageField
-          label="Menu photo"
+          label={hotelCatalogue ? "Menu photo" : "Product photo"}
           source={imageSource}
           imageUrl={imageUrl}
           previewUrl={imagePreview}

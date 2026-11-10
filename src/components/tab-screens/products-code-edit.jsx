@@ -30,7 +30,7 @@ import { SubcategoryCreateModal } from "@/components/products/subcategory-create
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
-import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHotelCatalogueContext, productImagesEnabled } from "@/lib/catalog-mode";
 import {
   isImportableImageUrl,
   resolveProductImageUrlForEditor,
@@ -43,6 +43,7 @@ export function ProductsCodeEditScreen() {
   const { workspaceId } = useTabWorkspace();
   const { capabilities, user } = useAuth();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCode = decodeURIComponent(params.code);
@@ -125,9 +126,9 @@ export function ProductsCodeEditScreen() {
       setForm(next);
       setImageFile(null);
       setImageRemoved(false);
-      const hasImage = hotelCatalogue && Boolean(product.image_path || product.image_url);
+      const hasImage = showProductImages && Boolean(product.image_path || product.image_url);
       // Only a public import source belongs in Image URL — never the local /image/file link.
-      const currentUrl = hotelCatalogue ? resolveProductImageUrlForEditor(product) : "";
+      const currentUrl = showProductImages ? resolveProductImageUrlForEditor(product) : "";
       setHadStoredImage(hasImage);
       setImageUrlDraft(currentUrl);
       setImageSource(isImportableImageUrl(currentUrl) ? "url" : "upload");
@@ -142,7 +143,7 @@ export function ProductsCodeEditScreen() {
     } finally {
       setProductLoading(false);
     }
-  }, [abortSignal, productCode, user?.branch_id, capabilities, hotelCatalogue]);
+  }, [abortSignal, productCode, user?.branch_id, capabilities, hotelCatalogue, showProductImages]);
 
   const { isActive } = useTabPaneActive();
 
@@ -275,7 +276,7 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
+    if (showProductImages && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
       if (!isImportableImageUrl(imageUrlDraft)) {
         setFormError(
           "Paste a public image link (http/https). The app’s local /image/file URL cannot be used here.",
@@ -293,11 +294,11 @@ export function ProductsCodeEditScreen() {
         method: "PUT",
         body,
       });
-      if (hotelCatalogue && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
+      if (showProductImages && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(productCode, imageUrlDraft);
-      } else if (hotelCatalogue && imageFile) {
+      } else if (showProductImages && imageFile) {
         await uploadProductImage(productCode, imageFile);
-      } else if (hotelCatalogue && imageRemoved && hadStoredImage) {
+      } else if (showProductImages && imageRemoved && hadStoredImage) {
         await deleteProductImage(productCode);
       }
       await saveRetailPackageSetting(form, productCode, { hotelCatalogue });

@@ -28,13 +28,14 @@ import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
-import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHotelCatalogueContext, productImagesEnabled } from "@/lib/catalog-mode";
 import { isImportableImageUrl } from "@/components/products/product-image-field";
 
 export function ProductsNewScreen() {
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const addTabTitle = hotelCatalogue ? tabAddTitle("menu product") : tabAddTitle("product");
   const { exitTo } = useTabFormExit(addTabTitle);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
@@ -203,7 +204,7 @@ export function ProductsNewScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
+    if (showProductImages && imageSource === "url" && String(imageUrlDraft ?? "").trim()) {
       if (!isImportableImageUrl(imageUrlDraft)) {
         setFormError(
           "Paste a public image link (http/https). The app’s local /image/file URL cannot be used here.",
@@ -225,9 +226,9 @@ export function ProductsNewScreen() {
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
-      if (hotelCatalogue && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
+      if (showProductImages && imageSource === "url" && isImportableImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(code, imageUrlDraft);
-      } else if (hotelCatalogue && imageFile) {
+      } else if (showProductImages && imageFile) {
         await uploadProductImage(code, imageFile);
       }
       await saveRetailPackageSetting(form, code, { hotelCatalogue });

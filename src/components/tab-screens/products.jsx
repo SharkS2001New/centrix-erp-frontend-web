@@ -47,6 +47,7 @@ import {
   hotelCatalogueListCopy,
   catalogueStockColumnLabels,
   isHotelCatalogueContext,
+  productImagesEnabled,
   retailCatalogueListCopy,
 } from "@/lib/catalog-mode";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -280,6 +281,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const listCopy = deletedMode
     ? {
         title: hotelCatalogue ? "Deleted menu products" : "Deleted products",
@@ -1325,6 +1327,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
                       onPriceSaved={deletedMode ? undefined : reloadAll}
                       deletedMode={deletedMode}
                       hotelCatalogue={hotelCatalogue}
+                      showProductImages={showProductImages}
                       kraFailedCodes={kraFailedCodeSet}
                     />
                   ))
@@ -1403,6 +1406,7 @@ function CategoryGroup({
   onPriceSaved,
   deletedMode = false,
   hotelCatalogue = false,
+  showProductImages = false,
   kraFailedCodes = null,
 }) {
   const categoryKey = `category:${categoryName}`;
@@ -1445,6 +1449,7 @@ function CategoryGroup({
               onPriceSaved={onPriceSaved}
               deletedMode={deletedMode}
               hotelCatalogue={hotelCatalogue}
+              showProductImages={showProductImages}
               kraUploadFailed={Boolean(kraFailedCodes?.has(String(p.product_code)))}
             />
           )),
@@ -1466,6 +1471,7 @@ function ProductRow({
   onPriceSaved,
   deletedMode = false,
   hotelCatalogue = false,
+  showProductImages = false,
   kraUploadFailed = false,
 }) {
   return (
@@ -1531,6 +1537,7 @@ function ProductRow({
               deletedMode ? undefined : onPriceSaved,
               hotelCatalogue,
               kraUploadFailed,
+              showProductImages,
             )
           )}
         </td>
@@ -1539,14 +1546,21 @@ function ProductRow({
   );
 }
 
-function renderProductCell(product, columnId, onPriceSaved, hotelCatalogue = false, kraUploadFailed = false) {
+function renderProductCell(
+  product,
+  columnId,
+  onPriceSaved,
+  hotelCatalogue = false,
+  kraUploadFailed = false,
+  showProductImages = false,
+) {
   switch (columnId) {
     case "product":
       return (
         <div className="flex flex-wrap items-center gap-2">
           <ProductNameCell
             product={product}
-            showPhoto={hotelCatalogue}
+            showPhoto={showProductImages}
             deleted={Boolean(product.deleted_at)}
           />
           {kraUploadFailed ? (

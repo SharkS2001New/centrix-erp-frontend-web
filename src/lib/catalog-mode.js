@@ -13,6 +13,32 @@ export function isHotelCatalogueContext(capabilities, workspaceId = null) {
   return false;
 }
 
+function asBool(value) {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0 || value == null) return false;
+  const raw = String(value).trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+/**
+ * Product photos only (not customers). Hotel default on; retail/wholesale when
+ * Platform Admin enables "Show product images" (or require images) for the org.
+ *
+ * @param {object | null | undefined} capabilities
+ * @param {string | null | undefined} workspaceId
+ */
+export function productImagesEnabled(capabilities, workspaceId = null) {
+  if (isHotelCatalogueContext(capabilities, workspaceId)) return true;
+  if (asBool(capabilities?.as_mobile_show_images)) return true;
+  if (asBool(capabilities?.require_product_images)) return true;
+  const sales = capabilities?.module_settings?.sales;
+  if (sales && typeof sales === "object") {
+    if (asBool(sales.as_mobile_show_images)) return true;
+    if (asBool(sales.require_product_images)) return true;
+  }
+  return false;
+}
+
 export function hotelCatalogueListCopy() {
   return {
     title: "Menu products",

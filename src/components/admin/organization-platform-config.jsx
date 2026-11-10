@@ -804,8 +804,8 @@ export function OrganizationPlatformSalesSettings({
               AS / shop mobile app (Centrix ERP AS)
             </p>
             <Toggle
-              label="Show product & customer images"
-              description="When off, the AS mobile app hides catalogue photos and the product image field (unless images are required below)."
+              label="Show product images"
+              description="Product photos only (not customers). Hotel & Bar is on by default; retail and wholesale stay off until Platform Admin enables them for that organization. When on, AS mobile and backoffice product forms show photos."
               checked={Boolean(salesPlatform?.as_mobile_show_images)}
               onChange={(v) =>
                 patch({
@@ -816,7 +816,7 @@ export function OrganizationPlatformSalesSettings({
             />
             <Toggle
               label="Require product images"
-              description="When on, staff must upload a product photo when creating or updating products in the AS mobile app. Photo delete is blocked for that organization."
+              description="When on, staff must upload a product photo when creating or updating products. Photo delete is blocked for that organization."
               checked={Boolean(salesPlatform?.require_product_images)}
               onChange={(v) =>
                 patch({
