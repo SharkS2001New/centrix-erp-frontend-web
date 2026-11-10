@@ -142,9 +142,13 @@ export function AdminRolesScreen() {
   const bootstrap = useCallback(async () => {
     setLoading(true);
     try {
-      // Roles list + matrix in parallel — sequential wait was the main Roles lag.
-      const [list, matrix] = await Promise.all([loadRoles(), loadPermissionsCatalog()]);
+      // Roles list + matrix in parallel. Select the first role as soon as the list
+      // returns so the role-permissions effect overlaps the matrix request.
+      const rolesPromise = loadRoles();
+      const matrixPromise = loadPermissionsCatalog();
+      const list = await rolesPromise;
       setRoles(list);
+
       let nextSelected = selectedRoleIdRef.current;
       if (!initialRolePicked.current && list.length > 0) {
         initialRolePicked.current = true;
@@ -152,6 +156,8 @@ export function AdminRolesScreen() {
         setSelectedRoleId(nextSelected);
         selectedRoleIdRef.current = nextSelected;
       }
+
+      const matrix = await matrixPromise;
       writeTabPaneCache(paneHref, CACHE_SLOT, {
         roles: list,
         permissionGroups: matrix?.groups ?? [],

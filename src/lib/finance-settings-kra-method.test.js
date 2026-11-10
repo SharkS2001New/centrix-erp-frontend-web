@@ -7,6 +7,9 @@ import {
   financeFormFromApi,
   kraAgentSupportsComstoreApiKey,
   kraAgentSettingsFingerprint,
+  kraSalesScopeAllowsChannel,
+  normalizeKraSalesScope,
+  shouldSubmitKraOnCheckout,
 } from "./finance-settings";
 
 describe("ensureKraAgentMode", () => {
@@ -81,6 +84,68 @@ describe("financePayloadFromForm agent-only", () => {
 
     expect(saved.kra_comstore_api_key).toBe("********");
     expect(kraAgentSettingsFingerprint(changed)).not.toBe(kraAgentSettingsFingerprint(saved));
+  });
+});
+
+describe("kra sales scope", () => {
+  it("maps legacy default_submit_kra to off/both", () => {
+    expect(normalizeKraSalesScope({ default_submit_kra: false })).toBe("off");
+    expect(normalizeKraSalesScope({ default_submit_kra: true })).toBe("both");
+  });
+
+  it("restricts channels by scope", () => {
+    expect(kraSalesScopeAllowsChannel("mobile", "mobile")).toBe(true);
+    expect(kraSalesScopeAllowsChannel("mobile", "pos")).toBe(false);
+    expect(kraSalesScopeAllowsChannel("erp", "pos")).toBe(true);
+    expect(kraSalesScopeAllowsChannel("erp", "backend")).toBe(true);
+    expect(kraSalesScopeAllowsChannel("erp", "mobile")).toBe(false);
+    expect(kraSalesScopeAllowsChannel("both", "mobile")).toBe(true);
+  });
+
+  it("persists kra_sales_scope on save and keeps default_submit_kra in sync", () => {
+    const payload = financePayloadFromForm(
+      {
+        enable_kra_device: true,
+        enable_kra_agent: true,
+        kra_device_ip: "http://localhost:4000",
+        kra_direct_device_ip: "",
+        kra_agent_comstore_url: "http://localhost:4000",
+        kra_comstore_api_key: "key",
+        kra_device_hardware_ip: "",
+        kra_serial_number: "SN1",
+        kra_pin_number: "P123",
+        kra_device_test_mode: false,
+        kra_plu_register_path: "/api/upload-plu-data",
+        kra_sales_scope: "mobile",
+        default_submit_kra: true,
+        kra_bypass_above_amount: "",
+        accounting_mode: "native",
+        accounting_sync_direction: "export",
+        mpesa: {},
+        equity: {},
+        quickbooks: {
+          client_id: "",
+          client_secret: "",
+          redirect_uri: "",
+          environment: "sandbox",
+        },
+      },
+      { includeMpesa: false, includeEquity: false, includeAccounting: false },
+    );
+    expect(payload.kra_sales_scope).toBe("mobile");
+    expect(payload.default_submit_kra).toBe(true);
+  });
+
+  it("evaluates checkout fiscalization by channel", () => {
+    const settings = {
+      finance: {
+        enable_kra_device: true,
+        kra_sales_scope: "erp",
+      },
+    };
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "pos")).toBe(true);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000, "mobile")).toBe(false);
+    expect(shouldSubmitKraOnCheckout(settings, null, 1000)).toBe(true);
   });
 });
 

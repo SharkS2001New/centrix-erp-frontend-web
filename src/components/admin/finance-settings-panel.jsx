@@ -14,6 +14,8 @@ import {
   isPlatformMpesaStkEnabled,
   isPlatformEquityBankEnabled,
   kraDeviceOpsPayloadFromForm,
+  KRA_SALES_SCOPE_OPTIONS,
+  normalizeKraSalesScope,
 } from "@/lib/finance-settings";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
@@ -493,7 +495,8 @@ export function FinanceSettingsPanel({
         ...saved,
         enable_kra_device: Boolean(payload.enable_kra_device),
         enable_kra_agent: true,
-        default_submit_kra: Boolean(payload.default_submit_kra),
+        kra_sales_scope: normalizeKraSalesScope(payload),
+        default_submit_kra: normalizeKraSalesScope(payload) !== "off",
         kra_device_test_mode: Boolean(payload.kra_device_test_mode),
         kra_bypass_above_amount:
           payload.kra_bypass_above_amount == null ? "" : String(payload.kra_bypass_above_amount),
@@ -940,12 +943,31 @@ export function FinanceSettingsPanel({
               ) : null}
               {form.enable_kra_device ? (
                 <>
-                  <Toggle
-                    label="Use KRA device for sales"
-                    description="When on, completed sales are signed through the device (unless bypassed below). When off, sales use normal VAT calculations without calling the device."
-                    checked={Boolean(form.default_submit_kra)}
-                    onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
-                  />
+                  <Field label="Use KRA device for sales">
+                    <select
+                      className={inputClassName()}
+                      value={normalizeKraSalesScope(form)}
+                      onChange={(e) => {
+                        const scope = normalizeKraSalesScope({ kra_sales_scope: e.target.value });
+                        setForm((f) => ({
+                          ...f,
+                          kra_sales_scope: scope,
+                          default_submit_kra: scope !== "off",
+                        }));
+                      }}
+                    >
+                      {KRA_SALES_SCOPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Choose which sales channels send completed orders to the fiscal device.
+                      Mobile is Centrix AS / field sales; ERP is POS and backoffice. When off,
+                      sales use normal VAT calculations without calling the device.
+                    </p>
+                  </Field>
                   <Field label="Bypass KRA for orders at or above (KES)">
                     <input
                       type="number"

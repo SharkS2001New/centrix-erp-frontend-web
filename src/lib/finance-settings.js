@@ -15,6 +15,8 @@ const FINANCE_DEFAULTS = {
   kra_device_test_mode: false,
   kra_plu_register_path: "/api/upload-plu-data",
   default_submit_kra: true,
+  /** off | mobile | erp | both */
+  kra_sales_scope: "both",
   kra_bypass_above_amount: null,
   enable_mpesa_stk: true,
   enable_equity_bank: true,
@@ -69,7 +71,52 @@ export function mergeFinanceSettings(moduleSettings) {
   if (finance.default_submit_kra === undefined && sales.default_submit_kra !== undefined) {
     finance.default_submit_kra = sales.default_submit_kra !== false;
   }
+  finance.kra_sales_scope = normalizeKraSalesScope(finance);
+  finance.default_submit_kra = finance.kra_sales_scope !== "off";
   return finance;
+}
+
+export const KRA_SALES_SCOPE_OPTIONS = [
+  { value: "off", label: "Off — do not use KRA for sales" },
+  { value: "mobile", label: "Mobile sales only" },
+  { value: "erp", label: "ERP sales only (POS & backoffice)" },
+  { value: "both", label: "Both mobile and ERP sales" },
+];
+
+/** @param {Record<string, unknown>} finance */
+export function normalizeKraSalesScope(finance) {
+  const raw = String(finance?.kra_sales_scope ?? "").trim().toLowerCase();
+  if (raw === "off" || raw === "mobile" || raw === "erp" || raw === "both") {
+    return raw;
+  }
+  return finance?.default_submit_kra === false ? "off" : "both";
+}
+
+/** @param {string|null|undefined} channel */
+export function normalizeKraSalesChannel(channel) {
+  const value = String(channel ?? "").trim().toLowerCase();
+  if (value === "pos" || value === "external_pos") return "pos";
+  if (value === "hotel_pos" || value === "hotel" || value === "hospitality") return "hotel";
+  if (value === "backend" || value === "backoffice" || value === "web") return "backend";
+  if (
+    value === "mobile" ||
+    value === "centrix_as_mobile" ||
+    value === "as_mobile" ||
+    value === "field"
+  ) {
+    return "mobile";
+  }
+  return value;
+}
+
+export function kraSalesScopeAllowsChannel(scope, channel) {
+  const normalizedScope = normalizeKraSalesScope({ kra_sales_scope: scope });
+  if (normalizedScope === "off") return false;
+  if (normalizedScope === "both") return true;
+  const normalizedChannel = normalizeKraSalesChannel(channel);
+  if (!normalizedChannel) return false;
+  if (normalizedScope === "mobile") return normalizedChannel === "mobile";
+  return normalizedChannel === "pos" || normalizedChannel === "backend" || normalizedChannel === "hotel";
 }
 
 export function isPlatformMpesaStkEnabled(moduleSettings, capabilities) {
@@ -107,7 +154,7 @@ export function isKraDeviceEnabled(moduleSettings, capabilities) {
 export function isKraFiscalizationActive(moduleSettings, capabilities) {
   if (!isKraDeviceConfigured(moduleSettings, capabilities)) return false;
   const finance = mergeFinanceSettings(moduleSettings);
-  return finance.default_submit_kra !== false;
+  return normalizeKraSalesScope(finance) !== "off";
 }
 
 export function kraBypassAboveAmount(moduleSettings) {
@@ -192,7 +239,12 @@ export function canAccessAccountingRoute() {
   return true;
 }
 
-export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null, orderTotal = null) {
+export function shouldSubmitKraOnCheckout(
+  moduleSettings,
+  capabilities = null,
+  orderTotal = null,
+  channel = null,
+) {
   const finance = mergeFinanceSettings(moduleSettings);
   if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) {
     return false;
@@ -200,7 +252,15 @@ export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null, o
   if (!finance.enable_kra_device) {
     return false;
   }
-  if (finance.default_submit_kra === false) {
+  const scope = normalizeKraSalesScope(finance);
+  if (scope === "off") {
+    return false;
+  }
+  // POS / backoffice callers often omit channel — treat blank as ERP.
+  // Mobile clients should pass "mobile".
+  const effectiveChannel =
+    channel == null || String(channel).trim() === "" ? "pos" : channel;
+  if (!kraSalesScopeAllowsChannel(scope, effectiveChannel)) {
     return false;
   }
   if (orderTotal != null && isKraBypassedForOrderTotal(moduleSettings, orderTotal)) {
@@ -315,7 +375,8 @@ export function financeFormFromApi(res) {
     kra_pin_number: String(finance.kra_pin_number ?? ""),
     kra_device_test_mode: Boolean(finance.kra_device_test_mode),
     kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/upload-plu-data"),
-    default_submit_kra: finance.default_submit_kra !== false,
+    kra_sales_scope: normalizeKraSalesScope(finance),
+    default_submit_kra: normalizeKraSalesScope(finance) !== "off",
     kra_bypass_above_amount:
       finance.kra_bypass_above_amount == null || finance.kra_bypass_above_amount === ""
         ? ""
@@ -410,7 +471,14 @@ export function financePayloadFromForm(form, options = {}) {
     kra_serial_number: form.kra_serial_number.trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
     kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/upload-plu-data",
-    default_submit_kra: Boolean(form.default_submit_kra),
+    kra_sales_scope: normalizeKraSalesScope({
+      kra_sales_scope: form.kra_sales_scope,
+      default_submit_kra: form.default_submit_kra,
+    }),
+    default_submit_kra: normalizeKraSalesScope({
+      kra_sales_scope: form.kra_sales_scope,
+      default_submit_kra: form.default_submit_kra,
+    }) !== "off",
     kra_bypass_above_amount: (() => {
       const raw = String(form.kra_bypass_above_amount ?? "").trim();
       if (!raw) return null;
