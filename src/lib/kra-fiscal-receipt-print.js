@@ -376,6 +376,19 @@ export function isKraOriginalInvoiceSaleRow(row) {
   );
 }
 
+/** True when this sale already has a successful KRA credit note. */
+export function isKraSaleAlreadyCredited(row) {
+  if (row?.already_credited === true || row?.already_credited === 1 || row?.already_credited === "1") {
+    return true;
+  }
+  return false;
+}
+
+/** Original invoice that may still be credited on KRA (not already credited). */
+export function canOfferKraCreditThisSale(row) {
+  return isKraOriginalInvoiceSaleRow(row) && !isKraSaleAlreadyCredited(row);
+}
+
 function buildLineItemsHtml(lines) {
   if (!lines.length) {
     return `<tr><td colspan="4" style="padding:6px 0;text-align:center;font-size:10px;color:#64748b;">No line items in KRA payload</td></tr>`;

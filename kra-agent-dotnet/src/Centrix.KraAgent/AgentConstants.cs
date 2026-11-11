@@ -3,7 +3,7 @@ namespace Centrix.KraAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixKraAgent";
-    public const string Version = "1.3.9";
+    public const string Version = "1.3.10";
     public const string ServiceName = "CentrixKraAgent";
     public const int StatusPort = 9261;
 

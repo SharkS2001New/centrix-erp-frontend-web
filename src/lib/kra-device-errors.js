@@ -160,7 +160,7 @@ export function suggestKraFailureFix(rawError, options = {}) {
     code === "520" ||
     code === "96" ||
     code === "90" ||
-    /not communicating|timed out|closed the connection|could not reach|no internet|aborted without a reason/i.test(
+    /not communicating|timed out|closed the connection|could not reach|no internet|aborted without a reason|operation was cancel+ed/i.test(
       text,
     )
   ) {

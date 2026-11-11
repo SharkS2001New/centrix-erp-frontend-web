@@ -119,16 +119,27 @@ public sealed class ComstoreClient
                 Error = res.IsSuccessStatusCode ? null : FormatHttpError((int)res.StatusCode, body),
             };
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || ct.IsCancellationRequested)
+        // CancelAfter / HttpClient.Timeout fire OperationCanceledException while the
+        // parent token is still open — previously the filter let that bubble as the
+        // opaque "The operation was canceled." cashiers see on KRA credit notes.
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             return new CommandResult
             {
                 Success = false,
                 Status = 0,
                 Body = "",
-                Error = ex is OperationCanceledException
-                    ? $"Comstore timed out after {timeoutSec}s"
-                    : ex.Message,
+                Error = $"Comstore timed out after {timeoutSec}s",
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new CommandResult
+            {
+                Success = false,
+                Status = 0,
+                Body = "",
+                Error = ex.Message,
             };
         }
     }
@@ -141,6 +152,8 @@ public sealed class ComstoreClient
         return result.Status is null or 0
             || err.Contains("refused", StringComparison.OrdinalIgnoreCase)
             || err.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+            || err.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase)
+            || err.Contains("operation was cancelled", StringComparison.OrdinalIgnoreCase)
             || err.Contains("unreachable", StringComparison.OrdinalIgnoreCase)
             || err.Contains("No connection", StringComparison.OrdinalIgnoreCase)
             || err.Contains("actively refused", StringComparison.OrdinalIgnoreCase)

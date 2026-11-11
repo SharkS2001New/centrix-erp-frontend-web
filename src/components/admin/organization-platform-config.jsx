@@ -432,7 +432,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_code: false,
     enable_cheque_number: false,
     enable_pos_cash_rounding: false,
-    pos_touch_search_keypad: false,
+    pos_touch_search_keypad: true,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
     enable_held_order_amount_paid: false,
@@ -552,7 +552,9 @@ export function salesPlatformFromApi(apiPayload) {
     )
       ? Boolean(apiPayload.enable_pos_cash_rounding)
       : apiPayload.external_pos_layout === "classic",
-    pos_touch_search_keypad: Boolean(apiPayload.pos_touch_search_keypad),
+    pos_touch_search_keypad: Object.prototype.hasOwnProperty.call(apiPayload, "pos_touch_search_keypad")
+      ? Boolean(apiPayload.pos_touch_search_keypad)
+      : true,
     receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_held_order_amount_paid: Boolean(apiPayload.enable_held_order_amount_paid ?? false),

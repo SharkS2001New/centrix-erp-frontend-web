@@ -44,7 +44,9 @@ import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { formatKraReportOrderNo } from "@/lib/sales";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import {
-  isKraOriginalInvoiceSaleRow,
+  canOfferKraCreditThisSale,
+  isKraCreditNoteRow,
+  isKraSaleAlreadyCredited,
   kraDocumentTypeLabel,
   kraReportRowId,
   printKraFiscalReceipts,
@@ -444,6 +446,21 @@ export function KraReceiptsReportScreen({ definition }) {
     [rows],
   );
 
+  /** Sale IDs that already have a successful credit note on this page (UI fallback). */
+  const creditedSaleIdsOnPage = useMemo(() => {
+    const ids = new Set();
+    for (const row of rows) {
+      if (
+        isKraCreditNoteRow(row) &&
+        String(row?.status ?? "").toLowerCase() === "success" &&
+        row?.sale_id
+      ) {
+        ids.add(Number(row.sale_id));
+      }
+    }
+    return ids;
+  }, [rows]);
+
   const selectedRows = useMemo(
     () => rows.filter((row) => selectedIds.has(String(kraReportRowId(row)))),
     [rows, selectedIds],
@@ -736,9 +753,19 @@ export function KraReceiptsReportScreen({ definition }) {
     }
   }
 
+  function rowAlreadyHasKraCredit(row) {
+    if (isKraSaleAlreadyCredited(row)) return true;
+    const saleId = Number(row?.sale_id);
+    return Number.isFinite(saleId) && saleId > 0 && creditedSaleIdsOnPage.has(saleId);
+  }
+
   function openCreditSaleDialog(row) {
-    if (!isKraOriginalInvoiceSaleRow(row)) {
-      notifyError("Only successful original KRA invoice sales can be credited.");
+    if (!canOfferKraCreditThisSale(row) || rowAlreadyHasKraCredit(row)) {
+      notifyError(
+        rowAlreadyHasKraCredit(row)
+          ? "This sale already has a successful KRA credit note."
+          : "Only successful original KRA invoice sales can be credited.",
+      );
       return;
     }
     if (!row?.sale_id || !kraReportRowId(row)) {
@@ -764,6 +791,11 @@ export function KraReceiptsReportScreen({ definition }) {
       notifyError("Enable the KRA device in Finance settings before crediting a sale.");
       return;
     }
+    if (rowAlreadyHasKraCredit(creditRow)) {
+      notifyError("This sale already has a successful KRA credit note.");
+      setCreditRow(null);
+      return;
+    }
 
     setCrediting(true);
     setCreditProgress(12);
@@ -779,7 +811,12 @@ export function KraReceiptsReportScreen({ definition }) {
         loading: false,
       });
       setCreditProgress(100);
-      notifySuccess(res.message ?? "KRA credit note submitted. Centrix sale was not changed.");
+      notifySuccess(
+        res.message ??
+          (res.already_credited
+            ? "This sale already has a successful KRA credit note."
+            : "KRA credit note submitted. Centrix sale was not changed."),
+      );
       setCreditRow(null);
       await loadReport();
       if (res.kra_response) setPreviewRow(res.kra_response);
@@ -1095,7 +1132,10 @@ export function KraReceiptsReportScreen({ definition }) {
                       const typeBadge = documentTypeBadge(row);
                       const printable = isPrintableKraRow(row);
                       const isFailed = String(row?.status ?? "").toLowerCase() === "failed";
-                      const canCreditRow = canCreditKraSale && isKraOriginalInvoiceSaleRow(row);
+                      const canCreditRow =
+                        canCreditKraSale &&
+                        canOfferKraCreditThisSale(row) &&
+                        !rowAlreadyHasKraCredit(row);
                       return (
                         <tr key={rowId ?? idx} className={`${TABLE_BODY_ROW_CLASS} theme-text-muted`}>
                           <td className="whitespace-nowrap px-4 py-2.5">

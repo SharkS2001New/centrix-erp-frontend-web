@@ -2,6 +2,7 @@
 
 /**
  * When true, POS search fields open a tap keypad instead of the device keyboard.
+ * Defaults on (Hotel POS / External POS touch desks). Platform can turn it off per org.
  * @param {object|null|undefined} capabilitiesOrSettings
  */
 export function isPosTouchSearchKeypadEnabled(capabilitiesOrSettings = null) {
@@ -15,5 +16,5 @@ export function isPosTouchSearchKeypadEnabled(capabilitiesOrSettings = null) {
   if (Object.prototype.hasOwnProperty.call(hospitality, "pos_touch_search_keypad")) {
     return Boolean(hospitality.pos_touch_search_keypad);
   }
-  return false;
+  return true;
 }

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 
 describe("isPosTouchSearchKeypadEnabled", () => {
-  it("is off by default", () => {
-    expect(isPosTouchSearchKeypadEnabled(null)).toBe(false);
-    expect(isPosTouchSearchKeypadEnabled({})).toBe(false);
+  it("is on by default", () => {
+    expect(isPosTouchSearchKeypadEnabled(null)).toBe(true);
+    expect(isPosTouchSearchKeypadEnabled({})).toBe(true);
   });
 
   it("reads sales module settings from capabilities", () => {
