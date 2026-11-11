@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.3.2";
+const string Version = "0.3.3";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)
@@ -38,10 +38,44 @@ builder.Services.AddSingleton<PrintJobQueue>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PrintJobQueue>());
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    // Browser ERP is HTTPS; agent is http://127.0.0.1 — Chrome Private Network Access
+    // requires Allow-Private-Network on the preflight (see middleware below).
+    options.AddDefaultPolicy(policy => policy
+        .SetIsOriginAllowed(_ => true)
+        .AllowAnyHeader()
+        .AllowAnyMethod());
 });
 
 var app = builder.Build();
+
+// Chrome / Edge: public HTTPS page → loopback agent needs this header on OPTIONS + response.
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(static (state) =>
+    {
+        var ctx = (HttpContext)state!;
+        ctx.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
+        return Task.CompletedTask;
+    }, context);
+
+    if (HttpMethods.IsOptions(context.Request.Method)
+        && context.Request.Headers.ContainsKey("Access-Control-Request-Private-Network"))
+    {
+        var origin = context.Request.Headers.Origin.ToString();
+        context.Response.Headers.AccessControlAllowOrigin = string.IsNullOrWhiteSpace(origin) ? "*" : origin;
+        context.Response.Headers.AccessControlAllowMethods = "GET, POST, OPTIONS";
+        context.Response.Headers.AccessControlAllowHeaders =
+            context.Request.Headers.AccessControlRequestHeaders.ToString() is { Length: > 0 } requested
+                ? requested
+                : "Content-Type";
+        context.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
+        context.Response.StatusCode = StatusCodes.Status204NoContent;
+        return;
+    }
+
+    await next();
+});
+
 app.UseCors();
 
 app.MapGet("/v1/health", (PrinterDiscovery printers) =>

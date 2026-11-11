@@ -235,6 +235,7 @@ export default function PlatformSpeedPage() {
   const [probeSummary, setProbeSummary] = useState(null);
   const [selectedFailedJobId, setSelectedFailedJobId] = useState(null);
   const [failedJobsPage, setFailedJobsPage] = useState(1);
+  const [clearFailedBusy, setClearFailedBusy] = useState(false);
   const [healthBusy, setHealthBusy] = useState(false);
   const [reverbBusy, setReverbBusy] = useState(false);
   const [reverbTest, setReverbTest] = useState(null);
@@ -328,6 +329,32 @@ export default function PlatformSpeedPage() {
       setTabData(null);
     }
   }, [range]);
+
+  const clearFailedJobs = useCallback(async () => {
+    const total = Number(tabData?.failed_jobs?.total ?? 0);
+    if (total <= 0 || clearFailedBusy) return;
+    const ok = window.confirm(
+      `Clear all ${total} failed job(s)?\n\nThis only removes the failed list — it does not retry them. Use this after a fix to see if failures reappear.`,
+    );
+    if (!ok) return;
+
+    setClearFailedBusy(true);
+    try {
+      const res = await apiRequest("/admin/platform-speed/failed-jobs", {
+        method: "DELETE",
+        body: { confirm: true, all: true },
+        loading: false,
+      });
+      notifySuccess(res?.message || `Cleared ${res?.deleted ?? 0} failed job(s).`);
+      setSelectedFailedJobId(null);
+      await loadTab("queues", 1);
+      void loadOverview();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to clear failed jobs");
+    } finally {
+      setClearFailedBusy(false);
+    }
+  }, [clearFailedBusy, loadOverview, loadTab, tabData?.failed_jobs?.total]);
 
   useEffect(() => {
     void loadOverview();
@@ -747,7 +774,22 @@ export default function PlatformSpeedPage() {
               Run live worker probe in Infrastructure Health →
             </button>
           </Panel>
-          <Panel title={`Failed jobs (${tabData?.failed_jobs?.total ?? 0})`}>
+          <Panel
+            title={`Failed jobs (${tabData?.failed_jobs?.total ?? 0})`}
+            action={
+              (tabData?.failed_jobs?.total ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  className={`${SECONDARY_BTN_CLASS} px-3 py-1.5 text-xs disabled:opacity-50`}
+                  disabled={clearFailedBusy}
+                  onClick={() => void clearFailedJobs()}
+                  title="Clear the failed list so you can watch for reappearance after a fix"
+                >
+                  {clearFailedBusy ? "Clearing…" : "Clear failed"}
+                </button>
+              ) : null
+            }
+          >
             {tabData?.failed_jobs?.data?.length ? (
               <div className="space-y-2">
                 {tabData.failed_jobs.data.map((job) => (

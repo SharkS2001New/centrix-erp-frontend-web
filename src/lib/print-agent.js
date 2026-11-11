@@ -13,8 +13,9 @@ import {
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:9247";
 const HEALTH_PATH = "/v1/health";
-const HEALTH_TIMEOUT_MS = 1200;
-const QUICK_HEALTH_TIMEOUT_MS = 500;
+/** Windows printer enumeration can exceed 1s on cold service start. */
+const HEALTH_TIMEOUT_MS = 3500;
+const QUICK_HEALTH_TIMEOUT_MS = 900;
 /** Async queue returns quickly; sync/test print may still wait for PDF + printer. */
 const PRINT_TIMEOUT_MS = 20000;
 const PRINT_WAIT_TIMEOUT_MS = 45000;
@@ -109,24 +110,37 @@ export function isPrintAgentRecentlyHealthy(
 
 async function agentFetch(config, path, init = {}) {
   const controller = new AbortController();
-  const timeoutMs = init.timeoutMs ?? PRINT_TIMEOUT_MS;
+  const { timeoutMs: timeoutOverride, headers: initHeaders, body, ...rest } = init;
+  const timeoutMs = timeoutOverride ?? PRINT_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = { ...(initHeaders ?? {}) };
+  // Do not set Content-Type on GET health — it forces a CORS preflight and breaks
+  // Chrome Private Network Access against older print agents.
+  if (body !== undefined && body !== null && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   try {
     const res = await fetch(agentUrl(config, path), {
-      ...init,
+      ...rest,
+      body,
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
+      headers,
     });
-    const body = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let parsed = {};
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = { message: text };
+      }
+    }
     if (!res.ok) {
-      const message = body.message ?? body.error ?? `Print agent error (${res.status})`;
+      const message = parsed.message ?? parsed.error ?? `Print agent error (${res.status})`;
       throw new Error(message);
     }
-    return body;
+    return parsed;
   } finally {
     clearTimeout(timer);
   }

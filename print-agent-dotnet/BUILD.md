@@ -96,6 +96,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
+| Agent runs but Centrix says offline | Usually Chrome **Private Network Access**: HTTPS ERP → `http://127.0.0.1`. Install print agent **0.3.3+** (sends `Access-Control-Allow-Private-Network`). Also hard-refresh Centrix so health GETs no longer send `Content-Type` |
 | `Could not render receipt HTML to PDF` | Install wkhtmltopdf manually (link above), re-run install. Health must show `"wkhtmltopdf_available": true` |
 | Test sent but nothing prints | Run `.\scripts\configure-sumatra.ps1` as Administrator. Health must show `"sumatra_available": true`. USB printers: service Log On -> this Windows user |
 | Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles SumatraPDF + sets SUMATRA_PATH). If already installed manually: `.\scripts\configure-sumatra.ps1 -SkipDownload` |

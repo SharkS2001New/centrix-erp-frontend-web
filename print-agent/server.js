@@ -14,6 +14,21 @@ const PORT = Number(process.env.PRINT_AGENT_PORT ?? 9247);
 const VERSION = "0.2.1";
 
 const app = express();
+app.use((req, res, next) => {
+  // Chrome Private Network Access: HTTPS Centrix UI → http://127.0.0.1 agent.
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  if (req.method === "OPTIONS" && req.headers["access-control-request-private-network"]) {
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      req.headers["access-control-request-headers"] || "Content-Type",
+    );
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "4mb" }));
 

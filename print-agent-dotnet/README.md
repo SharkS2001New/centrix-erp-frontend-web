@@ -7,7 +7,7 @@ Runs as a **Windows service** and renders with **wkhtmltopdf** (works in the bac
 - **Thermal (80mm)** — POS receipts (`job_type: receipt`)
 - **A4** — HR payslips, cash advances, leave forms, invoices (`payroll_receipt`, `cash_advance`, `leave_application`, …)
 
-Agent **0.3.2+** bundles Sumatra on publish/install and downloads **wkhtmltopdf** during install by default so a till works after one admin install.
+Agent **0.3.3+** allows Chrome/Edge on the HTTPS Centrix UI to reach the loopback agent (Private Network Access). **0.3.2+** bundles Sumatra on publish/install and downloads **wkhtmltopdf** during install by default so a till works after one admin install.
 
 ## For till / office staff
 

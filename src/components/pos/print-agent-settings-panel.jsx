@@ -122,7 +122,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         const result = {
           ok: false,
           printers: [],
-          error: "Print agent is not running. Install the Windows print service on this PC, then try again.",
+          error: "Print agent is not reachable from this browser. Open http://127.0.0.1:9247/v1/health on this PC, then update the agent if Centrix still shows offline.",
         };
         setHealth(result);
         return result;
@@ -220,7 +220,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       if (!status) {
         const offline = {
           ok: false,
-          error: "Print agent is not running on this PC.",
+          error: "Print agent is not reachable from this browser (check 127.0.0.1:9247).",
           url: printAgentHealthUrl(config),
         };
         setHealth({ ok: false, printers: [], error: offline.error });
@@ -255,7 +255,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       }
       if (!status?.ok) {
         notifyError(
-          "Print agent is not running. Download and install the Windows print service on this PC, then try again.",
+          "Print agent is not reachable from this browser. Confirm http://127.0.0.1:9247/v1/health opens on this PC. If the agent is running but Centrix still shows offline, update/reinstall the print agent (Chrome blocks HTTPS → localhost without the latest agent).",
         );
         return;
       }
