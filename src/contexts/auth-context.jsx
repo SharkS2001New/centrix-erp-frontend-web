@@ -84,6 +84,28 @@ function syncStoredWorkspace(workspaces) {
   }
 }
 
+/**
+ * Persist the sole accessible workspace on the Sanctum token so Active users
+ * shows Hotel POS vs Hotel Backoffice correctly (both use the backoffice channel).
+ */
+async function stampSoleWorkspaceSession(workspaceId, setters) {
+  const onlyId = String(workspaceId ?? "");
+  if (!onlyId) return;
+  try {
+    const switched = await applyWorkspaceSession(onlyId);
+    setters.setUser?.(switched.user);
+    setters.setOrganization?.(switched.organization ?? null);
+    setters.setMemberships?.(switched.memberships ?? []);
+    setters.setLoginChannel?.(workspaceLoginChannel(onlyId));
+    if (switched.capabilities) {
+      setters.setCapabilities?.(switched.capabilities);
+    }
+  } catch (err) {
+    console.error("Failed to stamp session workspace", err);
+    setStoredWorkspace(onlyId);
+  }
+}
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -458,9 +480,15 @@ export function AuthProvider({ children }) {
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
-        // Local only — avoid POST /auth/switch-workspace (full capabilities rebuild).
-        // Token already has backoffice channel from login.
-        setStoredWorkspace(workspaces[0].id);
+        // Stamp active_workspace_id on the token (Active users). Same-channel switches
+        // skip a capabilities rebuild (Hotel POS / Hotel Backoffice both use backoffice).
+        await stampSoleWorkspaceSession(workspaces[0].id, {
+          setUser,
+          setOrganization,
+          setMemberships,
+          setLoginChannel,
+          setCapabilities,
+        });
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }
@@ -490,7 +518,13 @@ export function AuthProvider({ children }) {
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
-        setStoredWorkspace(workspaces[0].id);
+        await stampSoleWorkspaceSession(workspaces[0].id, {
+          setUser,
+          setOrganization,
+          setMemberships,
+          setLoginChannel,
+          setCapabilities,
+        });
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }

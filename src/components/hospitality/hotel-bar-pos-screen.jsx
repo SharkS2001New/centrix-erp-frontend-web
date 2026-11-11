@@ -60,7 +60,7 @@ import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-wor
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { listActiveOrgPaymentMethods } from "@/lib/org-payment-methods";
 import { fetchPaymentMethodsCached } from "@/lib/reference-data-cache";
-import { notifyError, notifySuccess } from "@/lib/notify";
+import { notifyError, notifyPriceUpdate, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
 import { PRODUCT_NAME } from "@/lib/branding";
@@ -68,6 +68,10 @@ import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosProductImage } from "@/components/hospitality/hotel-pos-product-image";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
+import {
+  createNotificationEcho,
+  isRealtimeConfigured,
+} from "@/lib/realtime/notification-echo";
 
 const HotelPosPaymentPanel = dynamic(
   () =>
@@ -90,7 +94,6 @@ import {
 } from "@/lib/hospitality-check-print-options";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { primeHotelPosImageCacheFromIndexedDb } from "@/lib/hotel-pos-image-cache";
-import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
@@ -845,6 +848,199 @@ export function HotelBarPosScreen() {
   useEffect(() => {
     void refreshHeldCount();
   }, [refreshHeldCount]);
+
+  // Live toast + menu refresh when ERP updates product prices (same pattern as External POS).
+  // No header notification bell on Hotel POS — price changes surface as snackbars only.
+  const organizationId = user?.organization_id ?? capabilities?.organization_id ?? null;
+  const loadCatalogRef = useRef(loadCatalog);
+  loadCatalogRef.current = loadCatalog;
+  const replaceCatalogMapRef = useRef(replaceCatalogMap);
+  replaceCatalogMapRef.current = replaceCatalogMap;
+  const debouncedSearchRef = useRef(debouncedSearch);
+  debouncedSearchRef.current = debouncedSearch;
+  const menuOutletIdRef = useRef(menuOutlet?.id ?? assignedOutletId ?? null);
+  menuOutletIdRef.current = menuOutlet?.id ?? assignedOutletId ?? null;
+  const offlineModeRef = useRef(offlineMode);
+  offlineModeRef.current = offlineMode;
+
+  useEffect(() => {
+    if (!organizationId) return undefined;
+
+    let cancelled = false;
+    /** @type {import('laravel-echo').default | null} */
+    let echo = null;
+    let channel = null;
+    const channelName = `organization.${organizationId}`;
+    let lastToastAt = 0;
+    let refreshInFlight = null;
+    let pricingNoticePollTimer = null;
+    let lastPricingRevision = 0;
+    let pricingPollFallbackActive = false;
+
+    function flashPricingToast(message) {
+      if (!message) return;
+      const now = Date.now();
+      if (now - lastToastAt < 1200) return;
+      lastToastAt = now;
+      notifyPriceUpdate(message);
+    }
+
+    async function applyPricingUpdate(payload = {}, { announce = true } = {}) {
+      if (cancelled) return;
+      const message =
+        typeof payload?.message === "string" && payload.message.trim()
+          ? payload.message.trim()
+          : "Product prices or markups were updated.";
+
+      try {
+        if (refreshInFlight) await refreshInFlight;
+        refreshInFlight = (async () => {
+          const outletId = menuOutletIdRef.current ?? undefined;
+          await warmHotelPosOfflineCatalog({
+            force: true,
+            outletId,
+            warmImages: false,
+          });
+          const all = await idbGetAllCatalog();
+          const nextMap = new Map();
+          for (const row of all) {
+            if (row?.product_code) nextMap.set(String(row.product_code), row);
+          }
+          if (!cancelled) {
+            replaceCatalogMapRef.current(nextMap);
+            await loadCatalogRef.current(debouncedSearchRef.current, {
+              offset: 0,
+              append: false,
+              forceRefresh: true,
+            });
+          }
+        })().finally(() => {
+          refreshInFlight = null;
+        });
+        await refreshInFlight;
+      } catch (e) {
+        console.warn("[hotel-pos] catalog pricing refresh failed", e);
+      }
+
+      if (cancelled || !announce) return;
+      flashPricingToast(message);
+    }
+
+    async function seedPricingRevisionWatermark() {
+      try {
+        const res = await apiRequest("/pos/catalog-pricing-revision", {
+          loading: false,
+          reportIssues: false,
+          searchParams: { since: 0 },
+        });
+        lastPricingRevision = Number(res?.revision ?? 0);
+      } catch {
+        /* non-blocking */
+      }
+    }
+
+    async function pollPricingRevision() {
+      if (cancelled || offlineModeRef.current) return;
+      try {
+        const res = await apiRequest("/pos/catalog-pricing-revision", {
+          loading: false,
+          reportIssues: false,
+          searchParams: { since: lastPricingRevision },
+        });
+        const revision = Number(res?.revision ?? 0);
+        if (!Number.isFinite(revision) || revision <= lastPricingRevision) return;
+        lastPricingRevision = revision;
+        if (!res?.changed) return;
+        await applyPricingUpdate(
+          {
+            message:
+              String(res.message ?? "").trim() || "Product prices or markups were updated.",
+            product_code: res.product_code ?? null,
+            reason: res.reason ?? "pricing",
+          },
+          { announce: true },
+        );
+      } catch {
+        /* non-blocking */
+      }
+    }
+
+    function schedulePricingNoticePoll() {
+      if (pricingNoticePollTimer) {
+        window.clearInterval(pricingNoticePollTimer);
+        pricingNoticePollTimer = null;
+      }
+      if (!pricingPollFallbackActive || cancelled) return;
+      const intervalMs = document.visibilityState === "visible" ? 12_000 : 24_000;
+      pricingNoticePollTimer = window.setInterval(() => {
+        void pollPricingRevision();
+      }, intervalMs);
+    }
+
+    function startPricingNoticePollFallback() {
+      if (pricingPollFallbackActive) return;
+      pricingPollFallbackActive = true;
+      void seedPricingRevisionWatermark().finally(() => {
+        schedulePricingNoticePoll();
+        void pollPricingRevision();
+      });
+    }
+
+    function onPricingPollVisibility() {
+      if (!pricingPollFallbackActive) return;
+      schedulePricingNoticePoll();
+      if (document.visibilityState === "visible") {
+        void pollPricingRevision();
+      }
+    }
+
+    function onWindowFocus() {
+      if (document.visibilityState && document.visibilityState !== "visible") return;
+      if (offlineModeRef.current) return;
+      void applyPricingUpdate({ forceFull: true }, { announce: false });
+    }
+
+    startPricingNoticePollFallback();
+    window.addEventListener("focus", onWindowFocus);
+    document.addEventListener("visibilitychange", onWindowFocus);
+    document.addEventListener("visibilitychange", onPricingPollVisibility);
+
+    if (isRealtimeConfigured()) {
+      (async () => {
+        try {
+          echo = await createNotificationEcho();
+          if (cancelled || !echo) return;
+          channel = echo.private(channelName);
+          channel.listen(".catalog.pricing.updated", (payload) => {
+            void applyPricingUpdate(payload ?? {});
+          });
+          channel.error(() => {
+            if (process.env.NODE_ENV === "development") {
+              console.warn("[hotel-pos] organization pricing channel error — notification poll continues");
+            }
+          });
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[hotel-pos] pricing realtime unavailable", error);
+          }
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+      try {
+        channel?.stopListening(".catalog.pricing.updated");
+        echo?.leave(channelName);
+      } catch {
+        /* ignore */
+      }
+      if (pricingNoticePollTimer) window.clearInterval(pricingNoticePollTimer);
+      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onWindowFocus);
+      document.removeEventListener("visibilitychange", onPricingPollVisibility);
+    };
+  }, [organizationId]);
 
   async function handleRefreshCatalog() {
     if (busy || catalogRefreshing || sellingLocked) return;
@@ -1870,7 +2066,6 @@ export function HotelBarPosScreen() {
             ) : null}
           </div>
           <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center justify-end gap-1.5 justify-self-end sm:gap-2">
-            <NotificationBell />
             <WorkspaceSwitcher />
             <UserAccountMenu
               showName={false}

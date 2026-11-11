@@ -6,13 +6,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { recallWorkspaceLandingPath, defaultWorkspaceId, needsWorkspaceSelection } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
-  isPosWorkspace,
   isTerminalWorkspace,
   pathBelongsToWorkspace,
   workspaceHomePath,
+  workspaceLoginChannel,
 } from "@/lib/workspaces";
 
 /** Route to the correct workspace — never block the shell on capabilities refresh. */
@@ -96,8 +95,8 @@ export function WorkspaceGuard({ children }) {
   // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
   // returning to backoffice/platform so Applications and other admin APIs work.
   // Hold the shell until the channel matches — otherwise screens race ahead and 403.
-  // Do not call switch-workspace after a normal backoffice login just to stamp
-  // active_workspace_id — that rebuilt capabilities and slowed first paint.
+  // Same-channel workspace stamps (Hotel POS ↔ Hotel Backoffice) are cheap: the API
+  // skips a capabilities rebuild and Active users can show the correct application.
   const [channelRestoreError, setChannelRestoreError] = useState(null);
   const [channelRetryToken, setChannelRetryToken] = useState(0);
 
@@ -122,17 +121,24 @@ export function WorkspaceGuard({ children }) {
       return;
     }
 
+    const expectedChannel = workspaceLoginChannel(workspaceId);
     const syncKey = `${organization?.id ?? ""}:${workspaceId}:${loginChannel ?? ""}`;
-    // Hold the shell only when the Sanctum channel must change (POS ↔ backoffice).
-    // Do not POST /auth/switch-workspace merely to stamp active_workspace_id after login —
-    // that rebuilt capabilities and made login feel slow.
-    const needsPosChannelRestore =
-      loginChannel === POS_LOGIN_CHANNEL && !isPosWorkspace(workspaceId);
+    const channelMismatch = (loginChannel ?? "") !== expectedChannel;
 
-    if (!needsPosChannelRestore) {
-      workspaceSyncedKeyRef.current = syncKey;
+    // Channel already matches (e.g. Hotel POS on backoffice channel): stamp
+    // active_workspace_id once without blocking the shell.
+    if (!channelMismatch) {
       setChannelReady(true);
       setChannelRestoreError(null);
+      if (workspaceSyncedKeyRef.current !== syncKey) {
+        workspaceSyncedKeyRef.current = syncKey;
+        switchWorkspace(workspaceId).catch((err) => {
+          console.error("Failed to stamp session workspace", err);
+          if (workspaceSyncedKeyRef.current === syncKey) {
+            workspaceSyncedKeyRef.current = null;
+          }
+        });
+      }
       return;
     }
 
@@ -142,7 +148,7 @@ export function WorkspaceGuard({ children }) {
     switchWorkspace(workspaceId)
       .then(() => {
         if (!cancelled) {
-          workspaceSyncedKeyRef.current = syncKey;
+          workspaceSyncedKeyRef.current = `${organization?.id ?? ""}:${workspaceId}:${expectedChannel}`;
           setChannelReady(true);
           setChannelRestoreError(null);
         }
