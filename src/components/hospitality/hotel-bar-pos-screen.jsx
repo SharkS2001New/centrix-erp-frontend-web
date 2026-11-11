@@ -853,15 +853,25 @@ export function HotelBarPosScreen() {
   // No header notification bell on Hotel POS — price changes surface as snackbars only.
   const organizationId = user?.organization_id ?? capabilities?.organization_id ?? null;
   const loadCatalogRef = useRef(loadCatalog);
-  loadCatalogRef.current = loadCatalog;
   const replaceCatalogMapRef = useRef(replaceCatalogMap);
-  replaceCatalogMapRef.current = replaceCatalogMap;
   const debouncedSearchRef = useRef(debouncedSearch);
-  debouncedSearchRef.current = debouncedSearch;
   const menuOutletIdRef = useRef(menuOutlet?.id ?? assignedOutletId ?? null);
-  menuOutletIdRef.current = menuOutlet?.id ?? assignedOutletId ?? null;
   const offlineModeRef = useRef(offlineMode);
-  offlineModeRef.current = offlineMode;
+
+  useEffect(() => {
+    loadCatalogRef.current = loadCatalog;
+    replaceCatalogMapRef.current = replaceCatalogMap;
+    debouncedSearchRef.current = debouncedSearch;
+    menuOutletIdRef.current = menuOutlet?.id ?? assignedOutletId ?? null;
+    offlineModeRef.current = offlineMode;
+  }, [
+    loadCatalog,
+    replaceCatalogMap,
+    debouncedSearch,
+    menuOutlet?.id,
+    assignedOutletId,
+    offlineMode,
+  ]);
 
   useEffect(() => {
     if (!organizationId) return undefined;
