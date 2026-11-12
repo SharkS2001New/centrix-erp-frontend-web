@@ -396,6 +396,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_expenses_card: false,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
+    as_mobile_ask_quantity_on_add: false,
     as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
@@ -489,6 +490,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
     as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
     require_product_images: Boolean(apiPayload.require_product_images),
+    as_mobile_ask_quantity_on_add: Boolean(apiPayload.as_mobile_ask_quantity_on_add),
     as_mobile_post_login_screen:
       apiPayload.as_mobile_post_login_screen === "operations_dashboard"
         ? "operations_dashboard"
@@ -826,6 +828,12 @@ export function OrganizationPlatformSalesSettings({
                   ...(v ? { as_mobile_show_images: true } : {}),
                 })
               }
+            />
+            <Toggle
+              label="Ask for quantity when adding products"
+              description="AS mobile POS and Orders. Off by default: tapping Add puts 1 unit in the cart immediately. On: staff get a quantity popup before the item is added."
+              checked={Boolean(salesPlatform?.as_mobile_ask_quantity_on_add)}
+              onChange={(v) => patch({ as_mobile_ask_quantity_on_add: v })}
             />
             <OrgRegisterField label="After login, open">
               <select

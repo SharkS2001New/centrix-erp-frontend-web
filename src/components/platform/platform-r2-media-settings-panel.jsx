@@ -296,19 +296,30 @@ export function PlatformR2MediaSettingsPanel() {
           />
         </label>
 
-        <label className="block text-sm">
+        <label className="block text-sm lg:col-span-2">
           <span className="mb-1 block text-xs font-medium text-slate-600">
-            Public / custom domain URL (optional)
+            Public / custom domain URL (needed for direct image loading)
           </span>
           <input
             type="url"
             className={inputClass}
             value={form.public_url}
             onChange={(e) => setForm((f) => ({ ...f, public_url: e.target.value }))}
-            placeholder="https://media.example.com"
+            placeholder="https://pub-….r2.dev or https://media.example.com"
             disabled={loading || saving}
           />
+          <span className="mt-1 block text-xs text-slate-500">
+            Enable Public Access on the media bucket in Cloudflare, then paste the r2.dev or custom
+            domain here. ERP, mobile, and POS use this for <span className="font-mono">image_url</span>.
+            Without it, apps still fall back to authenticated <span className="font-mono">/image/file</span>.
+          </span>
         </label>
+        {effective?.ready && !effective?.browser_direct_ready ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 lg:col-span-2">
+            R2 upload is configured, but no public URL is set — product tiles may not show photos until
+            you add an r2.dev / custom domain URL above.
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
           <PrimaryButton
