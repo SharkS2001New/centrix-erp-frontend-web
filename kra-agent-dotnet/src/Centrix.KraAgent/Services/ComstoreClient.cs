@@ -18,9 +18,11 @@ public sealed class ComstoreClient
             AutomaticDecompression = DecompressionMethods.All,
             ConnectTimeout = TimeSpan.FromSeconds(AgentConstants.ComstoreConnectTimeoutSeconds),
         };
+        // Per-request CancelAfter controls the budget (checkout ~22–28s, credit up to 55s).
+        // A fixed 22s HttpClient.Timeout was cutting credit notes short while sales still succeeded.
         _http = new HttpClient(handler)
         {
-            Timeout = TimeSpan.FromSeconds(AgentConstants.ComstoreRequestTimeoutSeconds),
+            Timeout = Timeout.InfiniteTimeSpan,
         };
     }
 
@@ -149,6 +151,12 @@ public sealed class ComstoreClient
         if (result.Success) return false;
         if (result.Status is > 0 and < 500) return false;
         var err = (result.Error ?? "") + " " + (result.Body ?? "");
+        // Slow complete-workflow (esp. credit notes) is not "Comstore down" — do not wrap
+        // as COMSTORE_MANUAL_START_REQUIRED or cashiers see a false offline message.
+        if (err.Contains("Comstore timed out after", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
         return result.Status is null or 0
             || err.Contains("refused", StringComparison.OrdinalIgnoreCase)
             || err.Contains("timed out", StringComparison.OrdinalIgnoreCase)

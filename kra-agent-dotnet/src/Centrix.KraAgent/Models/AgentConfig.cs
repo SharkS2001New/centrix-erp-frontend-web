@@ -128,6 +128,9 @@ public sealed class AgentCommand
     public string Path { get; set; } = "";
     public object? Body { get; set; }
     public string? Accept { get; set; }
+
+    /// <summary>Optional Centrix wait budget (seconds) for this command. Credit notes need longer than sales.</summary>
+    public int? TimeoutSeconds { get; set; }
 }
 
 public sealed class CommandResult

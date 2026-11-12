@@ -118,6 +118,14 @@ public sealed class CentrixClient
         {
             foreach (var item in arr.EnumerateArray())
             {
+                int? timeoutSeconds = null;
+                if (item.TryGetProperty("timeout_seconds", out var timeoutEl)
+                    && timeoutEl.ValueKind == JsonValueKind.Number
+                    && timeoutEl.TryGetInt32(out var timeoutVal))
+                {
+                    timeoutSeconds = timeoutVal;
+                }
+
                 commands.Add(new AgentCommand
                 {
                     Id = ReadCommandId(item),
@@ -125,6 +133,7 @@ public sealed class CentrixClient
                     Path = item.TryGetProperty("path", out var path) ? path.GetString() ?? "" : "",
                     Body = item.TryGetProperty("body", out var body) ? body.Clone() : null,
                     Accept = item.TryGetProperty("accept", out var accept) ? accept.GetString() : null,
+                    TimeoutSeconds = timeoutSeconds,
                 });
             }
         }

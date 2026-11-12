@@ -426,7 +426,8 @@ public sealed class KraWorker : BackgroundService
             CommandResult result;
             try
             {
-                result = await ExecuteLocalOrComstoreAsync(config, command, ct);
+                var commandTimeout = ResolveCommandTimeoutSeconds(config, command);
+                result = await ExecuteLocalOrComstoreAsync(config, command, ct, commandTimeout);
                 if (isLocal)
                 {
                     // Local agent probes — do not wrap with Comstore manual-start messaging.
@@ -438,7 +439,7 @@ public sealed class KraWorker : BackgroundService
                     if (detail != null) _lastComstoreEnsureNote = detail;
                     if (ok)
                     {
-                        result = await _comstore.ExecuteAsync(config, command, ct);
+                        result = await _comstore.ExecuteAsync(config, command, ct, commandTimeout);
                     }
                     else
                     {
@@ -543,10 +544,17 @@ public sealed class KraWorker : BackgroundService
             || p.Equals("/agent/device-probe", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static int ResolveCommandTimeoutSeconds(AgentConfig config, AgentCommand command)
+    {
+        var requested = command.TimeoutSeconds ?? config.CommandTimeoutSeconds;
+        return Math.Clamp(requested, 10, AgentConstants.MaxCommandTimeoutSeconds);
+    }
+
     private async Task<CommandResult> ExecuteLocalOrComstoreAsync(
         AgentConfig config,
         AgentCommand command,
-        CancellationToken ct)
+        CancellationToken ct,
+        int? timeoutSecondsOverride = null)
     {
         var path = (command.Path ?? "").Trim();
         if (!path.StartsWith('/')) path = "/" + path;
@@ -556,7 +564,7 @@ public sealed class KraWorker : BackgroundService
             return await ExecuteDeviceProbeAsync(config, command, ct);
         }
 
-        return await _comstore.ExecuteAsync(config, command, ct);
+        return await _comstore.ExecuteAsync(config, command, ct, timeoutSecondsOverride);
     }
 
     private async Task<CommandResult> ExecuteDeviceProbeAsync(

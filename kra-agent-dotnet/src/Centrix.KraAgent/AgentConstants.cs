@@ -3,7 +3,7 @@ namespace Centrix.KraAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixKraAgent";
-    public const string Version = "1.3.10";
+    public const string Version = "1.3.11";
     public const string ServiceName = "CentrixKraAgent";
     public const int StatusPort = 9261;
 
@@ -20,8 +20,14 @@ public static class AgentConstants
     public const int MaxHeartbeatSeconds = 120;
 
     public const int ComstoreConnectTimeoutSeconds = 5;
-    /// <summary>Must stay under Centrix checkout wait (~28–30s) so results are not discarded.</summary>
+    /// <summary>
+    /// Default per-request CancelAfter when Centrix does not send timeout_seconds.
+    /// Checkout stays ~22–28s via commandTimeoutSeconds / pending timeout_seconds;
+    /// credit notes may request up to MaxCommandTimeoutSeconds.
+    /// </summary>
     public const int ComstoreRequestTimeoutSeconds = 22;
+
+    public const int MaxCommandTimeoutSeconds = 55;
 
     /// <summary>Cheap /api/health probe used before auto-start (keep low for speed path).</summary>
     public const int ComstoreHealthTimeoutSeconds = 3;
