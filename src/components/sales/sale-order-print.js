@@ -143,6 +143,14 @@ async function fetchCustomer(customerNum) {
   }
 }
 
+/** Sale detail often embeds a slim customer (name only) — that must not block a full fetch for A4 phone. */
+function customerNeedsPhoneLookup(customer) {
+  if (!customer || typeof customer !== "object") return true;
+  const phone = String(customer.phone_number ?? "").trim();
+  const extra = String(customer.additional_phone ?? "").trim();
+  return phone === "" && extra === "";
+}
+
 async function fetchRoute(routeId) {
   if (routeId == null) return null;
   try {
@@ -404,15 +412,20 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
         : skipNetworkLookups
           ? Promise.resolve(null)
           : getOrCreateCachedPromise(batchCache.branchById, saleForPrint.branch_id, () => fetchBranch(saleForPrint.branch_id)),
-      options.customer
-        ? Promise.resolve(options.customer)
-        : skipNetworkLookups
-          ? Promise.resolve(null)
+      skipNetworkLookups
+        ? Promise.resolve(options.customer ?? null)
+        : !customerNeedsPhoneLookup(options.customer)
+          ? Promise.resolve(options.customer)
           : getOrCreateCachedPromise(
             batchCache.customerByNum,
             saleForPrint.customer_num,
             () => fetchCustomer(saleForPrint.customer_num),
-          ),
+          ).then((fetched) => {
+            if (!fetched) return options.customer ?? null;
+            if (!options.customer) return fetched;
+            // Prefer fetched phone fields; keep any richer fields already on options.customer.
+            return { ...options.customer, ...fetched };
+          }),
     ]);
 
     const routeId = resolveRouteIdForPaymentDetails({

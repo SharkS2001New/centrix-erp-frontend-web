@@ -53,6 +53,10 @@ const FirstLoginGuide = dynamic(
   () => import("@/components/shared/first-login-guide").then((m) => m.FirstLoginGuide),
   { ssr: false },
 );
+const TrialSupportContact = dynamic(
+  () => import("@/components/shared/trial-support-contact").then((m) => m.TrialSupportContact),
+  { ssr: false },
+);
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -192,6 +196,7 @@ export function AppShell({ children, modal = null }) {
             <AccountingHelpDialog />
             <WhatsNewLoginModal />
             <FirstLoginGuide />
+            <TrialSupportContact />
             {modal}
           </div>
           </TabWorkspaceProvider>

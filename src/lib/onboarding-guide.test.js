@@ -3,6 +3,7 @@ import {
   onboardingDemoStorageKey,
   onboardingGuideStorageKey,
   isEligibleForMonthlyCustomerDemo,
+  isSelfServeTrialOrganization,
   guideDescriptionForNavItem,
   guideCardPosition,
   videoDemoEmbedUrl,
@@ -28,7 +29,7 @@ describe("onboarding guide", () => {
     );
   });
 
-  it("limits the in-app demo to paid monthly self-registered organizations", () => {
+  it("shows the in-app demo for Instant trial and paid monthly self-registered organisations", () => {
     const monthlyLicense = {
       status: "active",
       is_trial: false,
@@ -51,7 +52,15 @@ describe("onboarding guide", () => {
     )).toBe(false);
     expect(isEligibleForMonthlyCustomerDemo(
       { registration_source: "self_registered" },
-      { ...monthlyLicense, is_trial: true },
+      { ...monthlyLicense, is_trial: true, status: "trialing", access: "trial" },
+    )).toBe(true);
+    expect(isSelfServeTrialOrganization(
+      { registration_source: "self_registered" },
+      { is_trial: true, status: "trialing" },
+    )).toBe(true);
+    expect(isSelfServeTrialOrganization(
+      { registration_source: "self_registered" },
+      monthlyLicense,
     )).toBe(false);
   });
 

@@ -10,6 +10,7 @@ import {
   isLimitedLicencePath,
   licenceNeedsPayment,
   usesPackageOne,
+  requiresPaymentOnly,
   licencePlanPath,
   licenseAccessMode,
   externalPosRequiresDatedSubscription,
@@ -38,16 +39,22 @@ export function LicenseExpiryGuard({ children }) {
     !isSuperAdmin() &&
     externalPosRequiresDatedSubscription(organizationLicense) &&
     (pathname === "/pos" || pathname.startsWith("/pos/"));
-  const onPackageOne = usesPackageOne(organizationLicense);
+  const paymentOnly = requiresPaymentOnly(organization, organizationLicense);
+  const onPackageOne = !paymentOnly && usesPackageOne(organizationLicense);
   const mode = licenseAccessMode(organizationLicense);
   const limited =
     !loading &&
     hasAuthSession() &&
     !isSuperAdmin() &&
-    (licenceNeedsPayment(organizationLicense) || onPackageOne);
-  const allowed = mode === "expired"
+    (licenceNeedsPayment(organizationLicense) || onPackageOne || paymentOnly);
+  const allowed = paymentOnly || mode === "expired"
     ? pathname === "/subscribe"
-      || (dismissedExpiredRoute?.organizationId === organization?.id && pathname === dismissedExpiredRoute.path)
+      || pathname.startsWith("/subscribe/")
+      || pathname === "/billing"
+      || pathname.startsWith("/billing/")
+      || (!paymentOnly
+        && dismissedExpiredRoute?.organizationId === organization?.id
+        && pathname === dismissedExpiredRoute.path)
     : onPackageOne
       ? isFreePlanPath(pathname, organizationLicense)
       : isLimitedLicencePath(pathname);
@@ -176,7 +183,9 @@ export function LicenseExpiryGuard({ children }) {
             </h2>
             <p className="mt-3 text-sm text-slate-600">{licenseWarningMessage(organizationLicense)}</p>
             <p className="mt-2 text-xs text-slate-500">
-              After expiry you can still sign in on Package 1, the free plan, until you renew on the Centrix Paybill.
+              {paymentOnly
+                ? "After Instant trial ends, CentrixERP opens only the payment screen until you choose a monthly or yearly plan."
+                : "After expiry you can still sign in on Package 1, the free plan, until you renew on the Centrix Paybill."}
             </p>
             <div className="mt-5 flex justify-end">
               <PrimaryButton type="button" showIcon={false} onClick={() => { dismissLicenseWarning(); setPromptOpen(false); }}>

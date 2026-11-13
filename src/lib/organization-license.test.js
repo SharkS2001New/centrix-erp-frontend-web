@@ -13,6 +13,7 @@ import {
   licenseAccessMode,
   licenceNeedsPayment,
   usesPackageOne,
+  requiresPaymentOnly,
   externalPosRequiresDatedSubscription,
   resolveOrganizationLicense,
   canExtendPlatformLicence,
@@ -117,7 +118,17 @@ describe("organization license", () => {
     expect(usesPackageOne({ access: "trial" })).toBe(false);
     expect(usesPackageOne({ access: "free" })).toBe(true);
     expect(usesPackageOne({ access: "expired" })).toBe(true);
+    expect(usesPackageOne({ access: "expired", payment_only: true })).toBe(false);
     expect(usesPackageOne({ access: "full" })).toBe(false);
+    expect(requiresPaymentOnly(
+      { registration_source: "self_registered" },
+      { access: "expired", status: "expired" },
+    )).toBe(true);
+    expect(requiresPaymentOnly(
+      { registration_source: "platform_created" },
+      { access: "expired", status: "expired" },
+    )).toBe(false);
+    expect(requiresPaymentOnly(null, { access: "expired", payment_only: true })).toBe(true);
     expect(licenseAccessMode({ status: "trialing", is_trial: true, days_remaining: 5 })).toBe("trial");
     const withModules = resolveOrganizationLicense({
       status: "trialing",

@@ -591,7 +591,7 @@ function LoginForm() {
           showPinSignIn
             ? "This computer is locked to your hotel account. Enter your PIN."
             : signupHint
-              ? "Your free Centrix workspace is ready. Enter the password you chose on Instant trial."
+              ? "Your Instant trial is ready. Company code is locked from signup — enter the password you chose."
                 : purchasePath
                   ? "Sign in to continue to your selected plan's payment."
                   : "Sign in with your email or username and password."
@@ -723,14 +723,20 @@ function LoginForm() {
                 {companyCode}
               </span>
             </p>
-            <button
-              type="button"
-              onClick={useDifferentOrganization}
-              className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+            {signupCompanyCode ? (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Locked from your Instant trial signup.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={useDifferentOrganization}
+                className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
                 disabled={submitting}
-            >
-              Use a different organization
-            </button>
+              >
+                Use a different organization
+              </button>
+            )}
           </div>
         )}
           <AuthField label="Username or email">

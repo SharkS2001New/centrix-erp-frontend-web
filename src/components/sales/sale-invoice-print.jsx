@@ -208,11 +208,16 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     ? `${payment.label} (${payment.methods.join(", ")})`
     : payment.label;
   const customerPhone =
-    customer?.phone_number ??
-    sale.customer_phone ??
-    sale.customer_mobile ??
-    customer?.additional_phone ??
-    "";
+    [
+      customer?.phone_number,
+      customer?.additional_phone,
+      sale.customer_phone,
+      sale.customer_mobile,
+      sale.customer?.phone_number,
+      sale.customer?.additional_phone,
+    ]
+      .map((v) => (v == null ? "" : String(v).trim()))
+      .find((v) => v !== "") ?? "";
   const { branchName, storeAddress, storePhones } = resolveSaleDocumentStoreContact({
     showBranchOnReceipt,
     branch,
@@ -489,11 +494,16 @@ function buildProformaInvoiceHtml(sale, options) {
     ? `${payment.label} (${payment.methods.join(", ")})`
     : payment.label;
   const customerPhone =
-    customer?.phone_number ??
-    sale.customer_phone ??
-    sale.customer_mobile ??
-    customer?.additional_phone ??
-    "";
+    [
+      customer?.phone_number,
+      customer?.additional_phone,
+      sale.customer_phone,
+      sale.customer_mobile,
+      sale.customer?.phone_number,
+      sale.customer?.additional_phone,
+    ]
+      .map((v) => (v == null ? "" : String(v).trim()))
+      .find((v) => v !== "") ?? "";
   const { branchName, storeAddress, storePhones } = resolveSaleDocumentStoreContact({
     showBranchOnReceipt,
     branch,

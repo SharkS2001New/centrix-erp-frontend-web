@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
 import {
   isEligibleForMonthlyCustomerDemo,
+  isSelfServeTrialOrganization,
   onboardingDemoStorageKey,
   onboardingGuideStorageKey,
   guideCardPosition,
@@ -244,6 +245,9 @@ function saveGuideCompletion(key) {
   } catch {
     // Keep the guide usable if browser storage is disabled.
   }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("centrix:onboarding-guide-status", { detail: { key, status: "complete" } }));
+  }
 }
 
 function getAvailableModuleTips() {
@@ -328,6 +332,7 @@ export function FirstLoginGuide() {
   const demoKey = onboardingDemoStorageKey(user?.id, organization?.id);
   const [demoStatus, setDemoStatus] = useState(null);
   const eligibleForDemo = isEligibleForMonthlyCustomerDemo(organization, organizationLicense);
+  const onSelfServeTrial = isSelfServeTrialOrganization(organization, organizationLicense);
   const choosingPlan =
     pathname === "/subscribe" ||
     pathname.startsWith("/subscribe/") ||
@@ -349,13 +354,25 @@ export function FirstLoginGuide() {
     if (loading || !storageKey || isSuperAdmin?.()) return;
     const currentDemoStatus = readOnboardingDemoStatus(demoKey);
     setDemoStatus(currentDemoStatus);
-    if (!wasGuideCompleted(storageKey)) {
+    const tipsPending = !wasGuideCompleted(storageKey);
+    const demoPending = eligibleForDemo && currentDemoStatus !== "watched";
+
+    // Instant trial / self-serve: show how-to demo first, then usage tips.
+    if (demoPending && (onSelfServeTrial || tipsPending)) {
+      setAvailableModuleTips(getAvailableModuleTips());
+      setStepIndex(0);
+      setView("demo");
+      setOpen(true);
+      return;
+    }
+
+    if (tipsPending) {
       setAvailableModuleTips(getAvailableModuleTips());
       setStepIndex(0);
       setView("tips");
       setOpen(true);
     }
-  }, [choosingPlan, demoKey, isSuperAdmin, loading, storageKey]);
+  }, [choosingPlan, demoKey, eligibleForDemo, isSuperAdmin, loading, onSelfServeTrial, storageKey]);
 
   useEffect(() => {
     function openGuide(event) {
@@ -370,17 +387,28 @@ export function FirstLoginGuide() {
     return () => window.removeEventListener(OPEN_GUIDE_EVENT, openGuide);
   }, [demoStatus, eligibleForDemo]);
 
+  const continueToTips = useCallback(() => {
+    if (!wasGuideCompleted(storageKey)) {
+      setAvailableModuleTips(getAvailableModuleTips());
+      setStepIndex(0);
+      setView("tips");
+      setOpen(true);
+      return;
+    }
+    setOpen(false);
+  }, [storageKey]);
+
   const watchLater = useCallback(() => {
     saveOnboardingDemoStatus(demoKey, "later");
     setDemoStatus("later");
-    setOpen(false);
-  }, [demoKey]);
+    continueToTips();
+  }, [continueToTips, demoKey]);
 
   const markDemoWatched = useCallback(() => {
     saveOnboardingDemoStatus(demoKey, "watched");
     setDemoStatus("watched");
-    setOpen(false);
-  }, [demoKey]);
+    continueToTips();
+  }, [continueToTips, demoKey]);
 
   const closeGuide = useCallback(() => {
     if (view === "demo") {

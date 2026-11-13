@@ -6,7 +6,7 @@ import { ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatBillingMoney } from "@/lib/platform-billing";
-import { dismissLicenseWarning, freePlanHome, isFreePlanPath, licenceNeedsPayment, licenseAccessMode, subscriptionRenewalOpen, takeLicenceReturnPath } from "@/lib/organization-license";
+import { dismissLicenseWarning, freePlanHome, isFreePlanPath, licenceNeedsPayment, licenseAccessMode, requiresPaymentOnly, subscriptionRenewalOpen, takeLicenceReturnPath } from "@/lib/organization-license";
 import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
@@ -207,10 +207,16 @@ export default function SubscribePage({ presentation = "page", locked = false })
     dismissLicenseWarning();
     let back = isModal ? takeLicenceReturnPath() : null;
     const modeNow = licenseAccessMode(organizationLicense);
-    let backAllowed = Boolean(back) && (
+    const paymentOnly = requiresPaymentOnly(organization, organizationLicense);
+    let backAllowed = Boolean(back) && !paymentOnly && (
       !licenceNeedsPayment(organizationLicense)
       || isFreePlanPath(back, organizationLicense)
     );
+
+    if (paymentOnly) {
+      router.replace("/subscribe?locked=1");
+      return;
+    }
 
     if (isModal) {
       const returnPath = backAllowed
@@ -274,7 +280,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
       return;
     }
     router.replace("/dashboard");
-  }, [capabilities, forPos, isModal, organization?.id, organizationLicense, router]);
+  }, [capabilities, forPos, isModal, organization, organizationLicense, router]);
 
   useEffect(() => {
     if (!canPay || !renewOpen || requestedPlanId || (!renewRequested && mode !== "expired")) return;

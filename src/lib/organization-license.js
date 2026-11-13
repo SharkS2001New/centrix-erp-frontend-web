@@ -166,7 +166,18 @@ export function resolveOrganizationLicense(source = null) {
     plan_id: raw.plan_id != null ? Number(raw.plan_id) : null,
     renewal_amount: raw.renewal_amount != null && Number(raw.renewal_amount) > 0 ? Number(raw.renewal_amount) : null,
     currency: raw.currency ? String(raw.currency) : null,
+    registration_source: raw.registration_source != null ? String(raw.registration_source) : null,
+    payment_only: raw.payment_only === true,
+    trial_support: raw.trial_support && typeof raw.trial_support === "object" ? raw.trial_support : null,
   };
+}
+
+/** Instant trial orgs stay on the payment screen after expiry — no Package 1 soft landing. */
+export function requiresPaymentOnly(organization, license) {
+  if (license?.payment_only === true) return true;
+  if (licenseAccessMode(license) !== "expired") return false;
+  const source = organization?.registration_source || license?.registration_source;
+  return source === "self_registered";
 }
 
 /** A paid yearly organisation. Trials still choose a plan. */
@@ -226,6 +237,7 @@ export function licenceNeedsPayment(license) {
 
 /** Package 1 when there is no paid or trial package, or after that package ended. */
 export function usesPackageOne(license) {
+  if (license?.payment_only === true) return false;
   const mode = licenseAccessMode(license);
   return mode === "free" || mode === "expired";
 }

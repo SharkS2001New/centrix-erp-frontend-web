@@ -28,13 +28,25 @@ export function saveOnboardingDemoStatus(key, status) {
   window.dispatchEvent(new CustomEvent("centrix:onboarding-demo-status", { detail: { key, status } }));
 }
 
+/** Self-serve Instant trial or paid monthly self-registered customers see the product demo. */
 export function isEligibleForMonthlyCustomerDemo(organization, license) {
-  return organization?.registration_source === "self_registered"
-    && license?.billing_cycle === "monthly"
+  if (organization?.registration_source !== "self_registered") return false;
+  if (license?.is_trial === true || license?.status === "trialing" || license?.access === "trial") {
+    return true;
+  }
+  return license?.billing_cycle === "monthly"
     && license?.status === "active"
-    && license?.is_trial !== true
     && Number(license?.plan_id) > 0
     && Number(license?.renewal_amount) > 0;
+}
+
+export function isSelfServeTrialOrganization(organization, license) {
+  if (organization?.registration_source !== "self_registered") return false;
+  return Boolean(
+    license?.is_trial === true
+      || license?.status === "trialing"
+      || license?.access === "trial",
+  );
 }
 
 export function guideDescriptionForNavItem(item = {}) {

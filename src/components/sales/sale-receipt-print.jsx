@@ -326,7 +326,16 @@ export function buildSaleReceiptHtml(
   const customerKraPin =
     resolveBuyerKraPinForReceipt({ sale, customer, kraData }) ?? "";
   const customerPhone =
-    sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
+    [
+      customer?.phone_number,
+      customer?.additional_phone,
+      sale.customer_phone,
+      sale.customer_mobile,
+      sale.customer?.phone_number,
+      sale.customer?.additional_phone,
+    ]
+      .map((v) => (v == null ? "" : String(v).trim()))
+      .find((v) => v !== "") ?? "";
   const rawDate = resolveSaleReceiptTimestamp(sale);
   const dateTime = formatThermalReceiptDateTime(rawDate);
 
