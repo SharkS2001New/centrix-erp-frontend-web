@@ -6,7 +6,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
 
-export function AdminLicenseScreen() {
+export function AdminLicenseScreen({ basePath = "/admin" }) {
   const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin } = useAuth();
   const { organizationId: platformOrgId, organizationProfile } = useAdminApi();
 
@@ -29,7 +29,7 @@ export function AdminLicenseScreen() {
     >
       <AdminBreadcrumb
         items={[
-          { label: "Administration", href: "/admin" },
+          { label: "Administration", href: basePath },
           { label: "License Information" },
         ]}
       />

@@ -67,7 +67,7 @@ function organizationFromResponse(res) {
 
 const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-700`;
 
-export function AdminCompanyScreen() {
+export function AdminCompanyScreen({ basePath = "/admin" }) {
   const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin, patchOrganization } = useAuth();
   const confirm = useConfirm();
   const {
@@ -267,7 +267,7 @@ export function AdminCompanyScreen() {
       subtitle="Organization details, logo, and your Centrix subscription agreement (first-time and renewal prices)."
     >
       <AdminBreadcrumb
-        items={[{ label: "Administration", href: "/admin" }, { label: "Company profile" }]}
+        items={[{ label: "Administration", href: basePath }, { label: "Company profile" }]}
       />
 
       {loading || authLoading ? (
@@ -450,7 +450,7 @@ export function AdminCompanyScreen() {
             href={
               platformOrgId
                 ? `/platform/organizations/${platformOrgId}/admin/license`
-                : "/admin/license"
+                : `${basePath}/license`
             }
             className="mt-3 inline-flex text-sm font-medium text-[#185FA5] hover:underline"
           >

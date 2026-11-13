@@ -68,6 +68,24 @@ describe("route-access", () => {
     ).toBe(true);
   });
 
+  it.each([
+    "/spa/admin/branches",
+    "/spa/admin/users",
+    "/spa/staff/payroll",
+    "/spa/staff/payroll/runs/42",
+  ])("allows the SPA workspace to host its embedded screen at %s", (path) => {
+    expect(
+      canAccessRoute(
+        path,
+        {
+          ...baseCtx,
+          capabilities: { ...baseCtx.capabilities, industry: "spa", modules: { spa: true } },
+        },
+        { workspaceId: "spa" },
+      ),
+    ).toBe(true);
+  });
+
   it("allows new supplier when create permission is granted", () => {
     expect(
       canAccessRoute("/suppliers/new", {

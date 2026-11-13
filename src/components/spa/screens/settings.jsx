@@ -5,9 +5,9 @@ import Link from "next/link";
 import { toast } from "@/lib/toast";
 import { businessLabel, featuresFor } from "@/lib/spa/format";
 import { useSpa } from "@/lib/spa/store";
-import { Button, Card, Field, PageHeader, SpaSelect, inputClass, pillClass, textAreaClass } from "@/components/spa/ui";
+import { Button, Card, Field, PageHeader, inputClass, pillClass, textAreaClass } from "@/components/spa/ui";
 
-const TABS = ["Profile", "Branches", "Business type", "Features", "Hours", "Receipt", "Tax", "Payments", "Users"];
+const TABS = ["Profile", "Branches", "Business type", "Features", "Hours", "Receipt", "Tax", "Payments", "Administration"];
 const FEATURES = [
   ["rooms", "Treatment rooms", "Room assignment on appointments."],
   ["packages", "Packages", "Multi-session packages."],
@@ -24,7 +24,6 @@ export function SettingsScreen({ embedded = false }) {
   const [profile, setProfile] = useState(spa.profile);
   const [branchName, setBranchName] = useState("");
   const [hours, setHours] = useState(spa.hours);
-  const [user, setUser] = useState({ name: "", email: "", role: "Cashier" });
 
   useEffect(() => {
     if (!spa.ready) return;
@@ -52,7 +51,7 @@ export function SettingsScreen({ embedded = false }) {
       ) : null}
       {tab === "Branches" ? (
         <Card className="max-w-xl">
-          <p className="theme-subtext mb-3 text-sm">Organisation branches, phones, and addresses are managed on <Link className="font-medium text-[var(--theme-accent-text)]" href="/admin/branches">Administration → Branches</Link>. The list below is which shop this till is using.</p>
+          <p className="theme-subtext mb-3 text-sm">Organisation branches, phones, and addresses are managed in the SPA workspace <Link className="font-medium text-[var(--theme-accent-text)]" href="/spa/admin/branches">Administration → Branches</Link>. The list below is which shop this till is using.</p>
           <ul className="space-y-2 text-sm">{spa.branches.map((branch) => <li key={branch} className="flex justify-between"><span>{branch}</span>{branch === spa.branch ? <span className="text-[var(--theme-accent-text)]">Current</span> : <button type="button" className="text-[var(--theme-accent-text)]" onClick={() => spa.setBranch(branch)}>Use</button>}</li>)}</ul>
           <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); const error = spa.addBranch(branchName); if (error) toast.error(error); else { toast.success("Branch added."); setBranchName(""); } }}>
             <input className={inputClass} aria-label="New branch" value={branchName} onChange={(event) => setBranchName(event.target.value)} placeholder="Branch name" />
@@ -131,17 +130,15 @@ export function SettingsScreen({ embedded = false }) {
           <p className="text-xs text-slate-500">These choices only change what the till offers. They do not connect a payment gateway.</p>
         </Card>
       ) : null}
-      {tab === "Users" ? (
-        <Card>
-          <ul className="space-y-2 text-sm">{spa.users.map((item) => <li key={item.id} className="flex justify-between"><span>{item.name} · {item.email}</span><span className="text-slate-500">{item.role}</span></li>)}</ul>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input className={inputClass} placeholder="Name" aria-label="User name" value={user.name} onChange={(event) => setUser({ ...user, name: event.target.value })} />
-            <input className={inputClass} placeholder="Email" aria-label="User email" value={user.email} onChange={(event) => setUser({ ...user, email: event.target.value })} />
-            <SpaSelect aria-label="Role" value={user.role} onChange={(event) => setUser({ ...user, role: event.target.value })} options={spa.roles.map((role) => ({ value: role.name, label: role.name }))} />
+      {tab === "Administration" ? (
+        <Card className="max-w-xl">
+          <p className="theme-subtext text-sm">Manage real organization users, roles, branches, and company details here. These settings are shared with the rest of the ERP.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" href="/spa/admin/users">Users</Link>
+            <Link className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" href="/spa/admin/roles">Roles & permissions</Link>
+            <Link className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" href="/spa/admin/branches">Branches</Link>
+            <Link className="theme-secondary-btn rounded-lg px-3 py-2 text-sm" href="/spa/admin/company">Company profile</Link>
           </div>
-          <Button className="mt-3" onClick={() => { const error = spa.saveUser(user); if (error) toast.error(error); else { toast.success("User added."); setUser({ name: "", email: "", role: "Cashier" }); } }}>Add user</Button>
-          <div className="mt-4 text-xs text-slate-500">{spa.roles.map((role) => <p key={role.id}>{role.name}: {role.permissions.join(", ")}</p>)}</div>
-          <Button className="mt-4" variant="danger" onClick={() => { spa.resetDemo(); toast.success("Sample records restored."); }}>Restore sample data</Button>
         </Card>
       ) : null}
     </div>

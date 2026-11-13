@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { owningWorkspaceIdForPath } from "@/lib/workspaces";
+import { owningWorkspaceIdForPath, pathBelongsToWorkspace } from "@/lib/workspaces";
 
 const workspaces = [
   { id: "backoffice" },
@@ -32,5 +32,22 @@ describe("owningWorkspaceIdForPath", () => {
 
   it("stays on current workspace for shared profile routes", () => {
     expect(owningWorkspaceIdForPath("/profile", workspaces, "backoffice")).toBe("backoffice");
+  });
+
+  it("keeps embedded SPA administration and payroll routes in the SPA workspace", () => {
+    expect(pathBelongsToWorkspace("/spa/admin/branches", "spa")).toBe(true);
+    expect(pathBelongsToWorkspace("/spa/staff/payroll", "spa")).toBe(true);
+    expect(pathBelongsToWorkspace("/spa/staff/payroll/runs/42", "spa")).toBe(true);
+  });
+
+  it("keeps payroll run reports in the SPA workspace", () => {
+    for (const report of [
+      "statutory-deductions",
+      "bank-transfer",
+      "nssf-remittance",
+      "other-deductions",
+    ]) {
+      expect(pathBelongsToWorkspace(`/reports/${report}?payroll_run_id=42`, "spa")).toBe(true);
+    }
   });
 });

@@ -107,7 +107,7 @@ function userHasTwoFactor(row) {
   return Boolean(row?.two_factor_enabled);
 }
 
-export function AdminUsersScreen() {
+export function AdminUsersScreen({ basePath = "/admin" }) {
   const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, updateProfile } = useAuth();
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
@@ -862,7 +862,7 @@ export function AdminUsersScreen() {
       }
     >
       {!isPlatformManaged ? (
-        <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Users" }]} />
+        <AdminBreadcrumb items={[{ label: "Administration", href: basePath }, { label: "Users" }]} />
       ) : null}
 
         <div className={`${workspaceCardClassName} overflow-x-auto ${listRefresh.contentClassName}`}>

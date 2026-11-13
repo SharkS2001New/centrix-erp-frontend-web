@@ -53,7 +53,7 @@ import {
 import { useConfirm } from "@/lib/use-confirm";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
-export function HrPayrollScreen() {
+export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, hasPermission } = useAuth();
@@ -447,7 +447,7 @@ export function HrPayrollScreen() {
         ...payrollRunFormDefaults(capabilities?.module_settings),
       });
       if (created.status === "pending_approval") {
-        router.push(`/hr/payroll/runs/${created.id}`);
+        router.push(`${basePath}/runs/${created.id}`);
         return;
       }
       try {
@@ -458,7 +458,7 @@ export function HrPayrollScreen() {
       } catch {
         /* ignore quota */
       }
-      router.push(`/hr/payroll/runs/${created.id}?process=1`);
+      router.push(`${basePath}/runs/${created.id}?process=1`);
     } catch (err) {
       setRunError(err instanceof ApiError ? err.message : "Failed to generate payroll");
     } finally {
@@ -626,7 +626,7 @@ export function HrPayrollScreen() {
                           <div className="flex items-center gap-1">
                             <IconButton
                               label="View"
-                              onClick={() => router.push(`/hr/payroll/runs/${run.id}`)}
+                              onClick={() => router.push(`${basePath}/runs/${run.id}`)}
                             >
                               <ViewIcon />
                             </IconButton>

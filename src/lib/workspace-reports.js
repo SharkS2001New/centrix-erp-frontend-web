@@ -12,6 +12,7 @@ export const WORKSPACE_REPORT_MODULES = {
   backoffice: ["sales.reports", "inventory.reports", "customers_suppliers.reports"],
   accounting: ["accounting.reports"],
   hr: ["hr_payroll.reports"],
+  spa: ["hr_payroll.reports"],
   distribution: ["distribution.reports"],
   hospitality_backoffice: [
     "hospitality.reports",
@@ -93,6 +94,7 @@ export const WORKSPACE_REPORTS_LABEL = {
   backoffice: "Sales, finance & operations reports",
   accounting: "Accounting reports",
   hr: "Leave, payroll, and workforce reporting",
+  spa: "Payroll and staff payment reporting",
   distribution: "Route sales and logistics reporting",
   hospitality_backoffice: "Occupancy, food & drink, and hotel operations reporting",
 };
@@ -104,6 +106,7 @@ export const WORKSPACE_BUILDER_LABEL = {
   backoffice: "Sales, inventory, purchasing & POS data",
   accounting: "Accounting and payments data",
   hr: "Workforce and payroll data",
+  spa: "Staff and payroll data",
   distribution: "Sales orders and logistics data",
   hospitality_backoffice: "Hospitality checks, folios, rooms & inventory",
   admin: "All modules",
@@ -125,6 +128,11 @@ export const WORKSPACE_BUILDER_EXAMPLE_PROMPTS = {
     "Headcount by department",
     "Payroll totals this period",
     "Attendance by branch last 7 days",
+  ],
+  spa: [
+    "Payroll totals for this pay period",
+    "Statutory deductions by pay period",
+    "Net pay by staff member",
   ],
   distribution: [
     "Orders by route this week",
@@ -148,6 +156,7 @@ export const WORKSPACE_BUILDER_SOURCE_HINT = {
   backoffice: "Choose sales, inventory, purchasing, or POS sources for this workspace.",
   accounting: "Choose accounting or payments sources for this workspace.",
   hr: "Choose workforce and payroll sources for this workspace (employees, attendance, leave, payroll).",
+  spa: "Choose staff and payroll sources for this workspace.",
   distribution: "Choose sales and logistics sources for this workspace.",
   hospitality_backoffice: "Choose hospitality, inventory, or purchasing sources for this workspace.",
   admin: "Choose a data source from the modules available to admin.",
@@ -162,6 +171,7 @@ export const WORKSPACE_BUILDER_MENTION_TYPES = {
   backoffice: ["product", "supplier", "customer", "branch", "user"],
   accounting: ["customer", "supplier", "branch", "user"],
   hr: ["employee", "branch", "user"],
+  spa: ["employee", "branch", "user"],
   distribution: ["product", "customer", "branch", "user"],
   hospitality_backoffice: ["product", "supplier", "customer", "branch", "user"],
   admin: ["product", "supplier", "customer", "employee", "user", "branch"],
@@ -207,6 +217,8 @@ export function workspaceBuilderMentionHint(workspaceId) {
 
 export function workspaceBuilderPlaceholder(workspaceId) {
   switch (workspaceId) {
+    case "spa":
+      return "e.g. Payroll totals for this period\nStatutory deductions by pay period";
     case "hr":
       return "e.g. Attendance for @Jane last week\nPayroll totals by department this month";
     case "accounting":

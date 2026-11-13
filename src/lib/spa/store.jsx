@@ -211,6 +211,90 @@ export function SpaProvider({ children }) {
         });
         return null;
       },
+      saveRoom(room) {
+        const name = String(room.name || "").trim();
+        if (!name) return "Enter the room name.";
+        if (state.rooms.some((item) => item.id !== room.id && item.name.toLowerCase() === name.toLowerCase())) {
+          return "A room with that name already exists.";
+        }
+        const row = { ...room, name, kind: String(room.kind || "").trim() };
+        patch({
+          rooms: room.id
+            ? state.rooms.map((item) => (item.id === room.id ? { ...item, ...row } : item))
+            : [...state.rooms, { ...row, id: uid("r") }],
+        });
+        return null;
+      },
+      removeRoom(id) {
+        setState((current) => ({
+          ...current,
+          rooms: current.rooms.filter((item) => item.id !== id),
+          appointments: current.appointments.map((item) =>
+            item.roomId === id ? { ...item, roomId: "" } : item,
+          ),
+        }));
+      },
+      saveChair(chair) {
+        const name = String(chair.name || "").trim();
+        if (!name) return "Enter the chair name.";
+        if (state.chairs.some((item) => item.id !== chair.id && item.name.toLowerCase() === name.toLowerCase())) {
+          return "A chair with that name already exists.";
+        }
+        const row = { ...chair, name };
+        patch({
+          chairs: chair.id
+            ? state.chairs.map((item) => (item.id === chair.id ? { ...item, ...row } : item))
+            : [...state.chairs, { ...row, id: uid("ch") }],
+        });
+        return null;
+      },
+      removeChair(id) {
+        setState((current) => ({
+          ...current,
+          chairs: current.chairs.filter((item) => item.id !== id),
+          appointments: current.appointments.map((item) =>
+            item.chairId === id ? { ...item, chairId: "" } : item,
+          ),
+        }));
+      },
+      saveMembership(membership) {
+        if (!membership.clientId) return "Choose a client.";
+        if (!membership.name?.trim()) return "Enter the membership name.";
+        if (!membership.expires) return "Choose an expiry date.";
+        const row = { ...membership, name: membership.name.trim() };
+        patch({
+          memberships: membership.id
+            ? state.memberships.map((item) => (item.id === membership.id ? { ...item, ...row } : item))
+            : [...state.memberships, { ...row, id: uid("mb") }],
+        });
+        return null;
+      },
+      removeMembership(id) {
+        patch({ memberships: state.memberships.filter((item) => item.id !== id) });
+      },
+      savePackage(item) {
+        if (!item.clientId) return "Choose a client.";
+        if (!item.name?.trim()) return "Enter the package name.";
+        const total = Number(item.total);
+        if (!Number.isInteger(total) || total < 1) return "Enter at least one session.";
+        const row = { ...item, name: item.name.trim(), total, remaining: total };
+        patch({
+          packages: item.id
+            ? state.packages.map((current) => (current.id === item.id ? { ...current, ...row } : current))
+            : [...state.packages, { ...row, id: uid("pk") }],
+        });
+        return null;
+      },
+      usePackage(id) {
+        const item = state.packages.find((current) => current.id === id);
+        if (!item || Number(item.remaining) < 1) return "No sessions remain in this package.";
+        patch({
+          packages: state.packages.map((current) =>
+            current.id === id ? { ...current, remaining: current.remaining - 1 } : current,
+          ),
+        });
+        return null;
+      },
       setAttendance(staffId, status) {
         const date = todayISO();
         const existing = state.attendance.find((row) => row.staffId === staffId && row.date === date);

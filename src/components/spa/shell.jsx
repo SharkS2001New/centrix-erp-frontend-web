@@ -6,12 +6,10 @@ import { usePathname } from "next/navigation";
 import {
   Armchair,
   BarChart3,
-  Bot,
+  Building2,
   Calendar,
-  CreditCard,
   Gift,
   LayoutDashboard,
-  Megaphone,
   MoreHorizontal,
   Package,
   Receipt,
@@ -30,6 +28,7 @@ import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { useSpa } from "@/lib/spa/store";
 import { Button } from "@/components/spa/ui";
+import { P } from "@/lib/permission-codes";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -55,15 +54,14 @@ const NAV = [
   { href: "/spa/expenses", label: "Expenses & Payments", icon: Receipt, feature: "expenses" },
   { href: "/spa/suppliers", label: "Suppliers", icon: Truck, feature: "suppliers" },
   { href: "/spa/reports", label: "Reports & Analytics", icon: BarChart3, feature: "reports" },
-  { href: "/spa/booking", label: "Online Booking", icon: CreditCard, feature: "appointments" },
-  { href: "/spa/marketing", label: "Marketing", icon: Megaphone, feature: "clients" },
-  { href: "/spa/assistant", label: "AI Assistant", icon: Bot },
+  { href: "/spa/staff/payroll", label: "Staff Payroll", icon: Receipt, feature: "payroll" },
+  { href: "/spa/admin", label: "Administration", icon: Building2, feature: "admin" },
   { href: "/spa/settings", label: "Settings & Permissions", icon: Settings },
 ];
 
 export function SpaFrame({ children }) {
   const pathname = usePathname();
-  const { organization, capabilities } = useAuth();
+  const { organization, capabilities, hasPermission, user } = useAuth();
   const spa = useSpa();
   const nav = NAV.filter((item) => {
     if (item.feature === "rooms") {
@@ -71,6 +69,18 @@ export function SpaFrame({ children }) {
     }
     if (item.feature === "packages") {
       return spa.features?.packages || isSpaFeatureEnabled(capabilities, "services");
+    }
+    if (item.feature === "payroll") {
+      return user?.is_admin || hasPermission(P.hr.payroll.view) || hasPermission(P.hr.manage);
+    }
+    if (item.feature === "admin") {
+      return user?.is_admin || [
+        P.admin.overview.view,
+        P.admin.branches.view,
+        P.admin.users.view,
+        P.admin.roles.view,
+        P.admin.company.view,
+      ].some((permission) => hasPermission(permission));
     }
     return !item.feature || isSpaFeatureEnabled(capabilities, item.feature);
   });

@@ -86,7 +86,7 @@ function employeeNameFromLine(line) {
   );
 }
 
-export function HrPayrollRunsIdScreen() {
+export function HrPayrollRunsIdScreen({ basePath = "/hr/payroll" }) {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -133,13 +133,13 @@ export function HrPayrollRunsIdScreen() {
 
   const leavePayrollRunSheet = useCallback(() => {
     leftRunSheetRef.current = true;
-    const sheetHref = `/hr/payroll/runs/${runId}`;
+    const sheetHref = `${basePath}/runs/${runId}`;
     if (tabWorkspaceEnabled) clearTabDirty(sheetHref);
-    router.push("/hr/payroll");
+    router.push(basePath);
     if (tabWorkspaceEnabled) {
       window.setTimeout(() => closeTab(sheetHref), 0);
     }
-  }, [clearTabDirty, closeTab, router, runId, tabWorkspaceEnabled]);
+  }, [basePath, clearTabDirty, closeTab, router, runId, tabWorkspaceEnabled]);
 
   const loadData = useCallback(async () => {
     if (leftRunSheetRef.current) return;
@@ -227,7 +227,7 @@ export function HrPayrollRunsIdScreen() {
     if (!shouldProcess) return;
 
     // Strip ?process=1 immediately so tab reopen / remount never re-triggers.
-    router.replace(`/hr/payroll/runs/${runId}`);
+    router.replace(`${basePath}/runs/${runId}`);
 
     const consumedKey = AUTO_PROCESS_CONSUMED_KEY(runId);
     try {
@@ -268,7 +268,7 @@ export function HrPayrollRunsIdScreen() {
         await runAutoProcess(options);
       }
     })();
-  }, [canProcess, runId, searchParams, router, runAutoProcess, loadData]);
+  }, [basePath, canProcess, runId, searchParams, router, runAutoProcess, loadData]);
 
   const period = run?.pay_period ?? run?.payPeriod ?? null;
 
@@ -701,7 +701,7 @@ export function HrPayrollRunsIdScreen() {
     <div className="theme-workspace min-h-full">
       <AppBreadcrumb
         items={[
-          { label: "Payroll runs", href: "/hr/payroll" },
+          { label: "Payroll runs", href: basePath },
           { label: run ? periodLabel(period) || `Run #${run.id}` : "Payroll run" },
         ]}
       />

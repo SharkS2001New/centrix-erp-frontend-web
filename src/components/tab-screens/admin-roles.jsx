@@ -32,7 +32,7 @@ import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/ta
 
 const CACHE_SLOT = "admin-roles";
 
-export function AdminRolesScreen() {
+export function AdminRolesScreen({ basePath = "/admin" }) {
   const confirm = useConfirm();
   const { adminPath } = useAdminApi();
   const { refreshCapabilities, capabilities } = useAuth();
@@ -321,7 +321,7 @@ export function AdminRolesScreen() {
       }
     >
       <AdminBreadcrumb
-        items={[{ label: "Administration", href: "/admin" }, { label: "Roles & permissions" }]}
+        items={[{ label: "Administration", href: basePath }, { label: "Roles & permissions" }]}
       />
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">

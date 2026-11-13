@@ -51,7 +51,7 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
-export function AdminBranchesScreen() {
+export function AdminBranchesScreen({ basePath = "/admin" }) {
   const confirm = useConfirm();
   const { user, capabilities } = useAuth();
   const { adminPath, organizationId: platformOrgId } = useAdminApi();
@@ -308,7 +308,7 @@ export function AdminBranchesScreen() {
       }
       toolbar={<SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search branches…" />}
     >
-      <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Branches" }]} />
+      <AdminBreadcrumb items={[{ label: "Administration", href: basePath }, { label: "Branches" }]} />
 
       <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
         <table className="min-w-full text-sm">
