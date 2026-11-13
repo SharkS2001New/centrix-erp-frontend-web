@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Armchair,
   BarChart3,
+  Bot,
   Calendar,
+  CreditCard,
+  Gift,
   LayoutDashboard,
+  Megaphone,
   MoreHorizontal,
   Package,
   Receipt,
   Scissors,
+  Settings,
   ShoppingBag,
   Truck,
   Users,
@@ -22,6 +28,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isSpaFeatureEnabled } from "@/lib/org-settings-tabs";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
+import { useSpa } from "@/lib/spa/store";
 import { Button } from "@/components/spa/ui";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
@@ -37,24 +44,45 @@ function readSidebarCollapsed() {
 
 const NAV = [
   { href: "/spa", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/spa/appointments", label: "Appointments", icon: Calendar, feature: "appointments" },
-  { href: "/spa/pos", label: "POS / Sales", icon: ShoppingBag, feature: "pos" },
-  { href: "/spa/clients", label: "Clients", icon: Users, feature: "clients" },
-  { href: "/spa/services", label: "Services", icon: Scissors, feature: "services" },
-  { href: "/spa/inventory", label: "Inventory", icon: Package, feature: "inventory" },
-  { href: "/spa/staff", label: "Staff", icon: UserRound, feature: "staff" },
-  { href: "/spa/expenses", label: "Expenses", icon: Receipt, feature: "expenses" },
+  { href: "/spa/appointments", label: "Appointments & Calendar", icon: Calendar, feature: "appointments" },
+  { href: "/spa/pos", label: "POS & Billing", icon: ShoppingBag, feature: "pos" },
+  { href: "/spa/services", label: "Services & Treatments", icon: Scissors, feature: "services" },
+  { href: "/spa/clients", label: "Customers / CRM", icon: Users, feature: "clients" },
+  { href: "/spa/staff", label: "Staff & Commissions", icon: UserRound, feature: "staff" },
+  { href: "/spa/rooms", label: "Rooms & Resources", icon: Armchair, feature: "rooms" },
+  { href: "/spa/inventory", label: "Products & Inventory", icon: Package, feature: "inventory" },
+  { href: "/spa/memberships", label: "Memberships & Packages", icon: Gift, feature: "packages" },
+  { href: "/spa/expenses", label: "Expenses & Payments", icon: Receipt, feature: "expenses" },
   { href: "/spa/suppliers", label: "Suppliers", icon: Truck, feature: "suppliers" },
-  { href: "/spa/reports", label: "Reports", icon: BarChart3, feature: "reports" },
+  { href: "/spa/reports", label: "Reports & Analytics", icon: BarChart3, feature: "reports" },
+  { href: "/spa/booking", label: "Online Booking", icon: CreditCard, feature: "appointments" },
+  { href: "/spa/marketing", label: "Marketing", icon: Megaphone, feature: "clients" },
+  { href: "/spa/assistant", label: "AI Assistant", icon: Bot },
+  { href: "/spa/settings", label: "Settings & Permissions", icon: Settings },
 ];
 
 export function SpaFrame({ children }) {
   const pathname = usePathname();
   const { organization, capabilities } = useAuth();
-  const nav = NAV.filter((item) => !item.feature || isSpaFeatureEnabled(capabilities, item.feature));
+  const spa = useSpa();
+  const nav = NAV.filter((item) => {
+    if (item.feature === "rooms") {
+      return spa.features?.rooms || spa.features?.chairs || isSpaFeatureEnabled(capabilities, "appointments");
+    }
+    if (item.feature === "packages") {
+      return spa.features?.packages || isSpaFeatureEnabled(capabilities, "services");
+    }
+    return !item.feature || isSpaFeatureEnabled(capabilities, item.feature);
+  });
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const iconOnly = collapsed && !open;
+
+  const branches = useMemo(() => {
+    const list = Array.isArray(spa.branches) ? spa.branches.filter(Boolean) : [];
+    if (spa.branch && !list.includes(spa.branch)) list.unshift(spa.branch);
+    return list.length ? list : ["Main"];
+  }, [spa.branches, spa.branch]);
 
   useEffect(() => {
     setCollapsed(readSidebarCollapsed());
@@ -95,6 +123,25 @@ export function SpaFrame({ children }) {
               <CentrixLogo collapsed={iconOnly} orgSubtitle={organization?.org_name} />
             </Link>
           </div>
+          {!iconOnly ? (
+            <div className="border-b border-white/10 px-3 pb-3">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                Branch
+              </label>
+              <select
+                className="w-full rounded-lg border border-white/15 bg-white/10 px-2 py-1.5 text-sm text-white outline-none"
+                value={spa.branch || branches[0]}
+                onChange={(e) => spa.setBranch?.(e.target.value)}
+                aria-label="Branch"
+              >
+                {branches.map((branch) => (
+                  <option key={branch} value={branch} className="text-slate-900">
+                    {branch}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1" aria-label="SPA and Kinyozi">
             {nav.map((item) => {
               const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -153,7 +200,7 @@ export function BusinessChooser({ onChoose }) {
       <div className="w-full max-w-4xl">
         <p className="text-center text-sm font-medium text-[var(--theme-accent-text)]">Business type</p>
         <h1 className="theme-heading mt-2 text-center text-2xl font-medium">How does this branch work?</h1>
-        <p className="theme-subtext mx-auto mt-2 max-w-xl text-center text-sm">This choice turns on the tools that match the shop. You can change it later in Administration → SPA & Kinyozi.</p>
+        <p className="theme-subtext mx-auto mt-2 max-w-xl text-center text-sm">This choice turns on the tools that match the shop. You can change it later in Settings & Permissions.</p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {options.map((option) => (
             <article key={option.id} className="theme-panel flex flex-col rounded-xl border p-5 shadow-sm">

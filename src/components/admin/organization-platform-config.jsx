@@ -394,6 +394,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_returns_card: false,
     enable_mobile_orders_payments_card: false,
     enable_mobile_orders_expenses_card: false,
+    enable_centrix_as_mobile: true,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
     as_mobile_post_login_screen: "module_home",
@@ -487,6 +488,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
+    enable_centrix_as_mobile: apiPayload.enable_centrix_as_mobile !== false,
     as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
     require_product_images: Boolean(apiPayload.require_product_images),
     as_mobile_post_login_screen:
@@ -806,9 +808,16 @@ export function OrganizationPlatformSalesSettings({
               AS / shop mobile app (Centrix ERP AS)
             </p>
             <Toggle
+              label="Enable Centrix AS Mobile"
+              description="When on, this organization can use the Centrix AS Mobile outlet app (login channel CentrixAsMobile). When off, staff cannot sign in to that app even if their role has AS Mobile access. Independent of Field Mobile (Enable mobile orders above)."
+              checked={salesPlatform?.enable_centrix_as_mobile !== false}
+              onChange={(v) => patch({ enable_centrix_as_mobile: v })}
+            />
+            <Toggle
               label="Show product images"
               description="Product photos only (not customers). Hotel & Bar is on by default; retail and wholesale stay off until Platform Admin enables them for that organization. When on, AS mobile and backoffice product forms show photos."
               checked={Boolean(salesPlatform?.as_mobile_show_images)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
               onChange={(v) =>
                 patch({
                   as_mobile_show_images: v,
@@ -820,6 +829,7 @@ export function OrganizationPlatformSalesSettings({
               label="Require product images"
               description="When on, staff must upload a product photo when creating or updating products. Photo delete is blocked for that organization."
               checked={Boolean(salesPlatform?.require_product_images)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
               onChange={(v) =>
                 patch({
                   require_product_images: v,
@@ -830,6 +840,7 @@ export function OrganizationPlatformSalesSettings({
             <OrgRegisterField label="After login, open">
               <select
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                disabled={salesPlatform?.enable_centrix_as_mobile === false}
                 value={
                   salesPlatform?.as_mobile_post_login_screen === "operations_dashboard"
                     ? "operations_dashboard"

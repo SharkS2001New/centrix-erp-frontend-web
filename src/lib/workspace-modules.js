@@ -340,7 +340,7 @@ export const HOSPITALITY_APP_IDS = [
 ];
 
 /** Application IDs allowed for SPA & Kinyozi tenants. */
-export const SPA_APP_IDS = ["spa", "admin"];
+export const SPA_APP_IDS = ["spa"];
 
 /** Application IDs allowed for Driving School tenants. */
 export const DRIVING_APP_IDS = ["driving", "admin"];
