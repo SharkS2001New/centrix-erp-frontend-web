@@ -364,6 +364,7 @@ function PaymentFieldsTab({
   hasCustomers,
   mpesaPlatformEnabled,
   equityPlatformEnabled,
+  creditCheckoutEnabled,
 }) {
   return (
     <div className="space-y-3">
@@ -372,6 +373,25 @@ function PaymentFieldsTab({
         expenses, supplier payments, External POS checkout, and related forms.
         {hasPosSales ? " External POS also uses these fields for amount entry." : ""}
       </p>
+      {creditCheckoutEnabled ? (
+        !hasCustomers ? (
+          <p className="text-xs text-slate-500">
+            Enable the Customers module to show a credit customer search field at checkout.
+          </p>
+        ) : (
+          <Toggle
+            label="Credit customer field at direct checkout"
+            description="External POS and Create order: the only credit path is this credit customer field (I). Selecting a customer always saves a fully unpaid credit sale — cash and other tenders are ignored. Partial payments are not available at the till; use backoffice Collect payment with “Allow collecting small payments” for debtor installments."
+            checked={salesForm.enable_credit_payment}
+            onChange={(v) =>
+              setSalesForm((f) => ({
+                ...f,
+                enable_credit_payment: v,
+              }))
+            }
+          />
+        )
+      ) : null}
       <Toggle
         label="Allow collecting small payments"
         description="Backoffice only (Sales → Orders → Collect payment / Make payment). Staff can record less than the full balance — e.g. KES 500 on a KES 5,000 debtor order — and leave the rest outstanding. Does not apply to External POS: there, credit is only via the credit customer field (I) and is always fully unpaid. Turn off to require settling the full balance in one go."
@@ -467,11 +487,6 @@ function PaymentFieldsTab({
         disabled={!salesForm.enable_cheque}
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_cheque_number: v }))}
       />
-      {hasPosSales && !hasCustomers ? (
-        <p className="text-xs text-slate-500">
-          Enable the Customers module to configure POS credit customer checkout.
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -480,11 +495,8 @@ function TillsCheckoutSettingsTab({
   salesForm,
   setSalesForm,
   hasPosSales,
-  hasCustomers,
   posCheckoutEnabled,
-  backofficeCheckoutEnabled,
 }) {
-  const creditCheckoutEnabled = posCheckoutEnabled || backofficeCheckoutEnabled;
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -534,29 +546,6 @@ function TillsCheckoutSettingsTab({
               setSalesForm((f) => ({ ...f, enable_pos_auto_continue_after_print: v }))
             }
           />
-        </div>
-      ) : null}
-
-      {creditCheckoutEnabled ? (
-        <div className="space-y-3">
-          <h3 className="theme-heading text-sm font-medium">Direct checkout credit</h3>
-          {!hasCustomers ? (
-            <p className="text-xs text-slate-500">
-              Enable the Customers module to show a credit customer search field at checkout.
-            </p>
-          ) : (
-            <Toggle
-              label="Credit customer field at direct checkout"
-              description="External POS and Create order: the only credit path is this credit customer field (I). Selecting a customer always saves a fully unpaid credit sale — cash and other tenders are ignored. Partial payments are not available at the till; use backoffice Collect payment with “Allow collecting small payments” for debtor installments."
-              checked={salesForm.enable_credit_payment}
-              onChange={(v) =>
-                setSalesForm((f) => ({
-                  ...f,
-                  enable_credit_payment: v,
-                }))
-              }
-            />
-          )}
         </div>
       ) : null}
     </div>
@@ -686,6 +675,7 @@ export function SalesSettingsPanel({
                 hasCustomers={hasCustomers}
                 mpesaPlatformEnabled={mpesaPlatformEnabled}
                 equityPlatformEnabled={equityPlatformEnabled}
+                creditCheckoutEnabled={posCheckoutEnabled || backofficeCheckoutEnabled}
               />
             ) : null}
 
@@ -694,9 +684,7 @@ export function SalesSettingsPanel({
                 salesForm={salesForm}
                 setSalesForm={setSalesForm}
                 hasPosSales={hasPosSales}
-                hasCustomers={hasCustomers}
                 posCheckoutEnabled={posCheckoutEnabled}
-                backofficeCheckoutEnabled={backofficeCheckoutEnabled}
               />
             ) : null}
           </div>
