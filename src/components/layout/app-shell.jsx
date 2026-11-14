@@ -122,10 +122,15 @@ export function AppShell({ children, modal = null }) {
         <WorkspaceNavigationTracker />
         <WorkspaceGuard>
           <RoutePermissionGuard>
-            <div className="app-shell-bg h-dvh overflow-hidden">
-              {children}
-              <AiAssistPanel />
-            </div>
+            <SystemIssueProvider>
+              <GlobalErrorCapture />
+              <BackgroundTaskProvider>
+                <div className="app-shell-bg h-dvh overflow-hidden">
+                  <AppErrorBoundary>{children}</AppErrorBoundary>
+                  <AiAssistPanel />
+                </div>
+              </BackgroundTaskProvider>
+            </SystemIssueProvider>
           </RoutePermissionGuard>
         </WorkspaceGuard>
       </AuthGuard>
