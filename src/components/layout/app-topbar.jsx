@@ -53,7 +53,9 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
   const hideModuleSearch = Boolean(isSuperAdmin?.());
   const canPay = Boolean(isOrgAdmin?.());
   const yearly = isYearlyLicence(organizationLicense);
-  const expired = licenseAccessMode(organizationLicense) === "expired";
+  const mode = licenseAccessMode(organizationLicense);
+  const expired = mode === "expired";
+  const trial = mode === "trial";
   const renew = !expired && yearlyRenewalOpen(organizationLicense);
   const onPackageOne = usesPackageOne(organizationLicense);
   const demoKey = onboardingDemoStorageKey(user?.id, organization?.id);
@@ -128,9 +130,9 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
             <Link
               href="/subscribe?modal=1"
               onClick={() => rememberLicenceReturn(pathname)}
-              className={`${onPackageOne ? "theme-primary-btn" : "theme-secondary-btn"} inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold`}
+              className={`${onPackageOne || trial || expired ? "theme-primary-btn" : "theme-secondary-btn"} inline-flex shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold`}
             >
-              {onPackageOne || expired ? "Choose a plan" : "Change plan"}
+              {trial || expired ? "Upgrade Now" : onPackageOne ? "Choose Plan" : "Change plan"}
             </Link>
           ) : null}
           <AccountingHelpTopbarButton />

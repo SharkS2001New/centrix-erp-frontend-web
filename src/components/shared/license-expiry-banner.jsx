@@ -34,15 +34,12 @@ export function LicenseExpiryBanner({ className = "" }) {
   if (limited) return null;
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
-    mode === "trial"
-      ? ""
-      : mode === "token"
+    mode === "token"
       ? `This organisation has ${tokenBalance} Centrix token${tokenBalance === 1 ? "" : "s"}. Each completed sale uses ${Number(organizationLicense.sale_tokens ?? 1)} when it is saved online, including when an offline order syncs. Reading is free.`
       : mode === "expired"
         ? `${organizationLicense.plan_name ? `Your trial or paid period for ${organizationLicense.plan_name} has ended.` : "Your trial or paid period has ended."} This organisation is now on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan again.`
         : `This organisation is on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan.`;
 
-  const showTrialMessage = mode !== "trial";
   const handleChoosePlanClick = (event) => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -69,7 +66,9 @@ export function LicenseExpiryBanner({ className = "" }) {
       aria-live="assertive"
     >
       <div className="min-w-0 flex-1 space-y-2">
-        {showTrialMessage ? <p className="font-medium">{limited || mode === "token" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p> : null}
+        {mode !== "trial" ? (
+          <p className="font-medium">{limited || mode === "token" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
+        ) : null}
         {canPay && mode !== "trial" ? <LicensePaybillInstructions paybill={organizationLicense.paybill} /> : null}
       </div>
       {canPay ? (
@@ -78,7 +77,7 @@ export function LicenseExpiryBanner({ className = "" }) {
           className="shrink-0 text-xs font-semibold underline"
           onClick={handleChoosePlanClick}
         >
-          {renew ? "Renew" : mode === "trial" ? "Choose plan" : mode === "expired" || mode === "free" ? "Choose a plan" : "View payment options"}
+          {renew ? "Renew" : mode === "trial" ? "Upgrade Now" : mode === "expired" || mode === "free" ? "Choose Plan" : "View payment options"}
         </Link>
       ) : null}
     </div>
