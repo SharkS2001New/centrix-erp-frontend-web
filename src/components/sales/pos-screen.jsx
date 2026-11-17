@@ -207,6 +207,13 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
+  isYearlyLicence,
+  licenseAccessMode,
+  rememberLicenceReturn,
+  usesPackageOne,
+  yearlyRenewalOpen,
+} from "@/lib/organization-license";
+import {
   applyClassicPosDocumentTheme,
   applyOrgErpSidebarTheme,
   classicPosThemeBridgeVars,
@@ -1458,7 +1465,14 @@ function posSearchAvailableQty(product, sellFromShop, posSalesConfig, sellWholes
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, organization, hasPermission, logout, refreshCapabilities } = useAuth();
+  const { user, capabilities, organization, organizationLicense, hasPermission, isOrgAdmin, logout, refreshCapabilities } = useAuth();
+  const canPay = Boolean(isOrgAdmin?.());
+  const licenseMode = licenseAccessMode(organizationLicense);
+  const yearly = isYearlyLicence(organizationLicense);
+  const expired = licenseMode === "expired";
+  const trial = licenseMode === "trial";
+  const renew = !expired && yearlyRenewalOpen(organizationLicense);
+  const onPackageOne = usesPackageOne(organizationLicense);
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
   const orgPosThemeTemplate = useMemo(
     () => resolveExternalPosThemeTemplate(capabilities),
@@ -17793,6 +17807,28 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                {standalone && canPay && renew ? (
+                  <Link
+                    href="/subscribe?for=pos&renew=1"
+                    onClick={() => rememberLicenceReturn("/pos")}
+                    className="pos-header-action-btn normal-case"
+                  >
+                    Renew
+                  </Link>
+                ) : null}
+                {standalone && canPay && (!yearly || expired) ? (
+                  <Link
+                    href="/subscribe?for=pos"
+                    onClick={() => rememberLicenceReturn("/pos")}
+                    className={`pos-header-action-btn normal-case ${
+                      onPackageOne || trial || expired
+                        ? "border-[var(--theme-primary)] bg-[var(--theme-primary)] text-white"
+                        : ""
+                    }`}
+                  >
+                    {trial || expired ? "Upgrade Now" : onPackageOne ? "Choose Plan" : "Change plan"}
+                  </Link>
+                ) : null}
                 <WorkspaceSwitcher
                   switchBlocked={blocksWorkspaceSwitch}
                   switchBlockedMessage={workspaceSwitchBlockedMessage}

@@ -11,8 +11,9 @@
 
 import { formatBillingDate } from "@/lib/platform-billing";
 
-/** Days before expiry when login + in-app warnings always show. */
-export const LICENSE_WARNING_DAYS = 7;
+/** Monthly plans and free trials warn two days before expiry. */
+export const LICENSE_WARNING_DAYS = 2;
+export const YEARLY_LICENSE_WARNING_DAYS = 7;
 
 /** API error codes that mean the org licence is expired (web + mobile). */
 export const LICENSE_EXPIRED_API_CODES = [
@@ -107,11 +108,6 @@ export function resolveOrganizationLicense(source = null) {
     raw.days_remaining != null && Number.isFinite(Number(raw.days_remaining))
       ? Number(raw.days_remaining)
       : computedDays;
-  const warningDays =
-    raw.warning_days != null && Number.isFinite(Number(raw.warning_days))
-      ? Number(raw.warning_days)
-      : LICENSE_WARNING_DAYS;
-
   let status = statusRaw;
   if (!status && end) {
     status = daysRemaining != null && daysRemaining < 0 ? "expired" : "active";
@@ -134,6 +130,11 @@ export function resolveOrganizationLicense(source = null) {
 
   const access = ["free", "expired", "full", "token", "trial"].includes(raw.access) ? raw.access : null;
   const isTrial = access === "trial" || (access == null && Boolean(raw.is_trial || status === "trialing"));
+  const billingCycle =
+    raw.billing_cycle === "yearly" || raw.billing_cycle === "monthly" ? raw.billing_cycle : null;
+  const warningDays = !isTrial && billingCycle === "yearly"
+    ? YEARLY_LICENSE_WARNING_DAYS
+    : LICENSE_WARNING_DAYS;
 
   return {
     status: status || (end ? "active" : "missing"),
@@ -162,7 +163,7 @@ export function resolveOrganizationLicense(source = null) {
     duration_discount:
       raw.duration_discount && typeof raw.duration_discount === "object" ? raw.duration_discount : null,
     free_plan: raw.free_plan && typeof raw.free_plan === "object" ? raw.free_plan : null,
-    billing_cycle: raw.billing_cycle === "yearly" || raw.billing_cycle === "monthly" ? raw.billing_cycle : null,
+    billing_cycle: billingCycle,
     plan_id: raw.plan_id != null ? Number(raw.plan_id) : null,
     renewal_amount: raw.renewal_amount != null && Number(raw.renewal_amount) > 0 ? Number(raw.renewal_amount) : null,
     currency: raw.currency ? String(raw.currency) : null,
@@ -347,11 +348,14 @@ export function isLicenseExpired(license) {
   return false;
 }
 
-/** True when not expired and within the warning window (default 7 days). */
+/** True when not expired and inside its plan-specific warning window. */
 export function isLicenseExpiringSoon(license) {
   if (!license || isLicenseExpired(license)) return false;
   if (license.days_remaining == null) return false;
-  return license.days_remaining <= (license.warning_days ?? LICENSE_WARNING_DAYS);
+  const warningDays = licenseAccessMode(license) !== "trial" && isYearlyLicence(license)
+    ? YEARLY_LICENSE_WARNING_DAYS
+    : LICENSE_WARNING_DAYS;
+  return license.days_remaining <= warningDays;
 }
 
 /**

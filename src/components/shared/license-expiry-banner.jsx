@@ -15,10 +15,10 @@ import {
 import { LicensePaybillInstructions } from "@/components/shared/license-paybill-instructions";
 
 /**
- * Sticky banner when the org licence is expired or within the 7-day warning window.
+ * Sticky notice when the org licence is within its warning window.
  * Super-admins are not blocked by tenant licence state.
  */
-export function LicenseExpiryBanner({ className = "" }) {
+export function LicenseExpiryBanner({ className = "", showAction = true }) {
   const pathname = usePathname();
   const router = useRouter();
   const { organizationLicense, isSuperAdmin, isOrgAdmin } = useAuth();
@@ -30,7 +30,8 @@ export function LicenseExpiryBanner({ className = "" }) {
   const soon = isLicenseExpiringSoon(organizationLicense);
   const mode = licenseAccessMode(organizationLicense);
   const renew = yearlyRenewalOpen(organizationLicense);
-  if (!limited && !soon && mode !== "token" && mode !== "trial") return null;
+  if (mode === "trial" && !soon) return null;
+  if (!limited && !soon && mode !== "token") return null;
   if (limited) return null;
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
@@ -66,12 +67,12 @@ export function LicenseExpiryBanner({ className = "" }) {
       aria-live="assertive"
     >
       <div className="min-w-0 flex-1 space-y-2">
-        {mode !== "trial" ? (
+        {mode !== "trial" || soon ? (
           <p className="font-medium">{limited || mode === "token" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
         ) : null}
         {canPay && mode !== "trial" ? <LicensePaybillInstructions paybill={organizationLicense.paybill} /> : null}
       </div>
-      {canPay ? (
+      {canPay && showAction ? (
         <Link
           href={renew ? "/subscribe?renew=1&modal=1" : `${licencePlanPath(pathname)}?modal=1`}
           className="shrink-0 text-xs font-semibold underline"

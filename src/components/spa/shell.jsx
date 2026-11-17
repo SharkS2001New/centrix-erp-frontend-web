@@ -176,7 +176,7 @@ export function SpaFrame({ children }) {
       <div className="app-content-column flex min-h-0 min-w-0 flex-1 flex-col">
         <AppTopbar onToggleSidebar={toggleSidebar} sidebarCollapsed={collapsed} mobileSidebarOpen={open} />
         <NetworkStatusBanner />
-        <LicenseExpiryBanner />
+        <LicenseExpiryBanner showAction={false} />
         <div className="app-main-bg flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:p-6 lg:pb-6">{children}</div>
         <nav className="app-topbar fixed inset-x-0 bottom-0 z-30 grid border-t pb-[env(safe-area-inset-bottom)] md:hidden" style={{ gridTemplateColumns: `repeat(${phoneNav.length + 1}, minmax(0, 1fr))` }} aria-label="Spa and Kinyozi">
           {phoneNav.map((item) => {

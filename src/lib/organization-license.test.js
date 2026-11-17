@@ -30,14 +30,52 @@ describe("organization license", () => {
     expect(isLicenseExpiringSoon(license)).toBe(false);
   });
 
-  it("warns within 7 days of expiry", () => {
-    const expires = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-    const license = resolveOrganizationLicense({
+  it("warns monthly plans and trials two days before expiry", () => {
+    const monthly = resolveOrganizationLicense({
       status: "active",
-      expires_at: expires,
+      billing_cycle: "monthly",
+      days_remaining: 2,
+      warning_days: 7,
     });
-    expect(isLicenseExpired(license)).toBe(false);
-    expect(isLicenseExpiringSoon(license)).toBe(true);
+    const monthlyNotSoon = resolveOrganizationLicense({
+      status: "active",
+      billing_cycle: "monthly",
+      days_remaining: 3,
+      warning_days: 7,
+    });
+    const trial = resolveOrganizationLicense({
+      status: "trialing",
+      is_trial: true,
+      days_remaining: 2,
+      warning_days: 7,
+    });
+    const trialNotSoon = resolveOrganizationLicense({
+      status: "trialing",
+      is_trial: true,
+      days_remaining: 3,
+    });
+
+    expect(isLicenseExpired(monthly)).toBe(false);
+    expect(isLicenseExpiringSoon(monthly)).toBe(true);
+    expect(isLicenseExpiringSoon(monthlyNotSoon)).toBe(false);
+    expect(isLicenseExpiringSoon(trial)).toBe(true);
+    expect(isLicenseExpiringSoon(trialNotSoon)).toBe(false);
+  });
+
+  it("warns yearly plans seven days before expiry", () => {
+    const yearly = resolveOrganizationLicense({
+      status: "active",
+      billing_cycle: "yearly",
+      days_remaining: 7,
+    });
+    const yearlyNotSoon = resolveOrganizationLicense({
+      status: "active",
+      billing_cycle: "yearly",
+      days_remaining: 8,
+    });
+
+    expect(isLicenseExpiringSoon(yearly)).toBe(true);
+    expect(isLicenseExpiringSoon(yearlyNotSoon)).toBe(false);
   });
 
   it("opens renewal during the final 30 days for a paid monthly subscription", () => {

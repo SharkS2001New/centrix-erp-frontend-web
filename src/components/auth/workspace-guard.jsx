@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { recallWorkspaceLandingPath, defaultWorkspaceId, needsWorkspaceSelection } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
-import { getStoredWorkspace } from "@/lib/auth-storage";
+import { getStoredLoginChannel, getStoredWorkspace } from "@/lib/auth-storage";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
   isTerminalWorkspace,
@@ -23,17 +23,19 @@ export function WorkspaceGuard({ children }) {
   const [channelReady, setChannelReady] = useState(true);
   const workspaceSyncedKeyRef = useRef(null);
 
-  const storedWorkspace = getStoredWorkspace();
   const requireTillFloat = resolveTillFloatNavFlag(capabilities);
-  const platformUser = isPlatformShellUser(
-    buildAccessContext({
-      user,
-      organization,
-      capabilities,
-      requireTillFloat,
-      isSuperAdmin,
-    }),
-  );
+  const accessContext = buildAccessContext({
+    user,
+    organization,
+    capabilities,
+    requireTillFloat,
+    isSuperAdmin,
+  });
+  const storedWorkspace = getStoredWorkspace();
+  const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, accessContext);
+  const expectedChannel = workspaceId ? workspaceLoginChannel(workspaceId) : null;
+  const storedLoginChannel = getStoredLoginChannel();
+  const platformUser = isPlatformShellUser(accessContext);
 
   useEffect(() => {
     if (loading || platformUser) return;
@@ -101,29 +103,42 @@ export function WorkspaceGuard({ children }) {
   const [channelRetryToken, setChannelRetryToken] = useState(0);
 
   useEffect(() => {
+    const onSessionStorageChange = (event) => {
+      if (
+        event.key !== null
+        && event.key !== "pos_erp_login_channel"
+        && event.key !== "pos_erp_workspace"
+      ) {
+        return;
+      }
+      setChannelRetryToken((value) => value + 1);
+    };
+    const onFocus = () => setChannelRetryToken((value) => value + 1);
+    window.addEventListener("storage", onSessionStorageChange);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("storage", onSessionStorageChange);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
     if (loading || platformUser) {
       setChannelReady(true);
       setChannelRestoreError(null);
       return;
     }
 
-    const ctx = buildAccessContext({
-      user,
-      organization,
-      capabilities,
-      requireTillFloat,
-      isSuperAdmin,
-    });
-    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
     if (!workspaceId) {
       setChannelReady(true);
       setChannelRestoreError(null);
       return;
     }
 
-    const expectedChannel = workspaceLoginChannel(workspaceId);
-    const syncKey = `${organization?.id ?? ""}:${workspaceId}:${loginChannel ?? ""}`;
-    const channelMismatch = (loginChannel ?? "") !== expectedChannel;
+    const syncKey = `${organization?.id ?? ""}:${workspaceId}:${loginChannel ?? ""}:${storedLoginChannel ?? ""}`;
+    const channelMismatch =
+      (loginChannel ?? "") !== expectedChannel
+      || (storedLoginChannel != null && storedLoginChannel !== expectedChannel);
 
     // Channel already matches (e.g. Hotel POS on backoffice channel): stamp
     // active_workspace_id once without blocking the shell.
@@ -148,7 +163,8 @@ export function WorkspaceGuard({ children }) {
     switchWorkspace(workspaceId)
       .then(() => {
         if (!cancelled) {
-          workspaceSyncedKeyRef.current = `${organization?.id ?? ""}:${workspaceId}:${expectedChannel}`;
+          workspaceSyncedKeyRef.current =
+            `${organization?.id ?? ""}:${workspaceId}:${expectedChannel}:${expectedChannel}`;
           setChannelReady(true);
           setChannelRestoreError(null);
         }
@@ -171,7 +187,11 @@ export function WorkspaceGuard({ children }) {
     capabilities,
     loading,
     loginChannel,
+    pathname,
     platformUser,
+    expectedChannel,
+    storedLoginChannel,
+    workspaceId,
     storedWorkspace,
     switchWorkspace,
     requireTillFloat,
@@ -180,6 +200,14 @@ export function WorkspaceGuard({ children }) {
     organization,
     channelRetryToken,
   ]);
+
+  const needsSelection = !loading
+    && !platformUser
+    && needsWorkspaceSelection(capabilities, storedWorkspace, accessContext);
+  const workspacePathMismatch = !loading
+    && !platformUser
+    && Boolean(workspaceId)
+    && !pathBelongsToWorkspace(pathname, workspaceId);
 
   if (channelRestoreError) {
     return (
@@ -198,6 +226,14 @@ export function WorkspaceGuard({ children }) {
         </button>
       </div>
     );
+  }
+
+  if (
+    (needsSelection && pathname !== "/choose-workspace")
+    || workspacePathMismatch
+    || (!platformUser && expectedChannel && storedLoginChannel && storedLoginChannel !== expectedChannel)
+  ) {
+    return null;
   }
 
   if (!channelReady) {

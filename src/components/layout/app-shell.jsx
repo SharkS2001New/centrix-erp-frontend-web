@@ -21,6 +21,8 @@ import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import { LoginWarningsBanner } from "@/components/shared/login-warnings-banner";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { isTerminalWorkspace } from "@/lib/workspaces";
 import {
   beginNavigationIntent,
   finishNavigation,
@@ -75,6 +77,9 @@ export function AppShell({ children, modal = null }) {
   const pendingHref = usePendingNavigationHref();
   const isPos = pathname === "/sales/pos";
   const isSpa = pathname === "/spa" || pathname.startsWith("/spa/");
+  const isTerminalSharedRoute =
+    isTerminalWorkspace(getStoredWorkspace())
+    && (pathname === "/subscribe" || pathname === "/choose-workspace");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -107,6 +112,23 @@ export function AppShell({ children, modal = null }) {
     const safetyTimer = window.setTimeout(() => finishNavigation(), 10000);
     return () => window.clearTimeout(safetyTimer);
   }, [pathname]);
+
+  if (isTerminalSharedRoute) {
+    return (
+      <AuthGuard>
+        <WorkspaceGuard>
+          <RoutePermissionGuard>
+            <div className="app-main-bg min-h-dvh">
+              <AppErrorBoundary>
+                {children}
+                {modal}
+              </AppErrorBoundary>
+            </div>
+          </RoutePermissionGuard>
+        </WorkspaceGuard>
+      </AuthGuard>
+    );
+  }
 
   function toggleSidebar() {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -167,7 +189,7 @@ export function AppShell({ children, modal = null }) {
                 onToggleSidebar={toggleSidebar}
               />
               <NetworkStatusBanner />
-              <LicenseExpiryBanner />
+              <LicenseExpiryBanner showAction={false} />
               <LoginWarningsBanner />
               <WorkspaceTabBar />
               <main
