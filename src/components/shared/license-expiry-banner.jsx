@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   isLicenseExpiringSoon,
   licenceNeedsPayment,
@@ -20,6 +20,7 @@ import { LicensePaybillInstructions } from "@/components/shared/license-paybill-
  */
 export function LicenseExpiryBanner({ className = "" }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { organizationLicense, isSuperAdmin, isOrgAdmin } = useAuth();
   const canPay = Boolean(isOrgAdmin?.());
 
@@ -34,12 +35,26 @@ export function LicenseExpiryBanner({ className = "" }) {
   const tokenBalance = Number(organizationLicense.token_balance ?? 0);
   const limitedMessage =
     mode === "trial"
-      ? `You are on a free trial${organizationLicense.plan_name ? ` of ${organizationLicense.plan_name}` : ""}${organizationLicense.expires_at ? ` until ${organizationLicense.expires_at}` : ""}. You can use the modules on that package. Pay the Centrix Paybill to keep them.`
+      ? ""
       : mode === "token"
       ? `This organisation has ${tokenBalance} Centrix token${tokenBalance === 1 ? "" : "s"}. Each completed sale uses ${Number(organizationLicense.sale_tokens ?? 1)} when it is saved online, including when an offline order syncs. Reading is free.`
       : mode === "expired"
         ? `${organizationLicense.plan_name ? `Your trial or paid period for ${organizationLicense.plan_name} has ended.` : "Your trial or paid period has ended."} This organisation is now on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan again.`
         : `This organisation is on ${organizationLicense.current_package || organizationLicense.free_plan?.name || "Package 1"}, the free plan. Pay the Centrix Paybill to open a bigger plan.`;
+
+  const showTrialMessage = mode !== "trial";
+  const handleChoosePlanClick = (event) => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const isPopup = params.get("modal") === "1" || window.location.pathname.startsWith("/subscribe");
+      if (isPopup && window.history.length > 1) {
+        event.preventDefault();
+        router.back();
+        return;
+      }
+    }
+    rememberLicenceReturn(pathname);
+  };
 
   return (
     <div
@@ -54,16 +69,16 @@ export function LicenseExpiryBanner({ className = "" }) {
       aria-live="assertive"
     >
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="font-medium">{limited || mode === "token" || mode === "trial" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p>
-        {canPay ? <LicensePaybillInstructions paybill={organizationLicense.paybill} /> : null}
+        {showTrialMessage ? <p className="font-medium">{limited || mode === "token" ? limitedMessage : licenseWarningMessage(organizationLicense)}</p> : null}
+        {canPay && mode !== "trial" ? <LicensePaybillInstructions paybill={organizationLicense.paybill} /> : null}
       </div>
       {canPay ? (
         <Link
           href={renew ? "/subscribe?renew=1&modal=1" : `${licencePlanPath(pathname)}?modal=1`}
           className="shrink-0 text-xs font-semibold underline"
-          onClick={() => rememberLicenceReturn(pathname)}
+          onClick={handleChoosePlanClick}
         >
-          {renew ? "Renew" : mode === "trial" ? "See modules and pay" : mode === "expired" || mode === "free" ? "Choose a plan" : "View payment options"}
+          {renew ? "Renew" : mode === "trial" ? "Choose plan" : mode === "expired" || mode === "free" ? "Choose a plan" : "View payment options"}
         </Link>
       ) : null}
     </div>

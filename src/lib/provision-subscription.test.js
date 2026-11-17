@@ -77,4 +77,17 @@ describe("provision subscription", () => {
     ]);
     expect(yearly.current_period_end).toBe("2027-08-04");
   });
+
+  it("stores the selected billing cycle after the free trial", () => {
+    const form = emptyProvisionSubscriptionForm({
+      license_mode: "plan",
+      status: "active",
+      billing_cycle: "yearly",
+      plan_id: "5",
+      current_period_start: "2026-08-04",
+      current_period_end: "",
+    });
+    const payload = buildProvisionSubscriptionPayload(form, [{ id: 5, name: "Growth", interval: "monthly" }]);
+    expect(payload.billing_cycle).toBe("yearly");
+  });
 });

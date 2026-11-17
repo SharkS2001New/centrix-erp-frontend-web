@@ -95,6 +95,7 @@ export function buildProvisionSubscriptionPayload(form, plans = []) {
     seat_count: Number(form.seat_count) || 1,
     current_period_start: start,
     current_period_end: end,
+    billing_cycle: form.billing_cycle === "yearly" ? "yearly" : "monthly",
     is_trial: isTrial,
     trial_days: trialDays,
     trial_ends_at: isTrial ? end : null,

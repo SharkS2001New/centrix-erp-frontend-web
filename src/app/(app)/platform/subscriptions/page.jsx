@@ -59,6 +59,7 @@ function emptyAssignForm() {
     organization_id: "",
     plan_id: "",
     status: "active",
+    billing_cycle: "monthly",
     seat_count: "1",
     current_period_start: start,
     current_period_end: "",
@@ -343,15 +344,18 @@ export default function PlatformSubscriptionsPage() {
           ...f,
           plan_id: planId,
           seat_count: seats,
+          billing_cycle: f.billing_cycle === "yearly" ? "yearly" : (plan?.interval && isAnnualBillingInterval(plan.interval) ? "yearly" : "monthly"),
           trial_days: String(trialDays),
           current_period_start: start,
           current_period_end: toLicenceDateTimeLocal(addCalendarDays(start, trialDays), { end: true }),
         };
       }
+      const nextBillingCycle = plan && isAnnualBillingInterval(plan.interval) ? "yearly" : "monthly";
       return {
         ...f,
         plan_id: planId,
         seat_count: seats,
+        billing_cycle: f.billing_cycle === "yearly" || nextBillingCycle === "yearly" ? "yearly" : "monthly",
         current_period_start: start,
         current_period_end: toLicenceDateTimeLocal(periodEndForPlanInterval(start, plan?.interval), { end: true }),
       };
@@ -380,6 +384,7 @@ export default function PlatformSubscriptionsPage() {
           organization_id: Number(form.organization_id),
           plan_id: Number(form.plan_id),
           status: form.status,
+          billing_cycle: form.billing_cycle === "yearly" ? "yearly" : "monthly",
           seat_count: Number(form.seat_count) || 1,
           current_period_start: form.current_period_start || null,
           current_period_end: form.current_period_end || null,
@@ -1000,17 +1005,6 @@ export default function PlatformSubscriptionsPage() {
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Seats (from package)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    className={`${inputClass} bg-slate-50`}
-                    value={form.seat_count}
-                    readOnly
-                    title="Seats are set on the payment package"
-                  />
-                </label>
-                <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Status</span>
                   <SearchableSelect
                     className={inputClass}
@@ -1024,16 +1018,18 @@ export default function PlatformSubscriptionsPage() {
                         : String(statusPlans[0]?.id ?? "");
                       if (status === "trialing") {
                         const plan = statusPlans.find((row) => String(row.id) === String(currentPlanId));
-                        setForm((f) => ({ ...f, plan_id: currentPlanId }));
+                        setForm((f) => ({ ...f, plan_id: currentPlanId, billing_cycle: plan && isAnnualBillingInterval(plan.interval) ? "yearly" : "monthly" }));
                         applyTrialDays(packageTrialMax(plan), form.current_period_start, plan);
                       } else {
                         const plan = statusPlans.find((row) => String(row.id) === String(currentPlanId));
                         const start =
                           form.current_period_start || new Date().toISOString().slice(0, 10);
+                        const nextBillingCycle = plan && isAnnualBillingInterval(plan.interval) ? "yearly" : "monthly";
                         setForm((f) => ({
                           ...f,
                           plan_id: currentPlanId,
                           status,
+                          billing_cycle: nextBillingCycle,
                           current_period_start: start,
                           current_period_end: plan
                             ? periodEndForPlanInterval(start, plan.interval)
@@ -1044,6 +1040,32 @@ export default function PlatformSubscriptionsPage() {
                     options={SUBSCRIPTION_STATUSES.filter((row) => row.id !== "expired").map(
                       (row) => ({ value: row.id, label: row.label }),
                     )}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Billing cycle after free trial</span>
+                  <SearchableSelect
+                    className={inputClass}
+                    value={form.billing_cycle}
+                    onChange={(next) => setForm((f) => ({ ...f, billing_cycle: next }))}
+                    options={[
+                      { value: "monthly", label: "Monthly" },
+                      { value: "yearly", label: "Yearly" },
+                    ]}
+                    placeholder="Monthly or yearly"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-1">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Seats (from package)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    className={`${inputClass} bg-slate-50`}
+                    value={form.seat_count}
+                    readOnly
+                    title="Seats are set on the payment package"
                   />
                 </label>
               </div>
