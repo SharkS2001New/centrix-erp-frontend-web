@@ -20,6 +20,7 @@ import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
 import { isAccountingSectionEnabled, isHrSectionEnabled } from "@/lib/menu-groups";
+import { isSidebarFeatureEnabled } from "@/lib/nav-feature-gates";
 import { WORKSPACE_SECTION_IDS, defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
@@ -156,7 +157,11 @@ export function isBackofficePathDisabled(pathname, capabilities) {
         (workspaceId) => workspaceId !== "hospitality_backoffice" && workspaceId !== "hotel_bar_pos",
       );
       const onlyOwner = owners.length === 1 ? owners[0] : null;
-      const sectionOff =
+      const featureOff = !isSidebarFeatureEnabled(
+        capabilities,
+        item.sidebarFeatureKey ?? item.href,
+      );
+      const sectionOff = featureOff ||
         (onlyOwner === "backoffice" && !isBackofficeSectionEnabled(capabilities, section.id)) ||
         (onlyOwner === "hr" && !isHrSectionEnabled(capabilities, section.id)) ||
         (onlyOwner === "accounting" && !isAccountingSectionEnabled(capabilities, section.id));

@@ -1,5 +1,17 @@
 /** Client-side Excel read/write via ExcelJS (replaces unmaintained sheetjs/xlsx). */
 
+function spreadsheetCellText(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value !== "object") return String(value);
+  if ("result" in value) return spreadsheetCellText(value.result);
+  if (Array.isArray(value.richText)) {
+    return value.richText.map((part) => part.text ?? "").join("");
+  }
+  if (typeof value.text === "string") return value.text;
+  return "";
+}
+
 /**
  * Read the first worksheet from an .xlsx file into an array of row objects.
  * @param {File} file
@@ -18,7 +30,7 @@ export async function readExcelFile(file) {
   /** @type {string[]} */
   const headers = [];
   headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headers[colNumber - 1] = String(cell.value ?? "").trim().replace(/^\ufeff/, "");
+    headers[colNumber - 1] = spreadsheetCellText(cell.value).trim().replace(/^\ufeff/, "");
   });
 
   /** @type {Record<string, string>[]} */
@@ -31,7 +43,7 @@ export async function readExcelFile(file) {
       const header = headers[i];
       if (!header) continue;
       const cell = row.getCell(i + 1);
-      obj[header] = cell.value == null ? "" : String(cell.value);
+      obj[header] = spreadsheetCellText(cell.value);
     }
     rows.push(obj);
   });

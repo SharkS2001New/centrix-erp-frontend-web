@@ -21,56 +21,7 @@ import { downloadExcelFromRows } from "@/lib/spreadsheet";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { downloadBlob, parseSpreadsheet } from "@/components/catalog/catalog-import-export-shared";
 import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
-
-/** Centrix product import columns (name-based linking; IDs also accepted). */
-const RETAIL_PRODUCT_IMPORT_COLUMNS = [
-  { key: "product_code", label: "Product code" },
-  { key: "product_name", label: "Product name" },
-  { key: "category_name", label: "Category" },
-  { key: "subcategory_name", label: "Subcategory" },
-  { key: "subcategory_id", label: "Subcategory ID" },
-  { key: "measure_name", label: "Unit" },
-  { key: "unit_id", label: "Unit ID" },
-  { key: "uom_label", label: "Unit of measure" },
-  { key: "unit_price", label: "Unit price" },
-  { key: "last_cost_price", label: "Cost price" },
-  { key: "discount_type", label: "Discount type" },
-  { key: "discount_percentage", label: "Discount percentage" },
-  { key: "discount_value", label: "Discount value" },
-  { key: "product_weight", label: "Product weight" },
-  { key: "shelf_location", label: "Shelf location" },
-  { key: "stock_in_shop", label: "Shop stock", aliases: ["shop_stock", "outlet_stock"] },
-  { key: "stock_in_store", label: "Store stock", aliases: ["store_stock", "storeroom_stock"] },
-  { key: "reorder_point", label: "Reorder point" },
-  { key: "supplier_name", label: "Supplier" },
-  { key: "supplier_id", label: "Supplier ID" },
-  { key: "vat_code", label: "VAT code" },
-  { key: "vat_id", label: "VAT ID" },
-  { key: "sell_on_retail", label: "Sell on retail" },
-  { key: "sell_on_bar", label: "Sell on bar" },
-  { key: "sell_on_hotel", label: "Sell on hotel / restaurant" },
-];
-
-const MENU_PRODUCT_IMPORT_COLUMNS = [
-  { key: "product_code", label: "Product code" },
-  { key: "product_name", label: "Product name" },
-  { key: "category_name", label: "Category" },
-  { key: "subcategory_name", label: "Subcategory" },
-  { key: "subcategory_id", label: "Subcategory ID" },
-  { key: "measure_name", label: "Unit" },
-  { key: "unit_id", label: "Unit ID" },
-  { key: "uom_label", label: "Unit of measure" },
-  { key: "unit_price", label: "Unit price" },
-  { key: "last_cost_price", label: "Cost price" },
-  { key: "shelf_location", label: "Storeroom shelf" },
-  { key: "stock_in_shop", label: "Outlet stock", aliases: ["shop_stock", "shop stock", "outlet_stock"] },
-  { key: "stock_in_store", label: "Storeroom stock", aliases: ["store_stock", "store stock", "storeroom_stock"] },
-  { key: "reorder_point", label: "Reorder point" },
-  { key: "vat_code", label: "VAT code" },
-  { key: "vat_id", label: "VAT ID" },
-  { key: "sell_on_bar", label: "Sell on bar" },
-  { key: "sell_on_hotel", label: "Sell on hotel / restaurant" },
-];
+import { productImportColumns } from "@/lib/product-import-format";
 
 const RETAIL_SAMPLE_HEADERS = [
   "product_code",
@@ -149,12 +100,6 @@ const MENU_SAMPLE_ROW = [
   "true",
   "true",
 ];
-
-function productImportColumns(includeShelfLocation, hotelCatalogue = false) {
-  const columns = hotelCatalogue ? MENU_PRODUCT_IMPORT_COLUMNS : RETAIL_PRODUCT_IMPORT_COLUMNS;
-  if (includeShelfLocation) return columns;
-  return columns.filter((col) => col.key !== "shelf_location");
-}
 
 function productSampleImportData(includeShelfLocation, hotelCatalogue = false) {
   if (hotelCatalogue) {
@@ -298,7 +243,7 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false, 
       : "Please wait while products are imported…",
   );
   const importColumns = useMemo(
-    () => productImportColumns(includeShelfLocation, hotelCatalogue),
+    () => productImportColumns({ includeShelfLocation, hotelCatalogue }),
     [includeShelfLocation, hotelCatalogue],
   );
 

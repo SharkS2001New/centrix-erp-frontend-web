@@ -11,7 +11,10 @@ import {
   isMpesaC2bReconciliationEnabled,
 } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
-import { isReportNavEnabled } from "@/lib/nav-feature-gates";
+import {
+  isReportNavEnabled,
+  isSidebarFeatureEnabled,
+} from "@/lib/nav-feature-gates";
 import {
   isPlatformWhatsappEnabled,
   isPlatformKraIntegrationEnabled,
@@ -1534,6 +1537,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
     typeof isModuleEnabled === "function" ? isModuleEnabled : () => false;
   const superAdmin =
     typeof isSuperAdmin === "function" ? isSuperAdmin : () => false;
+  if (!isSidebarFeatureEnabled(capabilities, item.sidebarFeatureKey ?? item.href)) return false;
   if (item.superAdminOnly && !superAdmin()) return false;
   if (
     item.platformPermission &&

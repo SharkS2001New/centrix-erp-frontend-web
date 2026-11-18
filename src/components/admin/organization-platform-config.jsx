@@ -62,6 +62,8 @@ import {
   menuGroupStateFromProfile,
   normalizeMenuGroups,
 } from "@/lib/menu-groups";
+import { SidebarFeaturePicker } from "@/components/platform/sidebar-feature-picker";
+import { normalizeSidebarFeatures } from "@/lib/sidebar-features";
 import {
   HOSPITALITY_PAYMENT_WORKFLOW_CATALOG,
   HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS,
@@ -444,6 +446,9 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     backoffice_sections: { ...BACKOFFICE_SECTION_DEFAULTS },
     hr_sections: normalizeMenuGroups(HR_MENU_CATALOG, null),
     accounting_sections: normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, null),
+    sidebar_features: normalizeSidebarFeatures(null),
+    limit_sidebar_features: false,
+    sidebar_feature_overrides: normalizeSidebarFeatures(null, false),
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
@@ -568,6 +573,15 @@ export function salesPlatformFromApi(apiPayload) {
     backoffice_sections: normalizeBackofficeSections(apiPayload.backoffice_sections),
     hr_sections: normalizeMenuGroups(HR_MENU_CATALOG, apiPayload.hr_sections),
     accounting_sections: normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, apiPayload.accounting_sections),
+    limit_sidebar_features: apiPayload.limit_sidebar_features === true,
+    sidebar_features: normalizeSidebarFeatures(
+      apiPayload.sidebar_features,
+      apiPayload.limit_sidebar_features !== true,
+    ),
+    sidebar_feature_overrides: normalizeSidebarFeatures(
+      apiPayload.sidebar_feature_overrides,
+      false,
+    ),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
     reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
     cart_reservation_ttl_minutes:
@@ -2321,6 +2335,22 @@ export function OrganizationModuleToggles({
             </div>
           );
         })}
+        {!allowInactiveApplications &&
+        salesPlatform?.limit_sidebar_features === true &&
+        typeof onSalesChange === "function" ? (
+          <SidebarFeaturePicker
+            title="Additional sidebar features for this organization"
+            description="Grant individual links that are not included in this organization’s setup type."
+            features={salesPlatform?.sidebar_feature_overrides}
+            defaultValue={false}
+            onChange={(next) =>
+              onSalesChange({
+                ...(salesPlatform ?? {}),
+                sidebar_feature_overrides: next,
+              })
+            }
+          />
+        ) : null}
       </div>
     </PlatformFormSection>
   );

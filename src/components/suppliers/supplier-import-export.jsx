@@ -19,6 +19,8 @@ import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/catalog/catalog-import-export-shared";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { useAuth } from "@/contexts/auth-context";
+import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
+import { SUPPLIER_IMPORT_COLUMNS } from "@/lib/data-migration-formats";
 
 const SAMPLE_HEADERS = [
   "supplier_name",
@@ -150,6 +152,7 @@ function ImportModal({ open, onClose, onImported }) {
       "email",
       "town",
       "tax_pin",
+      "terms_of_payment",
       "address",
     ]) {
       const val = row[key];
@@ -169,7 +172,7 @@ function ImportModal({ open, onClose, onImported }) {
     setImportProgress(null);
     setImporting(true);
     try {
-      const rows = await parseSpreadsheet(file);
+      const rows = mapImportHeaders(await parseSpreadsheet(file), SUPPLIER_IMPORT_COLUMNS);
       if (!rows.length) throw new Error("The file has no data rows.");
 
       const { rows: normalizedRows, failures: prepFailures } = prepareImportRows({

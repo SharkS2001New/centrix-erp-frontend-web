@@ -8,7 +8,7 @@ export default function PlatformSetupTypesPage() {
   return (
     <CatalogPageShell
       title="Setup types"
-      subtitle="Per industry setup: tick applications, menu parts (Customers, Suppliers, etc.), and which business types appear on Instant trial. Unticked apps stay hidden."
+      subtitle="Create per-industry setup types, then configure their applications, sidebar features, menus, and Instant trial business types."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Setup types" }]} />
       <PlatformSetupTypesPanel />

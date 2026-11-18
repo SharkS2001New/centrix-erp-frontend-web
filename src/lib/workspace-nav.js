@@ -18,6 +18,8 @@ import {
 } from "@/lib/order-queue-permissions";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { filterNavSectionsForWorkspace } from "@/lib/workspaces";
+import { isAccountingSectionEnabled, isHrSectionEnabled } from "@/lib/menu-groups";
+import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
 
 function mapSalesOrderNavItem(item) {
   return withNavItemIcon({
@@ -28,6 +30,7 @@ function mapSalesOrderNavItem(item) {
     orderQueueSlug: item.slug,
     exact: item.slug === "all",
     ordersNav: false,
+    sidebarFeatureKey: "/sales/orders",
   });
 }
 
@@ -63,9 +66,11 @@ export function buildWorkspaceNavSections({
           permission: orderQueuePermissionCode("mobile"),
           orderQueueSlug: "mobile",
           ordersNav: false,
+          sidebarFeatureKey: "/sales/orders",
         }),
       ]
     : [];
+  const resolvedWorkspaceId = workspaceId ?? defaultWorkspaceId(capabilities, navContext);
 
   const withOrders = navSections
     .filter((section) => !section.superAdminOnly || (typeof isSuperAdmin === "function" && isSuperAdmin()))
@@ -100,9 +105,19 @@ export function buildWorkspaceNavSections({
       }),
     }))
     .filter((section) => isNavSectionVisible(section, navContext))
+    .filter((section) => {
+      if (resolvedWorkspaceId === "backoffice") {
+        return isBackofficeSectionEnabled(capabilities, section.id);
+      }
+      if (resolvedWorkspaceId === "hr") {
+        return isHrSectionEnabled(capabilities, section.id);
+      }
+      if (resolvedWorkspaceId === "accounting") {
+        return isAccountingSectionEnabled(capabilities, section.id);
+      }
+      return true;
+    })
     .filter((section) => section.items.length > 0);
-
-  const resolvedWorkspaceId = workspaceId ?? defaultWorkspaceId(capabilities, navContext);
 
   if (!resolvedWorkspaceId) {
     return withOrders;

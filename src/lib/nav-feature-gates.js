@@ -67,6 +67,26 @@ export function isExternalPosEnabled(capabilities) {
   return Boolean(capabilities?.modules?.["sales.pos"]);
 }
 
+export function isSidebarFeatureEnabled(capabilities, featureKey) {
+  const sales =
+    capabilities?.module_settings?.sales ??
+    capabilities?.module_settings ??
+    capabilities?.sales ??
+    {};
+  if (sales.limit_sidebar_features !== true) return true;
+
+  const baseFeatures =
+    sales.sidebar_features && typeof sales.sidebar_features === "object"
+      ? sales.sidebar_features
+      : {};
+  const overrides =
+    sales.sidebar_feature_overrides && typeof sales.sidebar_feature_overrides === "object"
+      ? sales.sidebar_feature_overrides
+      : {};
+
+  return overrides[featureKey] === true || baseFeatures[featureKey] === true;
+}
+
 export function isDistributionModuleEnabled(capabilities) {
   return Boolean(capabilities?.modules?.distribution);
 }

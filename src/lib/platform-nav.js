@@ -49,6 +49,13 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Applications such as External POS, and menu groups, saved for each setup type.",
         permission: "tenants",
       },
+      {
+        href: "/platform/data-converter",
+        label: "Data migration converter",
+        icon: "package",
+        description: "Map legacy product, customer, supplier, and setup data to Centrix CSV formats.",
+        permission: "tenants",
+      },
     ],
   },
   {

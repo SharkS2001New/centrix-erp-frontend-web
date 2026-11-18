@@ -83,6 +83,7 @@ export function menuGroupStateFromProfile(profile) {
   const backofficeOn = !gated || apps.backoffice === true || apps.hospitality_backoffice === true;
   const hrOn = !gated || apps.hr === true;
   const accountingOn = !gated || apps.accounting === true;
+  const limitSidebarFeatures = groups.limit_sidebar_features === true;
   return {
     backoffice_sections: backofficeOn
       ? normalizeBackofficeSections(groups.backoffice)
@@ -93,6 +94,12 @@ export function menuGroupStateFromProfile(profile) {
     accounting_sections: accountingOn
       ? normalizeMenuGroups(ACCOUNTING_MENU_CATALOG, groups.accounting)
       : disabledMenuGroup(ACCOUNTING_MENU_CATALOG),
+    sidebar_features:
+      groups.sidebar_features && typeof groups.sidebar_features === "object"
+        ? groups.sidebar_features
+        : {},
+    limit_sidebar_features: limitSidebarFeatures,
+    sidebar_feature_overrides: {},
   };
 }
 

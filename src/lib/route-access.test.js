@@ -39,6 +39,36 @@ describe("route-access", () => {
     expect(canAccessRoute("/profile", baseCtx)).toBe(true);
   });
 
+  it("blocks setup-type sidebar features unless the organization receives an override", () => {
+    const limitedCapabilities = {
+      ...baseCtx.capabilities,
+      module_settings: {
+        sales: {
+          limit_sidebar_features: true,
+          sidebar_features: { "/products": false },
+          sidebar_feature_overrides: {},
+        },
+      },
+    };
+    const context = { ...baseCtx, capabilities: limitedCapabilities };
+
+    expect(canAccessRoute("/products", context)).toBe(false);
+    expect(
+      canAccessRoute("/products", {
+        ...context,
+        capabilities: {
+          ...limitedCapabilities,
+          module_settings: {
+            sales: {
+              ...limitedCapabilities.module_settings.sales,
+              sidebar_feature_overrides: { "/products": true },
+            },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("allows admin settings for org administrator", () => {
     expect(
       canAccessRoute("/admin/settings", {

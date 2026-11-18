@@ -35,6 +35,8 @@ import {
   HOTEL_POS_PAYMENT_METHOD_CATALOG,
   normalizeHotelPosPaymentMethods,
 } from "@/lib/hotel-pos-payment-methods";
+import { SidebarFeaturePicker } from "@/components/platform/sidebar-feature-picker";
+import { normalizeSidebarFeatures } from "@/lib/sidebar-features";
 
 const GROUPS = [
   {
@@ -85,7 +87,6 @@ export function PlatformSetupTypesPanel() {
   const [savingKey, setSavingKey] = useState("");
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("commerce");
-  const [createBusinessTypes, setCreateBusinessTypes] = useState([]);
   const [creating, setCreating] = useState(false);
   const [openKey, setOpenKey] = useState("");
   const activeProfile = profiles.find((profile) => profile.key === openKey) ?? null;
@@ -193,6 +194,11 @@ export function PlatformSetupTypesPanel() {
         accounting: savedMenuGroup(profile, GROUPS[2]),
         applications: profile.applications ?? {},
         business_types: Array.isArray(profile.business_types) ? profile.business_types : [],
+        sidebar_features: normalizeSidebarFeatures(
+          profile.menu_groups?.sidebar_features,
+          profile.menu_groups?.limit_sidebar_features !== true,
+        ),
+        limit_sidebar_features: profile.menu_groups?.limit_sidebar_features === true,
         sales_platform: profile.sales_platform ?? {},
         payroll_platform: payrollPlatformToApi(
           profile.payroll_platform ?? defaultPayrollPlatformState(),
@@ -247,6 +253,38 @@ export function PlatformSetupTypesPanel() {
     );
   }
 
+  function setSidebarFeatures(profileKey, sidebarFeatures) {
+    setProfiles((rows) =>
+      rows.map((row) =>
+        row.key === profileKey
+          ? {
+              ...row,
+              menu_groups: {
+                ...(row.menu_groups ?? {}),
+                sidebar_features: sidebarFeatures,
+              },
+            }
+          : row,
+      ),
+    );
+  }
+
+  function setSidebarFeatureLimit(profileKey, limited) {
+    setProfiles((rows) =>
+      rows.map((row) =>
+        row.key === profileKey
+          ? {
+              ...row,
+              menu_groups: {
+                ...(row.menu_groups ?? {}),
+                limit_sidebar_features: limited,
+              },
+            }
+          : row,
+      ),
+    );
+  }
+
   function enabledModulesForProfile(profile) {
     const apps = profile?.applications ?? {};
     return {
@@ -266,15 +304,6 @@ export function PlatformSetupTypesPanel() {
     return owner;
   }
 
-  function setCreateBusinessType(businessType, checked) {
-    setCreateBusinessTypes((current) => {
-      if (checked) {
-        return current.includes(businessType) ? current : [...current, businessType];
-      }
-      return current.filter((value) => value !== businessType);
-    });
-  }
-
   async function createSetup(event) {
     event.preventDefault();
     const trimmed = name.trim();
@@ -286,11 +315,10 @@ export function PlatformSetupTypesPanel() {
         body: {
           name: trimmed,
           industry,
-          business_types: createBusinessTypes,
+          business_types: [],
         },
       });
       setName("");
-      setCreateBusinessTypes([]);
       setProfileTab("applications");
       setOpenKey(res?.data?.key ?? "");
       notifySuccess(`Created ${res?.data?.label || trimmed}.`);
@@ -337,6 +365,7 @@ export function PlatformSetupTypesPanel() {
   const profileTabs = activeProfile
     ? [
         { id: "applications", label: "Applications & menus" },
+      { id: "sidebar_features", label: "Sidebar features" },
         ...(supportsSalesWorkflow
           ? [
               { id: "sales", label: "Sales behaviour" },
@@ -357,8 +386,6 @@ export function PlatformSetupTypesPanel() {
   const profilePayroll =
     activeProfile?.payroll_platform ?? defaultPayrollPlatformState();
   const profileModules = activeProfile ? enabledModulesForProfile(activeProfile) : {};
-
-  const createCatalog = businessTypeCatalog.filter((row) => row.industry === industry);
 
   return (
     <div className="space-y-3">
@@ -382,10 +409,7 @@ export function PlatformSetupTypesPanel() {
             <select
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               value={industry}
-              onChange={(event) => {
-                setIndustry(event.target.value);
-                setCreateBusinessTypes([]);
-              }}
+              onChange={(event) => setIndustry(event.target.value)}
             >
               <option value="commerce">Retail & Distribution</option>
               <option value="hospitality">Hotel & Hospitality</option>
@@ -397,49 +421,11 @@ export function PlatformSetupTypesPanel() {
             {creating ? "Creating…" : "Create setup type"}
           </PrimaryButton>
         </div>
-        <fieldset>
-          <legend className="text-xs font-medium text-slate-600">
-            Business types for Instant trial
-          </legend>
-          <p className="mt-1 text-xs text-slate-500">
-            A business type can only belong to one setup type. Types already claimed elsewhere are
-            disabled.
-          </p>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {createCatalog.map((row) => {
-              const owner = ownerForBusinessType(row.value);
-              const taken = Boolean(owner);
-              return (
-                <label
-                  key={row.value}
-                  className={`flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm ${
-                    taken ? "bg-slate-50 text-slate-400" : ""
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 rounded border-slate-300"
-                    checked={createBusinessTypes.includes(row.value)}
-                    disabled={taken}
-                    onChange={(event) => setCreateBusinessType(row.value, event.target.checked)}
-                  />
-                  <span>
-                    <span className="block">{row.label}</span>
-                    {taken ? (
-                      <span className="block text-xs text-slate-400">On {owner.label}</span>
-                    ) : null}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
       </form>
       <p className="text-sm text-slate-600">
-        Tick the applications and menu parts each setup type includes, and which business types it
-        appears under on Instant trial. Disabled applications stay hidden. These defaults are applied
-        when the setup is selected during website signup. An organisation can still enable extra
-        applications or settings beyond this baseline.
+        Use Configure setup type to choose its applications, menu parts, and Instant trial business
+        types. Sidebar features can be limited per setup type, with extra links granted from an
+        organisation’s settings when needed.
       </p>
       {profiles.map((profile) => (
         <div key={profile.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -498,7 +484,7 @@ export function PlatformSetupTypesPanel() {
                 <h2 id="setup-type-dialog-title" className="text-lg font-semibold text-slate-900">
                   {activeProfile.label}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">Configure applications, menus, and the operational defaults applied to organizations using this setup.</p>
+                <p className="mt-1 text-sm text-slate-500">Configure applications, sidebar features, menus, and operational defaults for organizations using this setup.</p>
               </div>
               <button
                 type="button"
@@ -643,6 +629,19 @@ export function PlatformSetupTypesPanel() {
                 );
               })}
                 </div>
+            ) : null}
+            {profileTab === "sidebar_features" ? (
+              <SidebarFeaturePicker
+                title="Features available in this setup type"
+                description="Choose individual links from the sidebar. Use the limit switch to hide every unselected link for this setup."
+                features={activeProfile.menu_groups?.sidebar_features}
+                defaultValue={activeProfile.menu_groups?.limit_sidebar_features !== true}
+                onChange={(next) => setSidebarFeatures(activeProfile.key, next)}
+                restricted={activeProfile.menu_groups?.limit_sidebar_features === true}
+                onRestrictedChange={(checked) =>
+                  setSidebarFeatureLimit(activeProfile.key, checked)
+                }
+              />
             ) : null}
             {profileTab === "sales" && supportsSalesWorkflow ? (
                 <OrganizationPlatformSalesSettings

@@ -14,36 +14,21 @@ import {
   queueReportExport,
   serializeExportMeta,
 } from "@/lib/report-export-api";
-import { downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
+import { downloadExcelFromRows } from "@/lib/spreadsheet";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/catalog/catalog-import-export-shared";
 import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { useAuth } from "@/contexts/auth-context";
-
-/** Centrix customer import columns (name-based linking; IDs also accepted). */
-const CUSTOMER_IMPORT_COLUMNS = [
-  { key: "customer_name", label: "Name" },
-  { key: "customer_type", label: "Type" },
-  { key: "phone_number", label: "Phone" },
-  { key: "additional_phone", label: "Alt. phone" },
-  { key: "town", label: "Town" },
-  { key: "route_name", label: "Route" },
-  { key: "route_id", label: "Route ID" },
-  { key: "branch_id", label: "Branch ID" },
-  { key: "branch_name", label: "Branch" },
-  { key: "kra_pin", label: "KRA PIN" },
-  { key: "terms_of_payment", label: "Payment terms" },
-  { key: "credit_limit", label: "Credit limit" },
-  { key: "latitude", label: "Latitude" },
-  { key: "longitude", label: "Longitude" },
-];
+import { CUSTOMER_IMPORT_COLUMNS } from "@/lib/data-migration-formats";
 
 const SAMPLE_HEADERS = [
   "customer_name",
+  "customer_num",
   "customer_type",
   "phone_number",
   "additional_phone",
+  "email",
   "town",
   "route_name",
   "branch_id",
@@ -56,8 +41,10 @@ const SAMPLE_HEADERS = [
 
 const SAMPLE_ROW = [
   "Sample Customer Ltd",
+  "",
   "debtor",
   "0712345678",
+  "",
   "",
   "Nairobi",
   "",
@@ -170,6 +157,7 @@ function ImportModal({ open, onClose, onImported }) {
       "town",
       "route_name",
       "kra_pin",
+      "email",
       "terms_of_payment",
       "latitude",
       "longitude",
@@ -177,7 +165,7 @@ function ImportModal({ open, onClose, onImported }) {
       const val = row[key];
       if (val !== "" && val != null) body[key] = String(val).trim();
     }
-    for (const key of ["route_id", "branch_id", "credit_limit"]) {
+    for (const key of ["customer_num", "route_id", "branch_id", "credit_limit"]) {
       const val = row[key];
       if (val !== "" && val != null) body[key] = val;
     }
