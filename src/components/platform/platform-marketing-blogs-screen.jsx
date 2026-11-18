@@ -210,6 +210,7 @@ export function PlatformMarketingBlogsScreen() {
                 <p className="text-[11px] text-[var(--theme-muted)]">
                   {blogCategoryLabel(post.category, categories)}
                   {post.read_time ? ` · ${post.read_time} min` : ""}
+                  {` · ${Number(post.view_count ?? 0).toLocaleString()} views`}
                   {post.published_at ? ` · ${new Date(post.published_at).toLocaleDateString()}` : ""}
                 </p>
                 {post.excerpt ? (
