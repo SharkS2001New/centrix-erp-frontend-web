@@ -20,7 +20,20 @@ import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { useAuth } from "@/contexts/auth-context";
 import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
-import { SUPPLIER_IMPORT_COLUMNS } from "@/lib/data-migration-formats";
+
+const SUPPLIER_IMPORT_COLUMNS = [
+  { key: "supplier_name", label: "Supplier name", aliases: ["name", "supplier", "vendor", "vendor_name", "company_name"] },
+  { key: "supplier_code", label: "Supplier code", aliases: ["code", "vendor_code", "account_number"] },
+  { key: "contact_person", label: "Contact person", aliases: ["contact", "representative"] },
+  { key: "phone", label: "Phone", aliases: ["phone_number", "mobile", "contact_number"] },
+  { key: "alternate_phone", label: "Alternate phone", aliases: ["alt_phone", "secondary_phone"] },
+  { key: "email", label: "Email", aliases: ["email_address"] },
+  { key: "town", label: "Town", aliases: ["city", "location"] },
+  { key: "tax_pin", label: "Tax PIN", aliases: ["kra_pin", "pin"] },
+  { key: "terms_of_payment", label: "Payment terms", aliases: ["payment_terms", "credit_terms"] },
+  { key: "address", label: "Address", aliases: ["postal_address"] },
+  { key: "is_active", label: "Active", aliases: ["active", "status"] },
+];
 
 const SAMPLE_HEADERS = [
   "supplier_name",

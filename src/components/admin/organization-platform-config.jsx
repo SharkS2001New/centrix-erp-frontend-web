@@ -2124,6 +2124,7 @@ export function OrganizationModuleToggles({
   profilePresets = [],
   salesPlatform = null,
   onSalesChange = null,
+  allowInactiveApplications = false,
 }) {
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
   const workspaces = useMemo(

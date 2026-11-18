@@ -14,7 +14,6 @@ export const NAV_HREF_ICONS = {
   "/platform/invoice-templates": "package",
   "/platform/plans": "package",
   "/platform/billing": "wallet",
-  "/platform/billing/token-policy": "settings",
   "/billing": "wallet",
   "/platform/self-serve-plans": "package",
   "/platform/subscriptions": "clock",

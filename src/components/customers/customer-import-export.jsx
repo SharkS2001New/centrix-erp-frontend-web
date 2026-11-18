@@ -20,7 +20,24 @@ import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/
 import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { useAuth } from "@/contexts/auth-context";
-import { CUSTOMER_IMPORT_COLUMNS } from "@/lib/data-migration-formats";
+
+const CUSTOMER_IMPORT_COLUMNS = [
+  { key: "customer_name", label: "Customer name", aliases: ["name", "customer", "client", "client_name", "company_name"] },
+  { key: "customer_num", label: "Customer number", aliases: ["customer_number", "customer_no"] },
+  { key: "customer_type", label: "Customer type", aliases: ["type", "account_type"] },
+  { key: "phone_number", label: "Phone", aliases: ["phone", "mobile", "mobile_number", "contact_number"] },
+  { key: "additional_phone", label: "Alternate phone", aliases: ["alt_phone", "alternate_phone", "second_phone"] },
+  { key: "email", label: "Email", aliases: ["email_address"] },
+  { key: "town", label: "Town", aliases: ["city", "location"] },
+  { key: "route_name", label: "Route", aliases: ["route"] },
+  { key: "route_id", label: "Route ID" },
+  { key: "branch_id", label: "Branch ID" },
+  { key: "kra_pin", label: "KRA PIN", aliases: ["tax_pin", "pin"] },
+  { key: "terms_of_payment", label: "Payment terms", aliases: ["payment_terms", "credit_terms"] },
+  { key: "credit_limit", label: "Credit limit", aliases: ["maximum_credit"] },
+  { key: "latitude", label: "Latitude" },
+  { key: "longitude", label: "Longitude", aliases: ["long"] },
+];
 
 const SAMPLE_HEADERS = [
   "customer_name",

@@ -39,7 +39,8 @@ describe("platform sidebar visibility", () => {
     const visible = platformNavItems().filter((item) => isNavItemVisible(item, ctx));
     expect(visible.length).toBe(platformNavItems().length);
     expect(visible.some((item) => item.href === "/platform/organizations")).toBe(true);
-    expect(visible.some((item) => item.href === "/platform/data-converter")).toBe(true);
+    expect(visible.some((item) => item.href === "/platform/data-converter")).toBe(false);
+    expect(visible.some((item) => item.href === "/platform/billing/token-policy")).toBe(false);
   });
 
   it("hides areas the limited platform admin does not have", () => {

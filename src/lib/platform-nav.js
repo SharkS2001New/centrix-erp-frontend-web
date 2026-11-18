@@ -49,13 +49,6 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Applications such as External POS, and menu groups, saved for each setup type.",
         permission: "tenants",
       },
-      {
-        href: "/platform/data-converter",
-        label: "Data migration converter",
-        icon: "package",
-        description: "Map legacy product, customer, supplier, and setup data to Centrix CSV formats.",
-        permission: "tenants",
-      },
     ],
   },
   {
@@ -148,14 +141,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/billing",
         label: "Billing & plans",
         icon: "wallet",
-        description: "Subscription counts, published prices, and links to token policy and licence payments.",
-        permission: "billing",
-      },
-      {
-        href: "/platform/billing/token-policy",
-        label: "Token & usage policies",
-        icon: "settings",
-        description: "Token pack price, expiry, low-balance alerts, grace, and create, update, and delete costs.",
+        description: "Subscription counts, published prices, and links to licence payments.",
         permission: "billing",
       },
       {

@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
+  OrganizationModuleToggles,
   defaultSalesPlatformState,
   payrollPlatformFromApi,
   payrollPlatformToApi,
 } from "@/components/admin/organization-platform-config";
+
+describe("OrganizationModuleToggles", () => {
+  it("renders organization sidebar feature overrides when enabled", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationModuleToggles, {
+        moduleOptions: [],
+        enabledModules: {},
+        deploymentProfile: "small_shop",
+        profilePresets: [],
+        salesPlatform: { limit_sidebar_features: true },
+        onSalesChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Additional sidebar features for this organization");
+  });
+});
 
 describe("defaultSalesPlatformState", () => {
   it("uses the selected setup profile's server-provided defaults", () => {

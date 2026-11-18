@@ -16,11 +16,6 @@ const ACTIONS = [
     detail: "Prices an organisation can choose and pay",
   },
   {
-    href: "/platform/billing/token-policy",
-    title: "Token & usage policies",
-    detail: "Pack size, sale cost, and low-balance notices",
-  },
-  {
     href: "/platform/licence-payments",
     title: "Licence payments",
     detail: "Centrix Paybill receipts and how each one applied",

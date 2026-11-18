@@ -61,7 +61,7 @@ export default function OrganizationBillingPage() {
       title="Billing & subscription"
       subtitle={managedPlan
         ? "View the plan and renewal details configured for your organization."
-        : "Choose how this organisation pays for Centrix. Prices come from the plans and token policy a platform administrator has published."}
+        : "Choose how this organisation pays for Centrix. Prices come from the plans a platform administrator has published."}
     >
       {loading ? <p className="text-sm text-slate-500">Loading billing…</p> : null}
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
