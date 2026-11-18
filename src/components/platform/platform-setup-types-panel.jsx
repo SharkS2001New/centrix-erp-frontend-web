@@ -72,6 +72,10 @@ function savedMenuGroup(profile, group) {
   return group.normalize(profile.menu_groups?.[group.id]);
 }
 
+export function setupProfileSupportsPayroll(profile) {
+  return profile?.applications?.hr === true;
+}
+
 export function PlatformSetupTypesPanel() {
   const confirm = useConfirm();
   const [profiles, setProfiles] = useState([]);
@@ -129,6 +133,12 @@ export function PlatformSetupTypesPanel() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [activeProfile]);
+
+  useEffect(() => {
+    if (profileTab === "payroll" && !setupProfileSupportsPayroll(activeProfile)) {
+      setProfileTab("applications");
+    }
+  }, [activeProfile, profileTab]);
 
   function setApplication(profileKey, appId, checked) {
     setProfiles((rows) =>
@@ -323,7 +333,7 @@ export function PlatformSetupTypesPanel() {
 
   const isHospitalityProfile = activeProfile?.industry === "hospitality";
   const supportsSalesWorkflow = activeProfile?.industry === "commerce";
-  const supportsPayroll = activeProfile?.application_ids?.includes("hr") === true;
+  const supportsPayroll = setupProfileSupportsPayroll(activeProfile);
   const profileTabs = activeProfile
     ? [
         { id: "applications", label: "Applications & menus" },
