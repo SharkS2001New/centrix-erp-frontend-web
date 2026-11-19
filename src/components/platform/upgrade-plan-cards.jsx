@@ -48,15 +48,12 @@ export function YearlyBillingSwitch({ yearly = false, onChange, className = "" }
 }
 
 /** @deprecated Prefer YearlyBillingSwitch. Kept for older screens that still pass tab options. */
-export function BillingIntervalTabs({ value, onChange, options }) {
+export function BillingIntervalTabs({ value, onChange }) {
   const yearly = value === "yearly";
-  if (Array.isArray(options) && options.includes("monthly") && options.includes("yearly") && !options.includes("token")) {
-    return <YearlyBillingSwitch yearly={yearly} onChange={(on) => onChange(on ? "yearly" : "monthly")} />;
-  }
   return (
     <YearlyBillingSwitch
       yearly={yearly}
-      onChange={(on) => onChange(on ? "yearly" : (options?.includes("token") ? "monthly" : "monthly"))}
+      onChange={(on) => onChange(on ? "yearly" : "monthly")}
     />
   );
 }
@@ -341,59 +338,6 @@ export function FreePlanCard({ pages = [], name = "Package 1", current = false, 
             <span>{point}</span>
           </li>
         ))}
-      </ul>
-    </article>
-  );
-}
-
-export function TokenPackCard({
-  tokens = 0,
-  price = 0,
-  saleTokens = 1,
-  balance = 0,
-  current = false,
-  preview = false,
-  canPay = true,
-  onStart,
-}) {
-  const each = Number(saleTokens) || 1;
-  return (
-    <article className={`flex h-full flex-1 flex-col rounded-2xl border p-6 shadow-sm ${
-      current
-        ? "border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_7%,var(--theme-surface))]"
-        : "border-[var(--theme-border)] bg-[var(--theme-surface)]"
-    }`}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="theme-subtext text-sm">Tokens</p>
-        {current ? <CurrentBadge /> : <span />}
-      </div>
-      <h2 className="theme-heading mt-2 text-2xl font-semibold tracking-tight">Token pack</h2>
-      <p className="theme-subtext mt-2 min-h-[3.75rem] text-sm leading-5">
-        Pay for a pack of tokens. A completed sale uses tokens when it is saved online.
-      </p>
-      <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">
-        {formatBillingMoney(price, "KES")}
-      </p>
-      <p className="theme-subtext mt-1 text-sm">{Number(tokens) || 0} tokens</p>
-      {preview || canPay ? (
-        <button
-          type="button"
-          disabled={current}
-          onClick={() => {
-            if (!preview) onStart?.();
-          }}
-          className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-default disabled:opacity-70 ${
-            preview ? "pointer-events-none" : ""
-          } ${current ? "theme-secondary-btn" : "theme-primary-btn"}`}
-        >
-          {current ? "Your current plan" : "Pay Now"}
-        </button>
-      ) : null}
-      <p className="theme-heading mt-6 text-sm font-medium">What&apos;s included</p>
-      <ul className="mt-3 space-y-2.5 text-sm leading-5">
-        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>{Number(balance) || 0} tokens remaining</span></li>
-        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Each completed sale uses {each} token{each === 1 ? "" : "s"}</span></li>
-        <li className="flex gap-2.5"><span className="theme-subtext">✓</span><span>Reading stays free</span></li>
       </ul>
     </article>
   );
@@ -866,22 +810,17 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
   const [paid, setPaid] = useState(false);
   const [receipt] = useState(() => `SIM${String(Date.now()).slice(-8)}`);
   const [startedAt] = useState(() => new Date());
-  const token = snapshot.kind === "token";
   const yearlyKind = snapshot.kind === "once" || snapshot.kind === "year_sub";
   const days = yearlyKind ? 365 : snapshot.kind === "prepaid" ? 360 : 30;
   const endsAt = addDays(startedAt, days);
-  const product = token
-    ? "Token pack"
-    : snapshot.kind === "year_sub"
-      ? "Yearly subscription"
-      : snapshot.kind === "once"
-        ? "Yearly one-time"
-        : snapshot.kind === "prepaid"
-          ? "12 months paid in advance"
-          : "Monthly subscription";
+  const product = snapshot.kind === "year_sub"
+    ? "Yearly subscription"
+    : snapshot.kind === "once"
+      ? "Yearly one-time"
+      : snapshot.kind === "prepaid"
+        ? "12 months paid in advance"
+        : "Monthly subscription";
   const features = Array.isArray(snapshot.plan?.features) ? snapshot.plan.features : [];
-  const tokens = Number(snapshot.tokens) || 0;
-  const saleTokens = Number(snapshot.saleTokens) || 1;
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="payment-simulation-title">
@@ -915,17 +854,8 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
         {paid ? (
           <div className="mt-5 rounded-xl border border-[var(--theme-primary)] bg-[color-mix(in_srgb,var(--theme-primary)_8%,transparent)] p-4 text-sm leading-6">
             <p>M-Pesa receipt <span className="font-mono font-semibold">{receipt}</span></p>
-            {token ? (
-              <>
-                <p className="mt-2">{tokens} tokens are added to the organisation balance.</p>
-                <p className="mt-2">Each completed sale then uses {saleTokens} token{saleTokens === 1 ? "" : "s"}. Reading stays free. When a monthly or yearly period is not active, the organisation keeps working from this balance.</p>
-              </>
-            ) : (
-              <>
-                <p className="mt-2">{snapshot.plan?.name} becomes the active plan.</p>
-                <p className="mt-2">Paid period: {formatDay(startedAt)} to {formatDay(endsAt)}.</p>
-              </>
-            )}
+            <p className="mt-2">{snapshot.plan?.name} becomes the active plan.</p>
+            <p className="mt-2">Paid period: {formatDay(startedAt)} to {formatDay(endsAt)}.</p>
             {features.length > 0 ? (
               <ul className="mt-3 space-y-1">
                 {features.map((feature) => (

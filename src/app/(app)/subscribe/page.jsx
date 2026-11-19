@@ -11,7 +11,7 @@ import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
-import { featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, TokenPackCard, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
+import { featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 const EMPTY_PLANS = [];
 const DEFAULT_DISCOUNT = { percent: 0, min_months: 3 };
@@ -98,8 +98,6 @@ export default function SubscribePage({ presentation = "page", locked = false })
   ));
   const [yearly, setYearly] = useState(false);
   const [quoteNotice, setQuoteNotice] = useState("");
-  const [tokenPack, setTokenPack] = useState(null);
-  const [tokensEnabled, setTokensEnabled] = useState(true);
   const [step, setStep] = useState((renewRequested && renewOpen) || autoRenewExpired ? "checkout" : "plans");
   const [phone, setPhone] = useState(user?.phone || organizationLicense?.paybill?.account_phone || "");
   const [code, setCode] = useState("");
@@ -152,8 +150,6 @@ export default function SubscribePage({ presentation = "page", locked = false })
       .then((res) => {
         if (cancelled) return;
         const billing = res.data ?? {};
-        const policy = billing.policy ?? {};
-        setTokensEnabled(policy.tokens_enabled !== false);
         const paybillDetails = billing.paybill ?? organizationLicense?.paybill ?? null;
         const equityDetails = billing.equity ?? null;
         const configuredMethods = billing.payment_methods ?? {};
@@ -174,11 +170,6 @@ export default function SubscribePage({ presentation = "page", locked = false })
                 ? "equity"
                 : "",
         );
-        setTokenPack({
-          tokens: Number(policy.token_pack_tokens) || 0,
-          price: Number(policy.token_pack_price_kes) || 0,
-          saleTokens: Number(policy.sale_tokens) || 1,
-        });
         setPaymentOptionsLoading(false);
       })
       .catch((err) => {
@@ -356,13 +347,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
       setNotice("M-Pesa STK is unavailable. Choose manual M-Pesa or Equity transfer.");
       return;
     }
-    if (charge?.kind === "token" && (forPos || !tokensEnabled)) {
-      setNotice(forPos
-        ? "External POS needs a monthly or yearly subscription."
-        : "Token billing is turned off. Choose a monthly or yearly plan.");
-      return;
-    }
-    if (!charge || (charge.kind !== "token" && charge.kind !== "renew" && !charge.plan?.id)) {
+    if (!charge || (charge.kind !== "renew" && !charge.plan?.id)) {
       setNotice("Choose a plan.");
       return;
     }
@@ -376,11 +361,9 @@ export default function SubscribePage({ presentation = "page", locked = false })
     try {
       const res = await apiRequest("/erp/organization/licence/stk", {
         method: "POST",
-        body: charge.kind === "token"
-          ? { billing: "token", phone }
-          : charge.kind === "renew"
-            ? { billing: "renew", phone }
-            : { plan_id: charge.plan.id, months: charge.months, phone, billing: charge.billing },
+        body: charge.kind === "renew"
+          ? { billing: "renew", phone }
+          : { plan_id: charge.plan.id, months: charge.months, phone, billing: charge.billing },
       });
       if (res.checkout?.id) setCheckoutId(res.checkout.id);
       setWatching(Boolean(res.stk && res.checkout?.id));
@@ -414,7 +397,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
     setEquityTransactionId("");
     setEquityNotified(false);
 
-    if (method !== "mpesa_manual" || !charge || charge.kind === "token") {
+    if (method !== "mpesa_manual" || !charge) {
       return;
     }
     if (!paymentMethods.mpesa_manual) {
@@ -445,7 +428,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   }
 
   async function startEquity() {
-    if (charge?.kind === "token" || (!charge?.plan?.id && charge?.kind !== "renew")) return;
+    if (!charge?.plan?.id && charge?.kind !== "renew") return;
     setBusy("equity-start");
     setNotice("");
     try {
@@ -519,18 +502,15 @@ export default function SubscribePage({ presentation = "page", locked = false })
   }
 
   async function notifyAdmin() {
-    if (charge?.kind === "token" && (forPos || !tokensEnabled)) return;
-    if (!charge || (charge.kind !== "token" && charge.kind !== "renew" && !charge.plan?.id)) return;
+    if (!charge || (charge.kind !== "renew" && !charge.plan?.id)) return;
     setBusy("manual");
     setNotice("");
     try {
       const res = await apiRequest("/erp/organization/licence/notify", {
         method: "POST",
-        body: charge.kind === "token"
-          ? { billing: "token" }
-          : charge.kind === "renew"
-            ? { billing: "renew" }
-            : { plan_id: charge.plan.id, months: charge.months, billing: charge.billing },
+        body: charge.kind === "renew"
+          ? { billing: "renew" }
+          : { plan_id: charge.plan.id, months: charge.months, billing: charge.billing },
       });
       if (res.checkout?.id) setCheckoutId(res.checkout.id);
       setNotice(res.message || "Centrix has been notified on WhatsApp.");
@@ -557,11 +537,9 @@ export default function SubscribePage({ presentation = "page", locked = false })
       }
       const res = await apiRequest("/erp/organization/licence/verify", {
         method: "POST",
-        body: charge?.kind === "token"
-          ? { mpesa_code: code.trim(), billing: "token", checkout_id: checkoutId || undefined }
-          : charge?.kind === "renew"
-            ? { mpesa_code: code.trim(), billing: "renew", checkout_id: checkoutId || undefined }
-            : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing, checkout_id: checkoutId || undefined },
+        body: charge?.kind === "renew"
+          ? { mpesa_code: code.trim(), billing: "renew", checkout_id: checkoutId || undefined }
+          : { mpesa_code: code.trim(), plan_id: charge?.plan?.id, months: charge?.months, billing: charge?.billing, checkout_id: checkoutId || undefined },
       });
       if (await leaveIfPaid(res.license)) return;
       const next = await refreshCapabilities({ force: true });
@@ -683,12 +661,9 @@ export default function SubscribePage({ presentation = "page", locked = false })
             plans={plans}
             discount={discount}
             forPos={forPos}
-            tokensEnabled={tokensEnabled}
             yearly={yearly}
             setYearly={setYearly}
             mode={mode}
-            tokenPack={tokenPack}
-            tokenBalance={Number(organizationLicense?.token_balance) || 0}
             currentName={mode === "full" || mode === "trial" ? organizationLicense?.plan_name || "" : ""}
             currentPlanId={mode === "full" || mode === "trial" ? organizationLicense?.plan_id || null : null}
             canPay={canPay}
@@ -714,8 +689,6 @@ function PlansStep({
   yearly = false,
   setYearly,
   mode,
-  tokenPack,
-  tokenBalance,
   currentName,
   currentPlanId = null,
   canPay = true,
@@ -728,7 +701,6 @@ function PlansStep({
   quoteBusy,
   quoteNotice,
   forPos = false,
-  tokensEnabled = true,
 }) {
   const monthlyPlans = plans.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = plans.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
@@ -741,40 +713,11 @@ function PlansStep({
   const monthly = monthlyPlans.map(monthOffer);
   const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
   const saving = prepaid.some((offer) => offer.percent > 0);
-  const showToken = !forPos && tokensEnabled && tokenPack && tokenPack.price > 0;
   const quoteCard = (
     <OneTimeQuoteCard busy={quoteBusy} canPay={canPay} onQuote={onQuote} notice={quoteNotice} />
   );
   const freeLabel = String(freeName || "Package 1").trim() || "Package 1";
   const freeCard = <FreePlanCard pages={freePages} name={freeLabel} current={packageCurrent} />;
-  const tokenCard = showToken ? (
-    <TokenPackCard
-      tokens={tokenPack.tokens}
-      price={tokenPack.price}
-      saleTokens={tokenPack.saleTokens}
-      balance={tokenBalance}
-      current={tokenCurrent}
-      canPay={canPay}
-      onStart={() => {
-        const saleTokens = Number(tokenPack?.saleTokens) || 1;
-        onPay({
-          kind: "token",
-          billing: "token",
-          months: 0,
-          amount: Number(tokenPack?.price) || 0,
-          currency: "KES",
-          plan: {
-            name: "Token pack",
-            features: [
-              `${Number(tokenPack?.tokens) || 0} tokens`,
-              `Each completed sale uses ${saleTokens} token${saleTokens === 1 ? "" : "s"}`,
-              "Reading stays free",
-            ],
-          },
-        });
-      }}
-    />
-  ) : null;
   const intro = mode === "expired"
     ? `Your trial or paid period has ended. This organisation is on ${freeLabel} until you choose a plan again.`
     : yearly
@@ -789,20 +732,20 @@ function PlansStep({
       <YearlyBillingSwitch yearly={yearly} onChange={setYearly} />
       {forPos ? (
         <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">
-          External POS needs a monthly or yearly subscription. Token billing cannot run this till, because sales are taken offline and uploaded later.
+          External POS needs a monthly or yearly subscription.
         </p>
       ) : null}
       <p className="theme-subtext mx-auto mt-4 max-w-2xl text-center text-sm">{intro}</p>
       {packageCurrent || tokenCurrent || currentName ? (
         <p className="mx-auto mt-3 text-center text-sm font-semibold text-[var(--theme-primary)]">
-          Current package: {packageCurrent ? freeLabel : tokenCurrent ? "Token pack" : currentName}
+          Current package: {packageCurrent ? freeLabel : tokenCurrent ? "Token balance access" : currentName}
         </p>
       ) : null}
       {canPay ? null : (
         <p className="theme-subtext mx-auto mt-3 max-w-2xl text-center text-sm">An organisation admin pays for Centrix.</p>
       )}
       <div className="mt-8">
-        {offers.length === 0 && !showToken ? (
+        {offers.length === 0 ? (
           <div className="space-y-6">
             <PlanGroup
               leading={freeCard}
@@ -824,7 +767,7 @@ function PlansStep({
             canPay={canPay}
             allowCurrentPlanPurchase={mode === "trial"}
             onPay={onPay}
-            trailing={[tokenCard, quoteCard].filter(Boolean)}
+            trailing={quoteCard}
           />
         )}
       </div>
@@ -866,12 +809,9 @@ function CheckoutStep({
   onNotify,
   onCheck,
 }) {
-  const token = charge?.kind === "token";
   const features = (charge?.plan?.features ?? []).slice(0, 5).map(featureTitle).filter(Boolean);
-  const product = token
-    ? "Token pack"
-    : charge?.kind === "renew"
-      ? `${charge.months === 12 ? "Yearly" : "Monthly"} renewal`
+  const product = charge?.kind === "renew"
+    ? `${charge.months === 12 ? "Yearly" : "Monthly"} renewal`
     : charge?.kind === "once"
       ? "Yearly subscription"
       : charge?.kind === "prepaid"
@@ -879,10 +819,10 @@ function CheckoutStep({
         : "Monthly subscription";
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const canPayByEquity = Boolean(
-    paymentMethods?.equity && equityInstructions && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
+    paymentMethods?.equity && equityInstructions && (charge?.plan?.id || charge?.kind === "renew"),
   );
   const canPayByManual = Boolean(
-    paymentMethods?.mpesa_manual && charge?.kind !== "token" && (charge?.plan?.id || charge?.kind === "renew"),
+    paymentMethods?.mpesa_manual && (charge?.plan?.id || charge?.kind === "renew"),
   );
   const [expandedPaymentMethod, setExpandedPaymentMethod] = useState(paymentMethod || "mpesa_stk");
 
@@ -1138,7 +1078,7 @@ function CheckoutStep({
           ) : null}
         </section>
         <aside className="theme-panel rounded-3xl border p-6">
-          <h2 className="theme-heading text-2xl font-semibold">{token ? "Token pack" : charge?.plan?.name}</h2>
+          <h2 className="theme-heading text-2xl font-semibold">{charge?.plan?.name}</h2>
           <p className="theme-text-muted mt-4 text-sm font-medium">Top features</p>
           <ul className="theme-text-muted mt-3 space-y-2 text-sm">
             {features.map((feature) => (

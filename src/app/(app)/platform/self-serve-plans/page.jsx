@@ -8,7 +8,7 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, TokenPackCard, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
+import { initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -205,7 +205,7 @@ function formToPayload(form) {
   };
 }
 
-function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearly, ordering, onMove, manage, loading, policy, freePlan = null }) {
+function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearly, ordering, onMove, manage, loading, freePlan = null }) {
   const published = byCardOrder(
     plans.filter((plan) => (plan.industry || "commerce") === industryFilter),
   ).map((plan) => previewPlan(plan, discount));
@@ -220,15 +220,6 @@ function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearl
   }));
   const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
   const quoteCard = <OneTimeQuoteCard preview />;
-  const tokenPackOn = policy?.tokens_enabled !== false && Number(policy?.token_pack_price_kes) > 0;
-  const tokenCard = tokenPackOn ? (
-    <TokenPackCard
-      preview
-      tokens={Number(policy?.token_pack_tokens) || 0}
-      price={Number(policy?.token_pack_price_kes) || 0}
-      saleTokens={Number(policy?.sale_tokens) || 1}
-    />
-  ) : null;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-[var(--theme-page-bg,#f3f6f9)] px-4 py-6 sm:px-6">
@@ -248,7 +239,7 @@ function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearl
             moving={ordering}
             onMove={onMove}
             manage={manage}
-            trailing={[tokenCard, quoteCard].filter(Boolean)}
+            trailing={quoteCard}
           />
           {offers.length === 0 ? (
             <p className="mx-auto mt-6 max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-center text-sm text-slate-500">
@@ -287,7 +278,6 @@ export default function SelfServePlansPage() {
   const [policy, setPolicy] = useState(null);
   const [shortCode, setShortCode] = useState("");
   const [simulation, setSimulation] = useState(null);
-  const [tokenBusy, setTokenBusy] = useState(false);
   const [freePlan, setFreePlan] = useState(null);
   const [freeBusy, setFreeBusy] = useState(false);
   const [packageCatalog, setPackageCatalog] = useState({});
@@ -506,24 +496,6 @@ export default function SelfServePlansPage() {
     }
   }
 
-  async function toggleTokens() {
-    if (!policy || tokenBusy) return;
-    const enabled = policy.tokens_enabled === false;
-    const next = { ...policy, tokens_enabled: enabled };
-    setTokenBusy(true);
-    setPolicy(next);
-    try {
-      const res = await apiRequest("/admin/billing-policy", { method: "PUT", body: next });
-      setPolicy(res.data ?? next);
-      notifySuccess(enabled ? "Token subscriptions are on." : "Token subscriptions are off.");
-    } catch (err) {
-      setPolicy(policy);
-      notifyError(err instanceof ApiError ? err.message : "Could not update token billing.");
-    } finally {
-      setTokenBusy(false);
-    }
-  }
-
   async function toggleUnpaidLogin(enabled) {
     if (!policy || freeBusy) return;
     const next = { ...policy, allow_unpaid_login: enabled };
@@ -582,26 +554,6 @@ export default function SelfServePlansPage() {
     } finally {
       setFreeBusy(false);
     }
-  }
-
-  function previewTokenPayment() {
-    if (!policy) return;
-    setSimulation({
-      kind: "token",
-      amount: Number(policy.token_pack_price_kes) || 0,
-      currency: "KES",
-      tokens: Number(policy.token_pack_tokens) || 0,
-      saleTokens: Number(policy.sale_tokens) || 1,
-      plan: {
-        name: "Token pack",
-        description: "Pay for tokens instead of a calendar plan.",
-        features: [
-          `${Number(policy.token_pack_tokens) || 0} tokens added`,
-          `Each completed sale uses ${Number(policy.sale_tokens) || 1} token${Number(policy.sale_tokens) === 1 ? "" : "s"}`,
-          "Reading stays free",
-        ],
-      },
-    });
   }
 
   async function handleDelete(plan) {
@@ -756,37 +708,6 @@ export default function SelfServePlansPage() {
         </div>
       </div>
 
-      <div className="theme-panel mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Token-based subscription</p>
-          <p className="mt-1 max-w-xl text-sm text-slate-600">
-            When this is on, an organisation can buy a token pack as well as Package 1. Turn it off and the token pack card disappears. Package 1 stays.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-            role="switch"
-            aria-checked={policy?.tokens_enabled !== false}
-            disabled={!policy || tokenBusy}
-            onClick={() => void toggleTokens()}
-            className={`rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-60 ${
-              policy?.tokens_enabled !== false ? "theme-primary-btn" : "theme-secondary-btn"
-            }`}
-          >
-            {policy?.tokens_enabled !== false ? "On" : "Off"}
-                      </button>
-          <button
-            type="button"
-            className="text-sm font-medium text-[#185FA5] disabled:text-slate-400"
-            disabled={!policy || policy.tokens_enabled === false}
-            onClick={previewTokenPayment}
-          >
-            Preview token payment
-                      </button>
-        </div>
-          </div>
-
       <PlanPreview
         industryFilter={industryFilter}
         plans={plans}
@@ -797,7 +718,6 @@ export default function SelfServePlansPage() {
         onMove={moveOffers}
         manage={{ onSave: saveCard, onRemove: handleDelete, savingId: savingCardId, onPreview: setSimulation, catalog: packageCatalog }}
         loading={loading}
-        policy={policy}
         freePlan={(
           <ManagedFreePlanCard
             modules={modulesForPlan(packageCatalog, { industry: industryFilter })}

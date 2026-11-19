@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   commercialTermsFromPlan,
+  emptyPlanForm,
   organizationIndustry,
   planBillingLabel,
+  planFormToPayload,
+  planRecordToForm,
   plansForOrganizationIndustry,
   platformPlanOptionLabel,
 } from "@/lib/platform-billing";
@@ -72,6 +75,27 @@ describe("commercialTermsFromPlan", () => {
       renewal_price: 2500,
       amount: 2500,
       seat_count: 5,
+    });
+  });
+
+  describe("plan token payment fields", () => {
+    it("does not load or send legacy token pack pricing", () => {
+      const form = planRecordToForm({
+        token_pack_price: 500,
+        token_pack_days: 30,
+      });
+
+      expect(form).not.toHaveProperty("token_pack_price");
+      expect(form).not.toHaveProperty("token_pack_days");
+
+      const payload = planFormToPayload(emptyPlanForm({
+        name: "Shop",
+        token_pack_price: "500",
+        token_pack_days: "30",
+      }));
+
+      expect(payload).not.toHaveProperty("token_pack_price");
+      expect(payload).not.toHaveProperty("token_pack_days");
     });
   });
 

@@ -303,8 +303,6 @@ export function emptyPlanForm(overrides = {}) {
     renewal_price: "",
     monthly_price: "",
     yearly_price: "",
-    token_pack_price: "",
-    token_pack_days: "",
     currency: "KES",
     seat_limit: "",
     workspace_keys: [],
@@ -338,8 +336,6 @@ export function planRecordToForm(record) {
     renewal_price: renewal != null ? String(renewal) : "",
     monthly_price: record.monthly_price != null ? String(record.monthly_price) : "",
     yearly_price: record.yearly_price != null ? String(record.yearly_price) : "",
-    token_pack_price: record.token_pack_price != null ? String(record.token_pack_price) : "",
-    token_pack_days: record.token_pack_days != null ? String(record.token_pack_days) : "",
     currency: record.currency ?? "KES",
     seat_limit: record.seat_limit != null ? String(record.seat_limit) : "",
     workspace_keys: Array.isArray(record.workspace_keys)
@@ -384,10 +380,6 @@ export function planFormToPayload(form) {
     renewal_price: renewal,
     monthly_price: optionalMoney(form.monthly_price),
     yearly_price: optionalMoney(form.yearly_price),
-    token_pack_price: optionalMoney(form.token_pack_price),
-    token_pack_days: form.token_pack_days === "" || form.token_pack_days == null
-      ? null
-      : Number(form.token_pack_days),
     currency: form.currency || "KES",
     seat_limit:
       form.license_basis === "user"

@@ -16,9 +16,6 @@ export function LicensePaybillInstructions({ paybill, className = "" }) {
     paybill.yearly_price != null
       ? `Yearly ${formatBillingMoney(paybill.yearly_price, currency)} for 1 year`
       : null,
-    paybill.token_pack_price != null
-      ? `Tokens: pay any amount, 1 KES = 1 token (for example ${formatBillingMoney(paybill.token_pack_price, currency)} = ${Number(paybill.token_pack_price)} tokens)`
-      : "Tokens: the shillings you pay become tokens. Creates, updates, and deletes spend tokens. Reading is free.",
   ].filter(Boolean);
 
   return (
@@ -46,7 +43,7 @@ export function LicensePaybillInstructions({ paybill, className = "" }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-1 text-xs">Use the amount for your monthly, yearly, or token plan.</p>
+        <p className="mt-1 text-xs">Use the monthly or yearly amount shown for your plan.</p>
       )}
     </div>
   );

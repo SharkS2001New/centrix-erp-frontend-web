@@ -38,7 +38,6 @@ export default function OrganizationBillingPage() {
 
   const license = payload?.license ?? organizationLicense;
   const mode = licenseAccessMode(license);
-  const policy = payload?.policy ?? {};
   const plans = Array.isArray(payload?.plans) ? payload.plans : [];
   const monthlyPlans = plans.filter((plan) => Number(plan.monthly_price) > 0);
   const annualPlans = plans.filter((plan) => Number(plan.yearly_price) > 0);
@@ -49,7 +48,7 @@ export default function OrganizationBillingPage() {
   const tokenBalance = Number(license?.token_balance ?? 0);
   const seatLimit = Number(subscription?.seat_limit) > 0 ? Number(subscription.seat_limit) : null;
   const activeModel =
-    mode === "token" ? "token" : subscription?.interval === "yearly" ? "annual" : mode === "full" || mode === "trial" ? "monthly" : null;
+    subscription?.interval === "yearly" ? "annual" : mode === "full" || mode === "trial" ? "monthly" : null;
   const features = subscription?.plan_name
     ? (subscription.plan?.features ?? plans.find((plan) => plan.name === subscription.plan_name)?.features ?? [])
     : [];
@@ -77,21 +76,7 @@ export default function OrganizationBillingPage() {
           />
         ) : (
         <div className="space-y-6">
-          <section className={`grid gap-4 ${policy.tokens_enabled === false ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
-            {policy.tokens_enabled === false ? null : (
-            <ModelCard
-              title="Token"
-              active={activeModel === "token"}
-              price={money(policy.token_pack_price_kes)}
-              period={`${Number(policy.token_pack_tokens) || 0} tokens`}
-              summary={`Pay for a pack of tokens. Reading stays free. Each completed sale uses ${Number(policy.sale_tokens ?? 1)} token${Number(policy.sale_tokens ?? 1) === 1 ? "" : "s"} when the order is saved online, including offline sync.`}
-              points={[
-                `${Number(policy.token_value_kes) || 1} KES is the published value of 1 token`,
-                tokenBalance > 0 ? `${tokenBalance} tokens remaining` : "No tokens on this organisation yet",
-              ]}
-              action="Buy tokens"
-            />
-            )}
+          <section className="grid gap-4 lg:grid-cols-2">
             <ModelCard
               title="Monthly"
               active={activeModel === "monthly"}

@@ -210,14 +210,11 @@ export default function PlatformPlansPage() {
                           then {formatBillingMoney(renewal, plan.currency)}
                           {plan.interval ? ` / ${plan.interval}` : ""}
                         </span>
-                        {plan.monthly_price != null || plan.yearly_price != null || plan.token_pack_price != null ? (
+                        {plan.monthly_price != null || plan.yearly_price != null ? (
                           <span className="mt-1 block text-xs text-slate-500">
                             Paybill{" "}
                             {plan.monthly_price != null ? `M ${formatBillingMoney(plan.monthly_price, plan.currency)}` : ""}
                             {plan.yearly_price != null ? ` · Y ${formatBillingMoney(plan.yearly_price, plan.currency)}` : ""}
-                            {plan.token_pack_price != null
-                              ? ` · Token ${formatBillingMoney(plan.token_pack_price, plan.currency)}/${plan.token_pack_days ?? "?"}d`
-                              : ""}
                           </span>
                         ) : null}
                       </td>
@@ -373,31 +370,9 @@ export default function PlatformPlansPage() {
                     onChange={(e) => setForm((f) => ({ ...f, yearly_price: e.target.value }))}
                   />
                 </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Token pack (KES)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className={inputClass}
-                    value={form.token_pack_price}
-                    onChange={(e) => setForm((f) => ({ ...f, token_pack_price: e.target.value }))}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Token pack days</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    className={inputClass}
-                    value={form.token_pack_days}
-                    onChange={(e) => setForm((f) => ({ ...f, token_pack_days: e.target.value }))}
-                  />
-                </label>
               </div>
               <p className="text-xs text-slate-500">
-                Customers pay these amounts on the Centrix Paybill. The account number is the organisation code or the admin phone. A payment that is not the monthly or yearly price becomes tokens: 500 KES is 500 tokens. Create, update, and delete actions use tokens; reading is free.
+                Customers pay the monthly or yearly amount on the Centrix Paybill. The account number is the organisation code or the admin phone.
               </p>
               {form.license_basis === "user" ? (
                 <label className="block text-sm">
