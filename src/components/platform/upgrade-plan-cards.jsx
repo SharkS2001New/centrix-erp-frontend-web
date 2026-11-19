@@ -134,7 +134,7 @@ function planCtaLabel(plan, fallbackAction = "buy_now") {
   }[action] || "Subscribe Now";
 }
 
-export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, onMove, moving = false, manage = null, leading = null, trailing = null }) {
+export function PlanGroup({ title, hint, offers, currentName, currentPlanId = null, onPay, preview = false, canPay = true, allowCurrentPlanPurchase = false, onMove, moving = false, manage = null, leading = null, trailing = null }) {
   const trail = Array.isArray(trailing) ? trailing.filter(Boolean) : (trailing ? [trailing] : []);
   const count = (leading ? 1 : 0) + offers.length + trail.length;
   const width = count <= 1
@@ -164,6 +164,7 @@ export function PlanGroup({ title, hint, offers, currentName, currentPlanId = nu
                 onPay={onPay}
                 preview={preview}
                 canPay={canPay}
+                allowCurrentPlanPurchase={allowCurrentPlanPurchase}
                 manage={manage}
               />
               {onMove ? (
@@ -435,7 +436,16 @@ export function OneTimeQuoteCard({ preview = false, canPay = true, busy = false,
   );
 }
 
-function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, manage = null }) {
+function PlanCard({
+  offer,
+  current,
+  recommended,
+  onPay,
+  preview,
+  canPay = true,
+  allowCurrentPlanPurchase = false,
+  manage = null,
+}) {
   if (manage) {
     return (
       <ManagedPlanCard
@@ -493,7 +503,7 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
       {preview || canPay ? (
       <button
         type="button"
-        disabled={current}
+        disabled={current && !allowCurrentPlanPurchase}
         onClick={() => {
           if (!preview) onPay(offer);
         }}
@@ -501,7 +511,9 @@ function PlanCard({ offer, current, recommended, onPay, preview, canPay = true, 
           preview ? "pointer-events-none" : ""
         } ${recommended ? "theme-primary-btn" : "theme-secondary-btn"}`}
       >
-        {current ? "Your current plan" : planCtaLabel(offer.plan)}
+        {current
+          ? allowCurrentPlanPurchase ? "Pay Now" : "Your current plan"
+          : planCtaLabel(offer.plan)}
       </button>
       ) : null}
       {features.length > 0 ? (

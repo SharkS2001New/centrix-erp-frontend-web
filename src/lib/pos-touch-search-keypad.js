@@ -1,12 +1,16 @@
-/** Platform-controlled on-screen search keypad for touch POS desks. */
+/** Platform-controlled on-screen search keypad for Hotel POS. */
 
 /**
  * When true, POS search fields open a tap keypad instead of the device keyboard.
- * Defaults on (Hotel POS / External POS touch desks). Platform can turn it off per org.
+ * The keypad is only available to hospitality organizations.
  * @param {object|null|undefined} capabilitiesOrSettings
  */
 export function isPosTouchSearchKeypadEnabled(capabilitiesOrSettings = null) {
   const root = capabilitiesOrSettings ?? {};
+  const industry = String(root.industry ?? "").toLowerCase();
+  const deploymentProfile = String(root.deployment_profile ?? "").toLowerCase();
+  if (industry !== "hospitality" && deploymentProfile !== "hotel_bar") return false;
+
   const moduleSettings = root.module_settings ?? root;
   const sales = moduleSettings?.sales ?? root.sales ?? {};
   const hospitality = moduleSettings?.hospitality ?? root.hospitality ?? {};

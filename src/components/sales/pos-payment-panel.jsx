@@ -1069,10 +1069,20 @@ export function PosPaymentPanel({
     return next;
   }
 
-  function handlePaymentAmountFocus(e, methodCode = null) {
+  function handlePaymentMethodFocus(methodCode = null) {
     if (methodCode) {
       preferredMethodRef.current = String(methodCode).trim().toUpperCase();
     }
+    creditSelectRef.current?.close?.();
+    if (customerNum || selectedCreditCustomer) {
+      setCustomerNum("");
+      setSelectedCreditCustomer(null);
+      setLocalError(null);
+    }
+  }
+
+  function handlePaymentAmountFocus(e, methodCode = null) {
+    handlePaymentMethodFocus(methodCode);
     e.target.select?.();
   }
 
@@ -1109,9 +1119,7 @@ export function PosPaymentPanel({
   }
 
   function focusPaymentField(ref, methodCode = null) {
-    if (methodCode) {
-      preferredMethodRef.current = String(methodCode).trim().toUpperCase();
-    }
+    handlePaymentMethodFocus(methodCode);
     if (!ref?.current) return;
     ref.current.focus();
     ref.current.select?.();
@@ -2219,6 +2227,7 @@ export function PosPaymentPanel({
               className={inputCls}
               value={stkPromptPhone}
               disabled={stkBusy || saving}
+              onFocus={() => handlePaymentMethodFocus("MPESA")}
               onChange={(e) => {
                 setStkPromptPhone(formatMpesaPhoneLocal(e.target.value));
                 setLocalError(null);
@@ -2240,7 +2249,7 @@ export function PosPaymentPanel({
               className={inputCls}
               value={stkPromptAmount}
               disabled={stkBusy || saving}
-              onFocus={handlePaymentAmountFocus}
+              onFocus={(e) => handlePaymentAmountFocus(e, "MPESA")}
               onChange={(e) => {
                 handlePaymentAmountChange(setStkPromptAmount, e.target.value, stkPromptAmount);
                 setLocalError(null);
@@ -2503,6 +2512,7 @@ export function PosPaymentPanel({
             <div className="space-y-2">
               <button
                 type="button"
+                onFocus={() => handlePaymentMethodFocus("MPESA")}
                 disabled={stkBusy || stkWatching || saving || resolveStkPromptPrefillAmount() < 1}
                 onClick={openStkPrompt}
                 className={POS_DIALOG_PRIMARY_BTN}
@@ -2523,6 +2533,7 @@ export function PosPaymentPanel({
                 value={mpesaCode}
                 readOnly={mpesaFieldsLocked}
                 disabled={mpesaFieldsLocked}
+                onFocus={() => handlePaymentMethodFocus("MPESA")}
                 onChange={(e) => setMpesaCode(e.target.value)}
                 onKeyDown={handleAuxiliaryPaymentKeyDown}
                 placeholder="Transaction code"
@@ -2532,14 +2543,16 @@ export function PosPaymentPanel({
 
           {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
             <>
-              <PosField label="Bank type">
-                <SearchableSelect
-                  className={inputCls}
-                  value={bankType}
-                  onChange={setBankType}
-                  options={cfg.bankOptions.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </PosField>
+              <div onFocusCapture={() => handlePaymentMethodFocus(bankType || "BANK")}>
+                <PosField label="Bank type">
+                  <SearchableSelect
+                    className={inputCls}
+                    value={bankType}
+                    onChange={setBankType}
+                    options={cfg.bankOptions.map((o) => ({ value: o.value, label: o.label }))}
+                  />
+                </PosField>
+              </div>
               {cfg.showBankAmount ? (
                 <>
                   <PosField label="Bank amount (B)">
@@ -2563,6 +2576,7 @@ export function PosPaymentPanel({
                     <input
                       className={inputCls}
                       value={bankRef}
+                      onFocus={() => handlePaymentMethodFocus(bankType || "BANK")}
                       onChange={(e) => setBankRef(e.target.value)}
                       onKeyDown={handleAuxiliaryPaymentKeyDown}
                       placeholder="Bank reference / transaction no."
@@ -2655,6 +2669,7 @@ export function PosPaymentPanel({
                   <input
                     className={inputCls}
                     value={chequeNo}
+                    onFocus={() => handlePaymentMethodFocus("CHEQUE")}
                     onChange={(e) => setChequeNo(e.target.value)}
                     onKeyDown={handleAuxiliaryPaymentKeyDown}
                     placeholder="Required when cheque amount is entered"

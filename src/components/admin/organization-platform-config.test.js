@@ -26,6 +26,16 @@ describe("OrganizationModuleToggles", () => {
 });
 
 describe("defaultSalesPlatformState", () => {
+  it("enables the touch search keypad only for Hotel POS setup profiles", () => {
+    expect(defaultSalesPlatformState("wholesale_retail").pos_touch_search_keypad).toBe(false);
+    expect(defaultSalesPlatformState("distribution").pos_touch_search_keypad).toBe(false);
+    expect(defaultSalesPlatformState("hotel_bar").pos_touch_search_keypad).toBe(true);
+    expect(
+      defaultSalesPlatformState("wholesale_retail", {}).pos_touch_search_keypad,
+    ).toBe(false);
+    expect(defaultSalesPlatformState("hotel_bar", {}).pos_touch_search_keypad).toBe(true);
+  });
+
   it("uses the selected setup profile's server-provided defaults", () => {
     const defaults = defaultSalesPlatformState("small_shop", {
       enable_mobile_orders: false,

@@ -822,6 +822,7 @@ function PlansStep({
             currentName={currentName}
             currentPlanId={currentPlanId}
             canPay={canPay}
+            allowCurrentPlanPurchase={mode === "trial"}
             onPay={onPay}
             trailing={[tokenCard, quoteCard].filter(Boolean)}
           />

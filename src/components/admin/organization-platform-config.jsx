@@ -435,7 +435,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_code: false,
     enable_cheque_number: false,
     enable_pos_cash_rounding: false,
-    pos_touch_search_keypad: true,
+    pos_touch_search_keypad: deploymentProfile === "hotel_bar",
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
     enable_held_order_amount_paid: false,
@@ -473,12 +473,12 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
   return profileDefaults
-    ? { ...defaults, ...salesPlatformFromApi(profileDefaults) }
+    ? { ...defaults, ...salesPlatformFromApi(profileDefaults, deploymentProfile) }
     : defaults;
 }
 
-export function salesPlatformFromApi(apiPayload) {
-  if (!apiPayload) return defaultSalesPlatformState();
+export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_retail") {
+  if (!apiPayload) return defaultSalesPlatformState(deploymentProfile);
   const legacyCheckout = apiPayload.show_checkout_on_create_order !== false;
   const posCheckout = Object.prototype.hasOwnProperty.call(
     apiPayload,
@@ -561,7 +561,7 @@ export function salesPlatformFromApi(apiPayload) {
       : apiPayload.external_pos_layout === "classic",
     pos_touch_search_keypad: Object.prototype.hasOwnProperty.call(apiPayload, "pos_touch_search_keypad")
       ? Boolean(apiPayload.pos_touch_search_keypad)
-      : true,
+      : deploymentProfile === "hotel_bar",
     receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_held_order_amount_paid: Boolean(apiPayload.enable_held_order_amount_paid ?? false),
@@ -1783,7 +1783,7 @@ function OrganizationHotelServicesPanel({
             <span className="min-w-0">
               <span className="theme-heading block text-sm font-medium">On-screen search keypad</span>
               <span className="theme-subtext block text-xs">
-                For touch desks without a keyboard. Tapping a POS search field opens a keypad instead of the device keyboard. Applies to Hotel POS and External POS product search.
+                For Hotel POS touch desks without a keyboard. Tapping a product search field opens a keypad instead of the device keyboard.
               </span>
             </span>
           </label>
