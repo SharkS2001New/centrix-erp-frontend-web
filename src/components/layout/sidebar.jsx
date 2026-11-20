@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
+import { sidebarChildrenExpanded, toggleSidebarChildren } from "@/lib/sidebar-expansion";
 import { isFreePlanPath, isLimitedLicencePath, licenceNeedsPayment, usesPackageOne } from "@/lib/organization-license";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { groupNavSectionsByZone } from "@/lib/workspaces";
@@ -35,7 +36,8 @@ import {
   publishPlatformSystemIssuesSummary,
 } from "@/lib/platform-system-issues-count";
 
-const STORAGE_KEY = "sidebar-expanded-sections-v7";
+const STORAGE_KEY = "sidebar-collapsed-sections-v8";
+const ITEMS_STORAGE_KEY = "sidebar-collapsed-items-v1";
 
 function ChevronIcon({ open }) {
   return (
@@ -54,10 +56,10 @@ function ChevronIcon({ open }) {
   );
 }
 
-function readStoredSections() {
+function readStoredIds(key) {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : null;
@@ -117,12 +119,17 @@ function guideTargetForHref(href) {
   return path ? `sidebar:${path}` : undefined;
 }
 
-function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0 }) {
+function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, prominent = false, badgeCount = 0, collapsedItems = new Set(), onToggleChildren }) {
   const active = isNavItemActive(item, pathname);
   const showBadge = Number(badgeCount) > 0;
   const guideTarget = guideTargetForHref(item.href);
+  const children = Array.isArray(item.children) ? item.children : [];
+  const childActive = children.some((child) => isNavItemActive(child, pathname));
+  // Parents start open and stay open across navigation until the user collapses them.
+  const childrenKey = `${sectionId}:${item.href}`;
+  const showChildren = sidebarChildrenExpanded({ collapsedItems, childrenKey });
 
-  return (
+  const link = (
     <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
@@ -143,7 +150,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
                   ? "px-4"
                   : "pr-3 pl-2"
             }`
-      } ${active ? "app-sidebar-link-active" : ""}`}
+      } ${active || childActive ? "app-sidebar-link-active" : ""}`}
     >
       <NavItemIcon item={item} sectionId={sectionId} />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -154,9 +161,47 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
       ) : null}
     </AppNavLink>
   );
+
+  if (children.length === 0) {
+    return link;
+  }
+
+  return (
+    <div>
+      <div className="flex items-stretch">
+        <div className="min-w-0 flex-1">{link}</div>
+        <button
+          type="button"
+          onClick={() => onToggleChildren?.(childrenKey)}
+          aria-expanded={showChildren}
+          aria-label={`${showChildren ? "Collapse" : "Expand"} ${item.label}`}
+          className="flex w-7 shrink-0 items-center justify-center rounded-md text-[#abb9e8] transition hover:bg-white/10"
+        >
+          <ChevronIcon open={showChildren} />
+        </button>
+      </div>
+      {showChildren ? (
+        <div className={`ml-4 border-l border-white/10 py-0.5 pl-2 ${inFlyout ? "mr-2" : ""}`}>
+          {children.map((child) => (
+            <SidebarNavLink
+              key={child.href}
+              item={child}
+              sectionId={sectionId}
+              pathname={pathname}
+              onNavigate={onNavigate}
+              inFlyout={inFlyout}
+              nested
+              collapsedItems={collapsedItems}
+              onToggleChildren={onToggleChildren}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false, prominent = false, badgeByHref = {} }) {
+function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false, prominent = false, badgeByHref = {}, collapsedItems = new Set(), onToggleChildren }) {
   const hasGroups = items.some((item) => item.group);
   if (!hasGroups) {
     return items.map((item) => (
@@ -169,6 +214,8 @@ function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = fa
         inFlyout={inFlyout}
         prominent={prominent}
         badgeCount={badgeByHref[item.href] || 0}
+        collapsedItems={collapsedItems}
+        onToggleChildren={onToggleChildren}
       />
     ));
   }
@@ -200,6 +247,8 @@ function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = fa
             inFlyout={inFlyout}
             nested={Boolean(block.group)}
             badgeCount={badgeByHref[item.href] || 0}
+            collapsedItems={collapsedItems}
+            onToggleChildren={onToggleChildren}
           />
         ))}
       </div>
@@ -261,6 +310,8 @@ function CollapsibleNavSection({
   onIconClick,
   onNavigate,
   badgeByHref = {},
+  collapsedItems = new Set(),
+  onToggleChildren,
 }) {
   if (section.variant === "link") {
     if (iconOnly) {
@@ -338,6 +389,8 @@ function CollapsibleNavSection({
       onNavigate={onNavigate}
       inFlyout={false}
       badgeByHref={badgeByHref}
+      collapsedItems={collapsedItems}
+      onToggleChildren={onToggleChildren}
     />
   );
 
@@ -352,6 +405,8 @@ function CollapsibleNavSection({
           inFlyout={false}
           prominent
           badgeByHref={badgeByHref}
+          collapsedItems={collapsedItems}
+          onToggleChildren={onToggleChildren}
         />
       </div>
     );
@@ -551,32 +606,24 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   // empty stubs and screens load via React.lazy; flooding prefetch fights
   // capabilities/notifications/page data for bandwidth.
 
-  const [expandedSections, setExpandedSections] = useState(() => {
-    const stored = readStoredSections();
-    const validIds = new Set(visibleSections.map((s) => s.id));
-    if (stored) {
-      return new Set(stored.filter((id) => validIds.has(id)));
-    }
-    return new Set();
-  });
+  const [collapsedSections, setCollapsedSections] = useState(
+    () => new Set(readStoredIds(STORAGE_KEY) ?? []),
+  );
+  const [collapsedItems, setCollapsedItems] = useState(
+    () => new Set(readStoredIds(ITEMS_STORAGE_KEY) ?? []),
+  );
 
   const iconOnly = collapsed && !mobileOpen;
   const activeFlyoutSection = visibleSections.find((s) => s.id === activeFlyoutId) ?? null;
   const showSubnav = iconOnly && activeFlyoutSection != null;
 
   useEffect(() => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      for (const section of visibleSections) {
-        next.add(section.id);
-      }
-      return next;
-    });
-  }, [visibleSections]);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsedSections]));
+  }, [collapsedSections]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...expandedSections]));
-  }, [expandedSections]);
+    window.localStorage.setItem(ITEMS_STORAGE_KEY, JSON.stringify([...collapsedItems]));
+  }, [collapsedItems]);
 
   useEffect(() => {
     if (!iconOnly) {
@@ -606,7 +653,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   }, [showSubnav]);
 
   const toggleSection = useCallback((sectionId) => {
-    setExpandedSections((prev) => {
+    setCollapsedSections((prev) => {
       const next = new Set(prev);
       if (next.has(sectionId)) {
         next.delete(sectionId);
@@ -615,6 +662,10 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       }
       return next;
     });
+  }, []);
+
+  const toggleItemChildren = useCallback((childrenKey) => {
+    setCollapsedItems((prev) => toggleSidebarChildren(prev, childrenKey));
   }, []);
 
   const toggleFlyout = useCallback((sectionId) => {
@@ -687,13 +738,15 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
                   key={section.id}
                   section={section}
                   pathname={pathname}
-                  expanded={expandedSections.has(section.id)}
+                  expanded={!collapsedSections.has(section.id)}
                   onToggle={toggleSection}
                   iconOnly={iconOnly}
                   isFlyoutOpen={activeFlyoutId === section.id}
                   onIconClick={toggleFlyout}
                   onNavigate={handleNavigate}
                   badgeByHref={badgeByHref}
+                  collapsedItems={collapsedItems}
+                  onToggleChildren={toggleItemChildren}
                 />
               ))}
             </div>
@@ -716,6 +769,8 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
               onNavigate={handleNavigate}
               inFlyout
               badgeByHref={badgeByHref}
+              collapsedItems={collapsedItems}
+              onToggleChildren={toggleItemChildren}
             />
           </nav>
         </aside>

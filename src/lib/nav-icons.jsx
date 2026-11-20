@@ -49,6 +49,9 @@ export const NAV_BOOTSTRAP_ICONS = {
   chat: "chat-dots",
   bell: "bell",
   palette: "palette",
+  car: "car-front",
+  idcard: "person-vcard",
+  graduation: "mortarboard",
 };
 
 const HREF_ICON_FALLBACK_RULES = [
@@ -92,6 +95,10 @@ const SECTION_FALLBACK_ICON = {
   account: "bell",
   users: "users",
   settings: "settings",
+  driving_front: "car",
+  driving_fleet: "hr",
+  driving_money: "wallet",
+  driving_admin: "settings",
 };
 
 const SIZE_CLASS = {

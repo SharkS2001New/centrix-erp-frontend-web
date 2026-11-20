@@ -148,7 +148,7 @@ export function AdminBranchesScreen({ basePath = "/admin" }) {
   const branchById = useMemo(() => new Map(filtered.map((b) => [String(b.id), b])), [filtered]);
 
   function managerName(branch) {
-    const id = branch.settings?.manager_employee_id;
+    const id = branch.manager_employee_id ?? branch.settings?.manager_employee_id;
     if (!id) return "—";
     const emp = employeeById.get(Number(id));
     return emp?.full_name ?? emp?.first_name ?? "—";
@@ -169,8 +169,8 @@ export function AdminBranchesScreen({ basePath = "/admin" }) {
       branch_phone: branch.branch_phone ?? "",
       branch_email: branch.branch_email ?? "",
       branch_address: branch.branch_address ?? "",
-      manager_employee_id: branch.settings?.manager_employee_id
-        ? String(branch.settings.manager_employee_id)
+      manager_employee_id: (branch.manager_employee_id ?? branch.settings?.manager_employee_id)
+        ? String(branch.manager_employee_id ?? branch.settings.manager_employee_id)
         : "",
       mpesa_shortcode: branch.settings?.mpesa?.shortcode ?? "",
       mpesa_till_number: branch.settings?.mpesa?.till_number ?? "",
@@ -246,6 +246,7 @@ export function AdminBranchesScreen({ basePath = "/admin" }) {
         branch_phone: form.branch_phone.trim() || null,
         branch_email: form.branch_email.trim() || null,
         branch_address: form.branch_address.trim() || null,
+        manager_employee_id: form.manager_employee_id ? Number(form.manager_employee_id) : null,
         branch_type: editing?.branch_type ?? "retail",
         is_active: form.is_active,
         settings: {

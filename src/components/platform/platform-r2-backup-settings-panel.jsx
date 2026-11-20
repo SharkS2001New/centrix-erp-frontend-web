@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   PrimaryButton,
@@ -197,9 +198,9 @@ export function PlatformR2BackupSettingsPanel() {
             dumps are not written into MySQL tables. Older SQL objects under the prefix are pruned
             automatically (default 7 days). Leave the secret blank to keep the current value. Manage
             backup runs on{" "}
-            <a href="/platform/database-backups" className="font-medium text-[#185FA5] hover:underline">
+            <Link href="/platform/database-backups" className="font-medium text-[#185FA5] hover:underline">
               Database backups
-            </a>
+            </Link>
             .
           </p>
         </div>

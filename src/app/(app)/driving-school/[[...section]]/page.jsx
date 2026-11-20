@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { AdminApiProvider } from "@/contexts/admin-api-context";
 import { useAppRouter } from "@/lib/use-app-router";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
@@ -57,6 +58,30 @@ const ReportsScreen = dynamic(
   () => import("@/components/driving/screens").then((m) => m.ReportsScreen),
   { loading: ScreenFallback },
 );
+const NotificationsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.NotificationsScreen),
+  { loading: ScreenFallback },
+);
+const StaffScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.StaffScreen),
+  { loading: ScreenFallback },
+);
+const SettingsScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.SettingsScreen),
+  { loading: ScreenFallback },
+);
+const AdminUsersScreen = dynamic(
+  () => import("@/components/tab-screens/admin-users").then((m) => m.AdminUsersScreen),
+  { loading: ScreenFallback },
+);
+const AdminRolesScreen = dynamic(
+  () => import("@/components/tab-screens/admin-roles").then((m) => m.AdminRolesScreen),
+  { loading: ScreenFallback },
+);
+const AdminBranchesScreen = dynamic(
+  () => import("@/components/tab-screens/admin-branches").then((m) => m.AdminBranchesScreen),
+  { loading: ScreenFallback },
+);
 
 export default function DrivingSchoolPage() {
   const params = useParams();
@@ -74,7 +99,7 @@ export default function DrivingSchoolPage() {
     case "vehicles":
       return <VehiclesScreen />;
     case "attendance":
-      return <AttendanceScreen />;
+      return <AttendanceScreen mode={Array.isArray(params.section) ? params.section[1] : undefined} />;
     case "assessments":
       return <AssessmentsScreen />;
     case "payments":
@@ -82,18 +107,51 @@ export default function DrivingSchoolPage() {
     case "expenses":
       return <ExpensesScreen />;
     case "reports":
-      return <ReportsScreen />;
+      return <ReportsScreen reportKey={Array.isArray(params.section) ? params.section[1] : undefined} />;
+    case "notifications":
+      return <NotificationsScreen />;
+    case "staff":
+      return <StaffScreen view={Array.isArray(params.section) ? params.section[1] : undefined} />;
     case "branches":
-      return <AdminRedirect href="/admin/branches" label="Opening branches in Administration…" />;
+      return (
+        <DrivingAdminSection permission="driving.branches.view">
+          <AdminBranchesScreen basePath="/driving-school" />
+        </DrivingAdminSection>
+      );
     case "users":
-      return <AdminRedirect href="/admin/users" label="Opening users in Administration…" />;
+      return (
+        <DrivingAdminSection permission="driving.users.view">
+          <AdminUsersScreen basePath="/driving-school" />
+        </DrivingAdminSection>
+      );
+    case "roles":
+      return (
+        <DrivingAdminSection permission="driving.roles.view">
+          <AdminRolesScreen basePath="/driving-school" />
+        </DrivingAdminSection>
+      );
     case "settings":
-      return <AdminRedirect href="/admin/driving-settings" label="Opening Driving School settings in Administration…" />;
+      return (
+        <DrivingAdminSection permission="driving.settings.view">
+          <SettingsScreen />
+        </DrivingAdminSection>
+      );
     case "audit":
       return <AdminRedirect href="/admin/audit" label="Opening the audit trail in Administration…" />;
     default:
       return <DrivingDashboard />;
   }
+}
+
+function DrivingAdminSection({ permission, children }) {
+  const { hasPermission, isOrgAdmin } = useAuth();
+  const allowed = isOrgAdmin() || hasPermission(permission);
+
+  if (!allowed) {
+    return <p className="theme-subtext text-sm">You do not have permission to open this section. Ask a school administrator to grant it to your role.</p>;
+  }
+
+  return <AdminApiProvider apiPrefix="/driving-school">{children}</AdminApiProvider>;
 }
 
 function AdminRedirect({ href, label }) {

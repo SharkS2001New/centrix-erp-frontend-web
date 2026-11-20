@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -771,9 +772,9 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
             <p className="mt-2 text-xs text-slate-500">
               {PLATFORM_INVOICE_DESIGN_TEMPLATES.find((t) => t.id === form.template_id)?.description}
               {" · "}
-              <a href="/platform/invoice-templates" className="font-medium text-[#185FA5] hover:underline">
+              <Link href="/platform/invoice-templates" className="font-medium text-[#185FA5] hover:underline">
                 Manage templates
-              </a>
+              </Link>
             </p>
           </section>
 

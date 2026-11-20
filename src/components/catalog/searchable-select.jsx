@@ -12,6 +12,7 @@ const FORM_INPUT_CLASS =
  * Always filterable (including short option lists). Prefer this over native `<select>`.
  *
  * `nativeEvent`: when true, onChange receives `{ target: { value } }` (FilterSelect-compatible).
+ * `loadOptions`: async server-side search; receives the typed term and returns `{ value, label }` rows.
  */
 export const SearchableSelect = forwardRef(function SearchableSelect(
   {
@@ -26,6 +27,10 @@ export const SearchableSelect = forwardRef(function SearchableSelect(
     className = "",
     emptyLabel = "No matches",
     nativeEvent = false,
+    loadOptions,
+    searchError = null,
+    minSearchLength = 0,
+    idleSearchLabel = "Type to search…",
   },
   ref,
 ) {
@@ -39,12 +44,12 @@ export const SearchableSelect = forwardRef(function SearchableSelect(
     <PosSearchableSelect
       ref={ref}
       value={value}
-      onChange={(next) => {
+      onChange={(next, option) => {
         if (nativeEvent) {
           onChange?.({ target: { value: next } });
           return;
         }
-        onChange?.(next);
+        onChange?.(next, option);
       }}
       options={options}
       placeholder={placeholder}
@@ -52,8 +57,10 @@ export const SearchableSelect = forwardRef(function SearchableSelect(
       required={required}
       disabled={disabled}
       loading={loading}
-      minSearchLength={0}
-      idleSearchLabel="Type to search…"
+      loadOptions={loadOptions}
+      searchError={searchError}
+      minSearchLength={minSearchLength}
+      idleSearchLabel={idleSearchLabel}
       emptyLabel={emptyLabel}
       inputClassName={inputClassName}
     />

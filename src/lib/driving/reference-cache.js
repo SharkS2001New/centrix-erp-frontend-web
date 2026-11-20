@@ -47,3 +47,7 @@ export function fetchDrivingInstructorsCached() {
 export function fetchDrivingVehiclesCached() {
   return cached("vehicles", async () => rowsOf(await drivingGet("/vehicles", { per_page: 100 })));
 }
+
+export function fetchDrivingBranchesCached() {
+  return cached("branches", async () => rowsOf(await drivingGet("/branches")));
+}

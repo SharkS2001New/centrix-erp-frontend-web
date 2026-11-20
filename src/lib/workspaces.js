@@ -67,7 +67,7 @@ export const WORKSPACE_SECTION_IDS = {
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
   spa: ["spa"],
-  driving: ["driving_front", "driving_fleet", "driving_money"],
+  driving: ["driving_front", "driving_fleet", "driving_money", "driving_admin"],
 };
 
 /** Sidebar zone headers for workspaces that still use grouped sections. */
@@ -590,21 +590,31 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext,
     })
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => {
-        if (item.href === "/reports" && !workspaceHasEnabledReports(workspaceId, navContext?.capabilities?.modules)) {
-          return false;
-        }
-        if (
-          workspaceId === "backoffice" &&
-          usesTillFloat(navContext?.capabilities) &&
-          section.id === "reports" &&
-          item.href === "/reports/till-sessions"
-        ) {
-          return false;
-        }
-        if (!navItemBelongsToWorkspace(item, workspaceId)) return false;
-        return visible(item, navContext);
-      }),
+      items: section.items
+        .filter((item) => {
+          if (item.href === "/reports" && !workspaceHasEnabledReports(workspaceId, navContext?.capabilities?.modules)) {
+            return false;
+          }
+          if (
+            workspaceId === "backoffice" &&
+            usesTillFloat(navContext?.capabilities) &&
+            section.id === "reports" &&
+            item.href === "/reports/till-sessions"
+          ) {
+            return false;
+          }
+          if (!navItemBelongsToWorkspace(item, workspaceId)) return false;
+          return visible(item, navContext);
+        })
+        .map((item) => {
+          if (!Array.isArray(item.children) || item.children.length === 0) return item;
+          return {
+            ...item,
+            children: item.children.filter(
+              (child) => navItemBelongsToWorkspace(child, workspaceId) && visible(child, navContext),
+            ),
+          };
+        }),
     }))
     .map((section) => {
       if (section.id !== "pos" || !usesTillFloat(navContext?.capabilities)) return section;

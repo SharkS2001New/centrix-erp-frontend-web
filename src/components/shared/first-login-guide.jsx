@@ -252,19 +252,19 @@ function saveGuideCompletion(key) {
 
 function getAvailableModuleTips() {
   const seen = new Set();
+  // Read every sidebar link, even one hidden in a collapsed rail or drawer:
+  // on first paint the sidebar can still be mounting, and filtering by
+  // visibility used to leave the guide with zero steps.
   return Array.from(document.querySelectorAll('[data-guide-target^="sidebar:"]'))
     .filter((element) => {
       const target = element.dataset.guideTarget;
-      const bounds = element.getBoundingClientRect();
-      if (!target || seen.has(target) || bounds.width <= 0 || bounds.height <= 0
-        || bounds.right <= 0 || bounds.left >= window.innerWidth) {
-        return false;
-      }
+      if (!target || seen.has(target)) return false;
       seen.add(target);
       return true;
     })
     .map((element) => {
-      const title = element.dataset.guideTitle || element.textContent.trim();
+      const title = (element.dataset.guideTitle || element.textContent || "").trim();
+      if (!title) return null;
       const sectionTip = MODULE_TIPS.find((tip) => tip.target === element.dataset.guideSection);
       return {
         target: element.dataset.guideTarget,
@@ -273,7 +273,24 @@ function getAvailableModuleTips() {
           || sectionTip?.description
           || `Open ${title} to review its tools and manage related records for your organization.`,
       };
-    });
+    })
+    .filter(Boolean);
+}
+
+function waitForModuleTips(timeoutMs = 5000) {
+  if (typeof window === "undefined") return Promise.resolve([]);
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const tips = getAvailableModuleTips();
+      if (tips.length > 0 || Date.now() - startedAt >= timeoutMs) {
+        resolve(tips);
+        return;
+      }
+      window.setTimeout(check, 150);
+    };
+    check();
+  });
 }
 
 function scrollGuideTargetIntoView(target) {
@@ -349,37 +366,54 @@ export function FirstLoginGuide() {
   useEffect(() => {
     if (choosingPlan) {
       setOpen(false);
-      return;
+      return undefined;
     }
-    if (loading || !storageKey || isSuperAdmin?.()) return;
+    if (open || loading || !storageKey || isSuperAdmin?.()) return undefined;
     const currentDemoStatus = readOnboardingDemoStatus(demoKey);
     setDemoStatus(currentDemoStatus);
     const tipsPending = !wasGuideCompleted(storageKey);
     const demoPending = eligibleForDemo && currentDemoStatus !== "watched";
+    let cancelled = false;
 
     // Instant trial / self-serve: show how-to demo first, then usage tips.
     if (demoPending && (onSelfServeTrial || tipsPending)) {
-      setAvailableModuleTips(getAvailableModuleTips());
       setStepIndex(0);
       setView("demo");
       setOpen(true);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    if (tipsPending) {
-      setAvailableModuleTips(getAvailableModuleTips());
+    if (!tipsPending) return undefined;
+
+    void waitForModuleTips().then((tips) => {
+      if (cancelled || tips.length === 0) return;
+      setAvailableModuleTips(tips);
       setStepIndex(0);
       setView("tips");
       setOpen(true);
-    }
-  }, [choosingPlan, demoKey, eligibleForDemo, isSuperAdmin, loading, onSelfServeTrial, storageKey]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [choosingPlan, demoKey, eligibleForDemo, isSuperAdmin, loading, onSelfServeTrial, open, pathname, storageKey]);
 
   useEffect(() => {
     function openGuide(event) {
       if (event.detail !== "tips" && (!eligibleForDemo || demoStatus === "watched")) return;
       setStepIndex(0);
-      setAvailableModuleTips(getAvailableModuleTips());
-      setView(event.detail === "tips" ? "tips" : "demo");
+      if (event.detail === "tips") {
+        setView("tips");
+        void waitForModuleTips().then((tips) => {
+          if (tips.length === 0) return;
+          setAvailableModuleTips(tips);
+          setOpen(true);
+        });
+        return;
+      }
+      setView("demo");
       setOpen(true);
     }
 
@@ -388,14 +422,20 @@ export function FirstLoginGuide() {
   }, [demoStatus, eligibleForDemo]);
 
   const continueToTips = useCallback(() => {
-    if (!wasGuideCompleted(storageKey)) {
-      setAvailableModuleTips(getAvailableModuleTips());
+    if (wasGuideCompleted(storageKey)) {
+      setOpen(false);
+      return;
+    }
+    void waitForModuleTips().then((tips) => {
+      if (tips.length === 0) {
+        setOpen(false);
+        return;
+      }
+      setAvailableModuleTips(tips);
       setStepIndex(0);
       setView("tips");
       setOpen(true);
-      return;
-    }
-    setOpen(false);
+    });
   }, [storageKey]);
 
   const watchLater = useCallback(() => {
@@ -483,6 +523,7 @@ export function FirstLoginGuide() {
   }, [open, step, view]);
 
   if (!open) return null;
+  if (view === "tips" && !step) return null;
 
   return (
     <div className="fixed inset-0 z-[120]">
@@ -580,29 +621,19 @@ export function FirstLoginGuide() {
             </>
           ) : (
             <>
-              {step ? (
-                <div className="flex items-center gap-2" aria-label={`Tip ${stepIndex + 1} of ${availableModuleTips.length}`}>
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-500/30">
-                    <span
-                      className="block h-full rounded-full bg-blue-400"
-                      style={{ width: `${((stepIndex + 1) / availableModuleTips.length) * 100}%` }}
-                    />
-                  </span>
-                  <span className="theme-subtext text-xs">{stepIndex + 1}/{availableModuleTips.length}</span>
-                </div>
-              ) : null}
-              {step ? (
-                <>
-                  <h2 id="first-login-guide-title" className="theme-heading mt-3 text-lg font-semibold">
-                    {step.title}
-                  </h2>
-                  <p className="theme-subtext mt-2 text-sm leading-5">{step.description}</p>
-                </>
-              ) : (
-                <p className="theme-subtext mt-3 text-sm">
-                  No module tips are available in this workspace.
-                </p>
-              )}
+              <div className="flex items-center gap-2" aria-label={`Tip ${stepIndex + 1} of ${availableModuleTips.length}`}>
+                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-500/30">
+                  <span
+                    className="block h-full rounded-full bg-blue-400"
+                    style={{ width: `${((stepIndex + 1) / availableModuleTips.length) * 100}%` }}
+                  />
+                </span>
+                <span className="theme-subtext text-xs">{stepIndex + 1}/{availableModuleTips.length}</span>
+              </div>
+              <h2 id="first-login-guide-title" className="theme-heading mt-3 text-lg font-semibold">
+                {step.title}
+              </h2>
+              <p className="theme-subtext mt-2 text-sm leading-5">{step.description}</p>
               <div className="mt-4 flex items-center justify-between gap-2">
                 <button
                   type="button"

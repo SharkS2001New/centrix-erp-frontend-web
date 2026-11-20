@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PrimaryButton, SECONDARY_BTN_CLASS, TrashIcon, SearchableSelect } from "@/components/catalog/catalog-shared";
@@ -883,12 +884,12 @@ export function PlatformMailboxPanel() {
                   },
                 )}
               </ul>
-              <a
+              <Link
                 href="/platform/settings?tab=email&email_tab=smtp"
                 className="block border-t px-3 py-2 text-sm font-medium text-[#185FA5] hover:bg-slate-50"
               >
                 Manage mailboxes…
-              </a>
+              </Link>
             </div>
           ) : null}
         </div>
@@ -1005,12 +1006,12 @@ export function PlatformMailboxPanel() {
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
           <strong className="font-medium text-slate-900">SMTP-only mailbox.</strong> Outbound send works;
           inbox sync is off because IMAP is disabled (common when a domain host blocks IMAP).{" "}
-          <a
+          <Link
             href="/platform/settings?tab=email&email_tab=imap"
             className="font-medium text-[#185FA5] hover:underline"
           >
             Configure IMAP
-          </a>{" "}
+          </Link>{" "}
           only if your provider allows it.
         </div>
       ) : (

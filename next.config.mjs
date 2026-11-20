@@ -49,6 +49,9 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
+  // The (app) group renders a parallel @modal slot with a catch-all fallback, which
+  // strict route matching rejects and makes /login and /register 404 in dev.
+  deprecated: { looseRouteMatching: true },
   async headers() {
     const rules = [
       {

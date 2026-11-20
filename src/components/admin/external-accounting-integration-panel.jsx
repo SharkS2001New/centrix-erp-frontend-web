@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
@@ -143,18 +144,18 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
             >
               Process export queue
             </button>
-            <a
+            <Link
               href="/accounting/export-queue"
               className="rounded-lg border border-[var(--theme-border)] px-3 py-1.5 text-xs font-medium"
             >
               View queue
-            </a>
-            <a
+            </Link>
+            <Link
               href="/accounting/account-mappings"
               className="rounded-lg border border-[var(--theme-border)] px-3 py-1.5 text-xs font-medium"
             >
               Map accounts
-            </a>
+            </Link>
           </div>
         </>
       )}

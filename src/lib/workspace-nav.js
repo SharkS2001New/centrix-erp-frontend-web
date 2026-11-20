@@ -158,6 +158,17 @@ export function flattenNavSearchEntries(sections) {
         group,
         keywords: [item.label, group, sectionLabel, item.href.replace(/\//g, " ")].filter(Boolean).join(" "),
       });
+      for (const child of item.children ?? []) {
+        entries.push({
+          id: child.href,
+          kind: "link",
+          label: child.label,
+          href: child.href,
+          section: sectionLabel,
+          group: item.label,
+          keywords: [child.label, item.label, sectionLabel, child.href.replace(/\//g, " ")].filter(Boolean).join(" "),
+        });
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
@@ -758,9 +759,9 @@ export function PlatformWhatsappScreen({ embedded = false } = {}) {
       />
       <p className="text-sm theme-subtext">
         To dry-run the ordering bot against a tenant, open{" "}
-        <a href="/platform/whatsapp" className="font-medium text-[#185FA5] hover:underline">
+        <Link href="/platform/whatsapp" className="font-medium text-[#185FA5] hover:underline">
           Integrations → WhatsApp
-        </a>
+        </Link>
         .
       </p>
     </div>
@@ -797,9 +798,9 @@ export function PlatformWhatsappTestScreen() {
       />
       <div className="mb-4 text-sm theme-subtext">
         Shared Meta webhook configuration:{" "}
-        <a href="/platform/settings?tab=whatsapp" className="font-medium text-[#185FA5] hover:underline">
+        <Link href="/platform/settings?tab=whatsapp" className="font-medium text-[#185FA5] hover:underline">
           Platform settings → WhatsApp
-        </a>
+        </Link>
         .
       </div>
       <div className="mb-6 flex flex-wrap gap-2 border-b border-[var(--theme-border)] pb-3">

@@ -73,7 +73,7 @@ describe("SPA & Kinyozi administration", () => {
     expect(hrefs).not.toContain("/admin/spa-settings");
   });
 
-  it("keeps driving school setup in Administration and hides unused shop tools", () => {
+  it("maps driving school navigation into parent links with children and hides unused shop tools", () => {
     const drivingCaps = {
       industry: "driving",
       deployment_profile: "driving_school",
@@ -94,11 +94,15 @@ describe("SPA & Kinyozi administration", () => {
       isSuperAdmin: () => false,
     });
     const hrefs = schoolNav.flatMap((section) => section.items.map((item) => item.href));
+    const childHrefs = schoolNav.flatMap((section) => section.items.flatMap((item) => (item.children ?? []).map((child) => child.href)));
     expect(hrefs).toContain("/driving-school/reports");
-    expect(hrefs).not.toContain("/driving-school/settings");
+    expect(hrefs).toContain("/driving-school/settings");
     expect(hrefs).not.toContain("/driving-school/branches");
     expect(hrefs).not.toContain("/driving-school/vehicles");
     expect(hrefs).toContain("/driving-school/assessments");
+    expect(childHrefs).toContain("/driving-school/branches");
+    expect(childHrefs).toContain("/driving-school/staff/salaries");
+    expect(childHrefs).toContain("/driving-school/reports/revenue");
   });
 
   it("does not put hotel operations in a salon admin menu", () => {
