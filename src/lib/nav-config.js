@@ -1224,10 +1224,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Students",
         module: "driving",
         permission: P.driving.students.view,
-        children: [
-          { href: "/driving-school/students", label: "Student directory", module: "driving", permission: P.driving.students.view },
-          { href: "/driving-school/notifications", label: "Outreach & messages", module: "driving", permission: P.driving.outreach.view },
-        ],
       },
       { href: "/driving-school/courses", label: "Courses & theory", module: "driving", permission: P.driving.courses.view },
       {
@@ -1238,7 +1234,6 @@ const NAV_SECTION_DEFINITIONS = [
         requireDrivingFeature: "assessments",
         children: [
           { href: "/driving-school/assessments", label: "Calendar, bookings & readiness", module: "driving", permission: P.driving.assessments.view, requireDrivingFeature: "assessments" },
-          { href: "/driving-school/assessments/new", label: "Record assessment", module: "driving", permission: P.driving.assessments.create, requireDrivingFeature: "assessments" },
           { href: "/driving-school/reports/exams", label: "Examination results report", module: "driving", permission: P.driving.reports.view },
         ],
       },
@@ -1279,7 +1274,8 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.driving.staff.view,
         children: [
           { href: "/driving-school/staff", label: "Employees", module: "driving", permission: P.driving.staff.view },
-          { href: "/driving-school/staff/salaries", label: "Salary register", module: "driving", permission: P.driving.payroll.view },
+          { href: "/driving-school/staff/attendance", label: "Attendance", module: "driving", permission: P.driving.staff.view },
+          { href: "/driving-school/staff/salaries", label: "Payroll run", module: "driving", permission: P.driving.payroll.view },
         ],
       },
     ],
@@ -1310,7 +1306,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.driving.reports.view,
         children: [
           { href: "/driving-school/reports", label: "Reports overview", module: "driving", permission: P.driving.reports.view },
-          { href: "/driving-school/reports/revenue", label: "Receipts", module: "driving", permission: P.driving.reports.view },
           { href: "/driving-school/reports/outstanding", label: "Outstanding fees", module: "driving", permission: P.driving.reports.view },
           { href: "/driving-school/reports/expenses", label: "Expenses", module: "driving", permission: P.driving.reports.view },
           { href: "/driving-school/reports/enrolments", label: "Enrolments", module: "driving", permission: P.driving.reports.view },

@@ -30,6 +30,7 @@ export function LpoFormFields({
   form,
   onChange,
   suppliers = [],
+  branches = [],
   uomById,
   vatById,
   branchAddress = "",
@@ -105,6 +106,26 @@ export function LpoFormFields({
         {tab === "header" ? (
           <>
             <div className="grid gap-4 md:grid-cols-2">
+              {branches.length > 1 ? (
+                <Field label="Branch">
+                  <SearchableSelect
+                    value={form.branch_id}
+                    onChange={(next) => updateField("branch_id", next)}
+                    required
+                    placeholder="Select branch"
+                    options={[
+                      { value: "", label: "Select branch" },
+                      ...branches.map((b) => ({
+                        value: String(b.id),
+                        label: b.branch_name ?? `Branch #${b.id}`,
+                      })),
+                    ]}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Stock is received into this branch when the order arrives.
+                  </p>
+                </Field>
+              ) : null}
               <Field label="Supplier">
                 <SearchableSelect
                   value={form.supplier_id}

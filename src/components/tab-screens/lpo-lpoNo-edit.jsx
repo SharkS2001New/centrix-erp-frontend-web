@@ -6,6 +6,7 @@ import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  fetchBranchesCached,
   fetchSuppliersCached,
   fetchUomsCached,
   fetchVatsCached,
@@ -26,6 +27,7 @@ export function LpoLpoNoEditScreen() {
 
   const [form, setForm] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [branchAddress, setBranchAddress] = useState("");
   const [uoms, setUoms] = useState([]);
   const [vats, setVats] = useState([]);
@@ -38,18 +40,15 @@ export function LpoLpoNoEditScreen() {
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
 
   useEffect(() => {
-    const branchId = user?.branch_id;
     const orgId = user?.organization_id;
     Promise.all([
       apiRequest(`/lpo-mst/${lpoNo}/summary`),
       fetchSuppliersCached(orgId),
       fetchUomsCached(orgId),
       fetchVatsCached(orgId),
-      branchId
-        ? apiRequest(`/branches/${branchId}`).catch(() => null)
-        : Promise.resolve(null),
+      fetchBranchesCached(orgId),
     ])
-      .then(([detail, suppliersData, uomsData, vatsData, branch]) => {
+      .then(([detail, suppliersData, uomsData, vatsData, branchList]) => {
         if (!lpoCanEdit(detail.lpo)) {
           setFormError("This LPO cannot be edited after it has been sent to the supplier.");
           setForm(null);
@@ -61,17 +60,26 @@ export function LpoLpoNoEditScreen() {
         setSuppliers(suppliersData ?? []);
         setUoms(uomList);
         setVats(vatsData ?? []);
-        const addr = branch?.branch_address?.trim();
-        if (addr) setBranchAddress(addr);
+        setBranches(Array.isArray(branchList) ? branchList : []);
       })
       .catch(() => setFormError("Failed to load purchase order."))
       .finally(() => setLoading(false));
-  }, [lpoNo, user?.branch_id, user?.organization_id]);
+  }, [lpoNo, user?.organization_id]);
+
+  useEffect(() => {
+    const selected = branches.find((b) => String(b.id) === String(form?.branch_id));
+    setBranchAddress(String(selected?.branch_address ?? "").trim());
+  }, [branches, form?.branch_id]);
 
   async function save() {
     if (!form) return;
     if (!isLpoHeaderComplete(form)) {
       setFormError("Complete the LPO header before saving.");
+      setActiveTab("header");
+      return;
+    }
+    if (branches.length > 0 && !form.branch_id) {
+      setFormError("Select the branch this purchase order is for.");
       setActiveTab("header");
       return;
     }
@@ -107,6 +115,7 @@ export function LpoLpoNoEditScreen() {
           form={form}
           onChange={setForm}
           suppliers={suppliers}
+          branches={branches}
           uomById={uomById}
           vatById={vatById}
           branchAddress={branchAddress}

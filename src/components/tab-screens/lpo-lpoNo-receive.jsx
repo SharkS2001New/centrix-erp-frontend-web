@@ -197,7 +197,11 @@ export function LpoLpoNoReceiveScreen() {
 
   async function confirmReceipt(partial) {
     const lines = data?.lines ?? [];
-    const branchId = user?.branch_id ?? 1;
+    const branchId = data?.lpo?.branch_id ?? user?.branch_id ?? null;
+    if (!branchId) {
+      notifyError("This purchase order has no branch. Select a branch on the order before receiving.");
+      return;
+    }
     const toPost = lines.filter((line) => {
       const uom = line.unit_id ? uomById.get(line.unit_id) : null;
       return receiveBaseForLine(String(line.id), uom, receiveCounts) > 0;

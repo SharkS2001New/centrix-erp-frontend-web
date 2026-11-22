@@ -63,7 +63,7 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { suggestNextTillDefaults, tillDisplayName } from "@/lib/pos-till";
-import { isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingIndustry, isHospitalityIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 
 const EMPTY_FORM = {
@@ -1156,11 +1156,13 @@ export function AdminUsersScreen({ basePath = "/admin" }) {
               ))}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {isSpaIndustry(effectiveCapabilities)
-                ? "Staff sign in on the web to Administration and SPA & Kinyozi. Salon access follows the user’s role."
-                : hospitalityPosEnabled
-                  ? "Centrix ERP is web sign-in. Tick CentrixAsMobile to allow the AS shop app. Managers App is the mobile manager app."
-                  : "Only channels enabled for this organization are listed. Tick CentrixAsMobile to allow sign-in on the AS shop app; Field Mobile is for sales/driver."}
+              {isDrivingIndustry(effectiveCapabilities)
+                ? "CentrixDriving is web sign-in to the Driving School. CentrixManagersApp is the mobile manager app for approvals and reports."
+                : isSpaIndustry(effectiveCapabilities)
+                  ? "Staff sign in on the web to Administration and SPA & Kinyozi. Salon access follows the user’s role."
+                  : hospitalityPosEnabled
+                    ? "Centrix ERP is web sign-in. Tick CentrixAsMobile to allow the AS shop app. Managers App is the mobile manager app."
+                    : "Only channels enabled for this organization are listed. Tick CentrixAsMobile to allow sign-in on the AS shop app; Field Mobile is for sales/driver."}
             </p>
           </Field>
           {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (

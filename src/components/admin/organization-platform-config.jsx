@@ -296,7 +296,9 @@ export function OrganizationTenantProfile({
                 ? "Driving School setup. Retail, hotel, and salon tills stay off."
                 : deploymentProfile === "custom"
                 ? "Start from a blank setup and enable only the applications you need on the Applications tab."
-                  : "Preset within this industry. Changing it updates the default application toggles."}
+                  : isRegister
+                    ? "Preset within this industry. Selecting it loads its default applications; you can customize them before saving."
+                    : "Preset within this industry. Changing it keeps this organisation’s current applications. Use Apply setup type defaults to replace them."}
             </p>
           </OrgRegisterField>
         ) : null}
@@ -2025,6 +2027,8 @@ export function OrganizationConfigTabs({
           enabledModules={enabledModules}
           mobileOrdersEnabled={mobileOrdersEnabled}
           salesPlatform={salesPlatform}
+          industry={industry}
+          deploymentProfile={deploymentProfile}
           detailed
         />
       ) : null}
@@ -2161,7 +2165,7 @@ export function OrganizationModuleToggles({
           ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus optional Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
           : deploymentProfile === "spa_kinyozi"
             ? "SPA & Kinyozi tenants get the salon workspace and Administration. Accounting and HR are not part of this setup."
-            : "Choose which applications appear on the login workspace screen for this organization. Setup type is the baseline; you can enable or disable applications for this organisation’s unique needs. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
+            : "Choose which applications appear on this organization’s login workspace. Setup type provides the baseline, but changing it does not overwrite these choices. Use Apply setup type defaults to replace them. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
       }
     >
       <div className="space-y-4">
@@ -2385,6 +2389,8 @@ export function OrganizationUsersPanel({
   enabledModules = {},
   mobileOrdersEnabled = true,
   salesPlatform = {},
+  industry = null,
+  deploymentProfile = null,
   detailed = false,
 }) {
   const [users, setUsers] = useState([]);
@@ -2407,13 +2413,16 @@ export function OrganizationUsersPanel({
   const [createMessage, setCreateMessage] = useState(null);
 
   const platformCapabilities = useMemo(
-    () =>
-      platformCapabilitiesFromOrgConfig({
+    () => ({
+      ...platformCapabilitiesFromOrgConfig({
         enabledModules,
         mobileOrdersEnabled,
         salesPlatform,
       }),
-    [enabledModules, mobileOrdersEnabled, salesPlatform],
+      industry,
+      deployment_profile: deploymentProfile,
+    }),
+    [enabledModules, mobileOrdersEnabled, salesPlatform, industry, deploymentProfile],
   );
 
   const availableLoginChannels = useMemo(

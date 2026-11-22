@@ -189,10 +189,6 @@ export default function ManageOrganizationPage() {
     setEnabledModules((prev) => patchEnabledModules(prev, { [key]: !prev[key] }, domainChildrenMap));
   }
 
-  function setModules(partial) {
-    setEnabledModules((prev) => patchEnabledModules(prev, partial, domainChildrenMap));
-  }
-
   async function onSave(e) {
     e.preventDefault();
     setSaving(true);
@@ -417,7 +413,7 @@ export default function ManageOrganizationPage() {
               enabledModules={enabledModules}
               moduleOptions={moduleOptions}
               onToggleModule={toggleModule}
-              onSetModules={setModules}
+              onSetModules={setEnabledModules}
               mobileOrdersEnabled={salesPlatform?.enable_mobile_orders !== false}
               organization={organization}
               organizationId={orgId}

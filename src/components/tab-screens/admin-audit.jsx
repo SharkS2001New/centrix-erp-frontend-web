@@ -41,9 +41,11 @@ function ActionBadge({ action }) {
   );
 }
 
-export function AdminAuditScreen() {
+export function AdminAuditScreen({ basePath = "/admin" }) {
   const { user, capabilities, isOrgWide } = useAuth();
   const { adminPath, organizationId: platformOrgId } = useAdminApi();
+  const breadcrumbLabel =
+    basePath === "/driving-school" ? "Driving School" : basePath === "/spa/admin" ? "SPA & Kinyozi" : "Administration";
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const branchLocked = !isOrgWide();
 
@@ -193,7 +195,7 @@ export function AdminAuditScreen() {
         />
       }
     >
-      <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Audit trail" }]} />
+      <AdminBreadcrumb items={[{ label: breadcrumbLabel, href: basePath }, { label: "Audit trail" }]} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="w-72 flex-1 max-w-xl sm:w-96">

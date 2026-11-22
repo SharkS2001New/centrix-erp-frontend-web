@@ -31,6 +31,7 @@ import { LpoApprovalStripRow } from "@/components/lpo/lpo-workflow";
 import { prefetchLpoPrintSummary, runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge, LPO_STATUS } from "@/components/lpo/lpo-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -51,6 +52,8 @@ export function LpoScreen() {
   const router = useAppRouter();
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission } = useAuth();
+  const showBranchColumn = isMultiBranchCatalog(capabilities);
+  const columnCount = showBranchColumn ? 8 : 7;
   const { canView, canCreate, canEdit, canDelete, canApprove, isAdmin } = useLpoListPermissions();
   const canApproveLpos = canApproveLpoRequests({ hasPermission });
 
@@ -432,6 +435,7 @@ export function LpoScreen() {
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">PO #</th>
                     <th className="px-4 py-2.5">Supplier</th>
+                    {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
                     <th className="px-4 py-2.5">Created</th>
                     <th className="px-4 py-2.5 text-right">Total</th>
                     <th className="px-4 py-2.5 text-right">Balance</th>
@@ -442,7 +446,7 @@ export function LpoScreen() {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={columnCount} className="px-4 py-12 text-center text-slate-500">
                         No purchase orders found.
                       </td>
                     </tr>
@@ -451,7 +455,7 @@ export function LpoScreen() {
                       <Fragment key={row.lpo_no}>
                         <LpoApprovalStripRow
                           lpo={row}
-                          columnCount={7}
+                          columnCount={columnCount}
                           canApproveLpos={canApproveLpos}
                           onApprove={approveActionRequest}
                           onReject={setRejectRequestId}
@@ -476,6 +480,11 @@ export function LpoScreen() {
                             {row.supplier_name ?? "—"}
                           </Link>
                         </td>
+                        {showBranchColumn ? (
+                          <td className="px-4 py-3 text-slate-600">
+                            {row.branch_name ?? "All branches"}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3 text-slate-600">
                           <div className="font-medium text-slate-800">
                             {row.created_by_name ?? "—"}

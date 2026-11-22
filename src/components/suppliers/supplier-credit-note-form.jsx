@@ -5,7 +5,7 @@ import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton, TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { fetchSuppliersCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchSuppliersCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatSaleKes } from "@/lib/sales";
@@ -44,8 +44,12 @@ export function SupplierCreditNoteForm({
   initialSupplierId = "",
 }) {
   const { exitTo } = useTabFormExit(tabAddTitle("supplier credit note"));
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
   const [suppliers, setSuppliers] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState(
+    user?.branch_id ? String(user.branch_id) : "",
+  );
   const [supplierId, setSupplierId] = useState(initialSupplierId ? String(initialSupplierId) : "");
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
@@ -64,7 +68,18 @@ export function SupplierCreditNoteForm({
     fetchSuppliersCached(user?.organization_id)
       .then(setSuppliers)
       .catch(() => setSuppliers([]));
-  }, [user?.organization_id]);
+    fetchBranchesCached(user?.organization_id)
+      .then((list) => {
+        const rows = Array.isArray(list) ? list : [];
+        setBranches(rows);
+        setBranchId((current) => {
+          if (current) return current;
+          if (user?.branch_id) return String(user.branch_id);
+          return rows.length === 1 ? String(rows[0].id) : "";
+        });
+      })
+      .catch(() => setBranches([]));
+  }, [user?.organization_id, user?.branch_id]);
 
   const lineTotal = useMemo(
     () =>
@@ -86,8 +101,8 @@ export function SupplierCreditNoteForm({
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setError("Your user profile has no branch assigned.");
+    if (!branchId) {
+      setError("Select the branch this credit note belongs to.");
       return;
     }
     if (!supplierId) {
@@ -128,7 +143,7 @@ export function SupplierCreditNoteForm({
     try {
       const body = {
         supplier_id: Number(supplierId),
-        branch_id: user.branch_id,
+        branch_id: Number(branchId),
         credit_date: creditDate,
         reason: resolvedReason,
         description: narrative || null,
@@ -161,6 +176,23 @@ export function SupplierCreditNoteForm({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {branches.length > 0 && (!user?.branch_id || isOrgWide()) ? (
+          <Field label="Branch" required>
+            <SearchableSelect
+              value={branchId}
+              onChange={setBranchId}
+              required
+              placeholder="Select branch…"
+              options={[
+                { value: "", label: "Select branch…" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? `Branch #${branch.id}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Supplier" required>
           <SearchableSelect
             value={supplierId}

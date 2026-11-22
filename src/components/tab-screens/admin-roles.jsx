@@ -35,9 +35,22 @@ const CACHE_SLOT = "admin-roles";
 export function AdminRolesScreen({ basePath = "/admin" }) {
   const confirm = useConfirm();
   const { adminPath } = useAdminApi();
-  const { refreshCapabilities, capabilities } = useAuth();
+  const { refreshCapabilities, capabilities, hasPermission, isOrgAdmin } = useAuth();
   const { paneHref } = useTabPaneActive();
   const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+
+  // Driving School manages its own role permissions; gate the editor with driving.roles.*.
+  const permissionPrefix = basePath === "/driving-school" ? "driving" : null;
+  const allowed = useCallback(
+    (action) => !permissionPrefix || isOrgAdmin?.() || hasPermission?.(`${permissionPrefix}.roles.${action}`),
+    [permissionPrefix, hasPermission, isOrgAdmin],
+  );
+  const canCreate = allowed("create");
+  const canEdit = allowed("edit");
+  const canDelete = allowed("delete");
+  const breadcrumbLabel = permissionPrefix === "driving"
+    ? "Driving School"
+    : basePath === "/spa/admin" ? "SPA & Kinyozi" : "Administration";
 
   const [roles, setRoles] = useState(() => (cachedBundle ? cachedBundle.roles ?? [] : []));
   const [permissionGroups, setPermissionGroups] = useState(() =>
@@ -103,8 +116,8 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
     );
     setPermissionApplications(filtered.applications);
     setPermissionGroups(filtered.groups);
-    let nextIndustryLabel = null;
-    if (res.industry) {
+    let nextIndustryLabel = permissionPrefix === "driving" ? "Driving School" : null;
+    if (!nextIndustryLabel && res.industry) {
       nextIndustryLabel =
         res.industry === "hospitality"
           ? "Hotel & Hospitality"
@@ -112,15 +125,17 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
             ? "Retail & Distribution"
             : res.industry === "spa"
               ? "SPA & Kinyozi"
-              : res.industry;
-      setIndustryLabel(nextIndustryLabel);
+              : res.industry === "driving"
+                ? "Driving School"
+                : res.industry;
     }
+    if (nextIndustryLabel) setIndustryLabel(nextIndustryLabel);
     return {
       applications: filtered.applications,
       groups: filtered.groups,
       industryLabel: nextIndustryLabel,
     };
-  }, [adminPath]);
+  }, [adminPath, permissionPrefix]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
     const id = normalizeRoleId(roleId);
@@ -314,14 +329,14 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
             getSearchParams={() => ({ per_page: 200 })}
             disabled={loading}
           />
-          <PrimaryButton type="button" onClick={() => setDrawerOpen(true)}>
+          <PrimaryButton type="button" onClick={() => setDrawerOpen(true)} disabled={!canCreate}>
             Create role
           </PrimaryButton>
         </div>
       }
     >
       <AdminBreadcrumb
-        items={[{ label: "Administration", href: basePath }, { label: "Roles & permissions" }]}
+        items={[{ label: breadcrumbLabel, href: basePath }, { label: "Roles & permissions" }]}
       />
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
@@ -350,7 +365,7 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
                       label="Delete role"
                       danger
                       onClick={() => deleteRole(role)}
-                      disabled={(role.users_count ?? 0) > 0 || saving}
+                      disabled={!canDelete || (role.users_count ?? 0) > 0 || saving}
                     >
                       <TrashIcon />
                     </IconButton>
@@ -372,22 +387,26 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => deleteRole()}
-                    disabled={saving || (selectedRole.users_count ?? 0) > 0}
-                    title={
-                      (selectedRole.users_count ?? 0) > 0
-                        ? "Reassign users before deleting this role"
-                        : "Delete role"
-                    }
-                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete role
-                  </button>
-                  <PrimaryButton type="button" onClick={savePermissions} disabled={saving} showIcon={false}>
-                    {saving ? "Saving…" : "Save permissions"}
-                  </PrimaryButton>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => deleteRole()}
+                      disabled={saving || (selectedRole.users_count ?? 0) > 0}
+                      title={
+                        (selectedRole.users_count ?? 0) > 0
+                          ? "Reassign users before deleting this role"
+                          : "Delete role"
+                      }
+                      className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Delete role
+                    </button>
+                  ) : null}
+                  {canEdit ? (
+                    <PrimaryButton type="button" onClick={savePermissions} disabled={saving} showIcon={false}>
+                      {saving ? "Saving…" : "Save permissions"}
+                    </PrimaryButton>
+                  ) : null}
                 </div>
               </div>
 
@@ -399,8 +418,8 @@ export function AdminRolesScreen({ basePath = "/admin" }) {
                   applications={permissionApplications}
                   groups={permissionGroups}
                   assignedIds={assignedIds}
-                  onToggle={togglePermission}
-                  onToggleMany={toggleManyPermissionIds}
+                  onToggle={canEdit ? togglePermission : () => {}}
+                  onToggleMany={canEdit ? toggleManyPermissionIds : () => {}}
                 />
               </div>
             </>

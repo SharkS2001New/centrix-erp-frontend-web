@@ -1,5 +1,5 @@
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
-import { isSpaIndustry } from "@/lib/org-settings-tabs";
+import { isDrivingIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 
 export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice" },
@@ -23,6 +23,10 @@ export function loginChannelLabel(value, capabilities) {
     if (value === "backoffice") return "Centrix ERP";
     if (value === "centrix_as_mobile") return "CentrixAsMobile";
     if (value === "manager") return "Managers App";
+  }
+  if (isDrivingIndustry(capabilities)) {
+    if (value === "backoffice") return "CentrixDriving";
+    if (value === "manager") return "CentrixManagersApp";
   }
   if (isSpaIndustry(capabilities) && value === "backoffice") {
     return "Centrix ERP";

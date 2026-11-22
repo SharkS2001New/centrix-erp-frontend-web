@@ -1,14 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect } from "react";
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminApiProvider } from "@/contexts/admin-api-context";
-import { useAppRouter } from "@/lib/use-app-router";
-import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { getStoredWorkspace } from "@/lib/auth-storage";
-import { openAppPathAcrossWorkspaces } from "@/lib/workspace-navigation";
 
 function ScreenFallback() {
   return <p className="theme-subtext text-sm">Loading…</p>;
@@ -66,6 +61,10 @@ const StaffScreen = dynamic(
   () => import("@/components/driving/screens").then((m) => m.StaffScreen),
   { loading: ScreenFallback },
 );
+const StaffAttendanceScreen = dynamic(
+  () => import("@/components/driving/screens").then((m) => m.StaffAttendanceScreen),
+  { loading: ScreenFallback },
+);
 const SettingsScreen = dynamic(
   () => import("@/components/driving/screens").then((m) => m.SettingsScreen),
   { loading: ScreenFallback },
@@ -78,8 +77,12 @@ const AdminRolesScreen = dynamic(
   () => import("@/components/tab-screens/admin-roles").then((m) => m.AdminRolesScreen),
   { loading: ScreenFallback },
 );
-const AdminBranchesScreen = dynamic(
-  () => import("@/components/tab-screens/admin-branches").then((m) => m.AdminBranchesScreen),
+const AdminAuditScreen = dynamic(
+  () => import("@/components/tab-screens/admin-audit").then((m) => m.AdminAuditScreen),
+  { loading: ScreenFallback },
+);
+const DrivingBranchesScreen = dynamic(
+  () => import("@/components/driving/branches-screen").then((m) => m.DrivingBranchesScreen),
   { loading: ScreenFallback },
 );
 
@@ -111,11 +114,14 @@ export default function DrivingSchoolPage() {
     case "notifications":
       return <NotificationsScreen />;
     case "staff":
+      if (Array.isArray(params.section) && params.section[1] === "attendance") {
+        return <StaffAttendanceScreen />;
+      }
       return <StaffScreen view={Array.isArray(params.section) ? params.section[1] : undefined} />;
     case "branches":
       return (
         <DrivingAdminSection permission="driving.branches.view">
-          <AdminBranchesScreen basePath="/driving-school" />
+          <DrivingBranchesScreen />
         </DrivingAdminSection>
       );
     case "users":
@@ -137,7 +143,11 @@ export default function DrivingSchoolPage() {
         </DrivingAdminSection>
       );
     case "audit":
-      return <AdminRedirect href="/admin/audit" label="Opening the audit trail in Administration…" />;
+      return (
+        <DrivingAdminSection permission="driving.settings.view">
+          <AdminAuditScreen basePath="/driving-school" />
+        </DrivingAdminSection>
+      );
     default:
       return <DrivingDashboard />;
   }
@@ -152,35 +162,4 @@ function DrivingAdminSection({ permission, children }) {
   }
 
   return <AdminApiProvider apiPrefix="/driving-school">{children}</AdminApiProvider>;
-}
-
-function AdminRedirect({ href, label }) {
-  const pathname = usePathname();
-  const router = useAppRouter();
-  const { user, organization, capabilities, isSuperAdmin, switchWorkspace } = useAuth();
-
-  useEffect(() => {
-    const ctx = buildAccessContext({
-      user,
-      organization,
-      capabilities,
-      requireTillFloat: resolveTillFloatNavFlag(capabilities),
-      isSuperAdmin,
-    });
-    openAppPathAcrossWorkspaces({
-      href,
-      currentPathname: pathname,
-      userId: user?.id,
-      organizationId: organization?.id,
-      capabilities,
-      ctx,
-      currentWorkspaceId: getStoredWorkspace(),
-      switchWorkspace,
-      router,
-    }).catch(() => {
-      router.replace("/admin");
-    });
-  }, [capabilities, href, isSuperAdmin, organization, pathname, router, switchWorkspace, user]);
-
-  return <p className="theme-subtext text-sm">{label}</p>;
 }

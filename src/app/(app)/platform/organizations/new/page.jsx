@@ -222,10 +222,6 @@ export default function RegisterOrganizationPage() {
     setEnabledModules((prev) => patchEnabledModules(prev, { [key]: !prev[key] }, domainChildrenMap));
   }
 
-  function setModules(partial) {
-    setEnabledModules((prev) => patchEnabledModules(prev, partial, domainChildrenMap));
-  }
-
   function updateManager(field, value) {
     const map = {
       managerFullName: setManagerFullName,
@@ -594,7 +590,7 @@ export default function RegisterOrganizationPage() {
                 enabledModules={enabledModules}
                 moduleOptions={moduleOptions}
                 onToggleModule={toggleModule}
-                onSetModules={setModules}
+                onSetModules={setEnabledModules}
                 adminPanel={
                   <div className="space-y-6">
                     <InitialAdministratorFields

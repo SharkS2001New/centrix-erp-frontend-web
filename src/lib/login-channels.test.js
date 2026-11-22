@@ -57,6 +57,24 @@ describe("hotel login channel labels", () => {
     ]);
   });
 
+  it("labels Driving School channels as CentrixDriving and CentrixManagersApp", () => {
+    const drivingCaps = {
+      industry: "driving",
+      deployment_profile: "driving_school",
+      modules: { driving: true, admin: true },
+      allowed_login_channels: ["backoffice", "manager"],
+    };
+    expect(loginChannelLabel("backoffice", drivingCaps)).toBe("CentrixDriving");
+    expect(loginChannelLabel("manager", drivingCaps)).toBe("CentrixManagersApp");
+    expect(formatLoginChannels(["backoffice", "manager"], drivingCaps)).toBe(
+      "CentrixDriving, CentrixManagersApp",
+    );
+    expect(availableLoginChannelsFromCapabilities(drivingCaps).map((c) => c.label)).toEqual([
+      "CentrixDriving",
+      "CentrixManagersApp",
+    ]);
+  });
+
   it("keeps retail channel labels", () => {
     expect(loginChannelLabel("backoffice", retailCaps)).toBe("Backoffice");
     expect(loginChannelLabel("manager", retailCaps)).toBe("Manager app");

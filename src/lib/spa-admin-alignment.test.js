@@ -102,7 +102,7 @@ describe("SPA & Kinyozi administration", () => {
     expect(hrefs).toContain("/driving-school/assessments");
     expect(childHrefs).toContain("/driving-school/branches");
     expect(childHrefs).toContain("/driving-school/staff/salaries");
-    expect(childHrefs).toContain("/driving-school/reports/revenue");
+    expect(childHrefs).toContain("/driving-school/reports/outstanding");
   });
 
   it("does not put hotel operations in a salon admin menu", () => {

@@ -388,7 +388,12 @@ export const P = {
       edit: "driving.staff.edit",
       delete: "driving.staff.delete",
     },
-    payroll: { view: "driving.payroll.view", create: "driving.payroll.create", delete: "driving.payroll.delete" },
+    payroll: {
+      view: "driving.payroll.view",
+      create: "driving.payroll.create",
+      approve: "driving.payroll.approve",
+      delete: "driving.payroll.delete",
+    },
     users: {
       view: "driving.users.view",
       create: "driving.users.create",

@@ -1140,6 +1140,10 @@ export function employeeDocumentFilePath(employeeId, documentId) {
   return `/employees/${employeeId}/documents/${documentId}/file`;
 }
 
+export function drivingStudentDocumentFilePath(studentId, documentId) {
+  return `/driving-school/students/${studentId}/documents/${documentId}/file`;
+}
+
 export function lpoAttachmentFilePath(attachmentId) {
   return `/lpo-attachments/${attachmentId}/file`;
 }

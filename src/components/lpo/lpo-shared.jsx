@@ -240,6 +240,7 @@ export const EMPTY_LPO_LINE = {
 
 export const EMPTY_LPO_FORM = {
   supplier_id: "",
+  branch_id: "",
   reference_number: "",
   due_date: "",
   delivery_address: "",
@@ -252,6 +253,7 @@ export const EMPTY_LPO_FORM = {
 export function lpoHeaderToForm(lpo, lines = [], uomById) {
   return {
     supplier_id: String(lpo.supplier_id ?? ""),
+    branch_id: lpo.branch_id != null ? String(lpo.branch_id) : "",
     reference_number: lpo.reference_number ?? "",
     due_date: lpo.due_date ?? "",
     delivery_address: lpo.delivery_address ?? "",
@@ -325,6 +327,7 @@ export function computeLpoTotals(lines) {
 export function buildLpoFullBody(form, statusCode) {
   return {
     supplier_id: Number(form.supplier_id),
+    branch_id: form.branch_id ? Number(form.branch_id) : null,
     reference_number: form.reference_number.trim() || null,
     due_date: form.due_date || null,
     delivery_address: form.delivery_address.trim() || null,
