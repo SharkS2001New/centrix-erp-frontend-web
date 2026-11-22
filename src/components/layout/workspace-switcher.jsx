@@ -12,7 +12,7 @@ import {
   resolveAccessibleWorkspaces,
 } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
-import { getStoredWorkspace } from "@/lib/auth-storage";
+import { getStoredWorkspace, setStoredWorkspace } from "@/lib/auth-storage";
 import {
   pathBelongsToWorkspace,
   resolveActiveWorkspace,
@@ -126,6 +126,12 @@ export function WorkspaceSwitcher({
       );
       if (isTabWorkspaceEnabled(capabilities)) {
         seedWorkspaceTabLanding(organization?.id, id, resumePath);
+      }
+      if (id === "pos") {
+        setStoredWorkspace(id);
+        router.replace(resumePath);
+        router.refresh();
+        return;
       }
       await switchWorkspace(id);
       router.replace(resumePath);

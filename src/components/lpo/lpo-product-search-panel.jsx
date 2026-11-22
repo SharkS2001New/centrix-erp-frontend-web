@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
@@ -41,9 +42,10 @@ export function LpoProductSearchPanel({
   compactHalfPage = false,
 }) {
   const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const branchId =
     branchIdProp ??
-    (user?.branch_id && !isOrgWide() ? user.branch_id : user?.branch_id ?? null);
+    (globalBranchId || (!isOrgWide() ? user?.branch_id ?? null : null));
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);

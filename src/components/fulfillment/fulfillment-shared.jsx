@@ -7,6 +7,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 
 export const EMPTY_DRIVER_FORM = {
+  branch_id: "",
   full_name: "",
   phone: "",
   driver_code: "",
@@ -18,6 +19,7 @@ export const EMPTY_DRIVER_FORM = {
 };
 
 export const EMPTY_VEHICLE_FORM = {
+  branch_id: "",
   vehicle_code: "",
   vehicle_name: "",
   plate_number: "",
@@ -28,6 +30,7 @@ export const EMPTY_VEHICLE_FORM = {
 
 export function driverToForm(driver) {
   return {
+    branch_id: driver.branch_id != null ? String(driver.branch_id) : "",
     full_name: driver.full_name ?? "",
     phone: driver.phone ?? "",
     driver_code: driver.driver_code ?? "",
@@ -43,6 +46,7 @@ export function driverToForm(driver) {
 export function vehicleToForm(vehicle) {
   const maxKg = Number(vehicle.max_weight_kg);
   return {
+    branch_id: vehicle.branch_id != null ? String(vehicle.branch_id) : "",
     vehicle_code: vehicle.vehicle_code ?? "",
     vehicle_name: vehicle.vehicle_name ?? "",
     plate_number: vehicle.plate_number ?? "",

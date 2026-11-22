@@ -32,7 +32,7 @@ import { isHotelCatalogueContext, productImagesEnabled } from "@/lib/catalog-mod
 import { isImportableImageUrl } from "@/components/products/product-image-field";
 
 export function ProductsNewScreen() {
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, isOrgWide } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const showProductImages = productImagesEnabled(capabilities, workspaceId);
@@ -90,6 +90,16 @@ export function ProductsNewScreen() {
       unit_id: prev.unit_id || (defaultUnit ? String(defaultUnit) : ""),
     }));
   }, [uoms]);
+
+  useEffect(() => {
+    // Branch-limited users have no catalog-scope control; save into their branch.
+    if (isOrgWide() || !user?.branch_id) return;
+    setForm((prev) =>
+      prev.catalog_scope === "branch" && prev.branch_id
+        ? prev
+        : { ...prev, catalog_scope: "branch", branch_id: String(user.branch_id) },
+    );
+  }, [isOrgWide, user?.branch_id]);
 
   useEffect(() => {
     return () => {

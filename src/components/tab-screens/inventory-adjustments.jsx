@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import {
@@ -30,13 +31,16 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 
 export function InventoryAdjustmentsScreen() {
   const { user } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
   const initialRange = defaultDateRange(30);
 
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -64,7 +68,7 @@ export function InventoryAdjustmentsScreen() {
         page,
         perPage: pageSize,
         filters: {
-          branch_id: branchId,
+          ...(branchId ? { branch_id: branchId } : {}),
           transaction_type: "ADJUSTMENT",
           reference_type: "adjustment",
         },
@@ -92,7 +96,7 @@ export function InventoryAdjustmentsScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, pageSize]);
+  }, [fromDate, toDate, pageSize, branchFilter]);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 
@@ -123,7 +127,7 @@ export function InventoryAdjustmentsScreen() {
             totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
-              "filter[branch_id]": branchId,
+              ...(branchId ? { "filter[branch_id]": branchId } : {}),
               "filter[transaction_type]": "ADJUSTMENT",
               "filter[reference_type]": "adjustment",
               from_date: fromDate,
@@ -138,6 +142,9 @@ export function InventoryAdjustmentsScreen() {
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField value={branchFilter} onChange={setBranchFilter} branches={branches} />
+        ) : null}
         <Field label="From">
           <input
             type="date"

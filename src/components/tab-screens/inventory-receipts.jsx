@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { Field, PaginationBar, PrimaryLink, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -20,11 +20,13 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_RECEIPT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 
 export function InventoryReceiptsScreen() {
-  const { user } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
   const initialRange = defaultDateRange(7);
 
   const [rows, setRows] = useState([]);
@@ -47,7 +49,7 @@ export function InventoryReceiptsScreen() {
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
-        filters: { branch_id: branchId },
+        filters: branchId ? { branch_id: branchId } : {},
         extra: {
           ...(q
             ? { q }
@@ -71,7 +73,7 @@ export function InventoryReceiptsScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedFrom, appliedTo, pageSize, batchQuery]);
+  }, [appliedFrom, appliedTo, pageSize, batchQuery, branchFilter]);
 
   const grouped = useMemo(() => groupStockReceipts(rows), [rows]);
 
@@ -101,7 +103,7 @@ export function InventoryReceiptsScreen() {
             totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
-              "filter[branch_id]": branchId,
+              ...(branchId ? { "filter[branch_id]": branchId } : {}),
               ...(batchQuery.trim()
                 ? { q: batchQuery.trim() }
                 : { from_date: appliedFrom, to_date: appliedTo }),
@@ -115,6 +117,9 @@ export function InventoryReceiptsScreen() {
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField value={branchFilter} onChange={setBranchFilter} branches={branches} />
+        ) : null}
         <Field label="From">
           <input
             type="date"

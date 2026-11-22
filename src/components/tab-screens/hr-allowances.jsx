@@ -8,6 +8,7 @@ import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-
 export function HrAllowancesScreen() {
   return (
     <HrCrudPage
+      branchFilterable
       title="Allowances"
       subtitle="Monthly allowances per employee — summed into gross pay when payroll includes allowances"
       addButtonLabel="Add allowance"

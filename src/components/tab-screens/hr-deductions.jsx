@@ -373,6 +373,7 @@ export function HrDeductionsScreen() {
         <GovernmentDeductionsAside />
       ) : (
           <HrCrudPage
+            branchFilterable
             embedded
             title="Other deductions"
             subtitle={

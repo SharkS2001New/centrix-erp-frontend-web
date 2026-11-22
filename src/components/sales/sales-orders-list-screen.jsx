@@ -71,6 +71,8 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 /** Print stack is heavy (invoice/receipt HTML + QR) — load only when printing. */
 function loadSaleOrderPrint() {
@@ -345,6 +347,7 @@ export default function SalesOrdersListScreen({
   const searchParams = useSearchParams();
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission } = useAuth();
+  const { showBranchFilter } = useBranchScope();
   const { floatSessionId } = usePosSession();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
@@ -456,6 +459,7 @@ export default function SalesOrdersListScreen({
   const [sourceFilter, setSourceFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
   const [cashierFilter, setCashierFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [appliedFromDate, setAppliedFromDate] = useState("");
@@ -826,6 +830,9 @@ export default function SalesOrdersListScreen({
       if (cashierFilter && cashierFilter !== "all") {
         filters.cashier_id = cashierFilter;
       }
+      if (branchFilter) {
+        filters.branch_id = branchFilter;
+      }
 
       const extra = {
         exclude_status: "held",
@@ -925,6 +932,7 @@ export default function SalesOrdersListScreen({
       shopDebtorsBucket,
       routeFilter,
       cashierFilter,
+      branchFilter,
       ordersListSort,
       debouncedColumnFilters,
     ],
@@ -1894,7 +1902,7 @@ export default function SalesOrdersListScreen({
   useEffect(() => {
     setPage(1);
     clearSelection();
-  }, [debouncedSearch, statusFilter, sourceFilter, cashierFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
+  }, [debouncedSearch, statusFilter, sourceFilter, cashierFilter, branchFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
 
   useEffect(() => {
     clearSelection();
@@ -2025,76 +2033,101 @@ export default function SalesOrdersListScreen({
         )
       }
       toolbar={
-        <div className="mb-4">
-          <FilterToolbar className="mb-0">
-            {routeOrdersOnly && showRouteFilter ? (
-              <Field label="Route">
-                <FilterSelect
-                  value={routeFilter}
-                  onChange={(e) => handleRouteFilterChange(e.target.value)}
-                  options={routeFilterOptions}
+        <div className="mb-4 flex items-end gap-3">
+          <div className="min-w-0 flex-1">
+            <FilterToolbar className="mb-0">
+              {showBranchFilter ? (
+                <BranchFilterField
+                  value={branchFilter}
+                  onChange={setBranchFilter}
+                  branches={branches}
+                />
+              ) : null}
+              {routeOrdersOnly && showRouteFilter ? (
+                <Field label="Route">
+                  <FilterSelect
+                    value={routeFilter}
+                    onChange={(e) => handleRouteFilterChange(e.target.value)}
+                    options={routeFilterOptions}
+                  />
+                </Field>
+              ) : null}
+              <Field label="From">
+                <input
+                  type="date"
+                  className={FILTER_CONTROL_CLASS}
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value || isoDate())}
                 />
               </Field>
-            ) : null}
-          <Field label="From">
-            <input
-              type="date"
-              className={FILTER_CONTROL_CLASS}
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value || isoDate())}
-            />
-          </Field>
-          <Field label="To">
-            <input
-              type="date"
-              className={FILTER_CONTROL_CLASS}
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value || isoDate())}
-            />
-          </Field>
-          <button
-            type="button"
-            onClick={applyDateFilter}
-            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
-          >
-            Filter
-          </button>
-            {!routeOrdersOnly && showRouteFilter ? (
-            <Field label="Route">
-              <FilterSelect
-                value={routeFilter}
-                onChange={(e) => handleRouteFilterChange(e.target.value)}
-                options={routeFilterOptions}
-              />
-            </Field>
-          ) : null}
-          <Field label={queueConfig?.fixedPaymentStatusFilter ? "Payment" : "Status"}>
-              <FilterSelect
-              value={effectiveStatusFilter ?? "all"}
-              disabled={queueConfig?.lockStatusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-                options={statusOptions}
-              />
-          </Field>
-          {showSourceFilter ? (
-            <Field label="Source">
-                <FilterSelect
-                value={effectiveSourceFilter ?? "all"}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                  options={sourceOptions}
+              <Field label="To">
+                <input
+                  type="date"
+                  className={FILTER_CONTROL_CLASS}
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value || isoDate())}
                 />
-            </Field>
-          ) : null}
-            {showCashierFilter ? (
-              <Field label="User">
+              </Field>
+              <button
+                type="button"
+                onClick={applyDateFilter}
+                className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+              >
+                Filter
+              </button>
+              {!routeOrdersOnly && showRouteFilter ? (
+                <Field label="Route">
+                  <FilterSelect
+                    value={routeFilter}
+                    onChange={(e) => handleRouteFilterChange(e.target.value)}
+                    options={routeFilterOptions}
+                  />
+                </Field>
+              ) : null}
+              <Field label={queueConfig?.fixedPaymentStatusFilter ? "Payment" : "Status"}>
                 <FilterSelect
-                  value={cashierFilter}
-                  onChange={(e) => setCashierFilter(e.target.value)}
-                  options={sellerFilterOptions}
+                  value={effectiveStatusFilter ?? "all"}
+                  disabled={queueConfig?.lockStatusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  options={statusOptions}
                 />
-          </Field>
-            ) : null}
-        </FilterToolbar>
+              </Field>
+              {showSourceFilter ? (
+                <Field label="Source">
+                  <FilterSelect
+                    value={effectiveSourceFilter ?? "all"}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    options={sourceOptions}
+                  />
+                </Field>
+              ) : null}
+              {showCashierFilter ? (
+                <Field label="User">
+                  <FilterSelect
+                    value={cashierFilter}
+                    onChange={(e) => setCashierFilter(e.target.value)}
+                    options={sellerFilterOptions}
+                  />
+                </Field>
+              ) : null}
+            </FilterToolbar>
+          </div>
+          <OrdersColumnsMenu
+            open={columnsMenuOpen}
+            onOpen={() => setColumnsMenuOpen(true)}
+            onClose={() => setColumnsMenuOpen(false)}
+            visibleColumnIds={visibleColumnIds}
+            availableColumns={availableOrderColumns}
+            onToggleColumn={(columnId) => {
+              setVisibleColumnIds((prev) => {
+                const has = prev.includes(columnId);
+                const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
+                if (next.length === 0) return prev;
+                return normalizeOrdersListVisibleColumns(next);
+              });
+            }}
+            onReset={() => setVisibleColumnIds(defaultVisibleColumnIds)}
+          />
         </div>
       }
       banner={
@@ -2294,24 +2327,6 @@ export default function SalesOrdersListScreen({
                     ? "No orders on this page"
                     : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page`}
                 </p>
-                <div className="ml-auto">
-                  <OrdersColumnsMenu
-                    open={columnsMenuOpen}
-                    onOpen={() => setColumnsMenuOpen(true)}
-                    onClose={() => setColumnsMenuOpen(false)}
-                    visibleColumnIds={visibleColumnIds}
-                    availableColumns={availableOrderColumns}
-                    onToggleColumn={(columnId) => {
-                      setVisibleColumnIds((prev) => {
-                        const has = prev.includes(columnId);
-                        const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
-                        if (next.length === 0) return prev;
-                        return normalizeOrdersListVisibleColumns(next);
-                      });
-                    }}
-                    onReset={() => setVisibleColumnIds(defaultVisibleColumnIds)}
-                  />
-                </div>
               </div>
               <div className="overflow-x-auto">
                 {tableSortActive ? (

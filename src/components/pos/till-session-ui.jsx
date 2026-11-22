@@ -56,6 +56,8 @@ export function TillFormDrawer({
   onSaved,
   editing,
   branches,
+  globalBranchId = "",
+  showBranchFilter = false,
   existingTills = [],
   users = [],
   paybillAccounts = [],
@@ -83,7 +85,9 @@ export function TillFormDrawer({
             : "",
       });
     } else {
-      const branchId = branches[0] ? String(branches[0].id) : "";
+      const branchId = globalBranchId || (
+        showBranchFilter ? "" : branches[0] ? String(branches[0].id) : ""
+      );
       const branchTills = branchId
         ? existingTills.filter((t) => String(t.branch_id) === branchId)
         : existingTills;
@@ -95,7 +99,7 @@ export function TillFormDrawer({
         branch_id: branchId,
       });
     }
-  }, [open, editing, existingTills, branches]);
+  }, [open, editing, existingTills, branches, globalBranchId, showBranchFilter]);
 
   async function handleSubmit(e) {
     e.preventDefault();

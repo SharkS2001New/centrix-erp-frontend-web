@@ -31,6 +31,8 @@ export const SearchableSelect = forwardRef(function SearchableSelect(
     searchError = null,
     minSearchLength = 0,
     idleSearchLabel = "Type to search…",
+    filterLabel,
+    "aria-label": ariaLabel,
   },
   ref,
 ) {
@@ -63,6 +65,8 @@ export const SearchableSelect = forwardRef(function SearchableSelect(
       idleSearchLabel={idleSearchLabel}
       emptyLabel={emptyLabel}
       inputClassName={inputClassName}
+      filterLabel={filterLabel}
+      aria-label={ariaLabel}
     />
   );
 });

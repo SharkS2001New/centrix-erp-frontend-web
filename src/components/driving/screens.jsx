@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { tabDetailTitle, tabSectionTitle } from "@/hooks/use-tab-form-exit";
@@ -83,15 +84,18 @@ function isOrgWideUser(user) {
 
 function useDrivingBranches() {
   const { user } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const load = useLoad(
     () => fetchDrivingBranchesCached().then((rows) => ({ data: rows })),
     "driving-branches",
   );
   const branches = rowsOf(load.data).filter((branch) => branch.is_active !== false);
   const showBranchSelect = isOrgWideUser(user) && branches.length > 1;
-  const defaultBranchId = String(user?.branch_id ?? branches[0]?.id ?? "");
+  const defaultBranchId = globalBranchId || (
+    showBranchSelect ? "" : String(user?.branch_id ?? branches[0]?.id ?? "")
+  );
 
-  return { user, branches, showBranchSelect, defaultBranchId };
+  return { user, branches, showBranchSelect, defaultBranchId, globalBranchId };
 }
 
 function branchLabel(branch) {
@@ -126,6 +130,17 @@ const STUDENT_DOCUMENT_TYPES = [
 ];
 
 function BranchFilter({ value, onChange, branches, show }) {
+  const globalBranchId = useGlobalBranchId();
+  const previousGlobalBranchId = useRef(globalBranchId);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    if (previousGlobalBranchId.current === globalBranchId) return;
+    previousGlobalBranchId.current = globalBranchId;
+    onChangeRef.current(globalBranchId);
+  }, [globalBranchId]);
   if (!show) return null;
   return (
     <FilterSelect
@@ -137,7 +152,18 @@ function BranchFilter({ value, onChange, branches, show }) {
   );
 }
 
-function BranchField({ value, onChange, branches, show, allowAll = false }) {
+function BranchField({ value, onChange, branches, show, allowAll = false, syncGlobal = true }) {
+  const globalBranchId = useGlobalBranchId();
+  const previousGlobalBranchId = useRef(globalBranchId);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    if (previousGlobalBranchId.current === globalBranchId) return;
+    previousGlobalBranchId.current = globalBranchId;
+    if (syncGlobal) onChangeRef.current(globalBranchId);
+  }, [globalBranchId, syncGlobal]);
   if (!show) return null;
   return (
     <Field label="Branch">
@@ -654,6 +680,10 @@ function StudentFormScreen() {
 
   async function save(event) {
     event.preventDefault();
+    if (showBranchSelect && !form.branch_id) {
+      notifyError("Select a branch for this student.");
+      return;
+    }
     if (!form.course_id || !form.package_id) {
       notifyError("Choose the course and the package this student is joining.");
       return;
@@ -786,8 +816,8 @@ function StudentListScreen() {
       {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <Toolbar>
         <SearchField value={query} onChange={setQuery} placeholder="Search students" />
-        <FilterSelect value={courseFilter} placeholder="All courses" onChange={(event) => setCourseFilter(event.target.value)} options={[{ value: "", label: "All courses" }, ...courses.map((course) => ({ value: String(course.id), label: course.name }))]} />
         <BranchFilter value={branchFilter} onChange={setBranchFilter} branches={branches} show={showBranchSelect} />
+        <FilterSelect value={courseFilter} placeholder="All courses" onChange={(event) => setCourseFilter(event.target.value)} options={[{ value: "", label: "All courses" }, ...courses.map((course) => ({ value: String(course.id), label: course.name }))]} />
       </Toolbar>
       <Card>
         <DataTable
@@ -1793,6 +1823,10 @@ function CourseFormScreen() {
   const [form, setForm] = useState({ code: "", name: "", licence_category: "", price: "", practical_lessons: 10, theory_lessons: 8, branch_id: "" });
   async function save(event) {
     event.preventDefault();
+    if (showBranchSelect && !form.branch_id) {
+      notifyError("Select a branch for this course.");
+      return;
+    }
     try {
       await drivingSend("/courses", "POST", {
         ...form,
@@ -1811,7 +1845,7 @@ function CourseFormScreen() {
       <form onSubmit={save}>
         <p className="theme-subtext mb-4 text-sm">Saving also creates a Standard package from the price and lesson counts.</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <BranchField value={form.branch_id} onChange={(value) => setForm({ ...form, branch_id: value })} branches={branches} show={showBranchSelect} allowAll />
+          <BranchField value={form.branch_id} onChange={(value) => setForm({ ...form, branch_id: value })} branches={branches} show={showBranchSelect} />
           <Field label="Code"><input className={inputClass} required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
           <Field label="Name"><input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Licence category"><input className={inputClass} placeholder="Class B — light vehicle" value={form.licence_category} onChange={(e) => setForm({ ...form, licence_category: e.target.value })} /></Field>
@@ -3699,6 +3733,10 @@ function DirectoryFormScreen({ title, path, fields, backHref }) {
   }, [defaultBranchId, showBranchSelect, branchId]);
   async function save(event) {
     event.preventDefault();
+    if (showBranchSelect && !branchId) {
+      notifyError("Select a branch before saving.");
+      return;
+    }
     const body = { ...form };
     for (const field of fields) {
       if (field.type === "number" && body[field.name] !== "") body[field.name] = Number(body[field.name]);
@@ -4013,6 +4051,10 @@ function VehicleFormScreen() {
 
   async function save(event) {
     event.preventDefault();
+    if (showBranchSelect && !form.branch_id) {
+      notifyError("Select a branch for this vehicle.");
+      return;
+    }
     const body = { ...form };
     if (body.branch_id) body.branch_id = Number(body.branch_id);
     else delete body.branch_id;
@@ -10550,7 +10592,7 @@ function StaffFormDialog({ employee, branches, showBranchSelect, onClose, onSave
             <DrivingSelect value={form.employment_status} onChange={(e) => setForm({ ...form, employment_status: e.target.value })} options={EMPLOYMENT_STATUSES} />
           </Field>
           <Field label="Hire date"><input className={inputClass} type="date" value={form.hire_date} onChange={(e) => setForm({ ...form, hire_date: e.target.value })} /></Field>
-          <BranchField value={form.branch_id} onChange={(value) => setForm({ ...form, branch_id: value })} branches={branches} show={showBranchSelect} />
+          <BranchField value={form.branch_id} onChange={(value) => setForm({ ...form, branch_id: value })} branches={branches} show={showBranchSelect} syncGlobal={!editing} />
           <Field label="Base salary (KSh / month)"><input className={inputClass} type="number" min="0" step="0.01" value={form.base_salary} onChange={(e) => setForm({ ...form, base_salary: e.target.value })} /></Field>
           <Field label="Monthly allowance (KSh)"><input className={inputClass} type="number" min="0" step="0.01" value={form.monthly_allowance} onChange={(e) => setForm({ ...form, monthly_allowance: e.target.value })} /></Field>
           <div className="sm:col-span-2">
@@ -11568,6 +11610,7 @@ export function StaffScreen({ view } = {}) {
 
       <Toolbar>
         <SearchField value={query} onChange={setQuery} placeholder="Search staff" />
+        <BranchFilter value={branchFilter} onChange={setBranchFilter} branches={branches} show={showBranchSelect} />
         <input className={inputClass} style={{ maxWidth: 180 }} type="month" value={period} onChange={(e) => setPeriod(e.target.value || currentMonthValue())} aria-label="Salary month" />
         <div style={{ width: 160 }}>
           <DrivingSelect
@@ -11576,7 +11619,6 @@ export function StaffScreen({ view } = {}) {
             options={[{ value: "", label: "All statuses" }, ...EMPLOYMENT_STATUSES]}
           />
         </div>
-        <BranchFilter value={branchFilter} onChange={setBranchFilter} branches={branches} show={showBranchSelect} />
         {salaryView && canViewSalary ? (
           <label className="theme-subtext flex items-center gap-2 text-sm">
             <input type="checkbox" checked={outstandingOnly} onChange={(e) => setOutstandingOnly(e.target.checked)} />

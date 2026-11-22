@@ -9,6 +9,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
@@ -70,12 +71,13 @@ export function InventoryReceiptsReceiveScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("stock receipt"));
   const searchParams = useSearchParams();
   const { user, capabilities } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
   const batchTrackingEnabled = Boolean(
     capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
   );
 
   const [mode, setMode] = useState("lpo");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
@@ -92,6 +94,17 @@ export function InventoryReceiptsReceiveScreen() {
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [prefillDone, setPrefillDone] = useState(false);
+  const lpoBranchId = lpoData?.lpo?.branch_id;
+  const branchId =
+    mode === "lpo" && lpoBranchId != null
+      ? String(lpoBranchId)
+      : showBranchFilter
+        ? selectedBranchId
+        : effectiveBranchId;
+
+  useEffect(() => {
+    setSelectedBranchId(globalBranchId);
+  }, [globalBranchId]);
 
   const draftValue = useMemo(
     () => ({ mode, form, receiveCounts, lineUnitCosts, lineLotMeta, manualLines, selectedInvoiceId }),
@@ -318,6 +331,10 @@ export function InventoryReceiptsReceiveScreen() {
 
   async function submitLpo(e) {
     e.preventDefault();
+    if (!branchId) {
+      notifyError("Could not determine the branch for this purchase-order receipt.");
+      return;
+    }
     const lines = lpoData?.lines ?? [];
     const toPost = lines.filter((line) => {
       const uom = uomForLpoReceiveLine(line, uomById);
@@ -362,7 +379,7 @@ export function InventoryReceiptsReceiveScreen() {
           method: "POST",
           body: {
             product_code: line.product_code,
-            branch_id: branchId,
+            branch_id: Number(branchId),
             units_received: receiveBase,
             pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: form.stock_location,
@@ -385,6 +402,10 @@ export function InventoryReceiptsReceiveScreen() {
 
   async function submitManual(e) {
     e.preventDefault();
+    if (!branchId) {
+      notifyError("Select a branch before receiving stock.");
+      return;
+    }
     const toPost = manualLines.filter((line) => {
       const uom = uomForManualReceiveLine(line, uomById);
       return receiveBaseForLine(line.product_code, uom, receiveCounts) > 0;
@@ -405,7 +426,7 @@ export function InventoryReceiptsReceiveScreen() {
           method: "POST",
           body: {
             product_code: line.product_code,
-            branch_id: branchId,
+            branch_id: Number(branchId),
             units_received: receiveBase,
             pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: form.stock_location,
@@ -794,6 +815,28 @@ export function InventoryReceiptsReceiveScreen() {
           </form>
         ) : (
           <form onSubmit={submitManual} className="space-y-5">
+            {showBranchFilter ? (
+              <Field label="Branch">
+                <SearchableSelect
+                  className={inputClassName()}
+                  value={selectedBranchId}
+                  onChange={(value) => {
+                    setSelectedBranchId(value);
+                    setManualLines([]);
+                    setReceiveCounts({});
+                  }}
+                  required
+                  placeholder="Select branch"
+                  options={[
+                    { value: "", label: "Select branch" },
+                    ...branches.map((branch) => ({
+                      value: String(branch.id),
+                      label: branch.branch_name ?? `Branch #${branch.id}`,
+                    })),
+                  ]}
+                />
+              </Field>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Stock location">
                 <SearchableSelect
@@ -820,6 +863,7 @@ export function InventoryReceiptsReceiveScreen() {
               lines={manualLines}
               onChange={setManualLines}
               uomById={uomById}
+              branchId={branchId ? Number(branchId) : null}
               onAddProduct={addManualProduct}
               onAddProducts={addManualProducts}
               tableHeaders={[

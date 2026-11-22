@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { filterByOrganization } from "@/lib/admin";
 import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
@@ -774,6 +776,8 @@ export function EndOfDayReportScreen({
   showHospitalityMetrics = false,
 }) {
   const { user, capabilities, organization } = useAuth();
+  const { showBranchFilter, isOrgWide, globalBranchId } = useBranchScope();
+  const { isActive } = useTabPaneActive();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
   const showTillPanels = !hideTillPanels && requireTillFloat;
@@ -782,6 +786,8 @@ export function EndOfDayReportScreen({
   const [branches, setBranches] = useState([]);
   const [cashierOptions, setCashierOptions] = useState([]);
   const [branchId, setBranchId] = useState("");
+  const branchFilterManuallyChanged = useRef(false);
+  const previousGlobalBranchId = useRef(globalBranchId);
   const [cashierId, setCashierId] = useState("");
   const [floatSessionId, setFloatSessionId] = useState("");
   // Debounce filter tweaks so rapid branch/cashier/session changes don't stampede EOD.
@@ -807,14 +813,36 @@ export function EndOfDayReportScreen({
       .then((branchesData) => {
         const list = filterByOrganization(branchesData ?? [], organizationId);
         setBranches(list);
-        if (!branchId && user?.branch_id) {
+        if (!isOrgWide && user?.branch_id) {
           setBranchId(String(user.branch_id));
-        } else if (!branchId && list[0]) {
+        } else if (list.length === 1) {
           setBranchId(String(list[0].id));
         }
       })
       .catch(() => setBranches([]));
-  }, [organizationId, user?.branch_id, branchId]);
+  }, [isOrgWide, organizationId, user?.branch_id]);
+
+  useEffect(() => {
+    if (!isActive || !isOrgWide) return;
+    const globalBranchChanged = previousGlobalBranchId.current !== globalBranchId;
+    previousGlobalBranchId.current = globalBranchId;
+    if (globalBranchChanged) branchFilterManuallyChanged.current = false;
+    if (branchFilterManuallyChanged.current) return;
+    const hasMultipleBranches = showBranchFilter || branches.length > 1;
+    if (!globalBranchId && !globalBranchChanged && !hasMultipleBranches) return;
+    if (branchId !== globalBranchId) {
+      setBranchId(globalBranchId);
+      setCashierId("");
+      setFloatSessionId("");
+    }
+  }, [
+    branchId,
+    branches.length,
+    globalBranchId,
+    isActive,
+    isOrgWide,
+    showBranchFilter,
+  ]);
 
   // Same sales-capable user set as Sales Data → User filter: create-order,
   // POS, hotel POS, and mobile sales (server checks each user's permissions).
@@ -1173,11 +1201,13 @@ export function EndOfDayReportScreen({
       </div>
 
       <FilterToolbar className="mb-6 flex-wrap overflow-visible">
+          {showBranchFilter ? (
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
             <FilterSelect
               value={branchId}
               onChange={(e) => {
+                branchFilterManuallyChanged.current = true;
                 setBranchId(e.target.value);
                 setCashierId("");
                 setFloatSessionId("");
@@ -1188,6 +1218,7 @@ export function EndOfDayReportScreen({
               ]}
             />
           </div>
+          ) : null}
           <div>
           <label className="theme-subtext mb-1 block text-xs font-medium">Cashier / user</label>
             <FilterSelect

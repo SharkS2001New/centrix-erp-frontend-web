@@ -31,6 +31,7 @@ export function LpoFormFields({
   onChange,
   suppliers = [],
   branches = [],
+  canSelectBranch = false,
   uomById,
   vatById,
   branchAddress = "",
@@ -106,7 +107,7 @@ export function LpoFormFields({
         {tab === "header" ? (
           <>
             <div className="grid gap-4 md:grid-cols-2">
-              {branches.length > 1 ? (
+              {canSelectBranch && branches.length > 1 ? (
                 <Field label="Branch">
                   <SearchableSelect
                     value={form.branch_id}

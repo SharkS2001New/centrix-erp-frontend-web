@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
@@ -18,6 +19,7 @@ function normalizeDeviceIdentifier(identifier, platform) {
 
 export function AttendanceMobileDevicesPanel({ embedded = false }) {
   const { organizationApiPath } = useSettingsApi();
+  const { user, isOrgWide } = useAuth();
   const confirm = useConfirm();
   const [devices, setDevices] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -33,6 +35,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const multiBranch = branches.length > 1;
+  const canChooseBranch = multiBranch && isOrgWide();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,7 +52,9 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
       const branchList = branchRes.data ?? premisesRes.branches ?? [];
       setBranches(branchList);
       setForm((prev) => {
-        const branchId = prev.branch_id || (branchList[0]?.branch_id ?? branchList[0]?.id ?? "");
+        const branchId = isOrgWide()
+          ? prev.branch_id || (branchList[0]?.branch_id ?? branchList[0]?.id ?? "")
+          : user?.branch_id ?? prev.branch_id ?? branchList[0]?.branch_id ?? branchList[0]?.id ?? "";
         return { ...prev, branch_id: branchId ? String(branchId) : "" };
       });
     } catch (e) {
@@ -57,7 +62,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     } finally {
       setLoading(false);
     }
-  }, [organizationApiPath]);
+  }, [isOrgWide, organizationApiPath, user?.branch_id]);
 
   useEffect(() => {
     load();
@@ -173,7 +178,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
             placeholder="android:… (paste full ID from phone)"
           />
         </Field>
-        {multiBranch || branches.length > 0 ? (
+        {canChooseBranch ? (
           <Field label="Branch">
             <SearchableSelect
               className={inputClassName()}
@@ -185,11 +190,11 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
               })}
             />
           </Field>
-        ) : (
+        ) : branches.length === 0 ? (
           <Field label="Branch">
             <p className="text-sm text-amber-700">Add an active branch before registering a phone.</p>
           </Field>
-        )}
+        ) : null}
         <Field label="Label">
           <input
             className={inputClassName()}

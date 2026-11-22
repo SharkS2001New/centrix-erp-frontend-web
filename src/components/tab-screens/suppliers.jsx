@@ -50,6 +50,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 function PlusIcon() {
   return (
@@ -65,6 +67,7 @@ export function SuppliersScreen() {
   const router = useRouter();
   const confirm = useConfirm();
   const { user } = useAuth();
+  const { branches: scopeBranches, showBranchFilter } = useBranchScope();
 
   const [dashboard, setDashboard] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -76,6 +79,7 @@ export function SuppliersScreen() {
   const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
@@ -120,7 +124,10 @@ export function SuppliersScreen() {
         void apiRequest("/suppliers/recalculate-balances", { method: "POST" }).catch(() => {});
       }
       const [dashRes, usersData] = await Promise.all([
-        apiRequest("/suppliers/dashboard").catch(() => null),
+        apiRequest("/suppliers/dashboard", {
+          searchParams: branchFilter ? { "filter[branch_id]": branchFilter } : undefined,
+          loading: false,
+        }).catch(() => null),
         fetchUsersCached(user?.organization_id).catch(() => []),
       ]);
       if (dashRes) setDashboard(dashRes);
@@ -130,7 +137,7 @@ export function SuppliersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [user?.organization_id, branchFilter]);
 
   const loadSuppliers = useCallback(async () => {
     setListLoading(true);
@@ -138,6 +145,7 @@ export function SuppliersScreen() {
       const extra = {};
       if (statusFilter === "active") extra.is_active = 1;
       if (statusFilter === "inactive") extra.is_active = 0;
+      if (branchFilter) extra["filter[branch_id]"] = branchFilter;
 
       const searchParams = buildPageParams({
         page,
@@ -155,7 +163,7 @@ export function SuppliersScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter]);
+  }, [page, pageSize, debouncedSearch, statusFilter, branchFilter]);
 
   // List first — do not wait for dashboard/refs.
   useTabAwareDataLoad(loadSuppliers, { softEvictMs: 20_000 });
@@ -169,13 +177,14 @@ export function SuppliersScreen() {
     const extra = {};
     if (statusFilter === "active") extra.is_active = 1;
     if (statusFilter === "inactive") extra.is_active = 0;
+    if (branchFilter) extra["filter[branch_id]"] = branchFilter;
     return buildPageParams({
       page: 1,
       perPage: 200,
       q: debouncedSearch,
       extra,
     });
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, branchFilter]);
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -195,7 +204,7 @@ export function SuppliersScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, branchFilter, pageSize]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -354,6 +363,13 @@ export function SuppliersScreen() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search supplier…"
           />
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={scopeBranches}
+            />
+          ) : null}
           <FilterSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -68,6 +69,7 @@ export function StructuredReportScreen({ definition }) {
 
 function StandardReportScreen({ definition }) {
   const { user, isOrgWide, capabilities } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const { paneHref } = useTabPaneActive();
   const capabilitiesRef = useRef(capabilities);
   useEffect(() => {
@@ -85,8 +87,10 @@ function StandardReportScreen({ definition }) {
     return getReportsDefaultDateRange(capabilities?.module_settings);
   }, [definition.emptyDateRange, definition.key, capabilities?.module_settings]);
   const defaultRange = useMemo(() => resolveDefaultRange(), [resolveDefaultRange]);
-  const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
-  const branchInitialized = useRef(false);
+  const defaultBranch = useMemo(
+    () => defaultReportBranchId(user, isOrgWide, globalBranchId),
+    [globalBranchId, user, isOrgWide],
+  );
 
   const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
   const initialPageSize = resolveListPageSize(
@@ -166,15 +170,12 @@ function StandardReportScreen({ definition }) {
   }, []);
 
   useEffect(() => {
-    if (!user || branchInitialized.current) return;
-    branchInitialized.current = true;
-    if (cacheMatchesDefinition && (cachedBundle?.applied?.branchId != null || cachedBundle?.branchId != null)) {
-      return;
-    }
-    const nextBranchId = defaultReportBranchId(user, isOrgWide);
-    setBranchId((prev) => (prev === nextBranchId ? prev : nextBranchId));
-    setApplied((prev) => (prev.branchId === nextBranchId ? prev : { ...prev, branchId: nextBranchId }));
-  }, [user, isOrgWide, cacheMatchesDefinition, cachedBundle]);
+    if (!user) return;
+    setBranchId((prev) => (prev === defaultBranch ? prev : defaultBranch));
+    setApplied((prev) =>
+      prev.branchId === defaultBranch ? prev : { ...prev, branchId: defaultBranch },
+    );
+  }, [defaultBranch, user]);
 
   const appliedKey = useMemo(
     () =>

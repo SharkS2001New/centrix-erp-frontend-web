@@ -1,12 +1,13 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -35,6 +36,7 @@ function lineFromProduct(product) {
 export function InventoryDamagesNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("damage"));
   const { user, capabilities, hasPermission, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
 
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState("");
@@ -57,13 +59,14 @@ export function InventoryDamagesNewScreen() {
         if (cancelled) return;
         const list = rows ?? [];
         setBranches(list);
-        if (user?.branch_id) {
-          setBranchId(String(user.branch_id));
-        } else if (list.length === 1) {
-          setBranchId(String(list[0].id));
-        } else if (list[0]?.id) {
-          setBranchId(String(list[0].id));
-        }
+        setBranchId(
+          globalBranchId ||
+            (!isOrgWide() && user?.branch_id != null
+              ? String(user.branch_id)
+              : list.length === 1
+                ? String(list[0].id)
+                : ""),
+        );
       })
       .catch(() => {
         if (!cancelled) setBranches([]);
@@ -71,7 +74,7 @@ export function InventoryDamagesNewScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user?.organization_id, user?.branch_id]);
+  }, [globalBranchId, isOrgWide, user?.organization_id, user?.branch_id]);
 
   const { uomById } = useInventoryCatalogMaps(uoms);
   const canPickBranch = typeof isOrgWide === "function" ? isOrgWide() : !user?.branch_id;
@@ -153,7 +156,7 @@ export function InventoryDamagesNewScreen() {
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Branch">
+          {canPickBranch && branches.length > 1 ? <Field label="Branch">
             <SearchableSelect
               className={inputClassName()}
               value={branchId}
@@ -172,7 +175,7 @@ export function InventoryDamagesNewScreen() {
                 })),
               ]}
             />
-          </Field>
+          </Field> : null}
           <Field label="Reason">
             <input
               className={inputClassName()}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -21,6 +21,8 @@ export function PosWorkspaceGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, organization, capabilities, loading, isSuperAdmin, loginChannel, switchWorkspace } = useAuth();
+  const [channelRestoreError, setChannelRestoreError] = useState(null);
+  const [channelRetryToken, setChannelRetryToken] = useState(0);
 
   const ctx = useMemo(
     () =>
@@ -117,12 +119,20 @@ export function PosWorkspaceGuard({ children }) {
     if (!isPosWorkspace(workspaceId)) return;
     // Prefer stored channel — React state can lag right after WorkspaceSwitcher.
     if (loginChannel === POS_LOGIN_CHANNEL || getStoredLoginChannel() === POS_LOGIN_CHANNEL) {
+      setChannelRestoreError(null);
       return;
     }
-    switchWorkspace("pos").catch((err) => {
-      console.error("Failed to switch to POS session", err);
-    });
+    switchWorkspace("pos").then(
+      () => setChannelRestoreError(null),
+      (err) => {
+        console.error("Failed to switch to POS session", err);
+        setChannelRestoreError(
+          err instanceof Error ? err.message : "Could not restore the POS session.",
+        );
+      },
+    );
   }, [
+    channelRetryToken,
     capabilities,
     loading,
     loginChannel,
@@ -145,6 +155,32 @@ export function PosWorkspaceGuard({ children }) {
   if (platformUser) return <>{children}</>;
 
   if (accessState !== "allow") return null;
+
+  if (loginChannel !== POS_LOGIN_CHANNEL && getStoredLoginChannel() !== POS_LOGIN_CHANNEL) {
+    if (channelRestoreError) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 bg-slate-100 px-6 text-center text-slate-600">
+          <p>{channelRestoreError}</p>
+          <button
+            type="button"
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+            onClick={() => {
+              setChannelRestoreError(null);
+              setChannelRetryToken((token) => token + 1);
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100 text-slate-600">
+        Loading…
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

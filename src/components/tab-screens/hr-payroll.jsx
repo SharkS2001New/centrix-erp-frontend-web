@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { P } from "@/lib/permission-codes";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
@@ -57,6 +59,7 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, hasPermission } = useAuth();
+  const { branches: scopeBranches, showBranchFilter } = useBranchScope();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const admin = isAdminUser(user);
   const canDeletePayrollRuns =
@@ -66,6 +69,7 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
   );
 
   const [tab, setTab] = useState("runs");
+  const [branchFilter, setBranchFilter] = useState("");
   const [runs, setRuns] = useState([]);
   const [periods, setPeriods] = useState([]);
   const [payrollEligibleCount, setPayrollEligibleCount] = useState(0);
@@ -102,7 +106,12 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
   const loadRuns = useCallback(async () => {
     setListLoading(true);
     try {
-      const runsRes = await apiRequest("/payroll-runs", { searchParams: { per_page: 200 } });
+      const runsRes = await apiRequest("/payroll-runs", {
+        searchParams: {
+          per_page: 200,
+          ...(branchFilter ? { "filter[branch_id]": branchFilter } : {}),
+        },
+      });
       setRuns(runsRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payroll");
@@ -110,7 +119,7 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
       setListLoading(false);
       setLoading(false);
     }
-  }, []);
+  }, [branchFilter]);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -506,7 +515,10 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
               apiPath="/payroll-runs"
               columns={PAYROLL_RUN_EXPORT_COLUMNS}
               totalCount={runs.length}
-              getSearchParams={() => ({ per_page: 200 })}
+              getSearchParams={() => ({
+                per_page: 200,
+                ...(branchFilter ? { "filter[branch_id]": branchFilter } : {}),
+              })}
               disabled={loading}
             />
           ) : (
@@ -570,6 +582,16 @@ export function HrPayrollScreen({ basePath = "/hr/payroll" }) {
           Pay periods
         </button>
       </div>
+
+      {tab === "runs" && showBranchFilter ? (
+        <div className="mb-4 max-w-xs">
+          <BranchFilterField
+            value={branchFilter}
+            onChange={setBranchFilter}
+            branches={scopeBranches}
+          />
+        </div>
+      ) : null}
 
       {tableLoading ? (
         <p className="text-sm text-slate-500">Loading payroll…</p>

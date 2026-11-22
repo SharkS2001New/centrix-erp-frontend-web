@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useAuth } from "@/contexts/auth-context";
@@ -47,6 +47,7 @@ export function CustomersNewScreen() {
   const [locationError, setLocationError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const previousDefaultBranch = useRef(defaultBranch);
 
   const isBaseline = useCallback(
     (value) => isEmptyCustomerDraft(value, routeCustomersOnly),
@@ -63,9 +64,14 @@ export function CustomersNewScreen() {
   });
 
   useEffect(() => {
-    if (!loading && defaultBranch) {
-      setForm((prev) => (prev.branch_id ? prev : { ...prev, branch_id: defaultBranch }));
-    }
+    if (loading) return;
+    const previousBranch = previousDefaultBranch.current;
+    setForm((prev) => (
+      previousBranch !== defaultBranch || !prev.branch_id || prev.branch_id === previousBranch
+        ? { ...prev, branch_id: defaultBranch }
+        : prev
+    ));
+    previousDefaultBranch.current = defaultBranch;
   }, [loading, defaultBranch]);
 
   useEffect(() => {

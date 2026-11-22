@@ -26,8 +26,8 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 export function InventoryReceiptsRefScreen() {
   const params = useParams();
   const ref = decodeURIComponent(params.ref);
-  const { user, organization, capabilities } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { user, organization, capabilities, isOrgWide } = useAuth();
+  const branchId = isOrgWide() ? null : user?.branch_id ?? null;
 
   const [rows, setRows] = useState([]);
   const [products, setProducts] = useState([]);
@@ -40,11 +40,13 @@ export function InventoryReceiptsRefScreen() {
       const isSingleId = ref.startsWith("RCPT-");
       const [receiptRes, uomRows] = await Promise.all([
         isSingleId
-          ? apiRequest(`/stock-receipts/${ref.replace("RCPT-", "")}`)
+          ? apiRequest(`/stock-receipts/${ref.replace("RCPT-", "")}`, {
+              searchParams: branchId != null ? { branch_id: branchId } : undefined,
+            })
           : apiRequest("/stock-receipts", {
               searchParams: {
                 per_page: 200,
-                "filter[branch_id]": branchId,
+                ...(branchId ? { "filter[branch_id]": branchId } : {}),
                 "filter[invoice_number]": ref,
               },
             }),

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   fetchBranchesCached,
   fetchSuppliersCached,
@@ -19,7 +20,8 @@ import { useFormDraft } from "@/hooks/use-form-draft";
 export function LpoNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("purchase order"));
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const presetSupplier = searchParams.get("supplier_id");
 
   const [form, setForm] = useState(() => ({
@@ -82,14 +84,13 @@ export function LpoNewScreen() {
         setVats(vatsData ?? []);
         const list = Array.isArray(branchList) ? branchList : [];
         setBranches(list);
-        const defaultBranchId =
-          user?.branch_id ?? (list.length === 1 ? list[0].id : list[0]?.id ?? "");
-        if (defaultBranchId) {
-          setForm((f) => (f.branch_id ? f : { ...f, branch_id: String(defaultBranchId) }));
-        }
+        const defaultBranchId = isOrgWide()
+          ? globalBranchId || (list.length === 1 ? list[0].id : "")
+          : user?.branch_id ?? (list.length === 1 ? list[0].id : "");
+        setForm((f) => ({ ...f, branch_id: defaultBranchId ? String(defaultBranchId) : "" }));
       })
       .catch(() => setFormError("Failed to load form data."));
-  }, [user?.branch_id, user?.organization_id]);
+  }, [globalBranchId, isOrgWide, user?.branch_id, user?.organization_id]);
 
   useEffect(() => {
     const selected = branches.find((b) => String(b.id) === String(form.branch_id));
@@ -140,6 +141,7 @@ export function LpoNewScreen() {
         onChange={setForm}
         suppliers={suppliers}
         branches={branches}
+        canSelectBranch={isOrgWide()}
         uomById={uomById}
         vatById={vatById}
         branchAddress={branchAddress}

@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { FILTER_CONTROL_CLASS } from "@/components/catalog/catalog-shared";
+import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   reportFilterPlaceholder,
   reportFilterUsesAsyncSearch,
@@ -169,6 +171,10 @@ export function ReportFilterSearchSelect({ filter, value, onChange, options, con
 }
 
 export function ReportBranchSearchSelect({ value, onChange, branches, controlClassName }) {
+  const globalBranchId = useGlobalBranchId();
+  const { isActive } = useTabPaneActive();
+  const manuallyChanged = useRef(false);
+  const previousGlobalBranchId = useRef(globalBranchId);
   const searchControlClass = reportFilterSearchControlClass(controlClassName);
   const options = useMemo(
     () => [
@@ -181,11 +187,24 @@ export function ReportBranchSearchSelect({ value, onChange, branches, controlCla
     [branches],
   );
 
+  useEffect(() => {
+    if (!isActive) return;
+    const globalBranchChanged = previousGlobalBranchId.current !== globalBranchId;
+    previousGlobalBranchId.current = globalBranchId;
+    if (globalBranchChanged) manuallyChanged.current = false;
+    if (manuallyChanged.current) return;
+    if (!globalBranchId && !globalBranchChanged) return;
+    if ((value ?? "") !== globalBranchId) onChange(globalBranchId);
+  }, [globalBranchId, isActive, onChange, value]);
+
   return (
     <ReportSearchFieldWrap>
       <HrSearchableSelect
         value={value ?? ""}
-        onChange={onChange}
+        onChange={(nextValue) => {
+          manuallyChanged.current = true;
+          onChange(nextValue);
+        }}
         options={options}
         placeholder="All branches"
         inputClassName={searchControlClass}

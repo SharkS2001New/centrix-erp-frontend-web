@@ -117,6 +117,7 @@ export function CreditNoteForm({
   const [invoiceQuery, setInvoiceQuery] = useState("");
   const [saleOptions, setSaleOptions] = useState([]);
   const [saleId, setSaleId] = useState("");
+  const [saleBranchId, setSaleBranchId] = useState("");
   const [walkIn, setWalkIn] = useState(true);
   const [walkInName, setWalkInName] = useState("");
   const [customerNum, setCustomerNum] = useState("");
@@ -229,6 +230,7 @@ export function CreditNoteForm({
       const res = await apiRequest(`/sales/${id}/return-lines`);
       const sale = res.sale ?? res;
       setSaleId(String(sale.id));
+      setSaleBranchId(sale.branch_id != null ? String(sale.branch_id) : "");
       await applyCustomerFromSale(sale, res.customer ?? sale.customer ?? null);
       setInvoiceQuery(displayQuery ?? formatReceiptNumber(sale));
       const balance = Number(sale.order_total ?? sale.balance ?? 0);
@@ -266,6 +268,13 @@ export function CreditNoteForm({
     const hasLines = Array.isArray(existingLines) && existingLines.some((line) => Number(line.amount) > 0);
 
     setSaleId(editing.sale_id ? String(editing.sale_id) : "");
+    setSaleBranchId(
+      editing.branch_id != null
+        ? String(editing.branch_id)
+        : editing.sale?.branch_id != null
+          ? String(editing.sale.branch_id)
+          : "",
+    );
     setCreditDate(
       String(editing.credit_date ?? editing.return_date ?? "").slice(0, 10) ||
         new Date().toISOString().slice(0, 10),
@@ -420,12 +429,13 @@ export function CreditNoteForm({
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setError("Your user profile has no branch assigned.");
-      return;
-    }
     if (!saleId) {
       setError("Load an invoice first.");
+      return;
+    }
+    const branchId = saleBranchId ?? user?.branch_id;
+    if (!branchId) {
+      setError("Could not determine the branch for this credit note.");
       return;
     }
     if (!isCreditReasonValid(reasonPreset, reasonOther)) {
@@ -478,7 +488,7 @@ export function CreditNoteForm({
       const body = {
         sale_id: Number(saleId),
         customer_num: walkIn ? null : Number(customerNum),
-        branch_id: user.branch_id,
+        branch_id: Number(branchId),
         credit_date: creditDate,
         return_date: creditDate,
         refund_method: refundMethod,

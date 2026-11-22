@@ -42,6 +42,8 @@ import { useConfirm } from "@/lib/use-confirm";
 import { customerExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 import { fetchRoutesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
@@ -303,6 +305,7 @@ export function CustomersListScreen() {
   const confirm = useConfirm();
   const { capabilities, user } = useAuth();
   const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
+  const { branches: scopeBranches, showBranchFilter } = useBranchScope();
   const columnStorageKey = COLUMN_STORAGE_KEY;
   const sortStorageKey = SORT_STORAGE_KEY;
 
@@ -316,6 +319,7 @@ export function CustomersListScreen() {
   const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deletedFilter, setDeletedFilter] = useState("active");
+  const [branchFilter, setBranchFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(sortStorageKey);
@@ -358,7 +362,10 @@ export function CustomersListScreen() {
       const [routes, usersData, statsRes] = await Promise.all([
         fetchRoutesCached(orgId),
         fetchUsersCached(orgId),
-        apiRequest("/customers/summary").catch(() => null),
+        apiRequest("/customers/summary", {
+          searchParams: branchFilter ? { "filter[branch_id]": branchFilter } : undefined,
+          loading: false,
+        }).catch(() => null),
       ]);
       setRoutes(routes ?? []);
       setUsers(usersData ?? []);
@@ -368,7 +375,7 @@ export function CustomersListScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [user?.organization_id, branchFilter]);
 
   const loadCustomers = useCallback(async () => {
     setListLoading(true);
@@ -385,7 +392,10 @@ export function CustomersListScreen() {
         q: debouncedSearch,
         sort,
         sortDir,
-        extra: { status },
+        extra: {
+          status,
+          ...(branchFilter ? { "filter[branch_id]": branchFilter } : {}),
+        },
       });
       const custRes = await apiRequest("/customers", { searchParams, loading: false });
       const parsed = parsePaginator(custRes);
@@ -397,7 +407,7 @@ export function CustomersListScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, deletedFilter, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, deletedFilter, sort, sortDir, branchFilter]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([loadReferenceData(), loadCustomers()]);
@@ -410,9 +420,12 @@ export function CustomersListScreen() {
       page: 1,
       perPage: 100,
       q: debouncedSearch,
-      extra: { status },
+      extra: {
+        status,
+        ...(branchFilter ? { "filter[branch_id]": branchFilter } : {}),
+      },
     });
-  }, [debouncedSearch, deletedFilter]);
+  }, [debouncedSearch, deletedFilter, branchFilter]);
 
   useTabAwareDataLoad(loadReferenceData);
   useTabAwareDataLoad(loadCustomers, {
@@ -457,7 +470,7 @@ export function CustomersListScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, deletedFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, deletedFilter, pageSize, sort, sortDir, branchFilter]);
 
   const activeSortLabel = useMemo(() => {
     if (!sort) return null;
@@ -616,6 +629,13 @@ export function CustomersListScreen() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search customer…"
           />
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={scopeBranches}
+            />
+          ) : null}
           <FilterSelect
             value={deletedFilter}
             onChange={(e) => setDeletedFilter(e.target.value)}

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import {
   fetchCategoriesCached,
   fetchSubCategoriesCached,
@@ -30,6 +31,7 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TAKE_SESSION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
@@ -50,7 +52,17 @@ export function InventoryStockTakeScreen() {
   const confirm = useConfirm();
   const router = useRouter();
   const { user, hasPermission } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("");
+  const [createBranchId, setCreateBranchId] = useState("");
+  const branchId = branchFilter || effectiveBranchId;
+  const selectedCreateBranchId = showBranchFilter
+    ? createBranchId || globalBranchId
+    : effectiveBranchId;
+
+  useEffect(() => {
+    setCreateBranchId(globalBranchId);
+  }, [globalBranchId]);
   const canCreateSession = hasPermission(P.inventory.stock_take.create);
 
   const [sessions, setSessions] = useState([]);
@@ -100,7 +112,10 @@ export function InventoryStockTakeScreen() {
     setLoading(true);
     try {
       const res = await apiRequest("/stock-take-sessions", {
-        searchParams: { per_page: 100, "filter[branch_id]": branchId },
+        searchParams: {
+          per_page: 100,
+          ...(branchId ? { "filter[branch_id]": branchId } : {}),
+        },
       });
       setSessions(res.data ?? []);
     } catch (e) {
@@ -117,13 +132,17 @@ export function InventoryStockTakeScreen() {
 
   async function startSession() {
     if (!form.session_code.trim()) return;
+    if (!selectedCreateBranchId) {
+      notifyError("Select a branch before starting a stock take.");
+      return;
+    }
 
     setCreating(true);
     try {
       const session = await apiRequest("/stock-take-sessions", {
         method: "POST",
         body: {
-          branch_id: branchId,
+          branch_id: Number(selectedCreateBranchId),
           session_code: form.session_code.trim(),
           stock_location: form.stock_location,
           filter_category_id: optionalFilterId(form.filter_category_id),
@@ -170,7 +189,10 @@ export function InventoryStockTakeScreen() {
     try {
       await apiRequest(`/stock-take-sessions/${editingSession.id}`, {
         method: "PUT",
-        body: { session_code: form.session_code.trim() },
+        body: {
+          branch_id: Number(editingSession.branch_id),
+          session_code: form.session_code.trim(),
+        },
       });
       setEditOpen(false);
       setEditingSession(null);
@@ -195,7 +217,10 @@ export function InventoryStockTakeScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/stock-take-sessions/${session.id}`, { method: "DELETE" });
+      await apiRequest(`/stock-take-sessions/${session.id}`, {
+        method: "DELETE",
+        searchParams: { branch_id: session.branch_id },
+      });
       await load();
       notifySuccess(`"${session.session_code}" deleted`);
     } catch (err) {
@@ -223,12 +248,18 @@ export function InventoryStockTakeScreen() {
             apiPath="/stock-take-sessions"
             columns={STOCK_TAKE_SESSION_EXPORT_COLUMNS}
             totalCount={sessions.length}
-            getSearchParams={() => ({ per_page: 200 })}
+            getSearchParams={() => ({
+              per_page: 200,
+              ...(branchId ? { "filter[branch_id]": branchId } : {}),
+            })}
             disabled={loading}
           />
           <PrimaryButton
             type="button"
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              setCreateBranchId("");
+              setModalOpen(true);
+            }}
             disabled={!canCreateSession}
             title={canCreateSession ? undefined : "You do not have permission to start a stock take."}
           >
@@ -237,6 +268,15 @@ export function InventoryStockTakeScreen() {
         </div>
       }
     >
+      {showBranchFilter ? (
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <BranchFilterField
+            value={branchFilter}
+            onChange={setBranchFilter}
+            branches={branches}
+          />
+        </div>
+      ) : null}
       <InventoryTableShell>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading sessions…</p>
@@ -248,6 +288,7 @@ export function InventoryStockTakeScreen() {
               <thead>
                 <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                   <th className="px-4 py-3 font-medium">Session</th>
+                  {showBranchFilter ? <th className="px-4 py-3 font-medium">Branch</th> : null}
                   <th className="px-4 py-3 font-medium">Location</th>
                   <th className="px-4 py-3 font-medium">Product scope</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -265,6 +306,11 @@ export function InventoryStockTakeScreen() {
                         {session.session_code}
                       </Link>
                     </td>
+                    {showBranchFilter ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {session.branch?.branch_name ?? session.branch_name ?? "—"}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 capitalize text-slate-600">
                       {session.stock_location?.replace("_", " ")}
                     </td>
@@ -324,6 +370,26 @@ export function InventoryStockTakeScreen() {
         saving={creating}
         submitLabel="Start"
       >
+        {showBranchFilter ? (
+          <Field label="Branch">
+            <SearchableSelect
+              className={inputClassName()}
+              value={createBranchId}
+              onChange={(value) => {
+                setCreateBranchId(value);
+              }}
+              required
+              placeholder="Select branch"
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? `Branch #${branch.id}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Session name">
           <input
             className={inputClassName()}

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { shouldShowMobileFleetNav } from "@/lib/sales-settings";
@@ -19,6 +20,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   SearchInput,
   StatCard,
@@ -26,6 +28,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { VEHICLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { useConfirm } from "@/lib/use-confirm";
 import {
@@ -50,7 +53,13 @@ import {
 
 export function FulfillmentVehiclesScreen() {
   const confirm = useConfirm();
-  const { user, capabilities } = useAuth();
+  const { capabilities } = useAuth();
+  const { branches, showBranchFilter, lockedBranchId, globalBranchId } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
+  const defaultCreateBranchId = globalBranchId || (
+    showBranchFilter ? "" : lockedBranchId || (branches.length === 1 ? String(branches[0].id) : "")
+  );
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
   const fleetEnabled = distributionEnabled || shouldShowMobileFleetNav(capabilities);
 
@@ -70,6 +79,10 @@ export function FulfillmentVehiclesScreen() {
   const [form, setForm] = useState(EMPTY_VEHICLE_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  useEffect(() => {
+    if (!drawerOpen || drawerMode !== "create") return;
+    setForm((current) => ({ ...current, branch_id: defaultCreateBranchId }));
+  }, [defaultCreateBranchId, drawerMode, drawerOpen]);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const {
     selectedIds,
@@ -100,7 +113,7 @@ export function FulfillmentVehiclesScreen() {
         page,
         perPage: pageSize,
         q: debouncedSearch,
-        filters,
+        filters: { ...filters, ...(branchId ? { branch_id: branchId } : {}) },
       });
       const vehicleRes = await apiRequest("/vehicles", { searchParams: searchParamsApi });
       const parsed = parsePaginator(vehicleRes);
@@ -113,13 +126,13 @@ export function FulfillmentVehiclesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter]);
+  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter, branchId]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, branchFilter]);
 
   const pageRowIds = useMemo(() => vehicles.map((v) => v.id), [vehicles]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
@@ -152,7 +165,10 @@ export function FulfillmentVehiclesScreen() {
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    setForm({ ...EMPTY_VEHICLE_FORM });
+    setForm({
+      ...EMPTY_VEHICLE_FORM,
+      branch_id: defaultCreateBranchId,
+    });
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -186,14 +202,17 @@ export function FulfillmentVehiclesScreen() {
 
   async function saveVehicle(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setFormError("Your user profile is missing a branch.");
+    const selectedBranchId =
+      (showBranchFilter ? form.branch_id : lockedBranchId || form.branch_id) ||
+      (branches.length === 1 ? String(branches[0].id) : "");
+    if (!selectedBranchId) {
+      setFormError("Select a branch for this vehicle.");
       return;
     }
     setSaving(true);
     setFormError(null);
     try {
-      const body = buildVehicleBody(form, user.branch_id);
+      const body = buildVehicleBody(form, Number(selectedBranchId));
       if (drawerMode === "edit" && editingId != null) {
         await apiRequest(`/vehicles/${editingId}`, { method: "PUT", body });
       } else {
@@ -217,7 +236,10 @@ export function FulfillmentVehiclesScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/vehicles/${vehicle.id}`, { method: "DELETE" });
+      await apiRequest(`/vehicles/${vehicle.id}`, {
+        method: "DELETE",
+        searchParams: vehicle.branch_id != null ? { branch_id: vehicle.branch_id } : undefined,
+      });
       if (editingId === vehicle.id) closeDrawer();
       await loadData();
       notifySuccess(`"${vehicle.vehicle_name}" deleted`);
@@ -234,7 +256,11 @@ export function FulfillmentVehiclesScreen() {
         selectedIds,
         entityName: "vehicle",
         deleteItem: async (id) => {
-          await apiRequest(`/vehicles/${id}`, { method: "DELETE" });
+          const vehicle = vehicleById.get(String(id));
+          await apiRequest(`/vehicles/${id}`, {
+            method: "DELETE",
+            searchParams: vehicle?.branch_id != null ? { branch_id: vehicle.branch_id } : undefined,
+          });
         },
         clearSelection,
         reload: loadData,
@@ -255,9 +281,9 @@ export function FulfillmentVehiclesScreen() {
       page: 1,
       perPage: 200,
       q: debouncedSearch,
-      filters,
+      filters: { ...filters, ...(branchId ? { branch_id: branchId } : {}) },
     });
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, branchId]);
 
   if (!fleetEnabled) {
     return (
@@ -309,6 +335,13 @@ export function FulfillmentVehiclesScreen() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search vehicle…"
           />
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={branches}
+            />
+          ) : null}
           <FilterSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -366,6 +399,11 @@ export function FulfillmentVehiclesScreen() {
                     {vehicle.plate_number || vehicle.vehicle_code}
                   </p>
                   <p className="mt-0.5 text-sm text-slate-600">{vehicle.vehicle_name}</p>
+                  {showBranchFilter ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {vehicle.branch?.branch_name ?? vehicle.branch_name ?? "Branch not specified"}
+                    </p>
+                  ) : null}
                   {vehicle.max_weight_kg ? (
                     <p className="mt-1 text-xs text-slate-500">Capacity {formatTonnage(vehicle.max_weight_kg)}</p>
                   ) : null}
@@ -406,6 +444,20 @@ export function FulfillmentVehiclesScreen() {
         error={formError}
         submitLabel={drawerMode === "edit" ? "Save changes" : "Save vehicle"}
       >
+        {showBranchFilter ? (
+          <Field label="Branch" required>
+            <SearchableSelect
+              value={form.branch_id}
+              onChange={(value) => updateField("branch_id", value)}
+              className={inputClassName()}
+              placeholder="Select branch"
+              options={branches.map((branch) => ({
+                value: String(branch.id),
+                label: branch.branch_name ?? `Branch #${branch.id}`,
+              }))}
+            />
+          </Field>
+        ) : null}
         <Field label="Registration number">
           <input
             type="text"

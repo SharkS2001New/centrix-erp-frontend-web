@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -163,6 +164,7 @@ export function KraReceiptsReportScreen({ definition }) {
   const isInvoicesView = definition.variant === "kra-invoices";
   const confirm = useConfirm();
   const { user, isOrgWide, capabilities, organization, hasPermission } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const queryFilterOptions = useReportFilterOptions(definition.key);
@@ -172,7 +174,10 @@ export function KraReceiptsReportScreen({ definition }) {
     () => getReportsDefaultDateRange(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
-  const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
+  const defaultBranch = useMemo(
+    () => defaultReportBranchId(user, isOrgWide, globalBranchId),
+    [globalBranchId, user, isOrgWide],
+  );
   const canCreditKraSale =
     isInvoicesView &&
     (hasPermission?.(P.pricing_tax.kra_invoices.credit) ||
@@ -250,6 +255,15 @@ export function KraReceiptsReportScreen({ definition }) {
         },
   );
   const screenMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setBranchId((prev) => (prev === defaultBranch ? prev : defaultBranch));
+    setApplied((prev) =>
+      prev.branchId === defaultBranch ? prev : { ...prev, branchId: defaultBranch },
+    );
+    setPage(1);
+  }, [defaultBranch, user]);
 
   const {
     selectedIds,

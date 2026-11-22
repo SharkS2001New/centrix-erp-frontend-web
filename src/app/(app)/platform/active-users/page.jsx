@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
@@ -9,6 +9,7 @@ import { formatAppDateTime } from "@/lib/datetime";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { platformAdminHref } from "@/lib/platform-admin-nav";
+import { groupActiveSessionsByBranch } from "@/lib/platform-active-users";
 
 function formatTime(iso) {
   return formatAppDateTime(iso);
@@ -65,6 +66,13 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
   const [busyId, setBusyId] = useState(null);
   const org = group.organization;
   const sessions = group.sessions ?? [];
+  const { groups: branchGroups, hasMultipleBranches } = groupActiveSessionsByBranch(org, sessions);
+  const sessionRows = hasMultipleBranches
+    ? branchGroups.map((branchGroup) => ({
+        branchGroup,
+        sessions: branchGroup.sessions,
+      }))
+    : [{ sessions }];
 
   async function endSession(sessionId) {
     setBusyId(sessionId);
@@ -132,43 +140,55 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sessions.map((session) => (
-              <tr key={session.id} className="theme-table-body-row">
-                <td className="px-4 py-3 font-semibold text-slate-900">
-                  {session.username}
-                  <LicenceBadge access={session.licence_access} label={session.licence_label} compact />
-                </td>
-                <td className="px-4 py-3">
-                  <ApplicationBadge label={session.active_workspace_label} />
-                </td>
-                <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-600" title={session.computer_id}>
-                  {session.computer_id}
-                </td>
-                <td className="px-4 py-3 text-slate-700">{formatTime(session.last_active_at)}</td>
-                <td className="px-4 py-3 text-slate-700">{formatTime(session.session_started_at)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      title="Sign out this device"
-                      disabled={busyId !== null}
-                      onClick={() => void endSession(session.id)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <LogoutIcon />
-                    </button>
-                    <button
-                      type="button"
-                      title="Disable user login"
-                      disabled={busyId !== null}
-                      onClick={() => void disableUser(session.id)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <BlockIcon />
-                    </button>
-                  </div>
-                </td>
-              </tr>
+            {sessionRows.map(({ branchGroup, sessions: branchSessions }) => (
+              <Fragment key={branchGroup?.key ?? "organization-sessions"}>
+                {branchGroup ? (
+                  <tr className="bg-slate-100">
+                    <th colSpan={6} className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {branchGroup.name} · {branchSessions.length} active session
+                      {branchSessions.length === 1 ? "" : "s"}
+                    </th>
+                  </tr>
+                ) : null}
+                {branchSessions.map((session) => (
+                  <tr key={session.id} className="theme-table-body-row">
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      {session.username}
+                      <LicenceBadge access={session.licence_access} label={session.licence_label} compact />
+                    </td>
+                    <td className="px-4 py-3">
+                      <ApplicationBadge label={session.active_workspace_label} />
+                    </td>
+                    <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-600" title={session.computer_id}>
+                      {session.computer_id}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{formatTime(session.last_active_at)}</td>
+                    <td className="px-4 py-3 text-slate-700">{formatTime(session.session_started_at)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          title="Sign out this device"
+                          disabled={busyId !== null}
+                          onClick={() => void endSession(session.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <LogoutIcon />
+                        </button>
+                        <button
+                          type="button"
+                          title="Disable user login"
+                          disabled={busyId !== null}
+                          onClick={() => void disableUser(session.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <BlockIcon />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -249,7 +269,7 @@ export default function PlatformActiveUsersPage() {
   return (
     <CatalogPageShell
       title="Active users"
-      subtitle="Live sign-ins across all tenant organizations, grouped by organization."
+      subtitle="Live sign-ins grouped by organization and, for multi-branch organizations, by branch."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Active users" }]} />
 

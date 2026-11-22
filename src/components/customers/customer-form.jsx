@@ -10,6 +10,8 @@ import { CustomerLocationSection } from "@/components/customers/customer-locatio
 import { CustomerShopImageField } from "@/components/customers/customer-shop-image-field";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { customerLocationPayload } from "@/lib/customer-location";
+import { selectedGlobalBranchId } from "@/lib/global-branch";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 
 export const EMPTY_CUSTOMER_FORM = {
   branch_id: "",
@@ -31,13 +33,21 @@ export function isAdminUser(user) {
   return user?.is_admin === true || user?.is_admin === 1;
 }
 
-export function shouldShowBranchSelect(user, branches) {
-  return isAdminUser(user) || branches.length > 1;
+export function shouldShowBranchSelect(user, branches, orgWide = isAdminUser(user)) {
+  // Only org-wide users in a multi-branch organization choose a customer's branch.
+  return (orgWide || isAdminUser(user)) && branches.length > 1;
 }
 
-export function defaultBranchId(user, branches) {
-  if (user?.branch_id != null) return String(user.branch_id);
+export function defaultBranchId(
+  user,
+  branches,
+  orgWide = isAdminUser(user) || (user?.access_scope ?? "org") === "org",
+  globalBranchId = selectedGlobalBranchId(),
+) {
+  if (globalBranchId) return globalBranchId;
   if (branches.length === 1) return String(branches[0].id);
+  if (orgWide && branches.length > 1) return "";
+  if (user?.branch_id != null) return String(user.branch_id);
   return "";
 }
 
@@ -113,7 +123,8 @@ export function updateCustomerFormField(form, key, value, { routeCustomersOnly =
 }
 
 export function useCustomerFormResources() {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const [routes, setRoutes] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -138,11 +149,14 @@ export function useCustomerFormResources() {
   }, [load]);
 
   const showBranchSelect = useMemo(
-    () => shouldShowBranchSelect(user, branches),
-    [user, branches],
+    () => shouldShowBranchSelect(user, branches, isOrgWide()),
+    [user, branches, isOrgWide],
   );
 
-  const defaultBranch = useMemo(() => defaultBranchId(user, branches), [user, branches]);
+  const defaultBranch = useMemo(
+    () => defaultBranchId(user, branches, isOrgWide(), globalBranchId),
+    [branches, globalBranchId, isOrgWide, user],
+  );
 
   return { user, routes, branches, loading, showBranchSelect, defaultBranch };
 }
@@ -399,6 +413,6 @@ export function resolveFormBranchId(form, user, branches, showBranchSelect) {
   if (showBranchSelect) {
     return form.branch_id ? Number(form.branch_id) : null;
   }
-  const fallback = defaultBranchId(user, branches);
+  const fallback = defaultBranchId(user, branches, !showBranchSelect && (isAdminUser(user) || (user?.access_scope ?? "org") === "org"));
   return fallback ? Number(fallback) : user?.branch_id ?? null;
 }

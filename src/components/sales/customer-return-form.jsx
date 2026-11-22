@@ -58,6 +58,7 @@ export function CustomerReturnForm({
   const [invoiceQuery, setInvoiceQuery] = useState("");
   const [saleOptions, setSaleOptions] = useState([]);
   const [saleId, setSaleId] = useState("");
+  const [saleBranchId, setSaleBranchId] = useState("");
   const [customerNum, setCustomerNum] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [returnDate, setReturnDate] = useState(new Date().toISOString().slice(0, 10));
@@ -88,6 +89,13 @@ export function CustomerReturnForm({
   useEffect(() => {
     if (!editing) return;
     setSaleId(editing.sale_id ? String(editing.sale_id) : "");
+    setSaleBranchId(
+      editing.branch_id != null
+        ? String(editing.branch_id)
+        : editing.sale?.branch_id != null
+          ? String(editing.sale.branch_id)
+          : "",
+    );
     setCustomerNum(editing.customer_num ? String(editing.customer_num) : "");
     setCustomerName(editing.customer?.customer_name ?? "");
     setReturnDate(editing.return_date?.slice?.(0, 10) ?? editing.return_date ?? returnDate);
@@ -154,6 +162,7 @@ export function CustomerReturnForm({
       const res = await apiRequest(`/sales/${id}/return-lines`);
       const sale = res.sale ?? res;
       setSaleId(String(sale.id));
+      setSaleBranchId(sale.branch_id != null ? String(sale.branch_id) : "");
       setCustomerNum(sale.customer_num ? String(sale.customer_num) : "");
       setCustomerName(sale.customer_name_override ?? res.customer?.customer_name ?? "");
       setInvoiceQuery(displayQuery ?? formatReceiptNumber(sale));
@@ -338,8 +347,9 @@ export function CustomerReturnForm({
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setError("Your user profile has no branch assigned.");
+    const branchId = saleBranchId ?? user?.branch_id;
+    if (!branchId) {
+      setError("Could not determine the branch for this return.");
       return;
     }
     const payloadLines = lines.filter((l) => Number(l.return_qty) > 0);
@@ -359,7 +369,7 @@ export function CustomerReturnForm({
       const body = {
         sale_id: saleId ? Number(saleId) : null,
         customer_num: customerNum ? Number(customerNum) : null,
-        branch_id: user.branch_id,
+        branch_id: Number(branchId),
         return_date: returnDate,
         refund_method: refundMethod,
         reason: resolvedReason,

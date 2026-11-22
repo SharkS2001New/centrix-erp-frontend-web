@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
@@ -35,6 +36,7 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 import { fetchUomsCached, fetchUsersCached } from "@/lib/reference-data-cache";
 
@@ -85,8 +87,10 @@ function groupMovementsByProduct(rows) {
 export function InventoryTransactionsScreen() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
 
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
   const [rows, setRows] = useState([]);
   const [totalMovements, setTotalMovements] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -123,7 +127,7 @@ export function InventoryTransactionsScreen() {
     setListLoading(true);
     try {
       const extra = {
-        branch_id: branchId,
+        ...(branchId ? { branch_id: branchId } : {}),
         from_date: fromDate,
         to_date: toDate,
       };
@@ -155,7 +159,7 @@ export function InventoryTransactionsScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, typeFilter, fromDate, toDate]);
+  }, [debouncedSearch, typeFilter, fromDate, toDate, branchFilter]);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 
@@ -208,7 +212,7 @@ export function InventoryTransactionsScreen() {
             totalCount={totalMovements}
             getSearchParams={() => {
               const extra = {
-                branch_id: branchId,
+                ...(branchId ? { branch_id: branchId } : {}),
                 from_date: fromDate,
                 to_date: toDate,
               };
@@ -229,6 +233,9 @@ export function InventoryTransactionsScreen() {
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField value={branchFilter} onChange={setBranchFilter} branches={branches} />
+        ) : null}
         <Field label="From">
           <input
             type="date"

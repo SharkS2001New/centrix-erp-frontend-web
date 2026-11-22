@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
 import { getStoredOrganization } from "@/lib/auth-storage";
@@ -30,6 +30,7 @@ import {
   CustomerFormPageShell,
 } from "@/components/customers/customer-form";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import {
@@ -488,11 +489,26 @@ export const ProductFormFields = memo(function ProductFormFields({
   onImageUrlChange,
   onImageRemove,
 }) {
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
+  const previousGlobalBranchId = useRef(globalBranchId);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    if (previousGlobalBranchId.current === globalBranchId) return;
+    previousGlobalBranchId.current = globalBranchId;
+    if (mode === "create" && form.catalog_scope === "branch") {
+      onChangeRef.current("branch_id", globalBranchId);
+    }
+  }, [form.catalog_scope, globalBranchId, mode]);
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const multiBranch = isMultiBranchCatalog(capabilities);
+  // Branch-limited users never choose scope; their products belong to their branch.
+  const showCatalogScope = multiBranch && isOrgWide() && branches.length > 1;
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -856,7 +872,7 @@ export const ProductFormFields = memo(function ProductFormFields({
         />
       </Field>
 
-      {multiBranch ? (
+      {showCatalogScope ? (
         <div className="md:col-span-2 xl:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog scope</p>
           <p className="mt-1 text-xs text-slate-600">
@@ -884,7 +900,7 @@ export const ProductFormFields = memo(function ProductFormFields({
                   onChange("catalog_scope", "branch");
                   onChange(
                     "branch_id",
-                    form.branch_id || defaultProductBranchId(capabilities, user, branches),
+                    form.branch_id || defaultProductBranchId(capabilities, user, branches, globalBranchId),
                   );
                 }}
               />

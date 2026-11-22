@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePosSession } from "@/contexts/pos-session-context";
 import { filterByOrganization } from "@/lib/admin";
 import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
@@ -239,6 +240,7 @@ export function TillManagementScreen() {
     : "tills";
 
   const { user, capabilities } = useAuth();
+  const { showBranchFilter, globalBranchId } = useBranchScope();
   const { activeSession, clearSession } = usePosSession();
 
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
@@ -270,10 +272,18 @@ export function TillManagementScreen() {
   // Tills tab
   const [tillSearch, setTillSearch] = useState("");
   const [tillBranchFilter, setTillBranchFilter] = useState("");
+  const previousGlobalBranchId = useRef(globalBranchId);
   const [tillStatusFilter, setTillStatusFilter] = useState("");
   const [tillPage, setTillPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTill, setEditingTill] = useState(null);
+
+  useEffect(() => {
+    if (previousGlobalBranchId.current === globalBranchId) return;
+    previousGlobalBranchId.current = globalBranchId;
+    setTillBranchFilter(globalBranchId);
+    setTillPage(1);
+  }, [globalBranchId]);
 
   // History tab
   const [historyRows, setHistoryRows] = useState([]);
@@ -747,14 +757,16 @@ export function TillManagementScreen() {
                 placeholder="Search till code, name, or branch…"
                 className="min-w-0 w-full flex-1 max-w-xl"
               />
-              <FilterSelect
-                value={tillBranchFilter}
-                onChange={(e) => { setTillBranchFilter(e.target.value); setTillPage(1); }}
-                options={[
-                  { value: "", label: "All branches" },
-                  ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
-                ]}
-              />
+              {showBranchFilter ? (
+                <FilterSelect
+                  value={tillBranchFilter}
+                  onChange={(e) => { setTillBranchFilter(e.target.value); setTillPage(1); }}
+                  options={[
+                    { value: "", label: "All branches" },
+                    ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
+                  ]}
+                />
+              ) : null}
               <FilterSelect
                 value={tillStatusFilter}
                 onChange={(e) => { setTillStatusFilter(e.target.value); setTillPage(1); }}
@@ -1236,6 +1248,8 @@ export function TillManagementScreen() {
         onSaved={loadMeta}
         editing={editingTill}
         branches={branches}
+        globalBranchId={globalBranchId}
+        showBranchFilter={showBranchFilter}
         existingTills={tills}
         users={users}
         paybillAccounts={paybillAccounts}

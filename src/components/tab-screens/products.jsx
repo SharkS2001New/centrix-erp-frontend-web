@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAppRouter } from "@/lib/use-app-router";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch, useListQueryPage } from "@/lib/use-list-url-search";
@@ -278,7 +280,9 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const deletedMode = mode === "deleted";
   const router = useAppRouter();
   const confirm = useConfirm();
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
+  const { showBranchFilter } = useBranchScope();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const showProductImages = productImagesEnabled(capabilities, workspaceId);
@@ -326,7 +330,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const listStateReady = useRef(false);
   const [pendingRestoredQ, setPendingRestoredQ] = useState(null);
   const loadSeqRef = useRef(0);
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [pricingFilter, setPricingFilter] = useState("all");
@@ -357,21 +360,27 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const [columnsOpen, setColumnsOpen] = useState(false);
 
   const effectiveStockBranchId = useMemo(() => {
-    if (user?.branch_id) return Number(user.branch_id);
+    if (globalBranchId) return Number(globalBranchId);
+    if (!isOrgWide() && user?.branch_id) return Number(user.branch_id);
     const parsed = Number(stockBranchId);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [user?.branch_id, stockBranchId]);
+  }, [globalBranchId, isOrgWide, stockBranchId, user?.branch_id]);
 
   useEffect(() => {
-    if (user?.branch_id) {
+    if (globalBranchId) {
+      setStockBranchId(globalBranchId);
+      return;
+    }
+    if (multiBranch && isOrgWide()) {
+      setStockBranchId("");
+      return;
+    }
+    if (!isOrgWide() && user?.branch_id) {
       setStockBranchId(String(user.branch_id));
       return;
     }
-    if (!stockBranchId) {
-      const fallback = defaultProductBranchId(capabilities, user, branches);
-      if (fallback) setStockBranchId(fallback);
-    }
-  }, [user?.branch_id, capabilities, user, branches, stockBranchId]);
+    setStockBranchId(defaultProductBranchId(capabilities, user, branches, globalBranchId));
+  }, [globalBranchId, isOrgWide, multiBranch, user?.branch_id, capabilities, user, branches]);
 
   useEffect(() => {
     if (listStateRestored.current) return;
@@ -399,15 +408,16 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       setPendingRestoredQ(null);
     }
 
-    if (saved.categoryFilter) setCategoryFilter(saved.categoryFilter);
     if (saved.subCategoryFilter) setSubCategoryFilter(saved.subCategoryFilter);
     if (saved.stockFilter) setStockFilter(saved.stockFilter);
     if (saved.pricingFilter) setPricingFilter(saved.pricingFilter);
-    if (saved.stockBranchId && !user?.branch_id) setStockBranchId(saved.stockBranchId);
+    if (saved.stockBranchId && !globalBranchId && !isOrgWide() && !user?.branch_id) {
+      setStockBranchId(saved.stockBranchId);
+    }
     if (saved.pageSize) setPageSize(saved.pageSize);
     if (saved.page && saved.page > 1) setPage(saved.page);
     listStateReady.current = true;
-  }, [deletedMode, router, searchParams, setPageSize, user?.branch_id]);
+  }, [deletedMode, globalBranchId, isOrgWide, router, searchParams, setPageSize, user?.branch_id]);
 
   useEffect(() => {
     setActiveFilter(deletedMode ? "inactive" : "active");
@@ -417,7 +427,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     if (!listStateReady.current || deletedMode) return;
     writeProductsListState({
       q: debouncedSearch.trim(),
-      categoryFilter,
       subCategoryFilter,
       stockFilter,
       pricingFilter,
@@ -429,7 +438,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   }, [
     deletedMode,
     debouncedSearch,
-    categoryFilter,
     subCategoryFilter,
     stockFilter,
     pricingFilter,
@@ -587,7 +595,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     () =>
       JSON.stringify({
         debouncedSearch,
-        categoryFilter,
         subCategoryFilter,
         stockFilter,
         pricingFilter,
@@ -599,7 +606,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       }),
     [
       debouncedSearch,
-      categoryFilter,
       subCategoryFilter,
       stockFilter,
       pricingFilter,
@@ -628,7 +634,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         sortDir,
         filters: {
           subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
-          category_id: categoryFilter !== "all" ? categoryFilter : undefined,
         },
         extra: {
           status: deletedMode ? "inactive" : "active",
@@ -680,7 +685,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     queryPage,
     pageSize,
     debouncedSearch,
-    categoryFilter,
     subCategoryFilter,
     stockFilter,
     pricingFilter,
@@ -688,7 +692,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     effectiveStockBranchId,
     sort,
     sortDir,
-    user?.organization_id,
     hotelCatalogue,
   ]);
 
@@ -815,7 +818,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       q: debouncedSearch,
       filters: {
         subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
-        category_id: categoryFilter !== "all" ? categoryFilter : undefined,
       },
       extra: {
         status: deletedMode ? "inactive" : "active",
@@ -826,7 +828,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     });
   }, [
     deletedMode,
-    categoryFilter,
     debouncedSearch,
     effectiveStockBranchId,
     pricingFilter,
@@ -849,7 +850,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
   const grouped = useMemo(() => groupProducts(pageSlice), [pageSlice]);
-  const showCategoryHeaders = categoryFilter === "all";
+  const showCategoryHeaders = true;
   const kraFailedCodeSet = useMemo(
     () => new Set(kraFailedProducts.map((row) => String(row.product_code || "").trim()).filter(Boolean)),
     [kraFailedProducts],
@@ -859,29 +860,10 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const showInitialLoading = !hasLoadedOnce && listLoading;
 
-  const subCategoryOptions = useMemo(() => {
-    if (categoryFilter === "all") return subCategories;
-    return subCategories.filter((s) => String(s.category_id) === categoryFilter);
-  }, [subCategories, categoryFilter]);
-
-  const categorySelectOptions = useMemo(
-    () => [
-      { value: "all", label: "All categories" },
-      ...categories.map((c) => ({ value: String(c.id), label: c.category_name })),
-    ],
-    [categories],
-  );
-
   const subcategorySelectOptions = useMemo(() => {
-    const options = [{ value: "all", label: "All sub-categories" }];
-    if (categoryFilter !== "all") {
-      for (const s of subCategoryOptions) {
-        options.push({ value: String(s.id), label: s.subcategory_name });
-      }
-      return options;
-    }
+    const options = [{ value: "all", label: "Categories" }];
     const byCat = new Map();
-    for (const s of subCategoryOptions) {
+    for (const s of subCategories) {
       const catId = String(s.category_id ?? "");
       if (!byCat.has(catId)) byCat.set(catId, []);
       byCat.get(catId).push(s);
@@ -900,7 +882,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       }
     }
     return options;
-  }, [subCategoryOptions, categoryFilter, categories]);
+  }, [subCategories, categories]);
 
   useEffect(() => {
     if (pendingRestoredQ === null) return;
@@ -1158,33 +1140,31 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or code…"
         />
-          <div className="min-w-[10.5rem] shrink-0">
-            <PosSearchableSelect
-              value={categoryFilter}
-              onChange={(next) => {
-                setCategoryFilter(next || "all");
-                setSubCategoryFilter("all");
-              }}
-              options={categorySelectOptions}
-              placeholder="All categories"
-              searchPlaceholder="Search category…"
-              minSearchLength={0}
-              idleSearchLabel="Type to search category"
-              inputClassName={FILTER_CONTROL_CLASS}
-            />
-          </div>
-          <div className="min-w-[12rem] shrink-0">
-            <PosSearchableSelect
-              value={subCategoryFilter}
-              onChange={(next) => setSubCategoryFilter(next || "all")}
-              options={subcategorySelectOptions}
-              placeholder="All sub-categories"
-              searchPlaceholder="Search subcategory…"
-              minSearchLength={0}
-              idleSearchLabel="Type to search subcategory"
-              inputClassName={FILTER_CONTROL_CLASS}
-            />
-          </div>
+        {showBranchFilter ? (
+          <FilterSelect
+            value={stockBranchId}
+            onChange={(e) => setStockBranchId(e.target.value)}
+            options={[
+              { value: "", label: "All branches" },
+              ...branches.map((b) => ({
+                value: String(b.id),
+                label: b.branch_name,
+              })),
+            ]}
+          />
+        ) : null}
+        <div className="min-w-[12rem] shrink-0">
+          <PosSearchableSelect
+            value={subCategoryFilter}
+            onChange={(next) => setSubCategoryFilter(next || "all")}
+            options={subcategorySelectOptions}
+            placeholder="Categories"
+            searchPlaceholder="Search categories…"
+            minSearchLength={0}
+            idleSearchLabel="Type to search categories"
+            inputClassName={FILTER_CONTROL_CLASS}
+          />
+        </div>
           <FilterSelect
             value={stockFilter}
             onChange={(e) => setStockFilter(e.target.value)}
@@ -1195,16 +1175,6 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
               { value: "out_of_stock", label: "Out of stock" },
             ]}
           />
-          {multiBranch && !user?.branch_id ? (
-            <FilterSelect
-              value={stockBranchId}
-              onChange={(e) => setStockBranchId(e.target.value)}
-              options={branches.map((b) => ({
-                value: String(b.id),
-                label: b.branch_name,
-              }))}
-            />
-          ) : null}
           {!hotelCatalogue ? (
             <FilterSelect
               value={pricingFilter}

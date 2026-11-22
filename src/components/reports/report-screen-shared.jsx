@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { useAuth } from "@/contexts/auth-context";
 import {
   StatCard,
   Field,
@@ -77,8 +78,11 @@ export function ReportFilterBar({
   onFilter,
   onReset,
   loading = false,
-  showBranchFilter = true,
+  showBranchFilter: requestedBranchFilter = true,
 }) {
+  const { isOrgWide } = useAuth();
+  const showBranchFilter =
+    requestedBranchFilter && isOrgWide() && (Array.isArray(branches) ? branches.length > 1 : false);
   const hasQueryFilters = Boolean(
     reportKey && onQueryFilterChange && (REPORT_EXTRA_FILTERS[reportKey]?.length ?? 0) > 0,
   );

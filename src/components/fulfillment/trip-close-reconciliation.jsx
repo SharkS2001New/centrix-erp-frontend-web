@@ -414,6 +414,7 @@ export function TripCloseReconciliation({ tripId }) {
       <div className="mt-8">
         <TripExpensesPanel
           tripId={Number(tripId)}
+          tripBranchId={trip.branch_id}
           tripDate={trip.scheduled_date}
           financialSummary={financialSummary}
           onChanged={loadReconciliation}

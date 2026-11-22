@@ -18,6 +18,7 @@ import {
   useRouteFormResources,
 } from "@/components/routes/route-form";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import {
   CatalogDataImportButton,
   filterNonEmptyImportRows,
@@ -69,10 +70,13 @@ export function FulfillmentRoutesScreen() {
     equityAccounts,
     showBranchSelect,
     defaultBranch,
+    isOrgWide,
     loading: branchesLoading,
     loadError: branchesLoadError,
     user,
   } = useRouteFormResources();
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = showBranchSelect ? branchFilter : (user?.branch_id ?? "");
 
   const [routes, setRoutes] = useState([]);
   const [total, setTotal] = useState(0);
@@ -112,6 +116,7 @@ export function FulfillmentRoutesScreen() {
         page,
         perPage: pageSize,
         q: debouncedSearch,
+        extra: branchId ? { branch_id: branchId } : {},
       });
       const routeRes = await apiRequest("/routes", { searchParams: leanParams });
       const parsed = parsePaginator(routeRes);
@@ -129,6 +134,7 @@ export function FulfillmentRoutesScreen() {
             include_stats: 1,
             stats_from_date: fromDate,
             stats_to_date: toDate,
+            ...(branchId ? { branch_id: branchId } : {}),
           },
         }),
         loading: false,
@@ -146,13 +152,13 @@ export function FulfillmentRoutesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, fromDate, toDate, branchId]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, fromDate, toDate]);
+  }, [debouncedSearch, fromDate, toDate, branchFilter]);
 
   const routeStatsById = useMemo(() => {
     const map = new Map();
@@ -192,20 +198,20 @@ export function FulfillmentRoutesScreen() {
   }, [page, safePage]);
 
   useEffect(() => {
-    if (!drawerOpen || branches.length === 0) return;
+    if (!drawerOpen || drawerMode !== "create" || branches.length === 0) return;
     setForm((prev) => {
-      if (prev.branch_id) return prev;
-      const nextBranch = defaultBranch || String(branches[0].id);
-      return nextBranch ? { ...prev, branch_id: nextBranch } : prev;
+      const nextBranch = defaultBranch || (showBranchSelect ? "" : String(branches[0].id));
+      if (prev.branch_id === nextBranch) return prev;
+      return { ...prev, branch_id: nextBranch };
     });
-  }, [drawerOpen, branches, defaultBranch]);
+  }, [drawerOpen, drawerMode, branches, defaultBranch, showBranchSelect]);
 
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    const branchId =
-      defaultBranch || (branches.length === 1 ? String(branches[0].id) : "");
-    setForm({ ...EMPTY_ROUTE_FORM, branch_id: branchId });
+    const formBranchId =
+      defaultBranch || (showBranchSelect ? "" : branches.length === 1 ? String(branches[0].id) : "");
+    setForm({ ...EMPTY_ROUTE_FORM, branch_id: formBranchId });
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -237,14 +243,14 @@ export function FulfillmentRoutesScreen() {
 
   async function saveRoute(e) {
     e.preventDefault();
-    const branchId = resolveRouteFormBranchId(form, branches, user);
-    if (showBranchSelect && branches.length > 1 && !branchId) {
+    const selectedBranchId = resolveRouteFormBranchId(form, branches, user, isOrgWide);
+    if (isOrgWide && !selectedBranchId) {
       setFormError("Select a branch for this route.");
       return;
     }
     setSaving(true);
     setFormError(null);
-    const body = buildRouteBody({ ...form, branch_id: branchId });
+    const body = buildRouteBody({ ...form, branch_id: selectedBranchId });
     try {
       if (drawerMode === "edit" && editingId != null) {
         await apiRequest(`/routes/${editingId}`, {
@@ -279,14 +285,16 @@ export function FulfillmentRoutesScreen() {
       if (route) {
         openEditDrawer(route);
       } else {
-        apiRequest(`/routes/${editId}`)
+        apiRequest(`/routes/${editId}`, {
+          searchParams: branchId ? { branch_id: branchId } : undefined,
+        })
           .then(openEditDrawer)
           .catch(() => notifyError("Route not found"));
       }
     }
 
     router.replace("/fulfillment/routes", { scroll: false });
-  }, [tableLoading, searchParams, routes, router]);
+  }, [tableLoading, searchParams, routes, router, branchId]);
 
   async function deleteRoute(route) {
     const count = Number(route.customer_count ?? 0);
@@ -302,7 +310,10 @@ export function FulfillmentRoutesScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/routes/${route.id}`, { method: "DELETE" });
+      await apiRequest(`/routes/${route.id}`, {
+        method: "DELETE",
+        searchParams: route.branch_id != null ? { branch_id: route.branch_id } : undefined,
+      });
       await loadData();
       notifySuccess(`"${route.route_name}" deleted`);
     } catch (err) {
@@ -318,7 +329,11 @@ export function FulfillmentRoutesScreen() {
         selectedIds,
         entityName: "route",
         deleteItem: async (id) => {
-          await apiRequest(`/routes/${id}`, { method: "DELETE" });
+          const route = routeById.get(String(id));
+          await apiRequest(`/routes/${id}`, {
+            method: "DELETE",
+            searchParams: route?.branch_id != null ? { branch_id: route.branch_id } : undefined,
+          });
         },
         clearSelection,
         reload: loadData,
@@ -337,12 +352,13 @@ export function FulfillmentRoutesScreen() {
       perPage: 200,
       q: debouncedSearch,
       extra: {
+        ...(branchId ? { branch_id: branchId } : {}),
         include_stats: 1,
         stats_from_date: fromDate,
         stats_to_date: toDate,
       },
     });
-  }, [debouncedSearch, fromDate, toDate]);
+  }, [debouncedSearch, fromDate, toDate, branchId]);
 
   return (
     <CatalogPageShell
@@ -424,6 +440,13 @@ export function FulfillmentRoutesScreen() {
               onChange={(e) => setToDate(e.target.value)}
             />
           </Field>
+          {showBranchSelect ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={branches}
+            />
+          ) : null}
         </div>
       }
     >

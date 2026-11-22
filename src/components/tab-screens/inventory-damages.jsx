@@ -7,6 +7,7 @@ import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
@@ -32,6 +33,7 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DAMAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -43,9 +45,11 @@ export function InventoryDamagesScreen() {
   const searchParams = useSearchParams();
   const highlightDamageId = searchParams.get("damage_id");
   const { user } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
   const initialRange = defaultDateRange(7);
 
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -78,7 +82,7 @@ export function InventoryDamagesScreen() {
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
-        filters: { branch_id: branchId },
+        filters: branchId ? { branch_id: branchId } : {},
         extra: { from_date: appliedFrom, to_date: appliedTo },
       });
       const res = await apiRequest("/damages", { searchParams, loading: false });
@@ -150,7 +154,7 @@ export function InventoryDamagesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedFrom, appliedTo, pageSize]);
+  }, [appliedFrom, appliedTo, pageSize, branchFilter]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -173,7 +177,10 @@ export function InventoryDamagesScreen() {
 
     setDeletingId(row.id);
     try {
-      await apiRequest(`/damages/${row.id}`, { method: "DELETE" });
+      await apiRequest(`/damages/${row.id}`, {
+        method: "DELETE",
+        searchParams: row.branch_id != null ? { branch_id: row.branch_id } : undefined,
+      });
       await loadRows();
       notifySuccess("Damage record deleted and stock restored");
     } catch (e) {
@@ -204,7 +211,7 @@ export function InventoryDamagesScreen() {
             totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
-              "filter[branch_id]": branchId,
+              ...(branchId ? { "filter[branch_id]": branchId } : {}),
               from_date: appliedFrom,
               to_date: appliedTo,
             })}
@@ -217,6 +224,9 @@ export function InventoryDamagesScreen() {
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField value={branchFilter} onChange={setBranchFilter} branches={branches} />
+        ) : null}
         <Field label="From">
           <input
             type="date"

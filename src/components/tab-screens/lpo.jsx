@@ -32,6 +32,8 @@ import { prefetchLpoPrintSummary, runLpoPrintClick } from "@/components/lpo/lpo-
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge, LPO_STATUS } from "@/components/lpo/lpo-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -52,7 +54,8 @@ export function LpoScreen() {
   const router = useAppRouter();
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission } = useAuth();
-  const showBranchColumn = isMultiBranchCatalog(capabilities);
+  const { branches, multiBranch, showBranchFilter } = useBranchScope();
+  const showBranchColumn = multiBranch || isMultiBranchCatalog(capabilities);
   const columnCount = showBranchColumn ? 8 : 7;
   const { canView, canCreate, canEdit, canDelete, canApprove, isAdmin } = useLpoListPermissions();
   const canApproveLpos = canApproveLpoRequests({ hasPermission });
@@ -75,6 +78,7 @@ export function LpoScreen() {
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
 
@@ -82,7 +86,9 @@ export function LpoScreen() {
     try {
       // Dashboard + filter options fill in after the table — do not block first paint.
       const [dashRes, suppliersData, statusRes] = await Promise.all([
-        apiRequest("/lpo-mst/dashboard").catch(() => null),
+        apiRequest("/lpo-mst/dashboard", {
+          searchParams: branchFilter ? { branch_id: branchFilter } : undefined,
+        }).catch(() => null),
         fetchSuppliersCached(user?.organization_id).catch(() => []),
         apiRequest("/lpo-statuses", { searchParams: { per_page: 50 } }).catch(() => ({
           data: [],
@@ -96,13 +102,14 @@ export function LpoScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [branchFilter, user?.organization_id]);
 
   const loadRows = useCallback(async () => {
     setListLoading(true);
     try {
       const extra = {};
       if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
+      if (branchFilter) extra.branch_id = branchFilter;
       if (statusFilter === "approval_pending") {
         extra.approval_pending = 1;
       } else if (statusFilter !== "all") {
@@ -125,7 +132,7 @@ export function LpoScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, supplierFilter, statusFilter]);
+  }, [page, pageSize, debouncedSearch, supplierFilter, statusFilter, branchFilter]);
 
   // List first — do not wait for dashboard/suppliers/statuses.
   useTabAwareDataLoad(loadRows);
@@ -140,7 +147,7 @@ export function LpoScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, supplierFilter, statusFilter]);
+  }, [debouncedSearch, supplierFilter, statusFilter, branchFilter]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -262,7 +269,10 @@ export function LpoScreen() {
     if (!ok) return;
     setDeletingLpoNo(row.lpo_no);
     try {
-      await apiRequest(`/lpo-mst/${row.lpo_no}`, { method: "DELETE" });
+      await apiRequest(`/lpo-mst/${row.lpo_no}`, {
+        method: "DELETE",
+        searchParams: row.branch_id != null ? { branch_id: row.branch_id } : undefined,
+      });
       setContextMenu(null);
       await loadRows();
       notifySuccess("Purchase order deleted");
@@ -369,6 +379,7 @@ export function LpoScreen() {
             getSearchParams={() => {
               const extra = {};
               if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
+              if (branchFilter) extra.branch_id = branchFilter;
               if (statusFilter !== "all") extra.status_code = statusFilter;
               return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
             }}
@@ -387,6 +398,13 @@ export function LpoScreen() {
       }
       toolbar={
         <FilterToolbar>
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={branches}
+            />
+          ) : null}
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}

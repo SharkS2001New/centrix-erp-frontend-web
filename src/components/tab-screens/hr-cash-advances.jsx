@@ -134,6 +134,7 @@ export function HrCashAdvancesScreen() {
 
   return (
     <HrCrudPage
+      branchFilterable
       title="Cash advances"
       subtitle="Salary advances recovered through payroll. New advances go to a manager with approval rights."
       addButtonLabel="Add advance"

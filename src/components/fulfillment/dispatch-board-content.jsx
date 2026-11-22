@@ -8,6 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
@@ -41,6 +42,7 @@ const EMPTY_LIST = [];
 export function DispatchBoardContent() {
   const router = useRouter();
   const { capabilities, user } = useAuth();
+  const { effectiveBranchId, globalBranchId, showBranchFilter } = useBranchScope();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
   const distributionSettings = useMemo(
     () => mergeDistributionSettings(capabilities),
@@ -206,7 +208,10 @@ export function DispatchBoardContent() {
       return;
     }
 
-    const branchId = selectedSales.find((s) => s.branch_id)?.branch_id ?? user?.branch_id ?? null;
+    const branchId =
+      selectedSales.find((s) => s.branch_id)?.branch_id ??
+      globalBranchId ??
+      (showBranchFilter ? null : effectiveBranchId ?? user?.branch_id ?? null);
     if (!branchId) {
       notifyError("Could not determine branch for the selected orders.");
       return;
@@ -270,7 +275,10 @@ export function DispatchBoardContent() {
         drivers={drivers}
         vehicles={vehicles}
         defaultDate={toDate}
-        defaultBranchId={createTripDefaults.branchId ?? user?.branch_id ?? null}
+        defaultBranchId={
+          createTripDefaults.branchId ??
+          (showBranchFilter ? globalBranchId : effectiveBranchId ?? user?.branch_id ?? null)
+        }
         defaultRouteIds={
           createTripDefaults.routeIds.length
             ? createTripDefaults.routeIds

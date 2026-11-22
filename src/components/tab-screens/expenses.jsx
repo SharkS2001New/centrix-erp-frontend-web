@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
@@ -24,6 +25,7 @@ import {
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -44,6 +46,7 @@ const EXPENSE_SORT_COLUMNS = {
 };
 
 const EMPTY_EXPENSE_FORM = {
+  branch_id: "",
   description: "",
   notes: "",
   expense_group_id: "",
@@ -91,6 +94,7 @@ function sumAmounts(expenses) {
 export function ExpensesScreen() {
   const confirm = useConfirm();
   const { user, capabilities } = useAuth();
+  const { branches, showBranchFilter, effectiveBranchId, lockedBranchId } = useBranchScope();
   const searchParams = useSearchParams();
   const urlFromDate = searchParams.get("from_date") ?? "";
   const urlToDate = searchParams.get("to_date") ?? "";
@@ -110,6 +114,7 @@ export function ExpensesScreen() {
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [groupFilter, setGroupFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [fromDate, setFromDate] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
   const [toDate, setToDate] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
   const [appliedFrom, setAppliedFrom] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
@@ -126,6 +131,14 @@ export function ExpensesScreen() {
   const [form, setForm] = useState(EMPTY_EXPENSE_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  useEffect(() => {
+    if (drawerMode !== "create" || !drawerOpen) return;
+    setForm((current) =>
+      current.branch_id === effectiveBranchId
+        ? current
+        : { ...current, branch_id: effectiveBranchId },
+    );
+  }, [drawerMode, drawerOpen, effectiveBranchId]);
 
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -138,7 +151,9 @@ export function ExpensesScreen() {
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 200 } }),
         fetchActiveUsersCached(user?.organization_id),
-        apiRequest("/expenses/summary").catch(() => null),
+        apiRequest("/expenses/summary", {
+          searchParams: branchFilter ? { branch_id: branchFilter } : undefined,
+        }).catch(() => null),
       ]);
       setGroups(groupRes.data ?? []);
       setPaymentMethods(
@@ -153,7 +168,7 @@ export function ExpensesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id, capabilities]);
+  }, [user?.organization_id, capabilities, branchFilter]);
 
   const loadExpenses = useCallback(async () => {
     setListLoading(true);
@@ -161,6 +176,7 @@ export function ExpensesScreen() {
       const filters = {};
       if (groupFilter !== "all") filters.expense_group_id = groupFilter;
       if (userFilter !== "all") filters.recorded_by = userFilter;
+      if (branchFilter) filters.branch_id = branchFilter;
 
       const extra = {
         status: statusFilter,
@@ -188,7 +204,7 @@ export function ExpensesScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, branchFilter, appliedFrom, appliedTo, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   // List first — do not wait for groups/users/summary.
   useTabAwareDataLoad(loadExpenses, { softEvictMs: 20_000 });
@@ -196,7 +212,9 @@ export function ExpensesScreen() {
 
   async function reloadAll() {
     const [statsRes] = await Promise.all([
-      apiRequest("/expenses/summary").catch(() => null),
+      apiRequest("/expenses/summary", {
+        searchParams: branchFilter ? { branch_id: branchFilter } : undefined,
+      }).catch(() => null),
       loadExpenses(),
     ]);
     if (statsRes) setExpenseStats(statsRes);
@@ -240,7 +258,7 @@ export function ExpensesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, userFilter, appliedFrom, appliedTo, statusFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, groupFilter, userFilter, branchFilter, appliedFrom, appliedTo, statusFilter, pageSize, sort, sortDir]);
 
   const activeSortLabel = sort
     ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
@@ -262,6 +280,7 @@ export function ExpensesScreen() {
     setViewExpense(null);
     setForm({
       ...EMPTY_EXPENSE_FORM,
+      branch_id: effectiveBranchId || lockedBranchId || (branches.length === 1 ? String(branches[0].id) : ""),
       expense_date: new Date().toISOString().slice(0, 10),
       payment_method_id: pickPreferredPaymentMethodId(paymentMethods),
     });
@@ -276,6 +295,7 @@ export function ExpensesScreen() {
     setViewExpense(null);
     setForm({
       description: name ?? expense.description ?? "",
+      branch_id: expense.branch_id != null ? String(expense.branch_id) : "",
       notes: notes ?? "",
       expense_group_id: String(expense.expense_group_id ?? ""),
       expense_amount: String(expense.expense_amount ?? ""),
@@ -341,8 +361,9 @@ export function ExpensesScreen() {
 
   async function saveExpense(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setFormError("Your user profile is missing a branch.");
+    const branchId = lockedBranchId || form.branch_id || (branches.length === 1 ? String(branches[0].id) : "");
+    if (!branchId) {
+      setFormError("Select the branch this expense belongs to.");
       return;
     }
     if (!form.expense_group_id) {
@@ -358,7 +379,7 @@ export function ExpensesScreen() {
     setFormError(null);
 
     const body = {
-      branch_id: user.branch_id,
+      branch_id: Number(branchId),
       expense_group_id: Number(form.expense_group_id),
       description: buildDescription(),
       expense_amount: parseFloat(form.expense_amount) || 0,
@@ -393,7 +414,10 @@ export function ExpensesScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/expenses/${expense.id}`, { method: "DELETE" });
+      await apiRequest(`/expenses/${expense.id}`, {
+        method: "DELETE",
+        searchParams: expense.branch_id != null ? { branch_id: expense.branch_id } : undefined,
+      });
       await reloadAll();
       notifySuccess("Expense deleted");
     } catch (err) {
@@ -449,6 +473,7 @@ export function ExpensesScreen() {
                 filters: {
                   ...(groupFilter !== "all" ? { expense_group_id: groupFilter } : {}),
                   ...(userFilter !== "all" ? { recorded_by: userFilter } : {}),
+                  ...(branchFilter ? { branch_id: branchFilter } : {}),
                 },
                 extra: {
                   status: statusFilter,
@@ -477,6 +502,13 @@ export function ExpensesScreen() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField
+            value={branchFilter}
+            onChange={setBranchFilter}
+            branches={branches}
+          />
+        ) : null}
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -702,6 +734,7 @@ export function ExpensesScreen() {
                     label="Group"
                     value={expenseGroupName(viewExpense, groupById) ?? "Uncategorized"}
                   />
+                  <ViewRow label="Branch" value={viewExpense.branch?.branch_name ?? "—"} />
                   <ViewRow label="Amount" value={formatKes(viewExpense.expense_amount)} />
                   <ViewRow label="Date" value={formatShortDate(viewExpense.expense_date)} />
                   <ViewRow
@@ -734,6 +767,23 @@ export function ExpensesScreen() {
             ) : (
               <form onSubmit={saveExpense} className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
+                  {showBranchFilter ? (
+                    <Field label="Branch">
+                      <SearchableSelect
+                        value={form.branch_id}
+                        onChange={(value) => updateField("branch_id", value)}
+                        required
+                        placeholder="Select branch"
+                        options={[
+                          { value: "", label: "Select branch" },
+                          ...branches.map((branch) => ({
+                            value: String(branch.id),
+                            label: branch.branch_name ?? `Branch #${branch.id}`,
+                          })),
+                        ]}
+                      />
+                    </Field>
+                  ) : null}
                   <Field label="Expense name">
                     <input
                       type="text"

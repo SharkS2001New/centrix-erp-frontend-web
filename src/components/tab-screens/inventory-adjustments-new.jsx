@@ -1,13 +1,14 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockAdjustmentApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -82,15 +83,23 @@ export function InventoryAdjustmentsNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("stock adjustment"));
   const searchParams = useSearchParams();
   const { user, capabilities, hasPermission } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
   const presetProductCode = searchParams.get("product")?.trim() ?? "";
 
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
   const [adjustCounts, setAdjustCounts] = useState({});
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [presetLoaded, setPresetLoaded] = useState(false);
+  const branchId = showBranchFilter
+    ? selectedBranchId
+    : effectiveBranchId;
+
+  useEffect(() => {
+    setSelectedBranchId(globalBranchId);
+  }, [globalBranchId]);
 
   useEffect(() => {
     fetchUomsCached(user?.organization_id)
@@ -124,7 +133,7 @@ export function InventoryAdjustmentsNewScreen() {
   }, [uoms, uomById]);
 
   useEffect(() => {
-    if (!presetProductCode || presetLoaded) return;
+    if (!presetProductCode || presetLoaded || !branchId) return;
     let cancelled = false;
     apiRequest(`/products/${encodeURIComponent(presetProductCode)}`, {
       searchParams: { branch_id: branchId },
@@ -154,6 +163,10 @@ export function InventoryAdjustmentsNewScreen() {
   }
 
   function addProduct(product) {
+    if (!branchId) {
+      notifyError("Select a branch before adding products.");
+      return;
+    }
     const code = product.product_code;
     if (lines.some((l) => l.product_code === code)) return;
     const row = lineFromProduct(product);
@@ -162,6 +175,10 @@ export function InventoryAdjustmentsNewScreen() {
   }
 
   function addProducts(products) {
+    if (!branchId) {
+      notifyError("Select a branch before adding products.");
+      return;
+    }
     const existing = new Set(lines.map((l) => l.product_code));
     const toAdd = products.filter((p) => !existing.has(p.product_code));
     if (!toAdd.length) return;
@@ -182,6 +199,10 @@ export function InventoryAdjustmentsNewScreen() {
 
   async function submit(e) {
     e.preventDefault();
+    if (!branchId) {
+      notifyError("Select a branch before adjusting stock.");
+      return;
+    }
     const toPost = lines.filter((line) => {
       const uom = resolveInventoryLineUom(line, uomById);
       return line.product_code && adjustmentBaseForLine(line, uom, adjustCounts) > 0;
@@ -202,7 +223,7 @@ export function InventoryAdjustmentsNewScreen() {
         const baseQty = adjustmentBaseForLine(line, uom, adjustCounts);
         const signedQty = line.direction === "decrease" ? -Math.abs(baseQty) : Math.abs(baseQty);
         const body = {
-          branch_id: branchId,
+          branch_id: Number(branchId),
           product_code: line.product_code,
           stock_location: line.stock_location,
           quantity_change: signedQty,
@@ -238,6 +259,29 @@ export function InventoryAdjustmentsNewScreen() {
         onSubmit={submit}
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
+        {showBranchFilter ? (
+          <Field label="Branch">
+            <SearchableSelect
+              className={inputClassName()}
+              value={selectedBranchId}
+              onChange={(value) => {
+                setSelectedBranchId(value);
+                setLines([]);
+                setAdjustCounts({});
+                setPresetLoaded(false);
+              }}
+              required
+              placeholder="Select branch"
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? `Branch #${branch.id}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Reason / notes">
           <textarea
             className={`${inputClassName()} min-h-[72px]`}
@@ -247,7 +291,9 @@ export function InventoryAdjustmentsNewScreen() {
           />
         </Field>
 
-        <InventoryProductLines
+        {!branchId ? (
+          <p className="text-sm text-amber-800">Select a branch before adding products.</p>
+        ) : <InventoryProductLines
           lines={lines}
           onChange={setLines}
           uomById={uomById}
@@ -310,7 +356,7 @@ export function InventoryAdjustmentsNewScreen() {
               </>
             );
           }}
-        />
+        />}
 
         <p className="text-xs text-slate-500">
           Each line posts to the inventory ledger immediately. Use{" "}

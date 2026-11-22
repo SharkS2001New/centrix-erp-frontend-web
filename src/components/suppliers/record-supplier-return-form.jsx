@@ -5,6 +5,7 @@ import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-
 import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   Field,
   SearchableSelect,
@@ -75,7 +76,8 @@ export function RecordSupplierReturnForm({
       ? tabEditTitle("supplier return", `#${editDocumentId}`)
       : tabAddTitle("supplier return"),
   );
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const [mode, setMode] = useState(
     () => initialMode ?? (initialLpoNo ? RETURN_MODES.LPO : RETURN_MODES.MANUAL),
   );
@@ -163,8 +165,6 @@ export function RecordSupplierReturnForm({
   }, [pendingLpoLine, addDraft.quantity, addDraft.stock_location]);
 
   useEffect(() => {
-    const bid = user?.branch_id;
-    if (bid) setBranchId(String(bid));
     Promise.all([
       apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
       apiRequest("/branches", { searchParams: { per_page: 50 } }),
@@ -175,13 +175,25 @@ export function RecordSupplierReturnForm({
         setSuppliers(supRes.data ?? []);
         const branchList = branchRes.data ?? branchRes ?? [];
         setBranches(branchList);
-        if (!bid && branchList.length === 1) setBranchId(String(branchList[0].id));
         setUoms(uomRes.data ?? []);
         setVats(vatRes.data ?? []);
       })
       .catch(() => {})
       .finally(() => setLoadingMeta(false));
-  }, [user?.branch_id]);
+  }, [user?.organization_id]);
+
+  useEffect(() => {
+    if (editDocumentId) return;
+    if (globalBranchId) {
+      setBranchId(globalBranchId);
+    } else if (!isOrgWide() && user?.branch_id != null) {
+      setBranchId(String(user.branch_id));
+    } else if (branches.length === 1) {
+      setBranchId(String(branches[0].id));
+    } else {
+      setBranchId("");
+    }
+  }, [branches, editDocumentId, globalBranchId, isOrgWide, user?.branch_id]);
 
   useEffect(() => {
     if (!editDocumentId) return;

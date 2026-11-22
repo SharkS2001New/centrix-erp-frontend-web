@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
@@ -28,6 +29,7 @@ const GAAP_SUMMARY_LABELS = {
 
 export function AccountingCashFlowScreen() {
   const { user } = useAuth();
+  const { branches, showBranchFilter } = useBranchScope();
   const initialRange = useMemo(() => defaultAccountingDateRange(), []);
   const [mode, setMode] = useState("gaap");
   const [rows, setRows] = useState([]);
@@ -37,13 +39,6 @@ export function AccountingCashFlowScreen() {
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [branchId, setBranchId] = useState("");
-  const [branches, setBranches] = useState([]);
-
-  useEffect(() => {
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
-      .catch(() => setBranches([]));
-  }, []);
 
   useEffect(() => {
     if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
@@ -164,19 +159,21 @@ export function AccountingCashFlowScreen() {
             <Field label="To">
               <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </Field>
-            <Field label="Branch">
-              <FilterSelect
-                value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-                options={[
-                  { value: "", label: "All branches" },
-                  ...branches.map((b) => ({
-                    value: String(b.id),
-                    label: b.branch_name,
-                  })),
-                ]}
-              />
-            </Field>
+            {showBranchFilter ? (
+              <Field label="Branch">
+                <FilterSelect
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  options={[
+                    { value: "", label: "All branches" },
+                    ...branches.map((b) => ({
+                      value: String(b.id),
+                      label: b.branch_name,
+                    })),
+                  ]}
+                />
+              </Field>
+            ) : null}
             <PrimaryButton type="button" showIcon={false} onClick={() => void load()}>
               Refresh
             </PrimaryButton>

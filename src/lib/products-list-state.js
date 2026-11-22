@@ -2,7 +2,6 @@ const STORAGE_KEY = "centrix-erp-products-list-state";
 
 /** @typedef {{
  *   q?: string;
- *   categoryFilter?: string;
  *   subCategoryFilter?: string;
  *   stockFilter?: string;
  *   pricingFilter?: string;

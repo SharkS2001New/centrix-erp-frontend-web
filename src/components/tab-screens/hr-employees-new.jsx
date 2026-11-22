@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
@@ -38,11 +38,17 @@ export function HrEmployeesNewScreen() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const previousDefaultBranch = useRef(defaultBranch);
 
   useEffect(() => {
-    if (!loading && defaultBranch) {
-      setForm((prev) => (prev.branch_id ? prev : { ...prev, branch_id: defaultBranch }));
-    }
+    if (loading) return;
+    const previousBranch = previousDefaultBranch.current;
+    setForm((prev) => (
+      previousBranch !== defaultBranch || !prev.branch_id || prev.branch_id === previousBranch
+        ? { ...prev, branch_id: defaultBranch }
+        : prev
+    ));
+    previousDefaultBranch.current = defaultBranch;
   }, [loading, defaultBranch]);
 
   useEffect(() => {

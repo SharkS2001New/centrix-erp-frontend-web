@@ -18,7 +18,8 @@ import {
   receiptPaymentDetailsToPayload,
 } from "@/lib/receipt-payment-details";
 import { calendarDateInTimezone } from "@/lib/datetime";
-import { isAdminUser } from "@/components/customers/customer-form";
+import { selectedGlobalBranchId } from "@/lib/global-branch";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 
 export const EMPTY_ROUTE_FORM = {
   branch_id: "",
@@ -91,23 +92,28 @@ export function updateRouteFormField(form, key, value) {
   return { ...form, [key]: value };
 }
 
-export function defaultRouteBranchId(user, branches) {
+export function defaultRouteBranchId(
+  user,
+  branches,
+  isOrgWide = false,
+  globalBranchId = selectedGlobalBranchId(),
+) {
+  if (globalBranchId) return globalBranchId;
   if (branches.length === 1) return String(branches[0].id);
+  if (isOrgWide) return "";
   if (user?.branch_id != null) return String(user.branch_id);
   return "";
 }
 
-export function resolveRouteFormBranchId(form, branches, user) {
+export function resolveRouteFormBranchId(form, branches, user, isOrgWide = false) {
   if (form?.branch_id) return String(form.branch_id);
-  return defaultRouteBranchId(user, branches);
+  return defaultRouteBranchId(user, branches, isOrgWide);
 }
 
-/** Route create/edit: org-wide admins always pick a branch; others when multiple exist. */
-export function shouldShowRouteBranchSelect(user, branches, isOrgWide) {
-  if (!branches?.length) return false;
-  if (typeof isOrgWide === "function" && isOrgWide()) return true;
-  if (isAdminUser(user)) return true;
-  return branches.length > 1;
+/** Only org-wide users can choose among multiple route branches. */
+export function shouldShowRouteBranchSelect(branches, isOrgWide) {
+  if (!branches || branches.length <= 1) return false;
+  return typeof isOrgWide === "function" ? isOrgWide() : Boolean(isOrgWide);
 }
 
 export function RouteFormFields({
@@ -310,6 +316,8 @@ export function RouteFormFields({
 
 export function useRouteFormResources() {
   const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
+  const orgWide = isOrgWide();
   const [branches, setBranches] = useState([]);
   const [paybillAccounts, setPaybillAccounts] = useState([]);
   const [equityAccounts, setEquityAccounts] = useState([]);
@@ -352,17 +360,18 @@ export function useRouteFormResources() {
   }, [load]);
 
   const showBranchSelect = useMemo(
-    () => shouldShowRouteBranchSelect(user, branches, isOrgWide),
-    [user, branches, isOrgWide],
+    () => shouldShowRouteBranchSelect(branches, isOrgWide),
+    [branches, isOrgWide],
   );
 
   const defaultBranch = useMemo(
-    () => defaultRouteBranchId(user, branches),
-    [user, branches],
+    () => defaultRouteBranchId(user, branches, orgWide, globalBranchId),
+    [branches, globalBranchId, orgWide, user],
   );
 
   return {
     user,
+    isOrgWide: orgWide,
     branches,
     paybillAccounts,
     equityAccounts,

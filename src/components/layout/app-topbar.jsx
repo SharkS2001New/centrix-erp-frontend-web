@@ -21,6 +21,10 @@ const GlobalModuleSearch = dynamic(
     loading: () => <div className="hidden h-9 w-48 max-w-full rounded-lg bg-black/5 sm:block" aria-hidden />,
   },
 );
+const GlobalBranchSwitcher = dynamic(
+  () => import("@/components/layout/global-branch-switcher").then((m) => m.GlobalBranchSwitcher),
+  { ssr: false },
+);
 const NotificationBell = dynamic(
   () => import("@/components/layout/notification-bell").then((m) => m.NotificationBell),
   {
@@ -149,6 +153,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
               <span className="hidden text-sm font-medium sm:inline">View Demo</span>
             </button>
           ) : null}
+          <GlobalBranchSwitcher />
           <NotificationBell />
           <WorkspaceSwitcher />
           <ThemeToggle compact className="hidden sm:inline-flex" />

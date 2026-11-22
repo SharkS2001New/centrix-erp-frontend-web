@@ -30,6 +30,7 @@ function expenseLabel(expense, groups = []) {
 
 export function TripExpensesPanel({
   tripId,
+  tripBranchId = null,
   tripDate = null,
   financialSummary = null,
   onChanged = null,
@@ -102,8 +103,9 @@ export function TripExpensesPanel({
 
   async function saveExpense(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setFormError("Your user profile is missing a branch.");
+    const branchId = tripBranchId ?? user?.branch_id;
+    if (!branchId) {
+      setFormError("Could not determine the branch for this trip expense.");
       return;
     }
     if (!form.expense_group_id) {
@@ -126,7 +128,7 @@ export function TripExpensesPanel({
       await apiRequest("/expenses", {
         method: "POST",
         body: {
-          branch_id: user.branch_id,
+          branch_id: Number(branchId),
           expense_group_id: Number(form.expense_group_id),
           dispatch_trip_id: Number(tripId),
           description: form.description.trim() || null,
@@ -160,7 +162,10 @@ export function TripExpensesPanel({
     });
     if (!ok) return;
     try {
-      await apiRequest(`/expenses/${expense.id}`, { method: "DELETE" });
+      await apiRequest(`/expenses/${expense.id}`, {
+        method: "DELETE",
+        searchParams: expense.branch_id != null ? { branch_id: expense.branch_id } : undefined,
+      });
       notifySuccess("Expense removed.");
       await loadExpenses();
       onChanged?.();

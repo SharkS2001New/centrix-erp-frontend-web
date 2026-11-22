@@ -12,6 +12,7 @@ import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 import { compressImageFileIfNeeded, compressPresetForUpload } from "./image-compress";
 import { invalidateEntityPhotoCache } from "./entity-photo-cache";
+import { applyGlobalBranchToUrl, selectedGlobalBranchId } from "./global-branch";
 import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
 import {
   ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
@@ -41,6 +42,24 @@ function isAuthEndpoint(path) {
         normalized.includes("/auth/logout") ||
     normalized.includes("/auth/switch-workspace") ||
     normalized.includes("/auth/switch-organization")
+  );
+}
+
+export function isStaleWorkspaceChannelError({
+  status,
+  message,
+  isAuthRequest,
+  hasSession,
+  sessionRotated,
+}) {
+  return (
+    status === 403 &&
+    !isAuthRequest &&
+    hasSession &&
+    sessionRotated &&
+    /session was started from pos and cannot access this part of the system/i.test(
+      String(message ?? ""),
+    )
   );
 }
 
@@ -487,6 +506,7 @@ export function userFacingNetworkErrorMessage(error, fallback = NETWORK_CONNECTI
 export async function apiRequest(path, options = {}) {
   const method = options.method ?? "GET";
   const url = buildApiUrl(path, options.searchParams);
+  applyGlobalBranchToUrl(url, selectedGlobalBranchId(), method, options.searchParams);
   // Never share in-flight GETs that carry an AbortSignal — aborting one waiter
   // would reject every other caller of the same URL (POS product search did this).
   const dedupeKey =
@@ -603,6 +623,21 @@ async function performApiRequest(path, url, options = {}) {
           !licenseExpired &&
           code !== "session_active_elsewhere" &&
           (authRotatedSinceRequest || isAuthSessionRotationInFlight());
+        const errorMessage = formatApiErrorMessage(data, res.statusText);
+        if (
+          !licenseExpired &&
+          isStaleWorkspaceChannelError({
+            status: res.status,
+            message: errorMessage,
+            isAuthRequest: isAuthEndpoint(path),
+            hasSession: hasAuthSession(),
+            sessionRotated:
+              authRotatedSinceRequest || isAuthSessionRotationInFlight(),
+          })
+        ) {
+          // Ignore only outgoing-workspace requests rejected after the channel token rotated.
+          return undefined;
+        }
 
         let redirectedForAuth = false;
         if (licenseExpired && (res.status === 401 || res.status === 403)) {
@@ -1346,6 +1381,7 @@ export async function apiUploadForm(path, fields, fileField = "file") {
 /** Multipart JSON + optional file (e.g. returns with proof). */
 export async function apiRequestMultipart(path, fields, options = {}) {
   const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
+  applyGlobalBranchToUrl(url, selectedGlobalBranchId(), options.method ?? "POST");
   const token = getToken();
   const formData = new FormData();
 

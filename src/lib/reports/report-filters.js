@@ -1,5 +1,6 @@
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import { getReportsDefaultDateRange } from "@/lib/sales-settings";
+import { selectedGlobalBranchId } from "@/lib/global-branch";
 
 /**
  * Offset-from-today helper (0 = today, 6 = last 7 inclusive days).
@@ -10,10 +11,15 @@ export function defaultReportDateRange(days = 6) {
 }
 
 /**
- * Branch filter default: branch-scoped users stay on their branch;
- * org-wide users see all branches unless they pick one.
+ * The global branch takes precedence; otherwise branch-scoped users stay on
+ * their branch and org-wide users see all branches.
  */
-export function defaultReportBranchId(user, isOrgWide) {
+export function defaultReportBranchId(
+  user,
+  isOrgWide,
+  globalBranchId = selectedGlobalBranchId(),
+) {
+  if (globalBranchId) return globalBranchId;
   if (isOrgWide?.()) return "";
   return user?.branch_id ? String(user.branch_id) : "";
 }

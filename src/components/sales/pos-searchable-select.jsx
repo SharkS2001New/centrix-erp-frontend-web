@@ -11,6 +11,11 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  FILTER_FIELD_LABEL_CLASS,
+  inferFilterControlLabel,
+  useShouldShowFilterLabel,
+} from "@/components/catalog/filter-toolbar-context";
 
 /** Avoid importing catalog-shared (circular with FilterSelect → this module). */
 const defaultInputCls =
@@ -54,6 +59,8 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     loadOptions,
     searchError = null,
     inputClassName = defaultInputCls,
+    filterLabel,
+    "aria-label": ariaLabel,
     triggerRef,
     onTriggerKeyDown,
   },
@@ -61,6 +68,7 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
 ) {
   const listId = useId();
   const rootRef = useRef(null);
+  const anchorRef = useRef(null);
   const panelRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -74,6 +82,14 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   const [asyncLoading, setAsyncLoading] = useState(false);
   const [asyncError, setAsyncError] = useState(null);
   const [highlightIndex, setHighlightIndex] = useState(-1);
+  const showFilterLabel = useShouldShowFilterLabel();
+  const visibleFilterLabel = inferFilterControlLabel({
+    filterLabel,
+    ariaLabel,
+    placeholder,
+    options,
+    type: "select",
+  });
 
   const asyncSearch = typeof loadOptions === "function";
 
@@ -193,13 +209,13 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   }, [highlightIndex, open]);
 
   useEffect(() => {
-    if (!open || !rootRef.current) {
+    if (!open || !anchorRef.current) {
       setMenuStyle(null);
       return;
     }
 
     function updateMenuPosition() {
-      const anchor = rootRef.current;
+      const anchor = anchorRef.current;
       if (!anchor) return;
 
       const rect = anchor.getBoundingClientRect();
@@ -451,85 +467,91 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     ) : null;
 
   return (
-    <div ref={rootRef} className="relative">
-      <input
-        ref={setInputNodeRef}
-        type="text"
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={activeOptionId}
-        disabled={disabled || loading}
-        placeholder={
-          loading
-            ? "Loading…"
-            : open
-              ? searchPlaceholder || placeholder
-              : placeholder || searchPlaceholder
-        }
-        value={inputDisplayValue}
-        autoComplete="off"
-        spellCheck={false}
-        onFocus={() => {
-          if (disabled || loading) return;
-          if (!open) openList();
-        }}
-        onClick={() => {
-          if (disabled || loading) return;
-          if (!open) openList();
-        }}
-        onChange={(e) => {
-          const next = e.target.value;
-          setQuery(next);
-          setOpen(true);
-          // Drop the prior pick as soon as the user starts typing a new search.
-          if (value && next !== "") {
-            onChange("", null);
+    <div ref={rootRef}>
+      {showFilterLabel ? (
+        <span className={FILTER_FIELD_LABEL_CLASS}>{visibleFilterLabel}</span>
+      ) : null}
+      <div ref={anchorRef} className="relative">
+        <input
+          ref={setInputNodeRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeOptionId}
+          aria-label={ariaLabel ?? visibleFilterLabel}
+          disabled={disabled || loading}
+          placeholder={
+            loading
+              ? "Loading…"
+              : open
+                ? searchPlaceholder || placeholder
+                : placeholder || searchPlaceholder
           }
-        }}
-        onKeyDown={handleInputKeyDown}
-        className={`${inputClassName} ${inputPaddingClass} text-left disabled:cursor-not-allowed disabled:opacity-60`}
-      />
-      {hasClear ? (
+          value={inputDisplayValue}
+          autoComplete="off"
+          spellCheck={false}
+          onFocus={() => {
+            if (disabled || loading) return;
+            if (!open) openList();
+          }}
+          onClick={() => {
+            if (disabled || loading) return;
+            if (!open) openList();
+          }}
+          onChange={(e) => {
+            const next = e.target.value;
+            setQuery(next);
+            setOpen(true);
+            // Drop the prior pick as soon as the user starts typing a new search.
+            if (value && next !== "") {
+              onChange("", null);
+            }
+          }}
+          onKeyDown={handleInputKeyDown}
+          className={`${inputClassName} ${inputPaddingClass} text-left disabled:cursor-not-allowed disabled:opacity-60`}
+        />
+        {hasClear ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={clearSelection}
+            className="theme-text-muted absolute right-8 top-1/2 -translate-y-1/2 hover:text-[var(--theme-text)]"
+            aria-label="Clear selection"
+          >
+            ×
+          </button>
+        ) : null}
         <button
           type="button"
           tabIndex={-1}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={clearSelection}
-          className="theme-text-muted absolute right-8 top-1/2 -translate-y-1/2 hover:text-[var(--theme-text)]"
-          aria-label="Clear selection"
-        >
-          ×
-        </button>
-      ) : null}
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-hidden
-        disabled={disabled || loading}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          if (open) {
-            closeList();
-            return;
-          }
-          openList();
-        }}
-        className="theme-text-muted absolute right-2 top-1/2 -translate-y-1/2 text-xs disabled:opacity-60"
-      >
-        {open ? "▲" : "▼"}
-      </button>
-      {required && !value ? (
-        <input
-          tabIndex={-1}
           aria-hidden
-          required
-          value=""
-          onChange={() => {}}
-          className="pointer-events-none absolute h-0 w-0 opacity-0"
-        />
-      ) : null}
+          disabled={disabled || loading}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (open) {
+              closeList();
+              return;
+            }
+            openList();
+          }}
+          className="theme-text-muted absolute right-2 top-1/2 -translate-y-1/2 text-xs disabled:opacity-60"
+        >
+          {open ? "▲" : "▼"}
+        </button>
+        {required && !value ? (
+          <input
+            tabIndex={-1}
+            aria-hidden
+            required
+            value=""
+            onChange={() => {}}
+            className="pointer-events-none absolute h-0 w-0 opacity-0"
+          />
+        ) : null}
+      </div>
       {mounted && panel ? createPortal(panel, document.body) : null}
     </div>
   );

@@ -87,7 +87,7 @@ export function InventoryStockTakeIdScreen() {
   const params = useParams();
   const router = useRouter();
   const confirm = useConfirm();
-  const { organization, capabilities, hasPermission, user } = useAuth();
+  const { organization, capabilities, hasPermission, user, isOrgWide } = useAuth();
   const sessionId = params.id;
   const canResetStocks = canResetStockTakeStocks({ hasPermission });
 
@@ -123,7 +123,12 @@ export function InventoryStockTakeIdScreen() {
     setLoading(true);
     try {
       const [sess, uomRows, categoryRows, subCategoryRows, supplierRows] = await Promise.all([
-        apiRequest(`/stock-take-sessions/${sessionId}`),
+        apiRequest(`/stock-take-sessions/${sessionId}`, {
+          searchParams:
+            !isOrgWide() && user?.branch_id != null
+              ? { branch_id: user.branch_id }
+              : undefined,
+        }),
         fetchUomsCached(organization?.id).catch(() => []),
         fetchCategoriesCached(organization?.id).catch(() => []),
         fetchSubCategoriesCached(organization?.id).catch(() => []),
@@ -139,7 +144,7 @@ export function InventoryStockTakeIdScreen() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, organization?.id]);
+  }, [sessionId, organization?.id, user?.branch_id, isOrgWide]);
 
   const loadLines = useCallback(async () => {
     if (!session) return;
@@ -153,6 +158,9 @@ export function InventoryStockTakeIdScreen() {
             : null;
 
       const filters = { session_id: sessionId };
+      if (session?.branch_id != null) {
+        filters.branch_id = session.branch_id;
+      }
       if (allowedLocations?.length === 1) {
         filters.stock_location = allowedLocations[0];
       }
@@ -425,6 +433,7 @@ export function InventoryStockTakeIdScreen() {
       const saveRequest = () =>
         apiRequest(`/inventory/stock-take/${sessionId}/save-counts`, {
           method: "POST",
+          searchParams: session?.branch_id != null ? { branch_id: session.branch_id } : undefined,
           body: { lines: payloadLines },
         });
 
@@ -481,7 +490,10 @@ export function InventoryStockTakeIdScreen() {
     setCompleting(true);
     try {
       const completeRequest = () =>
-        apiRequest(`/inventory/stock-take/${sessionId}/complete`, { method: "POST" });
+        apiRequest(`/inventory/stock-take/${sessionId}/complete`, {
+          method: "POST",
+          searchParams: session?.branch_id != null ? { branch_id: session.branch_id } : undefined,
+        });
 
       if (totalLines > 50) {
         await runQueuedTask(completeRequest, {
@@ -535,7 +547,10 @@ export function InventoryStockTakeIdScreen() {
     setResettingStocks(true);
     try {
       const resetRequest = () =>
-        apiRequest(`/inventory/stock-take/${sessionId}/reset-stocks`, { method: "POST" });
+        apiRequest(`/inventory/stock-take/${sessionId}/reset-stocks`, {
+          method: "POST",
+          searchParams: session?.branch_id != null ? { branch_id: session.branch_id } : undefined,
+        });
 
       if (totalLines > 50) {
         await runQueuedTask(resetRequest, {

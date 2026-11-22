@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useHotelPosOfflineSupport } from "@/hooks/use-hotel-pos-offline-support";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
@@ -265,6 +266,17 @@ const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
 
 export function HotelBarPosScreen() {
   const { capabilities, user, organization, hasPermission } = useAuth();
+  const {
+    branches: branchScopeBranches,
+    showBranchFilter,
+    effectiveBranchId,
+    globalBranchId,
+    branchLoadError,
+  } = useBranchScope();
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const orderBranchId = showBranchFilter
+    ? selectedBranchId
+    : effectiveBranchId;
   const confirm = useConfirm();
   const assignedOutletId =
     user?.hospitality_outlet_id ?? capabilities?.hospitality_outlet_id ?? null;
@@ -333,6 +345,13 @@ export function HotelBarPosScreen() {
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
   const [check, setCheckState] = useState(null);
+  useEffect(() => {
+    if (showBranchFilter && check?.branch_id != null) {
+      setSelectedBranchId(String(check.branch_id));
+    } else {
+      setSelectedBranchId(globalBranchId);
+    }
+  }, [check?.branch_id, globalBranchId, showBranchFilter]);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -1193,7 +1212,10 @@ export function HotelBarPosScreen() {
     if (sellingLocked) {
       throw new Error("Please check your internet connection");
     }
-    const body = { branch_id: user?.branch_id ?? undefined };
+    if (!orderBranchId) {
+      throw new Error("Select a branch before creating an order.");
+    }
+    const body = { branch_id: Number(orderBranchId) };
     if (menuOutlet?.id) {
       body.outlet_id = Number(menuOutlet.id);
     }
@@ -2084,6 +2106,38 @@ export function HotelBarPosScreen() {
           </div>
         </div>
       </div>
+
+      {showBranchFilter ? (
+        <div className="relative z-10 flex shrink-0 flex-wrap items-end gap-3 border-b border-[var(--theme-border)] px-3 py-2 sm:px-4">
+          <label htmlFor="hotel-pos-order-branch" className="flex min-w-56 flex-col gap-1 text-xs font-medium">
+            Branch for this order
+            <select
+              id="hotel-pos-order-branch"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              value={selectedBranchId}
+              onChange={(event) => setSelectedBranchId(event.target.value)}
+              disabled={busy || Boolean(check?.lines?.length) || Boolean(check?.id && check?.branch_id != null)}
+            >
+              <option value="">Select a branch</option>
+              {branchScopeBranches.map((branch) => (
+                <option key={branch.id} value={String(branch.id)}>
+                  {branch.branch_name ?? `Branch #${branch.id}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!selectedBranchId ? (
+            <p role="status" className="pb-2 text-xs text-amber-800">
+              Select a branch before creating an order.
+            </p>
+          ) : null}
+          {branchLoadError ? (
+            <p role="alert" className="pb-2 text-xs text-red-700">
+              Could not load branches: {branchLoadError instanceof Error ? branchLoadError.message : "Please try again."}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="relative z-0 flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
         <div className="hotel-pos-menu-pane flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">

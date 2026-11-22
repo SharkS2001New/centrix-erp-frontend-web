@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Children, isValidElement, useEffect, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
 import { TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
@@ -10,6 +17,13 @@ import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNu
 import { activeGeneralSettings } from "@/lib/general-settings";
 import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/use-list-page-controls";
 import { clipSearchValue, limitSearchValue } from "@/lib/search-length";
+import {
+  FILTER_FIELD_LABEL_CLASS,
+  FilterFieldLabelContext,
+  FilterToolbarContext,
+  inferFilterControlLabel,
+  useShouldShowFilterLabel,
+} from "@/components/catalog/filter-toolbar-context";
 
 export function formatShortDate(value, settings = activeGeneralSettings()) {
   return formatOrgDate(value, settings);
@@ -174,8 +188,20 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
   );
 }
 
-export function SearchInput({ value, onChange, placeholder, className = "" }) {
+export function SearchInput({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+  filterLabel,
+  "aria-label": ariaLabel,
+}) {
   const fillsWidth = /\bw-full\b/.test(className) || /\bmin-w-0\b/.test(className);
+  const showFilterLabel = useShouldShowFilterLabel();
+  const label = inferFilterControlLabel({
+    filterLabel: filterLabel ?? ariaLabel ?? "Search",
+    type: "search",
+  });
 
   function handleChange(event) {
     const next = limitSearchValue(event.target.value);
@@ -188,7 +214,6 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
   return (
     <div
       className={[
-        "relative",
         // Explicit width so flex toolbars (UOMs, categories, etc.) don't stay content-sized.
         fillsWidth ? "min-w-0 w-full" : "w-72 shrink-0 sm:w-96",
         className,
@@ -196,14 +221,20 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
         .filter(Boolean)
         .join(" ")}
     >
-      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
-      <input
-        type="search"
-        value={clipSearchValue(value)}
-        onChange={handleChange}
-        placeholder={placeholder}
-        className="theme-input theme-input-focus h-[38px] w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
-      />
+      {showFilterLabel ? (
+        <span className={FILTER_FIELD_LABEL_CLASS}>{label}</span>
+      ) : null}
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
+        <input
+          type="search"
+          value={clipSearchValue(value)}
+          onChange={handleChange}
+          placeholder={placeholder}
+          aria-label={ariaLabel ?? label}
+          className="theme-input theme-input-focus h-[38px] w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
+        />
+      </div>
     </div>
   );
 }
@@ -214,11 +245,76 @@ export const FILTER_CONTROL_CLASS =
 export const FILTER_TOOLBAR_CLASS =
   "mb-4 flex flex-nowrap items-end gap-3 overflow-x-auto pb-1";
 
+function filterLabelText(node) {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(filterLabelText).join("");
+  if (!isValidElement(node)) return "";
+  return filterLabelText(node.props.children);
+}
+
+function addNativeFilterLabels(children, fieldLabel = "") {
+  return Children.map(children, (child) => {
+    if (!isValidElement(child)) return child;
+    if (child.type === Field || child.type === "label" || child.type === "button") {
+      return child;
+    }
+    if (child.type === Fragment || child.type === "div") {
+      const labelChild = Children.toArray(child.props.children).find(
+        (nestedChild) => isValidElement(nestedChild) && nestedChild.type === "label",
+      );
+      const childFieldLabel = filterLabelText(labelChild?.props.children).trim() || fieldLabel;
+      return cloneElement(
+        child,
+        {},
+        <FilterFieldLabelContext.Provider value={Boolean(childFieldLabel)}>
+          {addNativeFilterLabels(child.props.children, childFieldLabel)}
+        </FilterFieldLabelContext.Provider>,
+      );
+    }
+    if (child.type !== "input" && child.type !== "select") return child;
+    if (["hidden", "checkbox", "radio", "file", "submit", "button"].includes(child.props.type)) {
+      return child;
+    }
+    if (fieldLabel) {
+      return cloneElement(child, {
+        "aria-label": child.props["aria-label"] ?? fieldLabel,
+      });
+    }
+
+    const label = inferFilterControlLabel({
+      ...child.props,
+      ariaLabel: child.props["aria-label"],
+      options:
+        child.type === "select"
+          ? Children.toArray(child.props.children)
+              .filter((option) => isValidElement(option) && option.type === "option")
+              .map((option) => ({
+                value: option.props.value,
+                label:
+                  typeof option.props.children === "string"
+                    ? option.props.children
+                    : option.props.label,
+              }))
+          : undefined,
+    });
+    return (
+      <div key={child.key} className="flex shrink-0 flex-col gap-1">
+        <span className={FILTER_FIELD_LABEL_CLASS}>{label}</span>
+        {cloneElement(child, {
+          "aria-label": child.props["aria-label"] ?? label,
+        })}
+      </div>
+    );
+  });
+}
+
 export function FilterToolbar({ children, className = "" }) {
   return (
-    <div className={[FILTER_TOOLBAR_CLASS, className].filter(Boolean).join(" ")}>
-      {children}
-    </div>
+    <FilterToolbarContext.Provider value>
+      <div className={[FILTER_TOOLBAR_CLASS, className].filter(Boolean).join(" ")}>
+        {addNativeFilterLabels(children)}
+      </div>
+    </FilterToolbarContext.Provider>
   );
 }
 
@@ -632,7 +728,9 @@ export function Field({ label, required = false, children }) {
         {label}
         {showRequired ? <RequiredMark /> : null}
       </span>
-      {children}
+      <FilterFieldLabelContext.Provider value>
+        {children}
+      </FilterFieldLabelContext.Provider>
     </label>
   );
 }

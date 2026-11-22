@@ -41,6 +41,7 @@ import {
   shouldShowBranchSelect,
 } from "@/components/customers/customer-form";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 
 export {
   EMPTY_EMPLOYEE_FORM,
@@ -50,7 +51,8 @@ export {
 };
 
 export function useEmployeeFormResources() {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const [departments, setDepartments] = useState([]);
   const [positions, setPositions] = useState([]);
   const [shifts, setShifts] = useState([]);
@@ -109,7 +111,10 @@ export function useEmployeeFormResources() {
     [user, branches],
   );
 
-  const defaultBranch = useMemo(() => defaultBranchId(user, branches), [user, branches]);
+  const defaultBranch = useMemo(
+    () => defaultBranchId(user, branches, isOrgWide(), globalBranchId),
+    [branches, globalBranchId, isOrgWide, user],
+  );
 
   return {
     user,
@@ -127,7 +132,7 @@ export function useEmployeeFormResources() {
 }
 
 export function resolveEmployeeBranchId(form, user, branches, showBranchSelect) {
-  if (showBranchSelect && form.branch_id) return Number(form.branch_id);
+  if (showBranchSelect) return form.branch_id ? Number(form.branch_id) : null;
   if (user?.branch_id != null) return user.branch_id;
   if (branches.length === 1) return branches[0].id;
   return form.branch_id ? Number(form.branch_id) : null;

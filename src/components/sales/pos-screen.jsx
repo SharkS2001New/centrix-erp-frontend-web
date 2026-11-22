@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, MapPin } from "lucide-react";
 import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams } from "@/lib/paginated-api";
@@ -16,6 +17,7 @@ import {
   isRealtimeConfigured,
 } from "@/lib/realtime/notification-echo";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePosSession } from "@/contexts/pos-session-context";
 import {
   parseDecimalInput,
@@ -1466,6 +1468,14 @@ export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, organization, organizationLicense, hasPermission, isOrgAdmin, logout, refreshCapabilities } = useAuth();
+  const {
+    branches: branchScopeBranches,
+    showBranchFilter,
+    effectiveBranchId,
+    globalBranchId,
+    branchLoadError,
+  } = useBranchScope();
+  const [selectedOrderBranchId, setSelectedOrderBranchId] = useState("");
   const canPay = Boolean(isOrgAdmin?.());
   const licenseMode = licenseAccessMode(organizationLicense);
   const yearly = isYearlyLicence(organizationLicense);
@@ -1712,10 +1722,18 @@ export function PosScreen({ standalone = false }) {
     "Completing sale…",
   );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const orderBranchId = showBranchFilter
+    ? selectedOrderBranchId
+    : effectiveBranchId;
+  const orderBranchIdValue = orderBranchId ? Number(orderBranchId) : null;
+
+  useEffect(() => {
+    setSelectedOrderBranchId("");
+  }, [organizationId]);
 
   const productBranchParams = useMemo(
-    () => (user?.branch_id ? { branch_id: user.branch_id } : {}),
-    [user?.branch_id],
+    () => (orderBranchIdValue ? { branch_id: orderBranchIdValue } : {}),
+    [orderBranchIdValue],
   );
   const posSalesConfig = useMemo(
     () =>
@@ -1856,7 +1874,7 @@ export function PosScreen({ standalone = false }) {
     resolve?.(result);
   }, []);
 
-  const loadPosTillMeta = useCallback(async () => {
+  const loadPosTillMeta = useCallback(async (branchIdOverride = null) => {
     if (!organizationId || !requireTillFloat) return;
     setPosTillMetaLoading(true);
     try {
@@ -1897,7 +1915,13 @@ export function PosScreen({ standalone = false }) {
       const assignedTillForUser = (tills ?? []).find(
         (t) => user?.id != null && Number(t.cashier_id) === Number(user.id),
       );
-      const branchId = user?.branch_id ?? assignedTillForUser?.branch_id ?? branches[0]?.id ?? null;
+      const branchId =
+        branchIdOverride ??
+        orderBranchIdValue ??
+        user?.branch_id ??
+        assignedTillForUser?.branch_id ??
+        branches[0]?.id ??
+        null;
 
       if (branchId) {
         const picked = pickBranchTillForCashier({
@@ -1926,7 +1950,7 @@ export function PosScreen({ standalone = false }) {
     } finally {
       setPosTillMetaLoading(false);
     }
-  }, [organizationId, requireTillFloat, user?.branch_id, user?.id, orgTodayKey]);
+  }, [organizationId, orderBranchIdValue, requireTillFloat, user?.branch_id, user?.id, orgTodayKey]);
 
   const openByTill = useMemo(
     () => indexOpenSessionsByTill(posOpenSessions),
@@ -1982,7 +2006,7 @@ export function PosScreen({ standalone = false }) {
   async function handlePosOpenSession(payload) {
     try {
       let tillId = payload.till_id;
-      const branchId = payload.branch_id ?? user?.branch_id;
+      const branchId = orderBranchIdValue ?? payload.branch_id ?? user?.branch_id;
 
       if (!tillId && branchId) {
         const created = await createBranchTill({
@@ -2468,6 +2492,14 @@ export function PosScreen({ standalone = false }) {
   });
 
   const [cart, setCart] = useState(null);
+  useEffect(() => {
+    if (showBranchFilter && cart?.branch_id != null) {
+      setSelectedOrderBranchId(String(cart.branch_id));
+    } else {
+      setSelectedOrderBranchId(globalBranchId);
+    }
+  }, [cart?.branch_id, globalBranchId, showBranchFilter]);
+
   /** Local-first workspace (offline/slow or mid-sale outage cart): no network payments / STK. */
   const posNetworkPaymentsBlocked =
     standalone && (offlineMode || Boolean(cart?.offline) || Boolean(cart?.offline_client_sale_uuid));
@@ -2625,7 +2657,7 @@ export function PosScreen({ standalone = false }) {
   /** Seed for switching a TemporaryCart into the local offline workspace. */
   function offlineOutageSeed(extra = {}) {
     return {
-      branch_id: user?.branch_id,
+      branch_id: orderBranchIdValue,
       till_id: tillId,
       float_session_id: floatSessionId,
       combineIdenticalLines: combineIdenticalLinesRef.current,
@@ -2760,7 +2792,7 @@ export function PosScreen({ standalone = false }) {
       id: "pending-fresh",
       channel,
       order_source: standalone ? "pos" : "backoffice",
-      branch_id: user?.branch_id ?? activeCart?.branch_id ?? null,
+      branch_id: orderBranchIdValue ?? activeCart?.branch_id ?? null,
       till_id: tillId ?? activeCart?.till_id ?? null,
       float_session_id: floatSessionId ?? activeCart?.float_session_id ?? null,
       lines: [],
@@ -3824,14 +3856,14 @@ export function PosScreen({ standalone = false }) {
           await wipeTemporaryCartLines(maybeCart).catch(() => {});
           return;
         }
-        if (!user?.branch_id) return;
+        if (!orderBranchIdValue) return;
         try {
           const sticky = await apiRequest("/sales/carts", {
             method: "POST",
             body: {
               channel: "pos",
               order_source: "pos",
-              branch_id: user.branch_id,
+              branch_id: orderBranchIdValue,
               ...(tillId ? { till_id: tillId } : {}),
             },
             loading: false,
@@ -3888,7 +3920,7 @@ export function PosScreen({ standalone = false }) {
     syncProgress?.message,
     sessionPosOrders,
     floatSessionId,
-    user?.branch_id,
+    orderBranchIdValue,
     tillId,
     busy,
     receiptPrintStatus,
@@ -4626,7 +4658,7 @@ export function PosScreen({ standalone = false }) {
     const forceEmpty = Boolean(options.forceEmpty);
     // When false, fetch/create only — caller decides whether to paint (hold/print clear).
     const applyState = options.applyState !== false;
-    if (!user?.branch_id) return null;
+    if (!orderBranchIdValue) return null;
     if (standalone && offlineMode) {
       const current = cartRef.current;
       // Mid-sale outage: keep the open workspace lines — do not rebuild/copy the cart.
@@ -4644,7 +4676,7 @@ export function PosScreen({ standalone = false }) {
         return presented;
       }
       const local = await loadOrCreateLocalPosCart({
-        branch_id: user.branch_id,
+        branch_id: orderBranchIdValue,
         till_id: tillId,
         float_session_id: floatSessionId,
       });
@@ -4655,7 +4687,11 @@ export function PosScreen({ standalone = false }) {
       }
       return presented;
     }
-    const body = { channel, order_source: standalone ? "pos" : "backoffice", branch_id: user.branch_id };
+    const body = {
+      channel,
+      order_source: standalone ? "pos" : "backoffice",
+      branch_id: orderBranchIdValue,
+    };
     if (tillId) body.till_id = tillId;
     if (usesRouteMarkup) {
       body.route_id = Number(selectedRouteId);
@@ -4769,7 +4805,7 @@ export function PosScreen({ standalone = false }) {
     channel,
     standalone,
     offlineMode,
-    user?.branch_id,
+    orderBranchIdValue,
     tillId,
     floatSessionId,
     showRouteOrderUi,
@@ -4831,7 +4867,7 @@ export function PosScreen({ standalone = false }) {
   const materializeOfflineCartOnServer = useCallback(
     async (localCart, options = {}) => {
       const applyToWorkspace = options.applyToWorkspace !== false;
-      if (!user?.branch_id || !localCart?.lines?.length) {
+      if (!orderBranchIdValue || !localCart?.lines?.length) {
         return loadCashierCart();
       }
       if (materializeInflightRef.current) {
@@ -4908,7 +4944,10 @@ export function PosScreen({ standalone = false }) {
         const body = {
           channel: localCart.channel ?? channel ?? "pos",
           order_source: "pos",
-          branch_id: localCart.branch_id ?? user.branch_id,
+          branch_id:
+            localCart.held_order_num && localCart.superseded_sale_id
+              ? localCart.branch_id ?? orderBranchIdValue
+              : orderBranchIdValue ?? localCart.branch_id,
         };
         if (localCart.till_id ?? tillId) body.till_id = localCart.till_id ?? tillId;
         let serverCart = await apiRequest("/sales/carts", {
@@ -5004,7 +5043,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
     },
-    [user?.branch_id, tillId, loadCashierCart, channel],
+    [orderBranchIdValue, tillId, loadCashierCart, channel],
   );
 
   const applyAdvisedDiscountsToCart = useCallback(async () => {
@@ -5052,6 +5091,9 @@ export function PosScreen({ standalone = false }) {
 
   const ensureCart = useCallback(async () => {
     const current = cartRef.current;
+    if (!orderBranchIdValue && !current?.branch_id) {
+      return null;
+    }
     // Background previous-order edit briefly owns TemporaryCart. Keep selling on a
     // local workspace so sync cannot merge old lines into the live till.
     if (
@@ -5068,7 +5110,7 @@ export function PosScreen({ standalone = false }) {
               id: "pending-fresh",
               channel,
               lines: [],
-              branch_id: user?.branch_id,
+              branch_id: orderBranchIdValue,
               till_id: tillId,
               float_session_id: floatSessionId,
             },
@@ -5235,11 +5277,11 @@ export function PosScreen({ standalone = false }) {
     return loadCashierCart();
   }, [
     channel,
+    orderBranchIdValue,
     loadCashierCart,
     recoverMissingServerCart,
     standalone,
     offlineMode,
-    user?.branch_id,
     tillId,
     floatSessionId,
     sessionPosOrders,
@@ -5933,7 +5975,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   useEffect(() => {
-    if (!user?.branch_id) return;
+    if (!orderBranchIdValue) return;
     let cancelled = false;
     setCart(null);
     loadCashierCart().catch(() => {
@@ -5945,7 +5987,7 @@ export function PosScreen({ standalone = false }) {
     // Only remount when channel/branch changes — not when offlineMode flips
     // (that would wipe an open mid-sale cart). Outage continue keeps the sale in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [channel, user?.branch_id]);
+  }, [channel, orderBranchIdValue]);
 
   // Mid-sale outage: keep the open sale in place. Do not copy/rebuild the cart into
   // IndexedDB (that raced classic line adds and created duplicate rows). Quietly mark
@@ -6737,6 +6779,9 @@ export function PosScreen({ standalone = false }) {
     skipOptimisticPaint = false,
   }) {
     const liveCart = cartRef.current ?? cart;
+    if (!orderBranchIdValue && !liveCart?.branch_id) {
+      return false;
+    }
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
     const intendedEdit = editingId != null || editingRef != null;
@@ -11392,7 +11437,7 @@ export function PosScreen({ standalone = false }) {
     try {
       if (autoHeldPrompt.localHeldId && isLocalHeldId(autoHeldPrompt.localHeldId)) {
         const { cart: localCart, park } = await restoreLocalHeldOrder(autoHeldPrompt.localHeldId, {
-          branch_id: user?.branch_id ?? null,
+          branch_id: orderBranchIdValue ?? cart?.branch_id ?? null,
           till_id: cart?.till_id ?? null,
           float_session_id: floatSessionId ?? null,
         });
@@ -12609,6 +12654,9 @@ export function PosScreen({ standalone = false }) {
         ? { ...pendingPosSlot, pos_order_num: null }
         : null,
     });
+    const checkoutBranchId = isPreviousOrderCashEdit
+      ? activeCart.branch_id ?? editSourceSale?.branch_id ?? orderBranchIdValue
+      : orderBranchIdValue ?? activeCart.branch_id ?? user?.branch_id ?? null;
 
     // Local cash + outbox when:
     // - truly offline / slow (offlineMode), or
@@ -12646,7 +12694,7 @@ export function PosScreen({ standalone = false }) {
             ...l,
             client_line_id: l.client_line_id ?? l.id,
           })),
-          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          branch_id: checkoutBranchId,
           till_id: tillId ?? checkoutCart.till_id,
           float_session_id: floatSessionId ?? checkoutCart.float_session_id,
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
@@ -12773,7 +12821,7 @@ export function PosScreen({ standalone = false }) {
             ...l,
             client_line_id: l.client_line_id ?? l.id,
           })),
-          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          branch_id: checkoutBranchId,
           till_id: tillId ?? checkoutCart.till_id,
           float_session_id: floatSessionId ?? checkoutCart.float_session_id,
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
@@ -12893,7 +12941,7 @@ export function PosScreen({ standalone = false }) {
             ...l,
             client_line_id: l.client_line_id ?? l.id,
           })),
-          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          branch_id: checkoutBranchId,
           till_id: tillId ?? checkoutCart.till_id,
           float_session_id: floatSessionId ?? checkoutCart.float_session_id,
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
@@ -13070,6 +13118,7 @@ export function PosScreen({ standalone = false }) {
       // only send true so the KRA wait UI still matches an expected fiscalized checkout.
       let checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
         ...checkoutInput,
+        branch_id: checkoutBranchId,
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
         ...(isPreviousOrderCashEdit && checkoutCart?.held_order_num
@@ -15523,7 +15572,7 @@ export function PosScreen({ standalone = false }) {
         }
         const { cart: localCart, sale } = await beginOfflineSaleEdit(saleId, {
           seed: {
-            branch_id: user?.branch_id,
+            branch_id: saleSnapshot?.branch_id ?? orderBranchIdValue,
             till_id: tillId,
             float_session_id: floatSessionId,
           },
@@ -17010,6 +17059,14 @@ export function PosScreen({ standalone = false }) {
       }
 
       const isPreviousOrderEdit = isPreviousOrderEditSession(activeCart);
+      if (showBranchFilter && !selectedOrderBranchId && !isPreviousOrderEdit) {
+        notifyError(
+          standalone
+            ? "Select the branch where this order should be saved."
+            : "Choose a branch in the global branch selector before saving this order.",
+        );
+        return;
+      }
 
       if (isPreviousOrderEdit) {
         const isOfflineEdit = Boolean(
@@ -17627,6 +17684,56 @@ export function PosScreen({ standalone = false }) {
     };
   }, []);
 
+  const branchSelector = showBranchFilter ? (
+    <div className="relative inline-flex min-w-0 shrink-0 items-center">
+      <span
+        className="app-topbar-app-switcher-icon pointer-events-none absolute left-1 z-[1] text-[var(--theme-primary)]"
+        aria-hidden
+      >
+        <MapPin className="h-4 w-4" strokeWidth={2.25} />
+      </span>
+      <select
+        id="pos-order-branch"
+        className="app-topbar-app-switcher min-w-0 cursor-pointer appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2"
+        aria-label="Branch for this order"
+        title="Branch for this order"
+        value={selectedOrderBranchId}
+        style={{
+          width: "11rem",
+          maxWidth: "11rem",
+          paddingLeft: "2.25rem",
+          paddingRight: "2rem",
+        }}
+        disabled={
+          busy ||
+          Boolean(cart?.lines?.length) ||
+          Boolean(cart?.held_order_num) ||
+          Boolean(cart?.branch_id != null && isServerPosCartId(cart?.id))
+        }
+        onChange={(event) => {
+          setSelectedOrderBranchId(event.target.value);
+          void loadPosTillMeta(event.target.value);
+        }}
+      >
+        <option value="">Select branch</option>
+        {branchScopeBranches.map((branch) => (
+          <option key={branch.id} value={String(branch.id)}>
+            {branch.branch_name ?? `Branch #${branch.id}`}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute right-2.5 h-4 w-4 text-[var(--theme-subtext)]"
+        aria-hidden
+      />
+      {branchLoadError ? (
+        <span role="alert" className="ml-2 max-w-40 text-xs text-red-700">
+          Could not load branches
+        </span>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <div
       className={`pos-workspace relative flex min-h-0 flex-1 flex-col${
@@ -17829,6 +17936,7 @@ export function PosScreen({ standalone = false }) {
                     {trial || expired ? "Upgrade Now" : onPackageOne ? "Choose Plan" : "Change plan"}
                   </Link>
                 ) : null}
+                {branchSelector}
                 <WorkspaceSwitcher
                   switchBlocked={blocksWorkspaceSwitch}
                   switchBlockedMessage={workspaceSwitchBlockedMessage}

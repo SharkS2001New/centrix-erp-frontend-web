@@ -12,6 +12,7 @@ import {
   fetchVehiclesCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { shouldShowMobileFleetNav } from "@/lib/sales-settings";
@@ -35,6 +36,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { DRIVER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { useConfirm } from "@/lib/use-confirm";
 import {
@@ -63,6 +65,12 @@ export function FulfillmentDriversScreen() {
   const handledParams = useRef("");
   const drawerOptionsLoadedRef = useRef(false);
   const { user, capabilities } = useAuth();
+  const { branches, showBranchFilter, lockedBranchId, globalBranchId } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
+  const defaultCreateBranchId = globalBranchId || (
+    showBranchFilter ? "" : lockedBranchId || (branches.length === 1 ? String(branches[0].id) : "")
+  );
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
   const fleetEnabled = distributionEnabled || shouldShowMobileFleetNav(capabilities);
 
@@ -87,6 +95,10 @@ export function FulfillmentDriversScreen() {
   const [form, setForm] = useState(EMPTY_DRIVER_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  useEffect(() => {
+    if (!drawerOpen || drawerMode !== "create") return;
+    setForm((current) => ({ ...current, branch_id: defaultCreateBranchId }));
+  }, [defaultCreateBranchId, drawerMode, drawerOpen]);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const {
     selectedIds,
@@ -137,7 +149,7 @@ export function FulfillmentDriversScreen() {
         page,
         perPage: pageSize,
         q: debouncedSearch,
-        extra,
+        extra: { ...extra, ...(branchId ? { branch_id: branchId } : {}) },
       });
       const driverRes = await apiRequest("/drivers", { searchParams: searchParamsApi });
       const parsed = parsePaginator(driverRes);
@@ -150,7 +162,7 @@ export function FulfillmentDriversScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter, routeFilter]);
+  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter, routeFilter, branchId]);
 
   const loadDrawerOptions = useCallback(async () => {
     if (drawerOptionsLoadedRef.current) return;
@@ -173,7 +185,7 @@ export function FulfillmentDriversScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, routeFilter]);
+  }, [debouncedSearch, statusFilter, routeFilter, branchFilter]);
 
   const safePage = Math.min(page, totalPages);
   const pageRowIds = useMemo(() => drivers.map((d) => d.id), [drivers]);
@@ -199,7 +211,10 @@ export function FulfillmentDriversScreen() {
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    setForm({ ...EMPTY_DRIVER_FORM });
+    setForm({
+      ...EMPTY_DRIVER_FORM,
+      branch_id: defaultCreateBranchId,
+    });
     setFormError(null);
     setDrawerOpen(true);
     void loadDrawerOptions();
@@ -244,8 +259,11 @@ export function FulfillmentDriversScreen() {
 
   async function saveDriver(e) {
     e.preventDefault();
-    if (!user?.branch_id) {
-      setFormError("Your user profile is missing a branch.");
+    const selectedBranchId =
+      (showBranchFilter ? form.branch_id : lockedBranchId || form.branch_id) ||
+      (branches.length === 1 ? String(branches[0].id) : "");
+    if (!selectedBranchId) {
+      setFormError("Select a branch for this driver.");
       return;
     }
     if (!form.driver_code.trim()) {
@@ -255,7 +273,7 @@ export function FulfillmentDriversScreen() {
     setSaving(true);
     setFormError(null);
     try {
-      const body = buildDriverBody(form, user.branch_id);
+      const body = buildDriverBody(form, Number(selectedBranchId));
       if (drawerMode === "edit" && editingId != null) {
         await apiRequest(`/drivers/${editingId}`, { method: "PUT", body });
       } else {
@@ -279,12 +297,14 @@ export function FulfillmentDriversScreen() {
     if (driver) {
       openEditDrawer(driver);
     } else {
-      apiRequest(`/drivers/${editId}`)
+      apiRequest(`/drivers/${editId}`, {
+        searchParams: branchId ? { branch_id: branchId } : undefined,
+      })
         .then(openEditDrawer)
         .catch(() => notifyError("Driver not found"));
     }
     router.replace("/fulfillment/drivers", { scroll: false });
-  }, [tableLoading, searchParams, drivers, router]);
+  }, [tableLoading, searchParams, drivers, router, branchId]);
 
   async function deleteDriver(driver) {
     const ok = await confirm({
@@ -295,7 +315,10 @@ export function FulfillmentDriversScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/drivers/${driver.id}`, { method: "DELETE" });
+      await apiRequest(`/drivers/${driver.id}`, {
+        method: "DELETE",
+        searchParams: driver.branch_id != null ? { branch_id: driver.branch_id } : undefined,
+      });
       if (editingId === driver.id) closeDrawer();
       await loadDrivers();
       notifySuccess(`"${driver.full_name}" deleted`);
@@ -312,7 +335,11 @@ export function FulfillmentDriversScreen() {
         selectedIds,
         entityName: "driver",
         deleteItem: async (id) => {
-          await apiRequest(`/drivers/${id}`, { method: "DELETE" });
+          const driver = driverById.get(String(id));
+          await apiRequest(`/drivers/${id}`, {
+            method: "DELETE",
+            searchParams: driver?.branch_id != null ? { branch_id: driver.branch_id } : undefined,
+          });
         },
         clearSelection,
         reload: loadDrivers,
@@ -334,9 +361,9 @@ export function FulfillmentDriversScreen() {
       page: 1,
       perPage: 200,
       q: debouncedSearch,
-      extra,
+      extra: { ...extra, ...(branchId ? { branch_id: branchId } : {}) },
     });
-  }, [debouncedSearch, statusFilter, routeFilter]);
+  }, [debouncedSearch, statusFilter, routeFilter, branchId]);
 
   if (!fleetEnabled) {
     return (
@@ -388,6 +415,13 @@ export function FulfillmentDriversScreen() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search driver…"
           />
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={branches}
+            />
+          ) : null}
           <FilterSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -415,7 +449,7 @@ export function FulfillmentDriversScreen() {
           <div className={listRefresh.contentClassName}>
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse text-sm">
+              <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <TableSelectAllHeader
@@ -427,6 +461,7 @@ export function FulfillmentDriversScreen() {
                     <th className="px-4 py-2.5">Phone</th>
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5">Code</th>
+                    {showBranchFilter ? <th className="px-4 py-2.5">Branch</th> : null}
                     <th className="px-4 py-2.5">Route</th>
                     <th className="px-4 py-2.5">Vehicle</th>
                     <th className="px-4 py-2.5">Status</th>
@@ -436,7 +471,7 @@ export function FulfillmentDriversScreen() {
                 <tbody>
                   {drivers.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={showBranchFilter ? 10 : 9} className="px-4 py-12 text-center text-slate-500">
                         No drivers found.
                       </td>
                     </tr>
@@ -466,6 +501,11 @@ export function FulfillmentDriversScreen() {
                         <td className="px-4 py-3 font-mono text-xs text-slate-600">
                           {driver.driver_code}
                         </td>
+                        {showBranchFilter ? (
+                          <td className="px-4 py-3 text-slate-700">
+                            {driver.branch?.branch_name ?? driver.branch_name ?? "—"}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3 text-slate-700">
                           {driver.default_route?.route_name ?? "—"}
                         </td>
@@ -521,6 +561,20 @@ export function FulfillmentDriversScreen() {
         error={formError}
         submitLabel={drawerMode === "edit" ? "Save changes" : "Save driver"}
       >
+        {showBranchFilter ? (
+          <Field label="Branch" required>
+            <SearchableSelect
+              value={form.branch_id}
+              onChange={(value) => updateField("branch_id", value)}
+              className={inputClassName()}
+              placeholder="Select branch"
+              options={branches.map((branch) => ({
+                value: String(branch.id),
+                label: branch.branch_name ?? `Branch #${branch.id}`,
+              }))}
+            />
+          </Field>
+        ) : null}
         <Field label="Employee record (optional)">
           <SearchableSelect
             value={form.employee_id}

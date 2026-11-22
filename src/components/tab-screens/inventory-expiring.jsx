@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
@@ -28,6 +29,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { formatSupplierKes } from "@/components/suppliers/suppliers-shared";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 
 const STATUS_OPTIONS = [
   { value: "open", label: "Open (expired + soon)" },
@@ -72,6 +74,7 @@ function daysLabel(days) {
 export function InventoryExpiringScreen() {
   const confirm = useConfirm();
   const { user, hasPermission, capabilities } = useAuth();
+  const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
   const batchTrackingOn = Boolean(
     capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
   );
@@ -86,6 +89,8 @@ export function InventoryExpiringScreen() {
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [status, setStatus] = useState("open");
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchId = lockedBranchId || branchFilter;
   const [withinDays, setWithinDays] = useState("30");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -111,7 +116,7 @@ export function InventoryExpiringScreen() {
         extra: {
           status,
           within_days: withinDays || 30,
-          branch_id: user?.branch_id || undefined,
+          branch_id: branchId || undefined,
         },
       });
       const res = await apiRequest("/inventory/expiring-batches", { searchParams });
@@ -125,13 +130,13 @@ export function InventoryExpiringScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [batchTrackingOn, page, pageSize, debouncedSearch, status, withinDays, user?.branch_id]);
+  }, [batchTrackingOn, page, pageSize, debouncedSearch, status, withinDays, branchId]);
 
   useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, status, withinDays]);
+  }, [debouncedSearch, status, withinDays, branchFilter]);
 
   const safePage = Math.min(page, totalPages);
   const listRefresh = useListRefreshUi({
@@ -226,6 +231,9 @@ export function InventoryExpiringScreen() {
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {showBranchFilter ? (
+          <BranchFilterField value={branchFilter} onChange={setBranchFilter} branches={branches} />
+        ) : null}
         <FilterSelect
           value={status}
           onChange={(e) => setStatus(e.target.value)}

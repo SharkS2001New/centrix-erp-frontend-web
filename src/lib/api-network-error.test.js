@@ -3,6 +3,7 @@ import {
   ApiError,
   ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
   NETWORK_CONNECTIVITY_MESSAGE,
+  isStaleWorkspaceChannelError,
   isNetworkFetchError,
   userFacingNetworkErrorMessage,
 } from "./api";
@@ -50,6 +51,44 @@ describe("userFacingNetworkErrorMessage", () => {
         "/ai/chat",
       ),
     ).toBe("Server is down");
+  });
+});
+
+describe("isStaleWorkspaceChannelError", () => {
+  const message =
+    "This session was started from POS and cannot access this part of the system. Sign in with an allowed channel.";
+
+  it("ignores channel denials from requests made during a workspace session rotation", () => {
+    expect(
+      isStaleWorkspaceChannelError({
+        status: 403,
+        message,
+        isAuthRequest: false,
+        hasSession: true,
+        sessionRotated: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves ordinary permission errors and auth-switch failures", () => {
+    expect(
+      isStaleWorkspaceChannelError({
+        status: 403,
+        message,
+        isAuthRequest: false,
+        hasSession: true,
+        sessionRotated: false,
+      }),
+    ).toBe(false);
+    expect(
+      isStaleWorkspaceChannelError({
+        status: 403,
+        message,
+        isAuthRequest: true,
+        hasSession: true,
+        sessionRotated: true,
+      }),
+    ).toBe(false);
   });
 });
 

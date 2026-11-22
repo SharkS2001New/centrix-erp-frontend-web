@@ -22,7 +22,7 @@ import { fetchBranchesCached, fetchSalesCapableUsersCached } from "@/lib/referen
 import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { filterByOrganization } from "@/lib/admin";
 import { useAuth } from "@/contexts/auth-context";
-import { isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { normalizePaymentsBreakdownSearchQuery } from "@/lib/payments-breakdown-search";
 import { formatPaymentsBreakdownOrderLabel } from "@/lib/sales";
@@ -248,7 +248,18 @@ export function PaymentsBreakdownScreen({
   /** Skip one effect cycle when method_code is synced from a response that already has the right rows. */
   const suppressLoadForMethodSyncRef = useRef(false);
 
-  const showBranchFilter = isMultiBranchCatalog(user);
+  const { showBranchFilter, globalBranchId } = useBranchScope();
+  const previousGlobalBranchId = useRef(globalBranchId);
+
+  useEffect(() => {
+    if (previousGlobalBranchId.current === globalBranchId) return;
+    previousGlobalBranchId.current = globalBranchId;
+    setBranchId(globalBranchId);
+    setAppliedBranchId(globalBranchId);
+    setCashierId("");
+    setAppliedCashierId("");
+    setPage(1);
+  }, [globalBranchId]);
 
   function applyFilters() {
     setAppliedFromDate(fromDate);

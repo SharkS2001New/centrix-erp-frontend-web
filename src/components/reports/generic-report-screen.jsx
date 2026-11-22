@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -67,14 +68,17 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
   const { user, isOrgWide, capabilities } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(
     () => defaultReportDateRange(reportDefaultDateRangeDays(reportKey, capabilities?.module_settings)),
     [reportKey, capabilities?.module_settings],
   );
-  const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
-  const branchInitialized = useRef(false);
+  const defaultBranch = useMemo(
+    () => defaultReportBranchId(user, isOrgWide, globalBranchId),
+    [globalBranchId, user, isOrgWide],
+  );
   const filterOptions = useReportFilterOptions(reportKey);
   const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
   const initialPageSize = resolveListPageSize(
@@ -124,11 +128,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         },
   );
   const [branches, setBranches] = useState([]);
+  const showBranchFilter = isOrgWide() && branches.length > 1;
   const [aiOpen, setAiOpen] = useState(false);
 
   const showDateFilters = reportShowsDateRange(reportKey);
   const hasQueryFilters = (REPORT_EXTRA_FILTERS[reportKey]?.length ?? 0) > 0;
-  const showFilterToolbar = showDateFilters || multiBranch || hasQueryFilters;
+  const showFilterToolbar = showDateFilters || showBranchFilter || hasQueryFilters;
 
   useEffect(() => {
     fetchBranchesCached()
@@ -137,15 +142,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, []);
 
   useEffect(() => {
-    if (!user || branchInitialized.current) return;
-    branchInitialized.current = true;
-    if (cacheMatches && (cachedBundle?.applied?.branchId != null || cachedBundle?.branchId != null)) {
-      return;
-    }
-    const nextBranch = defaultReportBranchId(user, isOrgWide);
-    setBranchId((prev) => (prev === nextBranch ? prev : nextBranch));
-    setApplied((prev) => (prev.branchId === nextBranch ? prev : { ...prev, branchId: nextBranch }));
-  }, [user, isOrgWide, cacheMatches, cachedBundle?.applied?.branchId, cachedBundle?.branchId]);
+    if (!user) return;
+    setBranchId((prev) => (prev === defaultBranch ? prev : defaultBranch));
+    setApplied((prev) =>
+      prev.branchId === defaultBranch ? prev : { ...prev, branchId: defaultBranch },
+    );
+  }, [defaultBranch, user]);
 
   const appliedKey = useMemo(() => JSON.stringify(applied), [applied]);
   const depsKey = pageSizeReady
@@ -363,7 +365,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               </Field>
             </>
           ) : null}
-          {multiBranch ? (
+          {showBranchFilter ? (
             <Field label="Branch">
               <ReportBranchSearchSelect
                 value={branchId}

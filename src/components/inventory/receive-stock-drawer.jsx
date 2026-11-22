@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchUomsCached, fetchSuppliersCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import {
   Field,
   FormDrawer,
@@ -19,7 +20,7 @@ import { formatQty } from "@/components/inventory/inventory-shared";
 
 export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const { user, capabilities } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, effectiveBranchId, showBranchFilter } = useBranchScope();
   const batchTrackingEnabled = Boolean(
     capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
   );
@@ -31,6 +32,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const [lpoOptions, setLpoOptions] = useState([]);
   const [lpoData, setLpoData] = useState(null);
   const [receiveQty, setReceiveQty] = useState({});
+  const [branchId, setBranchId] = useState("");
   const [form, setForm] = useState({
     supplier_id: "",
     lpo_no: "",
@@ -44,6 +46,10 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (open) setBranchId(effectiveBranchId || "");
+  }, [effectiveBranchId, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -147,6 +153,11 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
   async function submitLpo(e) {
     e.preventDefault();
+    const receiptBranchId = lpoData?.branch_id ?? branchId;
+    if (!receiptBranchId) {
+      setError("Select a branch before receiving stock.");
+      return;
+    }
     const lines = lpoData?.lines ?? [];
     const toPost = lines.filter((line) => Number(receiveQty[line.id] ?? 0) > 0);
     if (toPost.length === 0) {
@@ -164,7 +175,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
           method: "POST",
           body: {
             product_code: line.product_code,
-            branch_id: branchId,
+            branch_id: Number(receiptBranchId),
             units_received: displayToBaseQty(packQty, factor),
             pack_qty: packQty,
             stock_location: form.stock_location,
@@ -188,6 +199,10 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
   async function submitManual(e) {
     e.preventDefault();
+    if (!branchId) {
+      setError("Select a branch before receiving stock.");
+      return;
+    }
     if (!form.product_code || !receiveQty.manual) {
       setError("Select a product and enter quantity received.");
       return;
@@ -206,7 +221,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
         method: "POST",
         body: {
           product_code: form.product_code,
-          branch_id: branchId,
+          branch_id: Number(branchId),
           units_received: displayToBaseQty(packQty, factor),
           stock_location: form.stock_location,
           cost_price: form.cost_price ? Number(form.cost_price) : manualProduct?.last_cost_price ?? null,
@@ -389,6 +404,24 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </p>
+          ) : null}
+
+          {showBranchFilter ? (
+            <Field label="Branch" required>
+              <SearchableSelect
+                value={branchId}
+                onChange={setBranchId}
+                required
+                placeholder="Select branch"
+                options={[
+                  { value: "", label: "Select branch" },
+                  ...branches.map((branch) => ({
+                    value: String(branch.id),
+                    label: branch.branch_name ?? `Branch #${branch.id}`,
+                  })),
+                ]}
+              />
+            </Field>
           ) : null}
 
           <Field label="Product">

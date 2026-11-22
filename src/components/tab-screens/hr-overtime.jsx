@@ -45,6 +45,7 @@ export function HrOvertimeScreen() {
 
   return (
     <HrCrudPage
+      branchFilterable
       title="Overtime"
       subtitle="Approved and paid overtime. Late clock-out creates OT from the employee’s overtime settings (auto-approve vs pending). You can also add a fixed total amount."
       addButtonLabel="Add overtime"

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
@@ -31,7 +32,8 @@ export function RecordSupplierReturnForm({
   pageSubtitle,
   lpoSummary = null,
 }) {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const returnableLines = useMemo(() => lpoReturnableLines(lines), [lines]);
   const canRecord = lpoCanRecordReturn({ lpo_status_code: lpoStatusCode }, lines);
 
@@ -65,16 +67,25 @@ export function RecordSupplierReturnForm({
   }, [selectedLine, form.quantity]);
 
   useEffect(() => {
-    const bid = user?.branch_id;
-    if (bid) setBranchId(String(bid));
     apiRequest("/branches", { searchParams: { per_page: 50 } })
       .then((res) => {
         const list = res.data ?? res ?? [];
         setBranches(list);
-        if (!bid && list.length === 1) setBranchId(String(list[0].id));
       })
       .catch(() => setBranches([]));
-  }, [user?.branch_id]);
+  }, [user?.organization_id]);
+
+  useEffect(() => {
+    if (globalBranchId) {
+      setBranchId(globalBranchId);
+    } else if (!isOrgWide() && user?.branch_id != null) {
+      setBranchId(String(user.branch_id));
+    } else if (branches.length === 1) {
+      setBranchId(String(branches[0].id));
+    } else {
+      setBranchId("");
+    }
+  }, [branches, globalBranchId, isOrgWide, user?.branch_id]);
 
   const defaultProductCode = useMemo(() => {
     if (presetProductCode) {

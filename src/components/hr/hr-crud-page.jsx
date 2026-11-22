@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
@@ -62,6 +64,8 @@ export function HrCrudPage({
   /** Optional controls rendered inside the list FilterToolbar (before search).
    *  Pass a node, or a function `({ reload, loading }) => node` for Apply/Filter buttons. */
   filterSlot = null,
+  /** Show an org-wide branch filter (multi-branch orgs only). Branch-limited users are forced server-side. */
+  branchFilterable = false,
   exportEnabled = true,
   exportFilename,
   /** Report title for PDF/CSV (defaults to page title). */
@@ -86,6 +90,7 @@ export function HrCrudPage({
   renderBatchActions = null,
 }) {
   const { user, capabilities } = useAuth();
+  const { branches: scopeBranches, showBranchFilter } = useBranchScope();
   const confirm = useConfirm();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
 
@@ -95,6 +100,8 @@ export function HrCrudPage({
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  const [branchFilter, setBranchFilter] = useState("");
+  const branchParamsKey = branchFilterable ? branchFilter : "";
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [total, setTotal] = useState(0);
@@ -132,7 +139,7 @@ export function HrCrudPage({
   useEffect(() => {
     setPage(1);
     clearSelection();
-  }, [debouncedSearch, apiPath, listParamsKey, clearSelection]);
+  }, [debouncedSearch, apiPath, listParamsKey, branchParamsKey, clearSelection]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -144,6 +151,7 @@ export function HrCrudPage({
           page,
           ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
           ...(listSearchParams ?? {}),
+          ...(branchFilterable && branchFilter ? { "filter[branch_id]": branchFilter } : {}),
         },
       });
       setRows(res.data ?? []);
@@ -155,7 +163,7 @@ export function HrCrudPage({
     }
     // listParamsKey tracks listSearchParams content without object-identity churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- listSearchParams via listParamsKey
-  }, [apiPath, listParamsKey, listSearchParams, page, pageSize, debouncedSearch]);
+  }, [apiPath, listParamsKey, listSearchParams, page, pageSize, debouncedSearch, branchFilterable, branchFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -340,6 +348,7 @@ export function HrCrudPage({
             per_page: 200,
             ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
             ...(listSearchParams ?? {}),
+            ...(branchFilterable && branchFilter ? { "filter[branch_id]": branchFilter } : {}),
           })}
           getInlineRows={getInlineExportRows}
           disabled={loading}
@@ -366,6 +375,13 @@ export function HrCrudPage({
           </div>
         ) : null}
         <FilterToolbar>
+          {branchFilterable && showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={scopeBranches}
+            />
+          ) : null}
           {typeof filterSlot === "function" ? filterSlot({ reload: load, loading }) : filterSlot}
           {showSearch ? (
             <SearchInput

@@ -8,6 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
@@ -18,7 +19,8 @@ import {
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
-import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { defaultProductBranchId } from "@/lib/catalog-scope";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { catalogueStockColumnLabels, isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
@@ -168,19 +170,18 @@ function readStoredColumnIds() {
 }
 
 export function InventoryStockScreen() {
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
+  const { showBranchFilter } = useBranchScope();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const stockLabels = catalogueStockColumnLabels(hotelCatalogue);
-  const multiBranch = isMultiBranchCatalog(capabilities);
 
   const [stockRows, setStockRows] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [branchId, setBranchId] = useState(() =>
-    user?.branch_id != null ? String(user.branch_id) : "",
-  );
+  const [branchId, setBranchId] = useState("");
   const [retailPackages, setRetailPackages] = useState([]);
   const [totalStockRows, setTotalStockRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -212,12 +213,6 @@ export function InventoryStockScreen() {
   }, []);
 
   const loadReferenceData = useCallback(async () => {
-    // Prefer the user's home branch immediately so stock can load even if some
-    // filter lookups fail (e.g. missing catalogue.view).
-    if (user?.branch_id) {
-      setBranchId(String(user.branch_id));
-    }
-
     const settled = await Promise.allSettled([
       fetchSubCategoriesCached(user?.organization_id),
       fetchCategoriesCached(user?.organization_id),
@@ -238,15 +233,22 @@ export function InventoryStockScreen() {
     setCategories(catsData ?? []);
     setBranches(branchRows ?? []);
 
-    setBranchId((current) => {
-      if (current) return current;
-      if (user?.branch_id) return String(user.branch_id);
-      if ((branchRows ?? []).length === 1) return String(branchRows[0].id);
-      return defaultProductBranchId(capabilities, user, branchRows ?? []) || "";
-    });
-
     setLoading(false);
-  }, [capabilities, user]);
+  }, [user]);
+
+  useEffect(() => {
+    if (globalBranchId) {
+      setBranchId(globalBranchId);
+    } else if (isOrgWide() && branches.length > 1) {
+      setBranchId("");
+    } else if (branches.length === 1) {
+      setBranchId(String(branches[0].id));
+    } else if (!isOrgWide() && user?.branch_id != null) {
+      setBranchId(String(user.branch_id));
+    } else {
+      setBranchId(defaultProductBranchId(capabilities, user, branches, globalBranchId));
+    }
+  }, [branches, capabilities, globalBranchId, isOrgWide, user]);
 
   const loadStock = useCallback(async () => {
     if (!branchId) return;
@@ -612,6 +614,21 @@ export function InventoryStockScreen() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search product…"
         />
+        {showBranchFilter ? (
+          <Field label="Branch">
+            <FilterSelect
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              options={[
+                { value: "", label: "Select a branch" },
+                ...branches.map((b) => ({
+                  value: String(b.id),
+                  label: b.branch_name ?? `Branch #${b.id}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Subcategory">
           <div className="min-w-[14rem]">
             <PosSearchableSelect
@@ -627,18 +644,6 @@ export function InventoryStockScreen() {
             />
           </div>
         </Field>
-        {multiBranch ? (
-          <Field label="Branch">
-            <FilterSelect
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-              options={branches.map((b) => ({
-                value: String(b.id),
-                label: b.branch_name ?? `Branch #${b.id}`,
-              }))}
-            />
-          </Field>
-        ) : null}
         <FilterSelect
           value={locationFilter}
           onChange={(e) => setLocationFilter(e.target.value)}

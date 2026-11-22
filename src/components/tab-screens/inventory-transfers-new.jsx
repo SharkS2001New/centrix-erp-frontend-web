@@ -1,12 +1,13 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -45,14 +46,22 @@ function lineFromProduct(product) {
 export function InventoryTransfersNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("stock transfer"));
   const { user, capabilities, hasPermission } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
 
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
   const [fromLocation, setFromLocation] = useState("store");
   const [toLocation, setToLocation] = useState("shop");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const branchId = showBranchFilter
+    ? selectedBranchId
+    : effectiveBranchId;
+
+  useEffect(() => {
+    setSelectedBranchId(globalBranchId);
+  }, [globalBranchId]);
 
   useEffect(() => {
     fetchUomsCached(user?.organization_id)
@@ -81,12 +90,20 @@ export function InventoryTransfersNewScreen() {
   }, [fromLocation, toOptions, toLocation]);
 
   function addProduct(product) {
+    if (!branchId) {
+      notifyError("Select a branch before adding products.");
+      return;
+    }
     const code = product.product_code;
     if (lines.some((l) => l.product_code === code)) return;
     setLines((prev) => [...prev, lineFromProduct(product)]);
   }
 
   function addProducts(products) {
+    if (!branchId) {
+      notifyError("Select a branch before adding products.");
+      return;
+    }
     const existing = new Set(lines.map((l) => l.product_code));
     const toAdd = products.filter((p) => !existing.has(p.product_code));
     if (!toAdd.length) return;
@@ -109,6 +126,10 @@ export function InventoryTransfersNewScreen() {
 
   async function submit(e) {
     e.preventDefault();
+    if (!branchId) {
+      notifyError("Select a branch before transferring stock.");
+      return;
+    }
     const toPost = lines.filter((line) => line.product_code && Number(line.quantity) > 0);
     if (toPost.length === 0) {
       notifyError("Add at least one product with a quantity.");
@@ -125,7 +146,7 @@ export function InventoryTransfersNewScreen() {
       for (const line of toPost) {
         const uom = resolveInventoryLineUom(line, uomById);
         const body = {
-          branch_id: branchId,
+          branch_id: Number(branchId),
           product_code: line.product_code,
           quantity: damageQtyToBase(line.quantity, line.package_type, uom),
           from_location: fromLocation,
@@ -167,6 +188,27 @@ export function InventoryTransfersNewScreen() {
         onSubmit={submit}
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
+        {showBranchFilter ? (
+          <Field label="Branch">
+            <SearchableSelect
+              className={inputClassName()}
+              value={selectedBranchId}
+              onChange={(value) => {
+                setSelectedBranchId(value);
+                setLines([]);
+              }}
+              required
+              placeholder="Select branch"
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? `Branch #${branch.id}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="From">
             <SearchableSelect
@@ -221,10 +263,13 @@ export function InventoryTransfersNewScreen() {
           </p>
         ) : null}
 
-        <InventoryProductLines
+        {!branchId ? (
+          <p className="text-sm text-amber-800">Select a branch before adding products.</p>
+        ) : <InventoryProductLines
           lines={lines}
           onChange={setLines}
           uomById={uomById}
+          branchId={Number(branchId)}
           onAddProduct={addProduct}
           onAddProducts={addProducts}
           tableHeaders={[
@@ -260,7 +305,7 @@ export function InventoryTransfersNewScreen() {
               </>
             );
           }}
-        />
+        />}
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
           <TabFormCancelButton href="/inventory/transactions" />

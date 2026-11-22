@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import {
   invalidateTabAwareDataLoad,
   markTabAwareDataLoaded,
@@ -87,6 +88,7 @@ export function AccountingReportScreen({
   useReportsDefaultRange = false,
 }) {
   const { user, capabilities, isOrgWide } = useAuth();
+  const { showBranchFilter } = useBranchScope();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const monthRange = useMemo(() => {
@@ -359,7 +361,7 @@ export function AccountingReportScreen({
               onChange={(e) => setToDate(e.target.value)}
             />
           </Field>
-          {multiBranch ? (
+          {showBranchFilter ? (
             <Field label="Branch">
               <SearchableSelect
                 className={inputClassName()}

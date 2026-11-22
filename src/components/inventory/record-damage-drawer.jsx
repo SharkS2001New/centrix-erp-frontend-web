@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { notifySuccess } from "@/lib/notify";
 import {
@@ -26,7 +27,8 @@ import {
 
 export function RecordDamageDrawer({ open, onClose, onSaved }) {
   const { user, capabilities, hasPermission } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { branches, effectiveBranchId, showBranchFilter } = useBranchScope();
+  const [branchId, setBranchId] = useState("");
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [uoms, setUoms] = useState([]);
@@ -40,6 +42,10 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (open) setBranchId(effectiveBranchId || "");
+  }, [effectiveBranchId, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -92,6 +98,11 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
 
   async function submit(e) {
     e.preventDefault();
+    const selectedBranchId = branchId || effectiveBranchId;
+    if (!selectedBranchId) {
+      setError("Select a branch before recording damage.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -100,7 +111,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
       const reason = [form.reason.trim(), form.notes.trim()].filter(Boolean).join(" — ");
       const body = {
         product_code: form.product_code,
-        branch_id: branchId,
+        branch_id: Number(selectedBranchId),
         quantity: baseQty,
         package_type: form.package_type,
         uom_label: damageMeasureLabel(uom, form.package_type),
@@ -140,6 +151,24 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </p>
+        ) : null}
+
+        {showBranchFilter ? (
+          <Field label="Branch" required>
+            <SearchableSelect
+              value={branchId}
+              onChange={setBranchId}
+              required
+              placeholder="Select branch"
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? `Branch #${branch.id}`,
+                })),
+              ]}
+            />
+          </Field>
         ) : null}
 
         <Field label="Product">

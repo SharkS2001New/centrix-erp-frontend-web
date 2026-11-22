@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { GLOBAL_BRANCH_CHANGED_EVENT } from "@/lib/global-branch";
 
 const defaultValue = {
   isActive: true,
@@ -113,12 +114,20 @@ export function useTabAwareDataLoad(loadFn, options) {
   const lastLoadedFnRef = useRef(null);
   const wasActiveRef = useRef(false);
   const loadedOnceRef = useRef(false);
+  const globalBranchRevisionRef = useRef(0);
+  const [globalBranchRevision, setGlobalBranchRevision] = useState(0);
 
   const depsKey = options?.depsKey;
   const hasData = Boolean(options?.hasData);
   const refetchOnActivate = Boolean(options?.refetchOnActivate);
   const softEvictMs = Number(options?.softEvictMs) > 0 ? Number(options.softEvictMs) : 0;
   const paneKey = paneKeyFromHref(paneHref);
+
+  useEffect(() => {
+    const onGlobalBranchChanged = () => setGlobalBranchRevision((revision) => revision + 1);
+    window.addEventListener(GLOBAL_BRANCH_CHANGED_EVENT, onGlobalBranchChanged);
+    return () => window.removeEventListener(GLOBAL_BRANCH_CHANGED_EVENT, onGlobalBranchChanged);
+  }, []);
 
   useEffect(() => {
     loadFnRef.current = loadFn;
@@ -130,6 +139,8 @@ export function useTabAwareDataLoad(loadFn, options) {
       return undefined;
     }
 
+    const branchChanged = globalBranchRevisionRef.current !== globalBranchRevision;
+    globalBranchRevisionRef.current = globalBranchRevision;
     const becameActive = !wasActiveRef.current;
     wasActiveRef.current = true;
 
@@ -166,17 +177,17 @@ export function useTabAwareDataLoad(loadFn, options) {
     // Bare mode: filter/pagination changes while active must reload. Returning to
     // a suspended tab must not reload just because loadFn got a new identity —
     // unless this screen opted into refetchOnActivate (sales/debtors queues).
-    if (becameActive && loadedOnceRef.current && !refetchOnActivate) {
+    if (becameActive && loadedOnceRef.current && !refetchOnActivate && !branchChanged) {
       lastLoadedFnRef.current = loadFn;
       return undefined;
     }
 
-    if (becameActive && refetchOnActivate && withinSoftEvict) {
+    if (becameActive && refetchOnActivate && withinSoftEvict && !branchChanged) {
       lastLoadedFnRef.current = loadFn;
       return undefined;
     }
 
-    if (!becameActive && lastLoadedFnRef.current === loadFn) return undefined;
+    if (!becameActive && lastLoadedFnRef.current === loadFn && !branchChanged) return undefined;
     lastLoadedFnRef.current = loadFn;
     void (async () => {
       try {
@@ -188,7 +199,7 @@ export function useTabAwareDataLoad(loadFn, options) {
       }
     })();
     return undefined;
-  }, [isActive, loadFn, paneKey, depsKey, hasData, refetchOnActivate, softEvictMs]);
+  }, [globalBranchRevision, isActive, loadFn, paneKey, depsKey, hasData, refetchOnActivate, softEvictMs]);
 }
 
 /** Force the next depsKey-based activation to reload. */

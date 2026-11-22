@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { clampDashboardDateRange } from "@/lib/dashboard-dates";
 import { defaultReportBranchId } from "@/lib/reports/report-filters";
 import {
@@ -72,6 +73,7 @@ export function ReportsDashboardSection({
   refreshKey = 0,
 }) {
   const { user, isOrgWide, hasPermission, capabilities } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const canViewReports = hasPermission(P.reports.hub.view);
   const scope = resolveDashboardAnalyticsScope(workspaceScope, hasPermission);
   const hasScopedAnalytics = Boolean(scope.kpis.length || scope.charts.length);
@@ -81,7 +83,6 @@ export function ReportsDashboardSection({
     () => getReportsDefaultDateRange(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
-  const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);
   const [appliedFrom, setAppliedFrom] = useState(controlledFrom ?? defaults.from);
@@ -139,17 +140,19 @@ export function ReportsDashboardSection({
   }, [error, enabled, onError]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !isOrgWide()) {
+      setBranches([]);
+      return;
+    }
     fetchBranchesCached()
       .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
-  }, [enabled]);
+  }, [enabled, isOrgWide]);
 
   useEffect(() => {
-    if (controlledBranch !== undefined || !user || branchInitialized.current) return;
-    branchInitialized.current = true;
-    setBranchId(defaultReportBranchId(user, isOrgWide));
-  }, [user, isOrgWide, controlledBranch, enabled]);
+    if (controlledBranch !== undefined || !user) return;
+    setBranchId(defaultReportBranchId(user, isOrgWide, globalBranchId));
+  }, [user, isOrgWide, controlledBranch, globalBranchId]);
 
   const topProductSegments = useMemo(
     () =>
@@ -221,6 +224,7 @@ export function ReportsDashboardSection({
           toDate={toDate}
           branchId={branchId}
           branches={branches}
+          showBranch={isOrgWide() && branches.length > 1}
           onFromDateChange={applyFromDate}
           onToDateChange={applyToDate}
           onBranchChange={setBranchId}

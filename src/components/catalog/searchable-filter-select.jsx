@@ -1,6 +1,7 @@
 "use client";
 
 import { SearchableSelect } from "@/components/catalog/searchable-select";
+import { FilterToolbarContext } from "@/components/catalog/filter-toolbar-context";
 
 /** Same control class as catalog-shared FILTER_CONTROL_CLASS (avoid circular import). */
 const CONTROL_CLASS =
@@ -19,17 +20,23 @@ export function SearchableFilterSelect({
   disabled = false,
   placeholder,
   searchPlaceholder = "Search…",
+  filterLabel,
+  "aria-label": ariaLabel,
 }) {
   return (
-    <SearchableSelect
-      value={value}
-      onChange={onChange}
-      options={options}
-      placeholder={placeholder ?? options[0]?.label ?? "— Select —"}
-      searchPlaceholder={searchPlaceholder}
-      disabled={disabled}
-      className={`${CONTROL_CLASS} ${className}`.trim()}
-      nativeEvent
-    />
+    <FilterToolbarContext.Provider value>
+      <SearchableSelect
+        value={value}
+        onChange={onChange}
+        options={options}
+        placeholder={placeholder ?? options[0]?.label ?? "— Select —"}
+        searchPlaceholder={searchPlaceholder}
+        disabled={disabled}
+        className={`${CONTROL_CLASS} ${className}`.trim()}
+        nativeEvent
+        filterLabel={filterLabel}
+        aria-label={ariaLabel}
+      />
+    </FilterToolbarContext.Provider>
   );
 }

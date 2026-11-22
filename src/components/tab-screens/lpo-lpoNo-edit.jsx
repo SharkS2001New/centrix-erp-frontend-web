@@ -21,11 +21,12 @@ import {
 
 export function LpoLpoNoEditScreen() {
   const params = useParams();
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
   const lpoNo = params.lpoNo;
   const { exitTo } = useTabFormExit(tabEditTitle("purchase order", `PO-${lpoNo}`));
 
   const [form, setForm] = useState(null);
+  const [sourceBranchId, setSourceBranchId] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [branchAddress, setBranchAddress] = useState("");
@@ -42,7 +43,12 @@ export function LpoLpoNoEditScreen() {
   useEffect(() => {
     const orgId = user?.organization_id;
     Promise.all([
-      apiRequest(`/lpo-mst/${lpoNo}/summary`),
+      apiRequest(`/lpo-mst/${lpoNo}/summary`, {
+        searchParams:
+          !isOrgWide() && user?.branch_id != null
+            ? { branch_id: user.branch_id }
+            : undefined,
+      }),
       fetchSuppliersCached(orgId),
       fetchUomsCached(orgId),
       fetchVatsCached(orgId),
@@ -54,6 +60,7 @@ export function LpoLpoNoEditScreen() {
           setForm(null);
           return;
         }
+        setSourceBranchId(detail.lpo?.branch_id ?? null);
         const uomList = uomsData ?? [];
         const uomMap = new Map(uomList.map((u) => [u.id, u]));
         setForm(lpoHeaderToForm(detail.lpo, detail.lines, uomMap));
@@ -64,7 +71,7 @@ export function LpoLpoNoEditScreen() {
       })
       .catch(() => setFormError("Failed to load purchase order."))
       .finally(() => setLoading(false));
-  }, [lpoNo, user?.organization_id]);
+  }, [isOrgWide, lpoNo, user?.branch_id, user?.organization_id]);
 
   useEffect(() => {
     const selected = branches.find((b) => String(b.id) === String(form?.branch_id));
@@ -92,7 +99,11 @@ export function LpoLpoNoEditScreen() {
     setSaving(true);
     setFormError(null);
     try {
-      await apiRequest(`/lpo-mst/${lpoNo}/full`, { method: "PUT", body });
+      await apiRequest(`/lpo-mst/${lpoNo}/full`, {
+        method: "PUT",
+        searchParams: sourceBranchId != null ? { branch_id: sourceBranchId } : undefined,
+        body,
+      });
       exitTo(`/lpo/${lpoNo}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -116,6 +127,7 @@ export function LpoLpoNoEditScreen() {
           onChange={setForm}
           suppliers={suppliers}
           branches={branches}
+          canSelectBranch={isOrgWide()}
           uomById={uomById}
           vatById={vatById}
           branchAddress={branchAddress}

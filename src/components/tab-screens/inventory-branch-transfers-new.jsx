@@ -24,14 +24,16 @@ import { damageQtyToBase } from "@/lib/stock-uom";
 export function InventoryBranchTransfersNewScreen() {
   const router = useRouter();
   const { exitTo } = useTabFormExit(tabAddTitle("branch transfer"));
-  const { user, capabilities } = useAuth();
-  const defaultBranchId = user?.branch_id ?? 1;
+  const { user, capabilities, isOrgWide } = useAuth();
+  const orgWide = isOrgWide();
   const multiBranch = isMultiBranchCatalog(capabilities);
 
   const [branches, setBranches] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [fromBranchId, setFromBranchId] = useState(String(defaultBranchId));
+  const [fromBranchId, setFromBranchId] = useState(() =>
+    !orgWide && user?.branch_id != null ? String(user.branch_id) : "",
+  );
   const [toBranchId, setToBranchId] = useState("");
   const [fromLocation, setFromLocation] = useState("store");
   const [toLocation, setToLocation] = useState("store");
@@ -56,16 +58,17 @@ export function InventoryBranchTransfersNewScreen() {
         const rows = branchRows ?? [];
         setBranches(rows);
         setUoms(uomRows ?? []);
-        if (!toBranchId && rows.length > 1) {
-          const other = rows.find((b) => String(b.id) !== String(defaultBranchId));
-          if (other) setToBranchId(String(other.id));
+        if (!orgWide && user?.branch_id != null) {
+          setFromBranchId(String(user.branch_id));
+        } else if (rows.length === 1) {
+          setFromBranchId(String(rows[0].id));
         }
       })
       .catch(() => {
         setBranches([]);
         setUoms([]);
       });
-  }, [defaultBranchId, multiBranch, toBranchId, user?.organization_id]);
+  }, [multiBranch, orgWide, user?.branch_id, user?.organization_id]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const toBranchOptions = useMemo(
@@ -91,6 +94,10 @@ export function InventoryBranchTransfersNewScreen() {
     e.preventDefault();
     if (!selected) {
       notifyError("Select a product to transfer.");
+      return;
+    }
+    if (!fromBranchId) {
+      notifyError("Select the source branch.");
       return;
     }
     if (!toBranchId) {
@@ -135,6 +142,7 @@ export function InventoryBranchTransfersNewScreen() {
           <div className="min-h-[380px] min-w-0 lg:sticky lg:top-6 lg:self-start">
             <LpoProductSearchPanel
               uomById={uomById}
+              branchId={fromBranchId}
               onSelect={handleSelectProduct}
               actionLabel="Select product"
               hint="Search and select the product to transfer."
@@ -159,7 +167,14 @@ export function InventoryBranchTransfersNewScreen() {
                 <SearchableSelect
                   className={inputClassName()}
                   value={fromBranchId}
-                  onChange={setFromBranchId}
+                  onChange={(value) => {
+                    setFromBranchId(value);
+                    setToBranchId("");
+                    setSelected(null);
+                  }}
+                  required
+                  disabled={!orgWide && Boolean(user?.branch_id)}
+                  placeholder="Select source branch…"
                   options={branches.map((b) => ({
                     value: String(b.id),
                     label: b.branch_name ?? b.branch_code ?? String(b.id),

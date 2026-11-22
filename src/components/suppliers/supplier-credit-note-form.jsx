@@ -5,6 +5,7 @@ import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton, TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { fetchBranchesCached, fetchSuppliersCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -45,11 +46,10 @@ export function SupplierCreditNoteForm({
 }) {
   const { exitTo } = useTabFormExit(tabAddTitle("supplier credit note"));
   const { user, isOrgWide } = useAuth();
+  const globalBranchId = useGlobalBranchId();
   const [suppliers, setSuppliers] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [branchId, setBranchId] = useState(
-    user?.branch_id ? String(user.branch_id) : "",
-  );
+  const [branchId, setBranchId] = useState("");
   const [supplierId, setSupplierId] = useState(initialSupplierId ? String(initialSupplierId) : "");
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
@@ -72,14 +72,21 @@ export function SupplierCreditNoteForm({
       .then((list) => {
         const rows = Array.isArray(list) ? list : [];
         setBranches(rows);
-        setBranchId((current) => {
-          if (current) return current;
-          if (user?.branch_id) return String(user.branch_id);
-          return rows.length === 1 ? String(rows[0].id) : "";
-        });
       })
       .catch(() => setBranches([]));
   }, [user?.organization_id, user?.branch_id]);
+
+  useEffect(() => {
+    if (globalBranchId) {
+      setBranchId(globalBranchId);
+    } else if (!isOrgWide() && user?.branch_id != null) {
+      setBranchId(String(user.branch_id));
+    } else if (branches.length === 1) {
+      setBranchId(String(branches[0].id));
+    } else {
+      setBranchId("");
+    }
+  }, [branches, globalBranchId, isOrgWide, user?.branch_id]);
 
   const lineTotal = useMemo(
     () =>

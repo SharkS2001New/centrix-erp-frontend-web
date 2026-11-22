@@ -356,9 +356,15 @@ export function FulfillmentTripsIdScreen() {
     setBusy(true);
     try {
       if (needsCancel) {
-        await apiRequest(`/dispatch-trips/${id}/cancel`, { method: "POST" });
+        await apiRequest(`/dispatch-trips/${id}/cancel`, {
+          method: "POST",
+          searchParams: trip.branch_id != null ? { branch_id: trip.branch_id } : undefined,
+        });
       }
-      await apiRequest(`/dispatch-trips/${id}`, { method: "DELETE" });
+      await apiRequest(`/dispatch-trips/${id}`, {
+        method: "DELETE",
+        searchParams: trip.branch_id != null ? { branch_id: trip.branch_id } : undefined,
+      });
       notifySuccess("Trip chart deleted.");
       router.push("/fulfillment/trips");
     } catch (e) {
@@ -542,6 +548,7 @@ export function FulfillmentTripsIdScreen() {
     try {
       await apiRequest(`/dispatch-trips/${id}/orders/${sale.id}`, {
         method: "DELETE",
+        searchParams: trip.branch_id != null ? { branch_id: trip.branch_id } : undefined,
       });
       notifySuccess("Order removed from trip chart.");
       await loadTrip();
@@ -998,6 +1005,7 @@ export function FulfillmentTripsIdScreen() {
       <div className="mb-8">
         <TripExpensesPanel
           tripId={Number(id)}
+          tripBranchId={trip.branch_id}
           tripDate={trip.scheduled_date}
           financialSummary={trip.financial_summary}
           onChanged={loadTrip}

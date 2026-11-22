@@ -43,6 +43,8 @@ import { useConfirm } from "@/lib/use-confirm";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useAuth } from "@/contexts/auth-context";
+import { useBranchScope } from "@/hooks/use-branch-scope";
+import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { P } from "@/lib/permission-codes";
 
 
@@ -50,6 +52,7 @@ export function HrEmployeesScreen() {
   const confirm = useConfirm();
   const router = useRouter();
   const { user, hasPermission } = useAuth();
+  const { branches: scopeBranches, showBranchFilter } = useBranchScope();
   const canSyncClock = hasPermission(P.hr.employees.edit) || hasPermission(P.hr.manage);
 
   const [employees, setEmployees] = useState([]);
@@ -62,6 +65,7 @@ export function HrEmployeesScreen() {
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -80,7 +84,7 @@ export function HrEmployeesScreen() {
     try {
       const [deptRes, statsRes] = await Promise.all([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
-        apiRequest("/employees/summary").catch(() => null),
+        apiRequest("/employees/summary", branchFilter ? { searchParams: { "filter[branch_id]": branchFilter } } : undefined).catch(() => null),
       ]);
       setDepartments(deptRes.data ?? []);
       if (statsRes) setEmployeeStats(statsRes);
@@ -89,13 +93,14 @@ export function HrEmployeesScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [branchFilter]);
 
   const loadEmployees = useCallback(async () => {
     setListLoading(true);
     try {
       const filters = {};
       if (deptFilter !== "all") filters.department_id = deptFilter;
+      if (branchFilter) filters.branch_id = branchFilter;
 
       const extra = {};
       if (statusFilter === "active") extra.is_active = 1;
@@ -118,7 +123,7 @@ export function HrEmployeesScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, deptFilter, statusFilter]);
+  }, [page, pageSize, debouncedSearch, deptFilter, statusFilter, branchFilter]);
 
   // List first — departments/summary fill stats after paint.
   useTabAwareDataLoad(loadEmployees);
@@ -131,6 +136,7 @@ export function HrEmployeesScreen() {
   const buildExportSearchParams = useCallback(() => {
     const filters = {};
     if (deptFilter !== "all") filters.department_id = deptFilter;
+    if (branchFilter) filters.branch_id = branchFilter;
     const extra = {};
     if (statusFilter === "active") extra.is_active = 1;
     if (statusFilter === "inactive") extra.is_active = 0;
@@ -141,7 +147,7 @@ export function HrEmployeesScreen() {
       filters,
       extra,
     });
-  }, [debouncedSearch, deptFilter, statusFilter]);
+  }, [debouncedSearch, deptFilter, statusFilter, branchFilter]);
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
   const pageRowIds = useMemo(() => employees.map((e) => e.id), [employees]);
@@ -175,7 +181,7 @@ export function HrEmployeesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, deptFilter, statusFilter]);
+  }, [debouncedSearch, deptFilter, statusFilter, branchFilter]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -371,6 +377,13 @@ export function HrEmployeesScreen() {
       }
       toolbar={
         <FilterToolbar>
+          {showBranchFilter ? (
+            <BranchFilterField
+              value={branchFilter}
+              onChange={setBranchFilter}
+              branches={scopeBranches}
+            />
+          ) : null}
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}

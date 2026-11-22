@@ -228,7 +228,7 @@ export function resolveOpeningStockBranchId(form, user) {
     return Number(form.branch_id);
   }
 
-  return user?.branch_id ?? 1;
+  return user?.branch_id ?? null;
 }
 
 export function stockBaseFromForm(form, location, uom) {
