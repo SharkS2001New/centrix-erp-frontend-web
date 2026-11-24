@@ -42,7 +42,7 @@ export function formatNavLabel(label) {
 
   let wordIndex = 0;
 
-  return label.replace(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g, (word) => {
+  return label.replace(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*(?:-[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*)*/g, (word) => {
     const lower = word.toLowerCase();
     const special = SPECIAL_TOKENS[lower];
     if (special) {

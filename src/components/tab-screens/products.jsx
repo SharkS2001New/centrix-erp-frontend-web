@@ -601,6 +601,10 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   }, [user?.organization_id]);
 
   const loadCatalogStats = useCallback(async () => {
+    if (deletedMode) {
+      setCatalogStats(null);
+      return;
+    }
     try {
       const statsRes = await apiRequest("/products/catalog-summary", {
         searchParams: effectiveStockBranchId ? { branch_id: effectiveStockBranchId } : {},
@@ -609,7 +613,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     } catch {
       setCatalogStats(null);
     }
-  }, [effectiveStockBranchId]);
+  }, [deletedMode, effectiveStockBranchId]);
 
   const filterKey = useMemo(
     () =>
@@ -1136,14 +1140,24 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
 
       {/* Stats */}
       <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-4 ${kraDeviceEnabled ? "mt-4" : "mt-6"}`}>
-        <StatCard label="Total products" value={stats.total} hint="across all categories" />
-        <StatCard
-          label="Active"
-          value={stats.active}
-          hint={`${stats.activePct}% of catalogue`}
-        />
-        <StatCard label="Low stock" value={stats.lowStock} hint="below reorder point" />
-        <StatCard label="Out of stock" value={stats.outOfStock} hint="zero available units" />
+        {deletedMode ? (
+          <StatCard
+            label="Deleted products"
+            value={hasLoadedOnce ? totalProducts : "—"}
+            hint="matching deleted products"
+          />
+        ) : (
+          <>
+            <StatCard label="Total products" value={stats.total} hint="across all categories" />
+            <StatCard
+              label="Active"
+              value={stats.active}
+              hint={`${stats.activePct}% of catalogue`}
+            />
+            <StatCard label="Low stock" value={stats.lowStock} hint="below reorder point" />
+            <StatCard label="Out of stock" value={stats.outOfStock} hint="zero available units" />
+          </>
+        )}
       </div>
       {multiBranch ? (
         <p className="theme-subtext mt-2 text-xs">

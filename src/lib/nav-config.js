@@ -57,7 +57,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean, requireHospitalityService?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, excludePaths?: string[], ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean, requireHospitalityService?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, requireHospitalityIndustry?: boolean, items: NavItem[] }} NavSection */
 
@@ -119,6 +119,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Products catalogue",
         module: null,
         permission: P.catalogue.products.view,
+        excludePaths: ["/products/deleted"],
       },
       {
         href: "/products/deleted",
@@ -467,7 +468,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/inventory/stock",
-        label: "Items currently in stock",
+        label: "View Stock",
         module: "inventory",
         permission: P.inventory.stock.view,
       },
@@ -896,7 +897,7 @@ const NAV_SECTION_DEFINITIONS = [
   },
   {
     id: "distribution_orders",
-    label: "Orders",
+    label: "Today's Orders",
     icon: "📦",
     collapsible: true,
     items: [
@@ -1103,6 +1104,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Menu catalogue",
         module: null,
         permission: P.catalogue.products.view,
+        excludePaths: ["/products/deleted"],
       },
       {
         href: "/products/deleted",
@@ -1132,7 +1134,7 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/inventory/stock",
-        label: "Stock on hand",
+        label: "View Stock",
         module: "inventory",
         permission: P.inventory.stock.view,
       },
@@ -1616,6 +1618,9 @@ const NAV_SECTION_DEFINITIONS = [
 export const navSections = withNavItemIcons(NAV_SECTION_DEFINITIONS);
 
 export function isNavItemActive(item, pathname) {
+  if (item.excludePaths?.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
+    return false;
+  }
   if (item.exact) {
     return pathname === item.href;
   }
