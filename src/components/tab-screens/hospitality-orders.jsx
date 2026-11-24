@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { filterByOrganization } from "@/lib/admin";
+import { fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
 import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
 import {
   CatalogPageShell,
@@ -157,6 +159,8 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
   // Default All so settled Hotel POS tickets appear like backoffice completed orders.
   const [status, setStatus] = useState("");
   const [outletKind, setOutletKind] = useState("");
+  const [salesUsers, setSalesUsers] = useState([]);
+  const [salesUserId, setSalesUserId] = useState("");
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
@@ -177,6 +181,37 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
       isHospitalityServiceEnabled(capabilities, "table_pos") ||
       isHospitalityServiceEnabled(capabilities, "floor_tables"),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const organizationId = organization?.id;
+    setSalesUserId("");
+    if (!organizationId) {
+      setSalesUsers([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchSalesCapableUsersCached(organizationId)
+      .then((users) => {
+        if (cancelled) return;
+        setSalesUsers(
+          filterByOrganization(users ?? [], organizationId).filter(
+            (salesUser) => salesUser.is_active !== false,
+          ),
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSalesUsers([]);
+        notifyError(error instanceof ApiError ? error.message : "Failed to load sales users");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organization?.id]);
 
   useEffect(() => {
     setFromDate(defaultRange.from);
@@ -226,6 +261,7 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
         searchParams: {
           status: status || undefined,
           channel: listChannel || undefined,
+          cashier_id: salesUserId || undefined,
           q: debouncedSearch || undefined,
           from_date: appliedFrom || undefined,
           to_date: appliedTo || undefined,
@@ -245,13 +281,13 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [status, outletKind, debouncedSearch, appliedFrom, appliedTo, page, pageSize, channel, copy.title]);
+  }, [status, outletKind, salesUserId, debouncedSearch, appliedFrom, appliedTo, page, pageSize, channel, copy.title]);
 
   useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);
-  }, [status, outletKind, debouncedSearch, appliedFrom, appliedTo, pageSize, channel]);
+  }, [status, outletKind, salesUserId, debouncedSearch, appliedFrom, appliedTo, pageSize, channel]);
 
   useEffect(() => {
     setOutletKind("");
@@ -411,6 +447,20 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
                 { value: "unpaid", label: "Awaiting payment" },
                 { value: "paid", label: "Paid" },
                 { value: "void", label: "Voided" },
+              ]}
+            />
+          </Field>
+          <Field label="User">
+            <FilterSelect
+              className={FILTER_CONTROL_CLASS}
+              value={salesUserId}
+              onChange={(e) => setSalesUserId(e.target.value)}
+              options={[
+                { value: "", label: "All sales users" },
+                ...salesUsers.map((salesUser) => ({
+                  value: String(salesUser.id),
+                  label: salesUser.full_name?.trim() || salesUser.username || `User #${salesUser.id}`,
+                })),
               ]}
             />
           </Field>

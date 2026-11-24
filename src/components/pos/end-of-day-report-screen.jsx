@@ -1201,6 +1201,38 @@ export function EndOfDayReportScreen({
       </div>
 
       <FilterToolbar className="mb-6 flex-wrap overflow-visible">
+          {reportMode === "monthly" ? (
+            <div>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
+              <input
+                type="month"
+                className={`${inputClassName()} w-40`}
+                value={saleMonth}
+                onChange={(e) => setSaleMonth(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Sale date</label>
+              <input
+                type="date"
+                className={`${inputClassName()} w-40`}
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+              />
+            </div>
+          )}
+          <div>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
+            <FilterSelect
+              value={reportMode}
+              onChange={(e) => setReportMode(e.target.value)}
+              options={[
+                { value: "daily", label: "Daily" },
+                { value: "monthly", label: "Monthly" },
+              ]}
+            />
+          </div>
           {showBranchFilter ? (
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
@@ -1243,38 +1275,6 @@ export function EndOfDayReportScreen({
               />
             </div>
           ) : null}
-          <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
-            <FilterSelect
-              value={reportMode}
-              onChange={(e) => setReportMode(e.target.value)}
-              options={[
-                { value: "daily", label: "Daily" },
-                { value: "monthly", label: "Monthly" },
-              ]}
-            />
-          </div>
-          {reportMode === "monthly" ? (
-            <div>
-              <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
-              <input
-                type="month"
-                className={`${inputClassName()} w-40`}
-                value={saleMonth}
-                onChange={(e) => setSaleMonth(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Sale date</label>
-              <input
-                type="date"
-                className={`${inputClassName()} w-40`}
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-              />
-            </div>
-          )}
           <button type="button" onClick={applyDateFilters} className={SECONDARY_BTN_CLASS}>
             Filter
           </button>

@@ -38,6 +38,7 @@ import {
   countKey,
   initStockTakeCounts,
   readStockTakeCounts,
+  stockTakeCountsAreValid,
   StockTakeCountInputs,
 } from "@/components/inventory/stock-take-count-inputs";
 import {
@@ -421,12 +422,30 @@ export function InventoryStockTakeIdScreen() {
     return payloadLines;
   }
 
+  function lineCountsAreValid(line) {
+    const uom = resolveLineUom(line) ?? productMeta(line.product_code).uom;
+    return stockTakeCountsAreValid(
+      line.id,
+      uomStockTakeLevels(uom),
+      counts,
+    );
+  }
+
   async function saveCounts() {
     setSaving(true);
     try {
       const payloadLines = buildSavePayloadLines();
 
       if (!payloadLines.length) {
+        return;
+      }
+
+      const invalidLine = payloadLines.find((saved) => {
+        const line = lineById[saved.id] ?? lines.find((entry) => entry.id === saved.id);
+        return line && !lineCountsAreValid(line);
+      });
+      if (invalidLine) {
+        notifyError("Enter a non-negative count in every unit field. Enter 0 for zero stock.");
         return;
       }
 
@@ -690,6 +709,7 @@ export function InventoryStockTakeIdScreen() {
             <div className="flex flex-col items-end gap-0.5">
               <input
                 type="number"
+                min="0"
                 step="any"
                 className={`${inputClassName()} w-20 text-right`}
                 value={counts[`${line.id}:small`] ?? ""}

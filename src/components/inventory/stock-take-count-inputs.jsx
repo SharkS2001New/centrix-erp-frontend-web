@@ -23,6 +23,15 @@ export function readStockTakeCounts(lineId, levels, counts) {
   return byKey;
 }
 
+export function stockTakeCountsAreValid(lineId, levels, counts) {
+  return levels.every((level) => {
+    const raw = counts[countKey(lineId, level.key)];
+    if (raw == null || String(raw).trim() === "") return false;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0;
+  });
+}
+
 export function initStockTakeCounts(lineId, baseQty, uom, levels) {
   const initial = {};
   const { full, middle, small } = baseToHierarchyCounts(baseQty, uom);

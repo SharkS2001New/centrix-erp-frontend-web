@@ -232,6 +232,24 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "q", label: "Search", type: "text", placeholder: "Customer name or phone…" },
   ],
   "daily-sales": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
+  "hospitality-fnb-checks": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
+  "hospitality-fnb-by-outlet": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
+  "hospitality-fnb-by-hour": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
+  "hospitality-fnb-by-category": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
+  "hospitality-open-checks": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
+  "hospitality-voids": [
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
+  ],
   "attendance-register": [
     { id: "status", label: "Status", type: "select", optionsKey: "attendanceStatuses" },
   ],
