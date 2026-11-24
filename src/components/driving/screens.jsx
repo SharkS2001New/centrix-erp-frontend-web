@@ -195,8 +195,11 @@ function partOfDay() {
 export function DrivingDashboard() {
   const { user } = useAuth();
   useTabTitle(tabSectionTitle("Dashboard", "Driving"));
-  const { branches, showBranchSelect } = useDrivingBranches();
-  const [branchFilter, setBranchFilter] = useState("");
+  const { branches, showBranchSelect, defaultBranchId } = useDrivingBranches();
+  const [branchFilter, setBranchFilter] = useState(defaultBranchId);
+  useEffect(() => {
+    setBranchFilter(defaultBranchId);
+  }, [defaultBranchId]);
   const { data, error } = useLoad(() => drivingGet("/dashboard", { branch_id: branchFilter || undefined }), `dashboard|${branchFilter}`);
   const dash = data?.data;
   if (error) return <p className="text-sm text-red-600">{error}</p>;

@@ -15,6 +15,7 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { isFreePlanPath, usesPackageOne } from "@/lib/organization-license";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 
 const ReportsDashboardSection = dynamic(
   () =>
@@ -54,8 +55,17 @@ const MODULE_LINKS = [
 
 export function OverviewDashboard() {
   const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission } = useAuth();
+  const { branches, effectiveBranchId } = useBranchScope();
   const [dashError, setDashError] = useState(null);
   const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
+
+  const selectedBranch = effectiveBranchId
+    ? branches.find((branch) => String(branch.id) === String(effectiveBranchId))
+      ?? (String(user?.branch?.id ?? "") === String(effectiveBranchId) ? user.branch : null)
+    : null;
+  const branchLabel = effectiveBranchId
+    ? selectedBranch?.branch_name ?? selectedBranch?.name ?? `Branch #${effectiveBranchId}`
+    : "All branches";
 
   const enabledModules = useMemo(
     () => Object.entries(capabilities?.modules ?? {}).filter(([, on]) => on).map(([key]) => key),
@@ -112,11 +122,10 @@ export function OverviewDashboard() {
         <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Organization</p>
           <p className="theme-heading mt-1 text-lg font-semibold">{organization?.org_name ?? organization?.name ?? "—"}</p>
-          <p className="theme-subtext mt-0.5 text-xs">{capabilities?.profile_label ?? capabilities?.deployment_profile}</p>
         </div>
         <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Branch</p>
-          <p className="theme-heading mt-1 text-lg font-semibold">{user?.branch?.branch_name ?? "All branches"}</p>
+          <p className="theme-heading mt-1 text-lg font-semibold">{branchLabel}</p>
           <p className="theme-subtext mt-0.5 text-xs">
             {(capabilities?.channels ?? []).map((channel) => salesChannelLabel(channel)).join(" · ") || "Backoffice"}
           </p>
