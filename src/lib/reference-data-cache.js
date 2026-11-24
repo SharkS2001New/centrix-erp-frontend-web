@@ -146,8 +146,8 @@ export function fetchBranchesCached(organizationId) {
         searchParams: { per_page: 200 },
         loading: false,
       });
-    return (res.data ?? []).filter(
-        (branch) => !orgId || branch.organization_id === orgId,
+      return (res.data ?? []).filter(
+        (branch) => !orgId || String(branch.organization_id) === String(orgId),
       );
     } catch (error) {
       if (error instanceof ApiError && error.status === 403) {
