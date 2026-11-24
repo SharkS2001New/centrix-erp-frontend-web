@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
-  INVENTORY_LOCATION_OPTIONS,
   STOCK_ALERT_MODE_OPTIONS,
+  singleStockLocation,
+  stockLocationOptionsFor,
   inventoryFormFromApi,
   inventoryPayloadFromForm,
 } from "@/lib/inventory-settings";
@@ -124,6 +125,24 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
     }
   }
 
+  function patchStockSource(patch) {
+    setForm((current) => {
+      const changes = typeof patch === "function" ? patch(current) : patch;
+      const next = { ...current, ...changes };
+      const onlyLocation = singleStockLocation(next);
+      return onlyLocation
+        ? {
+            ...next,
+            default_receive_location: onlyLocation,
+            default_pos_sale_location: onlyLocation,
+            default_distribution_sale_location: onlyLocation,
+          }
+        : next;
+    });
+  }
+
+  const locationOptions = stockLocationOptionsFor(form);
+
   return (
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -152,13 +171,12 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               checked={form.allow_sell_from_shop}
               disabled={form.retail_shop_wholesale_store_stock}
               onChange={(v) =>
-                setForm((f) => ({
-                  ...f,
+                patchStockSource({
                   allow_sell_from_shop: v,
                   ...(v
                     ? { allow_sell_from_store: false, retail_shop_wholesale_store_stock: false }
                     : {}),
-                }))
+                })
               }
             />
             <Toggle
@@ -167,13 +185,12 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               checked={form.allow_sell_from_store}
               disabled={form.retail_shop_wholesale_store_stock}
               onChange={(v) =>
-                setForm((f) => ({
-                  ...f,
+                patchStockSource({
                   allow_sell_from_store: v,
                   ...(v
                     ? { allow_sell_from_shop: false, retail_shop_wholesale_store_stock: false }
                     : {}),
-                }))
+                })
               }
             />
             <Toggle
@@ -181,10 +198,11 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               description="Turns on retail pricing on POS. Also enables per-line shop/store stock routing below."
               checked={form.enable_retail_pricing}
               onChange={(v) =>
-                setForm((f) => ({
-                  ...f,
+                patchStockSource((current) => ({
                   enable_retail_pricing: v,
-                  retail_shop_wholesale_store_stock: v ? f.retail_shop_wholesale_store_stock : false,
+                  retail_shop_wholesale_store_stock: v
+                    ? current.retail_shop_wholesale_store_stock
+                    : false,
                   ...(!v ? { allow_sell_from_shop: true, allow_sell_from_store: false } : {}),
                 }))
               }
@@ -195,11 +213,10 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               checked={form.retail_shop_wholesale_store_stock}
               disabled={!form.enable_retail_pricing}
               onChange={(v) =>
-                setForm((f) => ({
-                  ...f,
+                patchStockSource({
                   retail_shop_wholesale_store_stock: v,
                   ...(v ? { allow_sell_from_shop: false, allow_sell_from_store: false } : {}),
-                }))
+                })
               }
             />
             <Toggle
@@ -281,31 +298,39 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               <SearchableSelect
   className={inputClassName()}
   value={form.default_receive_location}
+  disabled={locationOptions.length === 1}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, default_receive_location: e.target.value })))}
-  options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+  options={locationOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
 />
             </Field>
+            {locationOptions.length === 1 ? (
+              <p className="text-xs text-slate-500">
+                Receiving and sales use the only stock location enabled for this organization.
+              </p>
+            ) : null}
             {!hospitality ? (
               <>
                 <Field label="Default POS sale location">
                   <SearchableSelect
   className={inputClassName()}
   value={form.default_pos_sale_location}
+  disabled={locationOptions.length === 1}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, default_pos_sale_location: e.target.value })))}
-  options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+  options={locationOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
 />
                 </Field>
                 <Field label="Default distribution sale location">
                   <SearchableSelect
                     className={inputClassName()}
                     value={form.default_distribution_sale_location}
+                    disabled={locationOptions.length === 1}
                     nativeEvent
                     onChange={(e) =>
                       setForm((f) => ({ ...f, default_distribution_sale_location: e.target.value }))
                     }
-                    options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({
+                    options={locationOptions.map((opt) => ({
                       value: opt.value,
                       label: opt.label,
                     }))}
@@ -314,8 +339,9 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               </>
             ) : (
               <p className="text-xs text-slate-500">
-                Used when receiving stock into shop or store. Hotel POS sale deduct location is under Hotel
-                F&amp;B settings.
+                Used when receiving stock into{" "}
+                {locationOptions.length === 1 ? locationOptions[0].label : "shop or store"}. Hotel POS
+                sale deduct location is under Hotel F&amp;B settings.
               </p>
             )}
           </div>

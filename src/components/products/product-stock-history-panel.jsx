@@ -19,6 +19,7 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { fullPackageLabel, uomConversionSummary } from "@/lib/uom-packaging";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 function movementHref(row) {
   const refType = String(row.reference_type ?? "").toLowerCase();
@@ -41,8 +42,13 @@ export function ProductStockHistoryPanel({
   storeStock = 0,
   userById,
   emptyMessage = "No stock movements recorded yet.",
+  availableLocations: locationsFromParent = null,
 }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const resolvedLocations = useMemo(
+    () => locationsFromParent ?? availableStockLocations(capabilities),
+    [capabilities, locationsFromParent],
+  );
   const initialRange = defaultDateRange(30);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
@@ -58,6 +64,9 @@ export function ProductStockHistoryPanel({
         from_date: fromDate,
         to_date: toDate,
       };
+      if (resolvedLocations.length === 1) {
+        searchParams.stock_location = resolvedLocations[0];
+      }
       if (user?.branch_id) searchParams.branch_id = user.branch_id;
 
       const res = await apiRequest("/reports/stock-movement", { searchParams });
@@ -67,14 +76,20 @@ export function ProductStockHistoryPanel({
     } finally {
       setLoading(false);
     }
-  }, [productCode, fromDate, toDate, user?.branch_id]);
+  }, [resolvedLocations, productCode, fromDate, toDate, user?.branch_id]);
 
   useEffect(() => {
     if (!productCode) return;
     void loadMovements();
   }, [productCode, loadMovements]);
 
-  const summary = useMemo(() => summarizeStockMovements(rows), [rows]);
+  const summary = useMemo(
+    () =>
+      summarizeStockMovements(
+        rows.filter((row) => resolvedLocations.includes(row.stock_location)),
+      ),
+    [resolvedLocations, rows],
+  );
   const displayUom = uom ?? null;
   const netLabel = formatStockQty(Math.abs(summary.netChange), displayUom);
   const displayName = productName?.trim() || productCode;
@@ -85,15 +100,19 @@ export function ProductStockHistoryPanel({
 
   return (
     <div>
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`mb-4 grid gap-3 ${resolvedLocations.length === 1 ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-4"}`}>
+        {resolvedLocations.includes("shop") ? (
         <div className="theme-panel rounded-lg border px-4 py-3">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Shop stock</p>
           <p className="theme-heading mt-1 text-sm font-semibold tabular-nums">{shopStockText}</p>
         </div>
-        <div className="theme-panel rounded-lg border px-4 py-3">
+        ) : null}
+        {resolvedLocations.includes("store") ? (
+          <div className="theme-panel rounded-lg border px-4 py-3">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Store stock</p>
           <p className="theme-heading mt-1 text-sm font-semibold tabular-nums">{storeStockText}</p>
-        </div>
+          </div>
+        ) : null}
         <div className="theme-panel rounded-lg border px-4 py-3 sm:col-span-2 lg:col-span-2">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Package</p>
           <p className="theme-heading mt-1 text-sm font-semibold">{packageLabel}</p>

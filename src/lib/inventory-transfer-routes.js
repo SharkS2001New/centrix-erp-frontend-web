@@ -17,9 +17,9 @@ export const TRANSFER_TO_OPTIONS = [
   { value: "display", label: "Display / merchandising" },
 ];
 
-export function transferToOptionsFor(from) {
+export function transferToOptionsFor(from, availableLocations = ["shop", "store"]) {
   return TRANSFER_TO_OPTIONS.filter((opt) => {
-    if (opt.location) return opt.value !== from;
+    if (opt.location) return availableLocations.includes(opt.value) && opt.value !== from;
     return true;
   });
 }

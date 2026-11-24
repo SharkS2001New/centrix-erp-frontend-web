@@ -8,6 +8,8 @@ import {
 } from "@/lib/procurement-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
+import { useAuth } from "@/contexts/auth-context";
+import { defaultStockLocation, stockLocationOptionsFor } from "@/lib/inventory-settings";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -22,18 +24,30 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
+  const { capabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const getSettings = useSettingsGet();
   const [form, setForm] = useState(procurementFormFromApi({}));
   const [loading, setLoading] = useState(true);
+  const locationOptions = stockLocationOptionsFor(capabilities, [
+    { value: "store", label: "Store / warehouse" },
+    { value: "shop", label: "Shop floor" },
+  ]);
+  const receiveLocation = defaultStockLocation(capabilities, form.default_receive_location);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     getSettings("procurement")
       .then((res) => {
-        if (!cancelled && res) setForm(procurementFormFromApi(res));
+        if (!cancelled && res) {
+          const next = procurementFormFromApi(res);
+          setForm({
+            ...next,
+            default_receive_location: defaultStockLocation(capabilities, next.default_receive_location),
+          });
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load procurement settings");
@@ -44,7 +58,7 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
     return () => {
       cancelled = true;
     };
-  }, [getSettings, setError]);
+  }, [capabilities, getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -56,7 +70,11 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
         method: "PATCH",
         body: procurementPayloadFromForm(form),
       });
-      setForm(procurementFormFromApi(res));
+      const next = procurementFormFromApi(res);
+      setForm({
+        ...next,
+        default_receive_location: defaultStockLocation(capabilities, next.default_receive_location),
+      });
       await afterSave();
       setMessage("Procurement settings saved.");
     } catch (e) {
@@ -88,12 +106,10 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
             <Field label="Default receive location">
               <SearchableSelect
                 className={inputClassName()}
-                value={form.default_receive_location}
+                value={receiveLocation}
+                disabled={locationOptions.length === 1}
                 onChange={(next) => setForm((f) => ({ ...f, default_receive_location: next }))}
-                options={[
-                  { value: "store", label: "Store / warehouse" },
-                  { value: "shop", label: "Shop floor" },
-                ]}
+                options={locationOptions}
               />
             </Field>
             <Toggle

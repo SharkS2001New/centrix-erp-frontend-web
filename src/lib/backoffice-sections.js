@@ -46,14 +46,18 @@ export function backofficeSectionsFromCapabilities(capabilitiesOrSettings) {
   return normalizeBackofficeSections(raw);
 }
 
-/** External POS or backoffice create-order is using an operating float. */
+/** A sales workspace is using an operating float. */
 export function usesTillFloat(capabilitiesOrSettings) {
   const sales =
     capabilitiesOrSettings?.module_settings?.sales ??
     capabilitiesOrSettings?.sales ??
     capabilitiesOrSettings ??
     {};
-  return Boolean(sales.require_pos_till_float || sales.require_backoffice_till_float);
+  return Boolean(
+    sales.require_pos_till_float ||
+      sales.require_as_mobile_till_float ||
+      sales.require_backoffice_till_float,
+  );
 }
 
 /** A section the organization was not given is hidden. Unknown ids stay visible. */

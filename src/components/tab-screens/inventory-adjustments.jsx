@@ -32,10 +32,12 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { BranchFilterField } from "@/components/catalog/branch-filter-field";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 
 export function InventoryAdjustmentsScreen() {
-  const { user } = useAuth();
+  const { capabilities, user } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
   const initialRange = defaultDateRange(30);
 
@@ -108,7 +110,11 @@ export function InventoryAdjustmentsScreen() {
   return (
     <InventoryPageShell
       title="Stock adjustments"
-      subtitle="Manual increases and decreases to shop or store stock"
+      subtitle={
+        availableLocations.length === 1
+          ? `Manual increases and decreases to ${availableLocations[0]} stock`
+          : "Manual increases and decreases to shop or store stock"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button

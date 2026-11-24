@@ -2,6 +2,7 @@
 
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
 import { SearchableSelect } from "@/components/catalog/catalog-shared";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 export const REASON_SCOPE = {
   ORDER: "order",
@@ -85,20 +86,23 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
 }
 
 /** LPO line receive locations from API summary. */
-export function lpoReceivedLocationMeta(line) {
+export function lpoReceivedLocationMeta(line, stockSettings = null) {
+  const allowedLocations = availableStockLocations(stockSettings);
   const byLoc = line?.received_qty_by_location ?? {};
-  const shop = Number(byLoc.shop ?? 0);
-  const store = Number(byLoc.store ?? 0);
-  const options = [];
-  if (shop > 0) options.push(STOCK_LOCATION.SHOP);
-  if (store > 0) options.push(STOCK_LOCATION.STORE);
+  const shop = allowedLocations.includes(STOCK_LOCATION.SHOP) ? Number(byLoc.shop ?? 0) : 0;
+  const store = allowedLocations.includes(STOCK_LOCATION.STORE) ? Number(byLoc.store ?? 0) : 0;
+  const receivedLocations = [];
+  if (shop > 0) receivedLocations.push(STOCK_LOCATION.SHOP);
+  if (store > 0) receivedLocations.push(STOCK_LOCATION.STORE);
+  const options = receivedLocations.length > 0 ? receivedLocations : allowedLocations;
 
-  const primary =
+  const preferredPrimary =
     (line?.received_location_options?.length === 1
       ? line.received_location_options[0]
       : null) ??
     line?.received_stock_location ??
     (options.length === 1 ? options[0] : STOCK_LOCATION.STORE);
+  const primary = options.includes(preferredPrimary) ? preferredPrimary : options[0];
 
   return { options, primary, shop, store, locked: options.length === 1 };
 }
@@ -109,26 +113,29 @@ export function formatStockLocationLabel(location) {
   return location ?? "—";
 }
 
-export function stockLocationSelectOptions({ mode, lpoLine, manual = false } = {}) {
+export function stockLocationSelectOptions({
+  mode,
+  lpoLine,
+  manual = false,
+  stockSettings = null,
+} = {}) {
+  const allowedLocations = availableStockLocations(stockSettings);
   if (manual || mode !== "lpo" || !lpoLine) {
-    return [
-      { value: STOCK_LOCATION.STORE, label: "Store" },
-      { value: STOCK_LOCATION.SHOP, label: "Shop" },
-    ];
+    return allowedLocations.map((location) => ({
+      value: location,
+      label: formatStockLocationLabel(location),
+    }));
   }
 
-  const { options, primary } = lpoReceivedLocationMeta(lpoLine);
-  if (options.length === 0) {
-    return [
-      { value: STOCK_LOCATION.STORE, label: "Store" },
-      { value: STOCK_LOCATION.SHOP, label: "Shop" },
-    ];
-  }
+  const { options, primary } = lpoReceivedLocationMeta(lpoLine, stockSettings);
+  const receivedLocations = options.filter((location) => allowedLocations.includes(location));
+  const visibleLocations = receivedLocations.length > 0 ? receivedLocations : allowedLocations;
+  const selectedLocation = visibleLocations.includes(primary) ? primary : visibleLocations[0];
 
-  return options.map((value) => ({
+  return visibleLocations.map((value) => ({
     value,
     label: formatStockLocationLabel(value),
-    selected: value === primary,
+    selected: value === selectedLocation,
   }));
 }
 

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { stockLocationOptionsFor } from "@/lib/inventory-settings";
 import {
   ATTENDANCE_STATUS_OPTIONS,
   CASH_ADVANCE_STATUS_OPTIONS,
@@ -33,8 +34,8 @@ export function useReportFilterOptions(reportKey) {
       kraStatuses: KRA_STATUS_OPTIONS,
       kraDocumentTypes: KRA_DOCUMENT_TYPE_OPTIONS,
       latenessWaiverStatuses: LATENESS_WAIVER_OPTIONS,
-      stockLocations: STOCK_LOCATION_FILTER_OPTIONS,
-      inventoryLocations: INVENTORY_LOCATION_OPTIONS,
+      stockLocations: stockLocationOptionsFor(capabilities, STOCK_LOCATION_FILTER_OPTIONS),
+      inventoryLocations: stockLocationOptionsFor(capabilities, INVENTORY_LOCATION_OPTIONS),
       transactionTypes: inventoryTransactionTypeOptionsForCapabilities(capabilities),
     }),
     [capabilities],

@@ -76,7 +76,11 @@ export function ReportsDashboardSection({
   const globalBranchId = useGlobalBranchId();
   const canViewReports = hasPermission(P.reports.hub.view);
   const scope = resolveDashboardAnalyticsScope(workspaceScope, hasPermission);
-  const hasScopedAnalytics = Boolean(scope.kpis.length || scope.charts.length);
+  const kpiKeys =
+    capabilities?.module_settings?.sales?.enable_shop_debtors === false
+      ? scope.kpis.filter((key) => key !== "receivables")
+      : scope.kpis;
+  const hasScopedAnalytics = Boolean(kpiKeys.length || scope.charts.length);
   // Business summary alone must not load sales analytics payloads.
   const enabled = enabledProp ?? (canViewReports && hasScopedAnalytics);
   const defaults = useMemo(
@@ -201,7 +205,7 @@ export function ReportsDashboardSection({
       value: dashboard?.kpis?.inventory_value?.value,
       changePct: dashboard?.kpis?.inventory_value?.change_pct,
     },
-  ].filter((item) => scope.kpis.includes(item.id));
+  ].filter((item) => kpiKeys.includes(item.id));
 
   const showSalesTrend = scope.charts.includes("sales_trend");
   const showTopProducts = scope.charts.includes("top_products");

@@ -44,6 +44,15 @@ describe("backoffice sections", () => {
     expect(lockedMenuGroups(capabilities.module_settings.sales).pos).toMatch(/Till sessions/);
   });
 
+  it("recognizes AS Mobile till float without External POS", () => {
+    const capabilities = {
+      module_settings: { sales: { require_as_mobile_till_float: true } },
+      enabled_modules: { "sales.pos": false },
+    };
+    expect(usesTillFloat(capabilities)).toBe(true);
+    expect(isBackofficeSectionEnabled(capabilities, "pos")).toBe(true);
+  });
+
   it("reads the menu groups saved on a setup type", () => {
     const state = menuGroupStateFromProfile({
       menu_groups: {

@@ -24,9 +24,16 @@ import {
   damageMeasureLabel,
   damageQtyToBase,
 } from "@/lib/stock-uom";
+import { availableStockLocations, defaultStockLocation } from "@/lib/inventory-settings";
 
 export function RecordDamageDrawer({ open, onClose, onSaved }) {
   const { user, capabilities, hasPermission } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "shop");
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store / warehouse",
+  }));
   const { branches, effectiveBranchId, showBranchFilter } = useBranchScope();
   const [branchId, setBranchId] = useState("");
 
@@ -36,7 +43,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     product_code: "",
     quantity: "",
     package_type: "full",
-    stock_location: "shop",
+    stock_location: defaultLocation,
     reason: "",
     notes: "",
   });
@@ -46,6 +53,10 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
   useEffect(() => {
     if (open) setBranchId(effectiveBranchId || "");
   }, [effectiveBranchId, open]);
+
+  useEffect(() => {
+    if (open) setForm((current) => ({ ...current, stock_location: defaultLocation }));
+  }, [defaultLocation, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,7 +78,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
       product_code: "",
       quantity: "",
       package_type: "full",
-      stock_location: "shop",
+      stock_location: defaultLocation,
       reason: "",
       notes: "",
     });
@@ -212,10 +223,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
           <SearchableSelect
             value={form.stock_location}
             onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
-            options={[
-              { value: "shop", label: "Shop" },
-              { value: "store", label: "Store / warehouse" },
-            ]}
+            options={locationOptions}
           />
         </Field>
 

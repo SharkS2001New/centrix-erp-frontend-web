@@ -25,6 +25,10 @@ import {
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
+import {
   TRANSFER_FROM_OPTIONS,
   isLocationTransferTarget,
   isStoreToShopTransfer,
@@ -47,11 +51,16 @@ export function InventoryTransfersNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("stock transfer"));
   const { user, capabilities, hasPermission } = useAuth();
   const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const locationOptions = useMemo(
+    () => TRANSFER_FROM_OPTIONS.filter((option) => availableLocations.includes(option.value)),
+    [availableLocations],
+  );
 
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
-  const [fromLocation, setFromLocation] = useState("store");
+  const [fromLocation, setFromLocation] = useState(() => defaultStockLocation(capabilities, "store"));
   const [toLocation, setToLocation] = useState("shop");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -71,8 +80,8 @@ export function InventoryTransfersNewScreen() {
 
   const { uomById } = useInventoryCatalogMaps(uoms);
   const toOptions = useMemo(
-    () => transferToOptionsFor(fromLocation),
-    [fromLocation],
+    () => transferToOptionsFor(fromLocation, availableLocations),
+    [availableLocations, fromLocation],
   );
   const isStoreToShop = isStoreToShopTransfer(fromLocation, toLocation);
   const isPurposeTransfer = !isLocationTransferTarget(toLocation);
@@ -84,10 +93,13 @@ export function InventoryTransfersNewScreen() {
     !canDirectInventoryAction({ hasPermission, capabilities });
 
   useEffect(() => {
+    if (!availableLocations.includes(fromLocation)) {
+      setFromLocation(defaultStockLocation(capabilities, "store"));
+    }
     if (!toOptions.some((opt) => opt.value === toLocation)) {
       setToLocation(toOptions[0]?.value ?? "shop");
     }
-  }, [fromLocation, toOptions, toLocation]);
+  }, [availableLocations, capabilities, fromLocation, toOptions, toLocation]);
 
   function addProduct(product) {
     if (!branchId) {
@@ -116,7 +128,7 @@ export function InventoryTransfersNewScreen() {
 
   function handleFromChange(from) {
     setFromLocation(from);
-    const nextToOptions = transferToOptionsFor(from);
+    const nextToOptions = transferToOptionsFor(from, availableLocations);
     setToLocation((prev) =>
       nextToOptions.some((opt) => opt.value === prev)
         ? prev
@@ -180,7 +192,11 @@ export function InventoryTransfersNewScreen() {
   return (
     <InventoryPageShell
       title="Transfer stock"
-      subtitle="Move stock between shop and store, or issue stock for internal use, donations, and similar purposes"
+      subtitle={
+        availableLocations.length === 1
+          ? `Move stock from ${availableLocations[0]} for internal use, donations, and similar purposes`
+          : "Move stock between shop and store, or issue stock for internal use, donations, and similar purposes"
+      }
       backHref="/inventory/transactions"
       backLabel="Back to stock movements"
     >
@@ -215,7 +231,7 @@ export function InventoryTransfersNewScreen() {
               className={inputClassName()}
               value={fromLocation}
               onChange={handleFromChange}
-              options={TRANSFER_FROM_OPTIONS}
+              options={locationOptions}
             />
           </Field>
           <Field label="To">

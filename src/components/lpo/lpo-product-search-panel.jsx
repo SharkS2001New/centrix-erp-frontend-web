@@ -8,6 +8,7 @@ import { inputClassName } from "@/components/catalog/catalog-shared";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { productStockAtLocation } from "@/lib/pos-stock";
+import { availableStockLocations } from "@/lib/inventory-settings";
 import { enrichProductForLpo } from "./lpo-product-utils";
 
 function formatStock(baseQty, product) {
@@ -41,7 +42,8 @@ export function LpoProductSearchPanel({
   /** Cap scroll area ~half viewport; height grows with rows until cap (supplier return page). */
   compactHalfPage = false,
 }) {
-  const { user, isOrgWide } = useAuth();
+  const { capabilities, user, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const globalBranchId = useGlobalBranchId();
   const branchId =
     branchIdProp ??
@@ -254,14 +256,21 @@ export function LpoProductSearchPanel({
                   </th>
                 ) : null}
                 <th className="px-2 py-2">Product Name</th>
-                <th className="px-2 py-2 text-right">Available in Shop</th>
-                <th className="px-2 py-2 text-right">Available in Store</th>
+                {availableLocations.includes("shop") ? (
+                  <th className="px-2 py-2 text-right">Available in Shop</th>
+                ) : null}
+                {availableLocations.includes("store") ? (
+                  <th className="px-2 py-2 text-right">Available in Store</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {showEmpty ? (
                 <tr>
-                  <td colSpan={multiple ? 4 : 3} className="theme-subtext px-2 py-6 text-center">
+                  <td
+                    colSpan={1 + Number(multiple) + availableLocations.length}
+                    className="theme-subtext px-2 py-6 text-center"
+                  >
                     {searching && query.trim() ? "Searching…" : emptyMessage}
                   </td>
                 </tr>
@@ -297,12 +306,16 @@ export function LpoProductSearchPanel({
                           {product.product_code}
                         </span>
                       </td>
-                      <td className="theme-text-muted px-2 py-2 text-right">
-                        {formatStock(productStockAtLocation(product, "shop"), product)}
-                      </td>
-                      <td className="theme-text-muted px-2 py-2 text-right">
-                        {formatStock(productStockAtLocation(product, "store"), product)}
-                      </td>
+                      {availableLocations.includes("shop") ? (
+                        <td className="theme-text-muted px-2 py-2 text-right">
+                          {formatStock(productStockAtLocation(product, "shop"), product)}
+                        </td>
+                      ) : null}
+                      {availableLocations.includes("store") ? (
+                        <td className="theme-text-muted px-2 py-2 text-right">
+                          {formatStock(productStockAtLocation(product, "store"), product)}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })

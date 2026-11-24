@@ -35,6 +35,7 @@ import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 const EMPTY_FORM = {
   session_code: "",
@@ -51,7 +52,9 @@ function optionalFilterId(value) {
 export function InventoryStockTakeScreen() {
   const confirm = useConfirm();
   const router = useRouter();
-  const { user, hasPermission } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const singleLocation = availableLocations.length === 1 ? availableLocations[0] : null;
   const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
   const [branchFilter, setBranchFilter] = useState("");
   const [createBranchId, setCreateBranchId] = useState("");
@@ -75,7 +78,18 @@ export function InventoryStockTakeScreen() {
   const [editingSession, setEditingSession] = useState(null);
   const [creating, setCreating] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_FORM,
+    stock_location: singleLocation ?? "both",
+  }));
+
+  useEffect(() => {
+    if (singleLocation && form.stock_location !== singleLocation) {
+      setForm((current) => ({ ...current, stock_location: singleLocation }));
+    } else if (!singleLocation && form.stock_location !== "both" && !availableLocations.includes(form.stock_location)) {
+      setForm((current) => ({ ...current, stock_location: "both" }));
+    }
+  }, [availableLocations, form.stock_location, singleLocation]);
 
   const { runQueuedTask, overlayNode } = useQueuedTask(
     "Please wait while stock take lines are prepared…",
@@ -231,7 +245,11 @@ export function InventoryStockTakeScreen() {
   return (
     <InventoryPageShell
       title="Stock take"
-      subtitle="Count stock in the shop or warehouse and reconcile differences"
+      subtitle={
+        availableLocations.length === 1
+          ? `Count ${availableLocations[0]} stock and reconcile differences`
+          : "Count stock in the shop or warehouse and reconcile differences"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -399,15 +417,15 @@ export function InventoryStockTakeScreen() {
             required
           />
         </Field>
-        <Field label="Warehouse / location">
+        <Field label={singleLocation ? `${singleLocation === "shop" ? "Shop" : "Store"} location` : "Stock locations"}>
           <SearchableSelect
             className={inputClassName()}
             value={form.stock_location}
             onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
             options={[
-              { value: "both", label: "Shop and store" },
-              { value: "shop", label: "Shop only" },
-              { value: "store", label: "Store / warehouse only" },
+              ...(availableLocations.length > 1 ? [{ value: "both", label: "Shop and store" }] : []),
+              ...(availableLocations.includes("shop") ? [{ value: "shop", label: "Shop only" }] : []),
+              ...(availableLocations.includes("store") ? [{ value: "store", label: "Store / warehouse only" }] : []),
             ]}
           />
         </Field>

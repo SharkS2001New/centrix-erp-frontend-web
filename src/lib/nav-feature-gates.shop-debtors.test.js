@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDirectCheckoutCreditEnabled,
   isExternalPosEnabled,
+  isReportNavEnabled,
   shouldShowShopDebtors,
 } from "./nav-feature-gates";
 import { isRouteOnlyCustomers } from "./distribution-settings";
@@ -14,6 +15,34 @@ describe("shouldShowShopDebtors", () => {
       }),
     ).toBe(true);
     expect(isExternalPosEnabled({ modules: { "sales.pos": true } })).toBe(true);
+  });
+
+  it("defaults the feature on but honors an explicit organization disable", () => {
+    expect(
+      shouldShowShopDebtors({
+        modules: { "sales.pos": true, customers_suppliers: true },
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowShopDebtors({
+        modules: { "sales.pos": true, customers_suppliers: true },
+        module_settings: { sales: { enable_shop_debtors: false } },
+      }),
+    ).toBe(false);
+  });
+
+  it("hides debtor-related reports when the organization disables shop debtors", () => {
+    const capabilities = { module_settings: { sales: { enable_shop_debtors: false } } };
+    for (const key of [
+      "accounts-receivable",
+      "ar-aging",
+      "credit-outstanding",
+      "customer-statement",
+      "invoice-payments",
+      "top-debtors",
+    ]) {
+      expect(isReportNavEnabled(key, capabilities)).toBe(false);
+    }
   });
 
   it("shows when direct-checkout credit is enabled", () => {

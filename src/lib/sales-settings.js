@@ -51,6 +51,7 @@ const SALES_DEFAULTS = {
   enable_cheque_number: false,
   enable_payment_date: false,
   enable_credit_payment: true,
+  enable_shop_debtors: true,
   /** Collect small / partial payments on outstanding orders (backoffice Collect payment). */
   allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
@@ -83,6 +84,7 @@ const SALES_DEFAULTS = {
   /** Default From/To window for mobile picking & loading sheets (1 = today only). */
   mobile_sheets_default_days: 5,
   require_pos_till_float: false,
+  require_as_mobile_till_float: false,
   external_pos_layout: "modern",
   /** Backoffice Create order: indexeddb (fast) or live (server stock). */
   backoffice_product_search_mode: "indexeddb",
@@ -617,6 +619,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   enable_cheque_number: false,
   enable_payment_date: false,
   enable_credit_payment: true,
+  enable_shop_debtors: true,
   allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
@@ -717,6 +720,7 @@ export function salesOrganizationFormFromApi(res) {
     enable_cheque_number: Boolean(sales.enable_cheque_number),
     enable_payment_date: Boolean(sales.enable_payment_date),
     enable_credit_payment: Boolean(sales.enable_credit_payment),
+    enable_shop_debtors: sales.enable_shop_debtors !== false,
     allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
@@ -975,6 +979,11 @@ export function isBackofficeTillFloatRequired(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).require_backoffice_till_float);
 }
 
+/** When true, AS Mobile checkout requires an open till session with operating float. */
+export function isAsMobileTillFloatRequired(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).require_as_mobile_till_float);
+}
+
 /**
  * Till float for the active sales UI — external POS (/pos) and backoffice create order (/sales/pos)
  * use separate admin settings and must not be conflated.
@@ -985,9 +994,11 @@ export function isWorkspaceTillFloatRequired(moduleSettings, { standalone = fals
     : isBackofficeTillFloatRequired(moduleSettings);
 }
 
-/** Nav + till admin screens when either external POS or backoffice float workflow is enabled. */
+/** Nav + till admin screens when any sales till-float workflow is enabled. */
 export function isTillFloatWorkflowEnabled(moduleSettings) {
-  return isPosTillFloatRequired(moduleSettings) || isBackofficeTillFloatRequired(moduleSettings);
+  return isPosTillFloatRequired(moduleSettings)
+    || isAsMobileTillFloatRequired(moduleSettings)
+    || isBackofficeTillFloatRequired(moduleSettings);
 }
 
 /** When true, cashiers count cash without seeing expected amount during close. */
@@ -1680,6 +1691,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       standalone,
     }),
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
+    requireAsMobileTillFloat: Boolean(sales.require_as_mobile_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
     requireTillFloat: Boolean(sales.require_pos_till_float),

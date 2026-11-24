@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
+import { availableStockLocations } from "@/lib/inventory-settings";
 import {
   defaultProductBranchId,
   isMultiBranchCatalog,
@@ -990,6 +991,7 @@ export const ProductFormFields = memo(function ProductFormFields({
         productCode={mode === "edit" ? form.product_code : null}
         includeShelfLocation={includeShelfLocation}
         hotelCatalogue={hotelCatalogue}
+        availableLocations={availableStockLocations(capabilities)}
       />
 
       {mode === "edit" ? (

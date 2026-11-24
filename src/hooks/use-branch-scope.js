@@ -11,24 +11,31 @@ import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
  * org-wide only; the topbar can offer a switch when this list has multiple rows.
  */
 export function useBranchScope() {
-  const { capabilities, user, isOrgWide } = useAuth();
+  const { capabilities, user, organization, isOrgWide } = useAuth();
   const orgWide = isOrgWide();
   const catalogMultiBranch = isMultiBranchCatalog(capabilities);
   const globalBranchId = useGlobalBranchId();
+  const organizationId = organization?.id ?? user?.organization_id;
   const [branches, setBranches] = useState([]);
   const [branchLoadError, setBranchLoadError] = useState(null);
 
   useEffect(() => {
-    if (!user?.organization_id || (!catalogMultiBranch && !orgWide)) {
+    if (!organizationId || (!catalogMultiBranch && !orgWide)) {
       setBranches([]);
       setBranchLoadError(null);
       return;
     }
     let cancelled = false;
     setBranchLoadError(null);
-    fetchBranchesCached(user?.organization_id)
+    fetchBranchesCached(organizationId)
       .then((rows) => {
-        if (!cancelled) setBranches(Array.isArray(rows) ? rows : []);
+        if (!cancelled) {
+          setBranches(
+            (Array.isArray(rows) ? rows : []).filter(
+              (branch) => branch.is_active == null || !["0", "false"].includes(String(branch.is_active).toLowerCase()),
+            ),
+          );
+        }
       })
       .catch((error) => {
         if (!cancelled) {
@@ -39,7 +46,7 @@ export function useBranchScope() {
     return () => {
       cancelled = true;
     };
-  }, [catalogMultiBranch, orgWide, user?.organization_id]);
+  }, [catalogMultiBranch, organizationId, orgWide]);
 
   const multiBranch = branches.length > 0 ? branches.length > 1 : catalogMultiBranch;
   const lockedBranchId = !orgWide && user?.branch_id != null ? String(user.branch_id) : "";

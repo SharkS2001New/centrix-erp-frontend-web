@@ -161,7 +161,13 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/sales/till-management",
         label: "Till management",
-        module: "sales.pos",
+        moduleAny: [
+          "sales.pos",
+          "sales.backend",
+          "sales.mobile",
+          "hospitality.bar_pos",
+          "hospitality.backend",
+        ],
         permission: P.pos.till_management.view,
         requireTillFloat: true,
       },
@@ -583,6 +589,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Receivables ledger",
         module: "accounting",
         permission: P.accounting.accounts_receivable.view,
+        requireShopDebtors: true,
         group: "Accounts receivable",
       },
       {

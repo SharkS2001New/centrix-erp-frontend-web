@@ -1,7 +1,7 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -22,20 +22,27 @@ import {
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { damageMeasureLabel, damageQtyToBase } from "@/lib/stock-uom";
+import { availableStockLocations, defaultStockLocation } from "@/lib/inventory-settings";
 
-function lineFromProduct(product) {
+function lineFromProduct(product, stockLocation = "shop") {
   const uom = product.uom;
   return {
     ...lineFromEnrichedProduct(product),
     quantity: "1",
     package_type: defaultDamagePackageType(uom),
-    stock_location: "shop",
+    stock_location: stockLocation,
   };
 }
 
 export function InventoryDamagesNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("damage"));
   const { user, capabilities, hasPermission, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "shop");
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store",
+  }));
   const globalBranchId = useGlobalBranchId();
 
   const [branches, setBranches] = useState([]);
@@ -45,6 +52,16 @@ export function InventoryDamagesNewScreen() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLines((prev) =>
+      prev.map((line) =>
+        availableLocations.includes(line.stock_location)
+          ? line
+          : { ...line, stock_location: defaultLocation },
+      ),
+    );
+  }, [availableLocations, defaultLocation]);
 
   useEffect(() => {
     fetchUomsCached(user?.organization_id)
@@ -82,14 +99,14 @@ export function InventoryDamagesNewScreen() {
   function addProduct(product) {
     const code = product.product_code;
     if (lines.some((l) => l.product_code === code)) return;
-    setLines((prev) => [...prev, lineFromProduct(product)]);
+    setLines((prev) => [...prev, lineFromProduct(product, defaultLocation)]);
   }
 
   function addProducts(products) {
     const existing = new Set(lines.map((l) => l.product_code));
     const toAdd = products.filter((p) => !existing.has(p.product_code));
     if (!toAdd.length) return;
-    setLines((prev) => [...prev, ...toAdd.map((product) => lineFromProduct(product))]);
+    setLines((prev) => [...prev, ...toAdd.map((product) => lineFromProduct(product, defaultLocation))]);
   }
 
   function updateLine(index, patch) {
@@ -240,10 +257,7 @@ export function InventoryDamagesNewScreen() {
                   className={`${inputClassName()} text-xs`}
                   value={line.stock_location}
                   onChange={(stock_location) => updateLine(index, { stock_location })}
-                  options={[
-                    { value: "shop", label: "Shop" },
-                    { value: "store", label: "Store" },
-                  ]}
+                  options={locationOptions}
                 />
               </td>
             </>

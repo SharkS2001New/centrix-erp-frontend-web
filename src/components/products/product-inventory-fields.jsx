@@ -101,6 +101,7 @@ export function ProductInventoryFields({
   productCode = null,
   includeShelfLocation = false,
   hotelCatalogue = false,
+  availableLocations = ["shop", "store"],
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const packName = productUom ? fullPackageLabel(productUom) : "full package";
@@ -138,27 +139,31 @@ export function ProductInventoryFields({
         ) : null}
       </div>
 
-      <div className="md:col-span-1">
-        <StockLocationFields
-          location="shop"
-          label={hotelCatalogue ? "Outlet" : "Shop"}
-          form={form}
-          onChange={onChange}
-          uom={productUom}
-          readOnly={stockReadOnly}
-        />
-      </div>
+      {availableLocations.includes("shop") ? (
+        <div className="md:col-span-1">
+          <StockLocationFields
+            location="shop"
+            label={hotelCatalogue ? "Outlet" : "Shop"}
+            form={form}
+            onChange={onChange}
+            uom={productUom}
+            readOnly={stockReadOnly}
+          />
+        </div>
+      ) : null}
 
-      <div className="md:col-span-1">
-        <StockLocationFields
-          location="store"
-          label={hotelCatalogue ? "Storeroom" : "Store / warehouse"}
-          form={form}
-          onChange={onChange}
-          uom={productUom}
-          readOnly={stockReadOnly}
-        />
-      </div>
+      {availableLocations.includes("store") ? (
+        <div className="md:col-span-1">
+          <StockLocationFields
+            location="store"
+            label={hotelCatalogue ? "Storeroom" : "Store / warehouse"}
+            form={form}
+            onChange={onChange}
+            uom={productUom}
+            readOnly={stockReadOnly}
+          />
+        </div>
+      ) : null}
 
       {includeShelfLocation ? (
         <div className="md:col-span-2 xl:col-span-3">

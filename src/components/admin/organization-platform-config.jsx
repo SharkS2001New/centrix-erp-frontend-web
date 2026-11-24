@@ -422,6 +422,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
       backend: deploymentProfile === "distribution" ? "order_completed" : "order_created",
     },
     require_pos_till_float: false,
+    require_as_mobile_till_float: false,
     require_backoffice_till_float: false,
     external_pos_layout: "modern",
     backoffice_product_search_mode: "indexeddb",
@@ -521,6 +522,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
       showCheckoutOnCreate: posCheckout,
     }),
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
+    require_as_mobile_till_float: Boolean(apiPayload.require_as_mobile_till_float ?? false),
     require_backoffice_till_float: Boolean(apiPayload.require_backoffice_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
@@ -828,6 +830,13 @@ export function OrganizationPlatformSalesSettings({
               description="When on, this organization can use the Centrix AS Mobile outlet app (login channel CentrixAsMobile). When off, staff cannot sign in to that app even if their role has AS Mobile access. Independent of Field Mobile (Enable mobile orders above)."
               checked={salesPlatform?.enable_centrix_as_mobile !== false}
               onChange={(v) => patch({ enable_centrix_as_mobile: v })}
+            />
+            <Toggle
+              label="Require till float for Centrix AS Mobile"
+              description="When on, AS Mobile cashiers must open a till session and declare operating float before completing sales. This is independent of External POS and works when External POS is disabled."
+              checked={Boolean(salesPlatform?.require_as_mobile_till_float)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
+              onChange={(v) => patch({ require_as_mobile_till_float: v })}
             />
             <Toggle
               label="Show product images"

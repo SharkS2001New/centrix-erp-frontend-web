@@ -214,10 +214,6 @@ export default function ManageOrganizationPage() {
           apply_setup_defaults: false,
         },
       });
-      await apiRequest(`/admin/organizations/${orgId}/settings/general`, {
-        method: "PATCH",
-        body: { enable_tab_workspace: Boolean(enableTabWorkspace) },
-      });
       const org = res.organization ?? null;
       setOrganization(org);
       const childrenMap = buildDomainChildrenMap(moduleOptions);
@@ -236,10 +232,31 @@ export default function ManageOrganizationPage() {
       setOrgAddress(org?.org_address ?? orgAddress);
       setOrgPin(org?.org_pin ?? "");
       setVatRegno(org?.vat_regno ?? "");
+
+      try {
+        await apiRequest(`/admin/organizations/${orgId}/settings/general`, {
+          method: "PATCH",
+          body: { enable_tab_workspace: Boolean(enableTabWorkspace) },
+        });
+      } catch (settingsError) {
+        const detail = settingsError instanceof ApiError ? ` ${settingsError.message}` : "";
+        notifyError(
+          `Organization configuration was saved, but the workspace setting could not be saved.${detail}`,
+        );
+        return;
+      }
+
       notifySuccess("Organization configuration saved.");
       // If this is the signed-in org, refresh session capabilities so nav updates immediately.
       if (String(sessionOrganization?.id ?? "") === String(orgId)) {
-        await refreshCapabilities({ force: true });
+        try {
+          await refreshCapabilities({ force: true });
+        } catch (refreshError) {
+          const detail = refreshError instanceof ApiError ? ` ${refreshError.message}` : "";
+          notifyError(
+            `Organization configuration was saved, but session capabilities could not be refreshed.${detail}`,
+          );
+        }
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not save organization.");

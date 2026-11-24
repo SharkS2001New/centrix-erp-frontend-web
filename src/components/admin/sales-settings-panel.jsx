@@ -368,6 +368,12 @@ function PaymentFieldsTab({
 }) {
   return (
     <div className="space-y-3">
+      <Toggle
+        label="Shop debtors and credit reports"
+        description="Show Shop Debtors, unpaid/partially paid order queues, and debtor/receivables reports. This does not change whether checkout can create credit sales."
+        checked={salesForm.enable_shop_debtors}
+        onChange={(v) => setSalesForm((f) => ({ ...f, enable_shop_debtors: v }))}
+      />
       <p className="text-xs text-slate-500">
         Controls which payment methods are available across the organization: Collect payment,
         expenses, supplier payments, External POS checkout, and related forms.

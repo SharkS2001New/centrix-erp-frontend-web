@@ -19,6 +19,7 @@ import {
 } from "@/components/inventory/damage-measure-select";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { TRANSFER_FROM_OPTIONS } from "@/lib/inventory-transfer-routes";
+import { availableStockLocations, defaultStockLocation } from "@/lib/inventory-settings";
 import { damageQtyToBase } from "@/lib/stock-uom";
 
 export function InventoryBranchTransfersNewScreen() {
@@ -27,6 +28,11 @@ export function InventoryBranchTransfersNewScreen() {
   const { user, capabilities, isOrgWide } = useAuth();
   const orgWide = isOrgWide();
   const multiBranch = isMultiBranchCatalog(capabilities);
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const locationOptions = useMemo(
+    () => TRANSFER_FROM_OPTIONS.filter((option) => availableLocations.includes(option.value)),
+    [availableLocations],
+  );
 
   const [branches, setBranches] = useState([]);
   const [uoms, setUoms] = useState([]);
@@ -35,8 +41,8 @@ export function InventoryBranchTransfersNewScreen() {
     !orgWide && user?.branch_id != null ? String(user.branch_id) : "",
   );
   const [toBranchId, setToBranchId] = useState("");
-  const [fromLocation, setFromLocation] = useState("store");
-  const [toLocation, setToLocation] = useState("store");
+  const [fromLocation, setFromLocation] = useState(() => defaultStockLocation(capabilities, "store"));
+  const [toLocation, setToLocation] = useState(() => defaultStockLocation(capabilities, "store"));
   const [packageType, setPackageType] = useState("full");
   const [notes, setNotes] = useState("");
   const [qty, setQty] = useState("1");
@@ -46,6 +52,12 @@ export function InventoryBranchTransfersNewScreen() {
       router.replace("/inventory/transfers");
     }
   }, [multiBranch, router]);
+
+  useEffect(() => {
+    const defaultLocation = defaultStockLocation(capabilities, "store");
+    if (!availableLocations.includes(fromLocation)) setFromLocation(defaultLocation);
+    if (!availableLocations.includes(toLocation)) setToLocation(defaultLocation);
+  }, [availableLocations, capabilities, fromLocation, toLocation]);
 
   useEffect(() => {
     if (!multiBranch) return;
@@ -133,7 +145,11 @@ export function InventoryBranchTransfersNewScreen() {
   return (
     <InventoryPageShell
       title="Inter-branch transfer"
-      subtitle="Move stock between branches (depot to depot, warehouse to branch shop, etc.)"
+      subtitle={
+        availableLocations.length === 1
+          ? `Move stock between branches using the ${availableLocations[0]} location`
+          : "Move stock between branches (depot to depot, warehouse to branch shop, etc.)"
+      }
       backHref="/inventory/transfers"
       backLabel="Back to branch transfers"
     >
@@ -205,7 +221,7 @@ export function InventoryBranchTransfersNewScreen() {
                   className={inputClassName()}
                   value={fromLocation}
                   onChange={setFromLocation}
-                  options={TRANSFER_FROM_OPTIONS}
+                  options={locationOptions}
                 />
               </Field>
               <Field label="To location">
@@ -213,7 +229,7 @@ export function InventoryBranchTransfersNewScreen() {
                   className={inputClassName()}
                   value={toLocation}
                   onChange={setToLocation}
-                  options={TRANSFER_FROM_OPTIONS}
+                  options={locationOptions}
                 />
               </Field>
             </div>

@@ -36,6 +36,11 @@ import {
 } from "@/components/sales/customer-returns-shared";
 import { ReturnReasonFields, isReturnReasonValid } from "@/components/returns/return-reason-fields";
 import { CustomerReturnQtyInputs } from "@/components/sales/customer-return-qty-inputs";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+  stockLocationOptionsFor,
+} from "@/lib/inventory-settings";
 
 export function CustomerReturnForm({
   editing,
@@ -51,6 +56,12 @@ export function CustomerReturnForm({
       : tabAddTitle("customer return"),
   );
   const { user, capabilities } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "shop");
+  const locationOptions = stockLocationOptionsFor(capabilities, [
+    { value: "shop", label: "Shop floor" },
+    { value: "store", label: "Store / warehouse" },
+  ]);
   const returnSearchStatuses = useMemo(
     () => resolveCustomerReturnStatuses(salesSettingsFromCapabilities(capabilities)),
     [capabilities],
@@ -66,7 +77,7 @@ export function CustomerReturnForm({
   const [reasonPreset, setReasonPreset] = useState(RETURN_REASONS[0]);
   const [reasonOther, setReasonOther] = useState("");
   const [notes, setNotes] = useState("");
-  const [stockLocation, setStockLocation] = useState("shop");
+  const [stockLocation, setStockLocation] = useState(defaultLocation);
   const [lines, setLines] = useState([]);
   const [loadingSale, setLoadingSale] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,7 +115,11 @@ export function CustomerReturnForm({
     setReasonPreset(parsedReason.preset);
     setReasonOther(parsedReason.other);
     setNotes(editing.notes ?? "");
-    setStockLocation(editing.stock_location ?? "shop");
+    setStockLocation(
+      availableLocations.includes(editing.stock_location)
+        ? editing.stock_location
+        : defaultLocation,
+    );
     const nextLines = (editing.lines ?? []).map((line) =>
       recalcReturnLine({
         sale_item_id: line.sale_item_id,
@@ -135,7 +150,13 @@ export function CustomerReturnForm({
     if (editing.sale) {
       setInvoiceQuery(formatReceiptNumber(editing.sale));
     }
-  }, [editing, uomById]);
+  }, [availableLocations, defaultLocation, editing, uomById]);
+
+  useEffect(() => {
+    if (!availableLocations.includes(stockLocation)) {
+      setStockLocation(defaultLocation);
+    }
+  }, [availableLocations, defaultLocation, stockLocation]);
 
   useEffect(() => {
     const q = invoiceQuery.trim();
@@ -515,10 +536,7 @@ export function CustomerReturnForm({
           <SearchableSelect
             value={stockLocation}
             onChange={setStockLocation}
-            options={[
-              { value: "shop", label: "Shop floor" },
-              { value: "store", label: "Store / warehouse" },
-            ]}
+            options={locationOptions}
           />
         </Field>
       </div>

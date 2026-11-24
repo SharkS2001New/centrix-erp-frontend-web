@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
@@ -36,6 +37,11 @@ const ACCOUNTING_LINKS = [
 ];
 
 export function AccountingDashboardContent() {
+  const { capabilities } = useAuth();
+  const shopDebtorsEnabled = capabilities?.module_settings?.sales?.enable_shop_debtors !== false;
+  const accountingLinks = shopDebtorsEnabled
+    ? ACCOUNTING_LINKS
+    : ACCOUNTING_LINKS.filter((link) => link.href !== "/accounting/accounts-receivable");
   const range = useMemo(() => currentMonthDateRange(), []);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,15 +63,17 @@ export function AccountingDashboardContent() {
         apiRequest("/reports/trial-balance"),
         apiRequest("/reports/profit-loss-gl", { searchParams: { from_date: range.from, to_date: range.to } }),
         apiRequest("/reports/balance-sheet"),
-        apiRequest("/reports/accounts-receivable", { searchParams: { per_page: 5 } }),
+        shopDebtorsEnabled
+          ? apiRequest("/reports/accounts-receivable", { searchParams: { per_page: 5 } })
+          : Promise.resolve(null),
         apiRequest("/reports/accounts-payable", { searchParams: { per_page: 5 } }),
         apiRequest("/customer-invoices", { searchParams: { per_page: 5, page: 1 } }),
       ]);
       setTrialBalance(tb.summary ?? null);
       setProfitLoss(pl.summary ?? null);
       setBalanceSheet(bs.summary ?? null);
-      setReceivables(ar.data ?? []);
-      setReceivablesTotal(Number(ar.summary?.total_outstanding ?? 0));
+      setReceivables(ar?.data ?? []);
+      setReceivablesTotal(Number(ar?.summary?.total_outstanding ?? 0));
       setPayables(ap.data ?? []);
       setRecentInvoices(invoicesRes.data ?? []);
     } catch (e) {
@@ -74,7 +82,7 @@ export function AccountingDashboardContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [range.from, range.to]);
+  }, [range.from, range.to, shopDebtorsEnabled]);
 
   useTabAwareDataLoad(loadDashboard);
 
@@ -98,14 +106,18 @@ export function AccountingDashboardContent() {
         value: balanceSheet?.total_assets != null ? formatAccountingAmount(balanceSheet.total_assets) : "—",
         hint: "Balance sheet",
       },
-      {
-        id: "ar",
-        label: "Receivables",
-        value: formatAccountingAmount(receivablesTotal),
-        hint: `${receivables.length} top accounts shown`,
-      },
+      ...(shopDebtorsEnabled
+        ? [
+            {
+              id: "ar",
+              label: "Receivables",
+              value: formatAccountingAmount(receivablesTotal),
+              hint: `${receivables.length} top accounts shown`,
+            },
+          ]
+        : []),
     ],
-    [profitLoss, balanceSheet, receivables, receivablesTotal, range.from, range.to],
+    [profitLoss, balanceSheet, receivables, receivablesTotal, range.from, range.to, shopDebtorsEnabled],
   );
 
   const plSegments = useMemo(() => {
@@ -194,26 +206,28 @@ export function AccountingDashboardContent() {
               />
             </DashboardSection>
 
-            <DashboardSection
-              title="Top receivables"
-              action={
-                <Link href="/accounting/accounts-receivable" className="text-sm text-[#185FA5] hover:underline">
-                  View all
-                </Link>
-              }
-            >
-              <DashboardSummaryTable
-                columns={[
-                  { key: "customer_name", label: "Customer" },
-                  { key: "total_outstanding", label: "Outstanding", align: "right" },
-                ]}
-                rows={receivables}
-                formatValue={(key, value) =>
-                  key === "total_outstanding" ? formatAccountingAmount(value) : value
+            {shopDebtorsEnabled ? (
+              <DashboardSection
+                title="Top receivables"
+                action={
+                  <Link href="/accounting/accounts-receivable" className="text-sm text-[#185FA5] hover:underline">
+                    View all
+                  </Link>
                 }
-                viewAllHref="/accounting/accounts-receivable"
-              />
-            </DashboardSection>
+              >
+                <DashboardSummaryTable
+                  columns={[
+                    { key: "customer_name", label: "Customer" },
+                    { key: "total_outstanding", label: "Outstanding", align: "right" },
+                  ]}
+                  rows={receivables}
+                  formatValue={(key, value) =>
+                    key === "total_outstanding" ? formatAccountingAmount(value) : value
+                  }
+                  viewAllHref="/accounting/accounts-receivable"
+                />
+              </DashboardSection>
+            ) : null}
 
             <DashboardSection
               title="Top payables"
@@ -236,7 +250,7 @@ export function AccountingDashboardContent() {
           </div>
 
           <DashboardSection title="Accounting tools" subtitle="Ledgers, reports, and settings">
-            <DashboardQuickLinks links={ACCOUNTING_LINKS} />
+            <DashboardQuickLinks links={accountingLinks} />
           </DashboardSection>
         </div>
       )}

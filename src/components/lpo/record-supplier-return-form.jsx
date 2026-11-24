@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -32,7 +36,9 @@ export function RecordSupplierReturnForm({
   pageSubtitle,
   lpoSummary = null,
 }) {
-  const { user, isOrgWide } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "store");
   const globalBranchId = useGlobalBranchId();
   const returnableLines = useMemo(() => lpoReturnableLines(lines), [lines]);
   const canRecord = lpoCanRecordReturn({ lpo_status_code: lpoStatusCode }, lines);
@@ -43,7 +49,7 @@ export function RecordSupplierReturnForm({
     product_code: "",
     quantity: "",
     package_type: "partial",
-    stock_location: "store",
+    stock_location: defaultLocation,
     reason: "",
   });
   const [saving, setSaving] = useState(false);
@@ -54,12 +60,17 @@ export function RecordSupplierReturnForm({
     [returnableLines, form.product_code],
   );
   const selectedLocationMeta = useMemo(
-    () => (selectedLine ? lpoReceivedLocationMeta(selectedLine) : null),
-    [selectedLine],
+    () => (selectedLine ? lpoReceivedLocationMeta(selectedLine, capabilities) : null),
+    [capabilities, selectedLine],
   );
   const locationOptions = useMemo(
-    () => stockLocationSelectOptions({ mode: "lpo", lpoLine: selectedLine }),
-    [selectedLine],
+    () =>
+      stockLocationSelectOptions({
+        mode: "lpo",
+        lpoLine: selectedLine,
+        stockSettings: capabilities,
+      }),
+    [capabilities, selectedLine],
   );
   const stockDeductPreview = useMemo(() => {
     if (!selectedLine) return null;
@@ -102,13 +113,21 @@ export function RecordSupplierReturnForm({
         return { ...p, product_code: "", quantity: "" };
       }
       const line = returnableLines.find((l) => l.product_code === defaultProductCode);
-      const { primary } = line ? lpoReceivedLocationMeta(line) : { primary: "store" };
+      const { primary } = line
+        ? lpoReceivedLocationMeta(line, capabilities)
+        : { primary: defaultLocation };
       if (p.product_code === defaultProductCode && p.quantity === "1" && p.stock_location === primary) {
         return p;
       }
       return { ...p, product_code: defaultProductCode, quantity: "1", stock_location: primary };
     });
-  }, [defaultProductCode, returnableLines]);
+  }, [capabilities, defaultLocation, defaultProductCode, returnableLines]);
+
+  useEffect(() => {
+    if (!availableLocations.includes(form.stock_location)) {
+      setForm((current) => ({ ...current, stock_location: defaultLocation }));
+    }
+  }, [availableLocations, defaultLocation, form.stock_location]);
 
   async function submit(e) {
     e.preventDefault();

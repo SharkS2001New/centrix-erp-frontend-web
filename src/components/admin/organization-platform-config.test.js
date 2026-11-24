@@ -6,6 +6,7 @@ import {
   defaultSalesPlatformState,
   payrollPlatformFromApi,
   payrollPlatformToApi,
+  salesPlatformFromApi,
 } from "@/components/admin/organization-platform-config";
 
 describe("OrganizationModuleToggles", () => {
@@ -54,6 +55,13 @@ describe("defaultSalesPlatformState", () => {
       "unpaid",
       "completed",
     ]);
+  });
+
+  it("keeps the AS Mobile till-float setting in platform state", () => {
+    expect(defaultSalesPlatformState("small_shop").require_as_mobile_till_float).toBe(false);
+    expect(
+      salesPlatformFromApi({ require_as_mobile_till_float: true }).require_as_mobile_till_float,
+    ).toBe(true);
   });
 });
 

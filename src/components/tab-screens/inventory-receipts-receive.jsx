@@ -49,6 +49,10 @@ import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import { baseToDisplayQty } from "@/lib/stock-uom";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
 
@@ -72,6 +76,12 @@ export function InventoryReceiptsReceiveScreen() {
   const searchParams = useSearchParams();
   const { user, capabilities } = useAuth();
   const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "store");
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store / warehouse",
+  }));
   const batchTrackingEnabled = Boolean(
     capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
   );
@@ -87,7 +97,7 @@ export function InventoryReceiptsReceiveScreen() {
   const [lineUnitCosts, setLineUnitCosts] = useState({});
   const [lineLotMeta, setLineLotMeta] = useState({});
   const [manualLines, setManualLines] = useState([]);
-  const [form, setForm] = useState({ ...EMPTY_RECEIVE_FORM });
+  const [form, setForm] = useState({ ...EMPTY_RECEIVE_FORM, stock_location: defaultLocation });
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -101,6 +111,12 @@ export function InventoryReceiptsReceiveScreen() {
       : showBranchFilter
         ? selectedBranchId
         : effectiveBranchId;
+
+  useEffect(() => {
+    if (!availableLocations.includes(form.stock_location)) {
+        setForm((current) => ({ ...current, stock_location: defaultLocation }));
+    }
+  }, [availableLocations, defaultLocation, form.stock_location]);
 
   useEffect(() => {
     setSelectedBranchId(globalBranchId);
@@ -119,7 +135,14 @@ export function InventoryReceiptsReceiveScreen() {
     const value = typeof next === "function" ? next(draftValueRef.current) : next;
     if (!value || typeof value !== "object") return;
     if (value.mode === "lpo" || value.mode === "manual") setMode(value.mode);
-    if (value.form && typeof value.form === "object") setForm(value.form);
+    if (value.form && typeof value.form === "object") {
+      setForm({
+        ...value.form,
+        stock_location: availableLocations.includes(value.form.stock_location)
+          ? value.form.stock_location
+          : defaultLocation,
+      });
+    }
     if (value.receiveCounts && typeof value.receiveCounts === "object") {
       setReceiveCounts(value.receiveCounts);
     }
@@ -131,18 +154,20 @@ export function InventoryReceiptsReceiveScreen() {
     }
     if (Array.isArray(value.manualLines)) setManualLines(value.manualLines);
     if (value.selectedInvoiceId != null) setSelectedInvoiceId(String(value.selectedInvoiceId));
-  }, []);
+  }, [availableLocations, defaultLocation]);
 
   const isBaseline = useCallback((value) => {
     if (!value) return true;
     const emptyForm = Object.keys(EMPTY_RECEIVE_FORM).every(
-      (key) => String(value.form?.[key] ?? "") === String(EMPTY_RECEIVE_FORM[key]),
+      (key) =>
+        String(value.form?.[key] ?? "") ===
+        String(key === "stock_location" ? defaultLocation : EMPTY_RECEIVE_FORM[key]),
     );
     const emptyCounts = !value.receiveCounts || Object.keys(value.receiveCounts).length === 0;
     const emptyCosts = !value.lineUnitCosts || Object.keys(value.lineUnitCosts).length === 0;
     const emptyManual = !value.manualLines?.length;
     return (value.mode ?? "lpo") === "lpo" && emptyForm && emptyCounts && emptyCosts && emptyManual;
-  }, []);
+  }, [defaultLocation]);
 
   const { clearDraft } = useFormDraft({
     draftKey: formDraftKey("grn-receive", "new"),
@@ -553,10 +578,7 @@ export function InventoryReceiptsReceiveScreen() {
                   className={inputClassName()}
                   value={form.stock_location}
                   onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
-                  options={[
-                    { value: "store", label: "Store / warehouse" },
-                    { value: "shop", label: "Shop" },
-                  ]}
+                  options={locationOptions}
                 />
               </Field>
               <Field label="Receipt reference">
@@ -843,10 +865,7 @@ export function InventoryReceiptsReceiveScreen() {
                   className={inputClassName()}
                   value={form.stock_location}
                   onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
-                  options={[
-                    { value: "store", label: "Store / warehouse" },
-                    { value: "shop", label: "Shop" },
-                  ]}
+                  options={locationOptions}
                 />
               </Field>
               <Field label="Receipt reference (optional)">

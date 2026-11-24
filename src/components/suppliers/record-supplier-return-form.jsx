@@ -5,6 +5,10 @@ import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-
 import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import {
   Field,
@@ -76,7 +80,10 @@ export function RecordSupplierReturnForm({
       ? tabEditTitle("supplier return", `#${editDocumentId}`)
       : tabAddTitle("supplier return"),
   );
-  const { user, isOrgWide } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "store");
+  const defaultReturnDraft = { ...DEFAULT_RETURN_DRAFT, stock_location: defaultLocation };
   const globalBranchId = useGlobalBranchId();
   const [mode, setMode] = useState(
     () => initialMode ?? (initialLpoNo ? RETURN_MODES.LPO : RETURN_MODES.MANUAL),
@@ -102,7 +109,7 @@ export function RecordSupplierReturnForm({
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
   const [pendingManual, setPendingManual] = useState(null);
   const [pendingLpoLine, setPendingLpoLine] = useState(null);
-  const [addDraft, setAddDraft] = useState({ ...DEFAULT_RETURN_DRAFT });
+  const [addDraft, setAddDraft] = useState(defaultReturnDraft);
   const [stockHint, setStockHint] = useState(null);
   const [loadingStock, setLoadingStock] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -118,6 +125,21 @@ export function RecordSupplierReturnForm({
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingDocument, setLoadingDocument] = useState(Boolean(editDocumentId));
   const [editStatus, setEditStatus] = useState(null);
+
+  useEffect(() => {
+    setAddDraft((current) =>
+      availableLocations.includes(current.stock_location)
+        ? current
+        : { ...current, stock_location: defaultLocation },
+    );
+    setLines((current) =>
+      current.map((line) =>
+        availableLocations.includes(line.stock_location)
+          ? line
+          : { ...line, stock_location: defaultLocation },
+      ),
+    );
+  }, [availableLocations, defaultLocation]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
@@ -226,7 +248,9 @@ export function RecordSupplierReturnForm({
             product_name: line.product_name,
             quantity: String(line.quantity),
             package_type: normalizeSupplierReturnPackageType(line.package_type),
-            stock_location: line.stock_location ?? STOCK_LOCATION.STORE,
+            stock_location: availableLocations.includes(line.stock_location)
+              ? line.stock_location
+              : defaultLocation,
             reason: line.reason ?? "",
             uom_label: line.uom_label,
             packaging_label: line.package_type_label ?? line.uom_label,
@@ -244,7 +268,7 @@ export function RecordSupplierReturnForm({
     return () => {
       cancelled = true;
     };
-  }, [editDocumentId]);
+  }, [availableLocations, defaultLocation, editDocumentId]);
 
   const loadLpoOptions = useCallback(async (sid) => {
     if (!sid) {
@@ -386,7 +410,7 @@ export function RecordSupplierReturnForm({
     setReasonScope(REASON_SCOPE.ORDER);
     setPendingManual(null);
     setPendingLpoLine(null);
-    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+    setAddDraft(defaultReturnDraft);
     setLpoSummary(null);
     if (next === RETURN_MODES.MANUAL && !initialLpoNo) {
       setLpoNo("");
@@ -402,7 +426,7 @@ export function RecordSupplierReturnForm({
     }
     setPendingManual(product);
     setPendingLpoLine(null);
-    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+    setAddDraft(defaultReturnDraft);
     setFormError(null);
     setAddError(null);
     setReturnReasonError(null);
@@ -428,7 +452,7 @@ export function RecordSupplierReturnForm({
         product_name: product.product_name,
         quantity: "1",
         package_type: packageType,
-        stock_location: DEFAULT_RETURN_DRAFT.stock_location,
+        stock_location: defaultLocation,
         uom_label: product.package_name ?? packageNameFromUom(uom),
         packaging_label: packagingLabelFromProduct(product, uomById),
         reason: reasonScope === REASON_SCOPE.PER_PRODUCT ? "" : "",
@@ -443,7 +467,7 @@ export function RecordSupplierReturnForm({
     setLines((prev) => [...prev, ...newLines]);
     setPendingManual(null);
     setPendingLpoLine(null);
-    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+    setAddDraft(defaultReturnDraft);
     setFormError(null);
     setAddError(null);
     setReturnReasonError(null);
@@ -458,9 +482,9 @@ export function RecordSupplierReturnForm({
     }
     setPendingLpoLine(line);
     setPendingManual(null);
-    const { primary } = lpoReceivedLocationMeta(line);
+    const { primary } = lpoReceivedLocationMeta(line, capabilities);
     setAddDraft({
-      ...DEFAULT_RETURN_DRAFT,
+      ...defaultReturnDraft,
       quantity: String(Math.min(1, Number(line.max_return_qty ?? 1))),
       stock_location: primary,
     });
@@ -567,7 +591,7 @@ export function RecordSupplierReturnForm({
       return;
     }
 
-    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+    setAddDraft(defaultReturnDraft);
     setFormError(null);
     setAddError(null);
     setReturnReasonError(null);
@@ -789,12 +813,13 @@ export function RecordSupplierReturnForm({
   function renderPendingAddBar({ title, subtitle }) {
     const lpoLocMeta =
       mode === RETURN_MODES.LPO && pendingLpoLine
-        ? lpoReceivedLocationMeta(pendingLpoLine)
+        ? lpoReceivedLocationMeta(pendingLpoLine, capabilities)
         : null;
     const locationOptions = stockLocationSelectOptions({
       mode,
       lpoLine: pendingLpoLine,
       manual: mode === RETURN_MODES.MANUAL,
+      stockSettings: capabilities,
     });
 
     return (
@@ -897,7 +922,7 @@ export function RecordSupplierReturnForm({
             onClick={() => {
               setPendingManual(null);
               setPendingLpoLine(null);
-              setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+              setAddDraft(defaultReturnDraft);
             }}
             className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
           >
@@ -1445,12 +1470,13 @@ export function RecordSupplierReturnForm({
                                   {(() => {
                                     const lineLocMeta =
                                       mode === RETURN_MODES.LPO
-                                        ? lpoReceivedLocationMeta(line)
+                                        ? lpoReceivedLocationMeta(line, capabilities)
                                         : null;
                                     const lineOptions = stockLocationSelectOptions({
                                       mode,
                                       lpoLine: line,
                                       manual: mode === RETURN_MODES.MANUAL,
+                                      stockSettings: capabilities,
                                     });
                                     if (lineLocMeta?.locked) {
                                       return (

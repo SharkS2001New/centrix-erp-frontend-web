@@ -20,6 +20,7 @@ import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
+import { availableStockLocations } from "@/lib/inventory-settings";
 import { ProductStockHistoryPanel } from "@/components/products/product-stock-history-panel";
 import {
   formatShortDate,
@@ -129,7 +130,7 @@ function formatDiscount(product) {
   return `${pct}%`;
 }
 
-function enrichProduct(product, subById, catById, supplierById, uomById, vatById, retailPackage) {
+function enrichProduct(product, subById, catById, supplierById, uomById, vatById, retailPackage, availableLocations) {
   const sub = subById.get(product.subcategory_id);
   const cat = sub ? catById.get(sub.category_id) : null;
   const supplier = supplierById.get(product.supplier_id);
@@ -174,10 +175,16 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
     is_active: !product.deleted_at,
     pricing_mode: sellOnRetail ? "Sells W/R" : "Wholesale",
     sell_on_retail_label: sellOnRetail ? "Sells W/R" : "Wholesale only",
-    total_stock: shop + store,
+    total_stock: availableLocations.reduce(
+      (total, location) => total + (location === "shop" ? shop : store),
+      0,
+    ),
     stock_shop_text: formatMixedStockDisplay(shop, uom).text,
     stock_store_text: formatMixedStockDisplay(store, uom).text,
-    stock_total_text: formatMixedStockDisplay(shop + store, uom).text,
+    stock_total_text: formatMixedStockDisplay(
+      availableLocations.reduce((total, location) => total + (location === "shop" ? shop : store), 0),
+      uom,
+    ).text,
     retail_package: retailPackage,
   };
 }
@@ -460,6 +467,7 @@ export function ProductsCodeScreen() {
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCodeRaw = params?.code;
   const productCode =
@@ -512,9 +520,18 @@ export function ProductsCodeScreen() {
   const enriched = useMemo(
     () =>
       product
-        ? enrichProduct(product, subById, catById, supplierById, uomById, vatById, retailPackage)
+        ? enrichProduct(
+            product,
+            subById,
+            catById,
+            supplierById,
+            uomById,
+            vatById,
+            retailPackage,
+            availableLocations,
+          )
         : null,
-    [product, subById, catById, supplierById, uomById, vatById, retailPackage],
+    [product, subById, catById, supplierById, uomById, vatById, retailPackage, availableLocations],
   );
 
   useTabTitle(
@@ -548,7 +565,10 @@ export function ProductsCodeScreen() {
         enriched.stock_in_store ??
         0,
     );
-    const total = shop + store;
+    const total = availableLocations.reduce(
+      (sum, location) => sum + (location === "shop" ? shop : store),
+      0,
+    );
     const cost = Number(enriched.last_cost_price ?? 0);
     const sell = Number(enriched.unit_price ?? 0);
     const uom = enriched.product_uom;
@@ -559,12 +579,21 @@ export function ProductsCodeScreen() {
 
     return {
       atCost: packQty * cost,
-      atSelling:
-        stockSellingValue(shop, sell, uom, enriched.retail_package, sellOnRetail) +
-        stockSellingValue(store, sell, uom, enriched.retail_package, sellOnRetail),
+      atSelling: availableLocations.reduce(
+        (sum, location) =>
+          sum +
+          stockSellingValue(
+            location === "shop" ? shop : store,
+            sell,
+            uom,
+            enriched.retail_package,
+            sellOnRetail,
+          ),
+        0,
+      ),
       packQty,
     };
-  }, [enriched]);
+  }, [availableLocations, enriched]);
 
   const reorderLabel = useMemo(() => {
     if (!enriched) return "—";
@@ -667,7 +696,7 @@ export function ProductsCodeScreen() {
     } finally {
       setTabLoading(false);
     }
-  }, [mainTab, activityView, productCode]);
+  }, [mainTab, activityView, productCode, enriched?.product_uom]);
 
   const loadAll = useCallback(async () => {
     if (!productCode) {
@@ -866,7 +895,15 @@ export function ProductsCodeScreen() {
               <MetricCard
                 label="Total available"
                 value={enriched.stock_total_text}
-                hint={`Shop: ${enriched.stock_shop_text} · Store: ${enriched.stock_store_text}`}
+                hint={
+                  availableLocations
+                    .map((location) =>
+                      location === "shop"
+                        ? `Shop: ${enriched.stock_shop_text}`
+                        : `Store: ${enriched.stock_store_text}`,
+                    )
+                    .join(" · ")
+                }
                 accent="primary"
               />
               <MetricCard
@@ -958,10 +995,14 @@ export function ProductsCodeScreen() {
               </SectionCard>
 
               <SectionCard title="Inventory" description="Available stock after reservations (same as catalogue and mobile)">
-                <DetailItem label="Available in shop">{enriched.stock_shop_text}</DetailItem>
-                <DetailItem label="Available in store">{enriched.stock_store_text}</DetailItem>
+                {availableLocations.includes("shop") ? (
+                  <DetailItem label="Available in shop">{enriched.stock_shop_text}</DetailItem>
+                ) : null}
+                {availableLocations.includes("store") ? (
+                  <DetailItem label="Available in store">{enriched.stock_store_text}</DetailItem>
+                ) : null}
                 {includeShelfLocation ? (
-                  <DetailItem label="Warehouse shelf">
+                  <DetailItem label={hotelCatalogue ? "Storeroom shelf" : "Warehouse shelf"}>
                     {enriched.shelf_location?.trim() ? enriched.shelf_location : "—"}
                   </DetailItem>
                 ) : null}
@@ -1062,6 +1103,7 @@ export function ProductsCodeScreen() {
                   productName={enriched.product_name}
                   uom={enriched.product_uom}
                   uomById={uomById}
+                  availableLocations={availableLocations}
                   shopStock={
                     enriched.branch_stock?.shop_quantity ??
                     enriched.stock_on_hand_shop ??

@@ -104,6 +104,8 @@ export function isDirectCheckoutCreditEnabled(capabilities) {
  * direct-checkout credit payment.
  */
 export function shouldShowShopDebtors(capabilities) {
+  if (capabilities?.module_settings?.sales?.enable_shop_debtors === false) return false;
+
   if (isExternalPosEnabled(capabilities) || isDirectCheckoutCreditEnabled(capabilities)) {
     return true;
   }
@@ -126,6 +128,20 @@ export function isKraNavEnabled(capabilities) {
  */
 export function isReportNavEnabled(reportKey, capabilities) {
   if (!reportKey) return true;
+
+  if (
+    [
+      "accounts-receivable",
+      "ar-aging",
+      "credit-outstanding",
+      "customer-statement",
+      "invoice-payments",
+      "top-debtors",
+    ].includes(reportKey) &&
+    capabilities?.module_settings?.sales?.enable_shop_debtors === false
+  ) {
+    return false;
+  }
 
   if (reportKey === "till-sessions" && usesTillFloat(capabilities)) {
     return isBackofficeSectionEnabled(capabilities, "pos");

@@ -22,6 +22,7 @@ import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { defaultProductBranchId } from "@/lib/catalog-scope";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { catalogueStockColumnLabels, isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { availableStockLocations, stockLocationOptionsFor } from "@/lib/inventory-settings";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
   fetchBranchesCached,
@@ -176,6 +177,16 @@ export function InventoryStockScreen() {
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const stockLabels = catalogueStockColumnLabels(hotelCatalogue);
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const availableLocationSet = useMemo(() => new Set(availableLocations), [availableLocations]);
+  const singleLocation = availableLocations.length === 1 ? availableLocations[0] : null;
+  const locationOptions = hotelCatalogue
+    ? stockLocationOptionsFor(capabilities, [
+        { value: "all", label: "All locations" },
+        { value: "shop", label: stockLabels.shopLong },
+        { value: "store", label: stockLabels.storeLong },
+      ])
+    : stockLocationOptionsFor(capabilities, LOCATION_OPTIONS);
 
   const [stockRows, setStockRows] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
@@ -211,6 +222,12 @@ export function InventoryStockScreen() {
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
   }, []);
+
+  useEffect(() => {
+    if (locationFilter !== "all" && !availableLocationSet.has(locationFilter)) {
+      setLocationFilter("all");
+    }
+  }, [availableLocationSet, locationFilter]);
 
   const loadReferenceData = useCallback(async () => {
     const settled = await Promise.allSettled([
@@ -258,7 +275,7 @@ export function InventoryStockScreen() {
         branch_id: branchId,
         in_stock_only: 1,
         subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
-        location: locationFilter !== "all" ? locationFilter : undefined,
+        location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
         include_summary: 0,
       };
       const searchParams = buildPageParams({
@@ -323,7 +340,7 @@ export function InventoryStockScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter]);
+  }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter, singleLocation]);
 
   useTabAwareDataLoad(loadReferenceData);
 
@@ -372,14 +389,18 @@ export function InventoryStockScreen() {
   const pageSlice = enriched;
   const labeledColumns = useMemo(
     () =>
-      STOCK_COLUMNS.map((col) => {
+      STOCK_COLUMNS.filter((col) => {
+        if (col.id === "shop" || col.id === "shop_value") return availableLocationSet.has("shop");
+        if (col.id === "store" || col.id === "store_value") return availableLocationSet.has("store");
+        return true;
+      }).map((col) => {
         if (col.id === "shop") return { ...col, label: stockLabels.shop };
         if (col.id === "store") return { ...col, label: stockLabels.store };
         if (col.id === "shop_value") return { ...col, label: stockLabels.shopCost };
         if (col.id === "store_value") return { ...col, label: stockLabels.storeCost };
         return col;
       }),
-    [stockLabels],
+    [availableLocationSet, stockLabels],
   );
   const visibleColumns = labeledColumns.filter((c) => visibleColumnIds.includes(c.id));
   const exportColumns = useMemo(
@@ -404,14 +425,14 @@ export function InventoryStockScreen() {
       in_stock_only: 1,
       q: debouncedSearch || undefined,
       subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
-      location: locationFilter !== "all" ? locationFilter : undefined,
+      location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
     };
     const allRows = await fetchAllPaginatedRowsSmart("/reports/stock-on-hand", baseParams, {
       perPage: 200,
       message: "Loading stock for export…",
     });
     return (allRows ?? []).map((row) => stockRowToExport(enrichStockRow(row)));
-  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter]);
+  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter, singleLocation]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -527,7 +548,7 @@ export function InventoryStockScreen() {
         in_stock_only: 1,
         q: debouncedSearch || undefined,
         subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
-        location: locationFilter !== "all" ? locationFilter : undefined,
+        location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
       };
       const allRows = await fetchAllPaginatedRowsSmart("/reports/stock-on-hand", baseParams, {
         perPage: 200,
@@ -582,6 +603,9 @@ export function InventoryStockScreen() {
   }, [subcategories, categories]);
 
   const totals = costTotals;
+  const visibleTotalCost = availableLocationSet.has("shop") ? totals.shop : 0;
+  const combinedVisibleTotal =
+    visibleTotalCost + (availableLocationSet.has("store") ? totals.store : 0);
 
   return (
     <InventoryPageShell
@@ -647,15 +671,7 @@ export function InventoryStockScreen() {
         <FilterSelect
           value={locationFilter}
           onChange={(e) => setLocationFilter(e.target.value)}
-          options={
-            hotelCatalogue
-              ? [
-                  { value: "all", label: "All locations" },
-                  { value: "shop", label: stockLabels.shopLong },
-                  { value: "store", label: stockLabels.storeLong },
-                ]
-              : LOCATION_OPTIONS
-          }
+          options={locationOptions}
         />
         <button
           type="button"
@@ -705,8 +721,10 @@ export function InventoryStockScreen() {
 
       {!tableLoading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">
-          Stock cost totals{listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
-          {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
+          Stock cost totals{listLoading ? " · updating…" : ""} —{" "}
+          {availableLocationSet.has("shop") ? `Shop: ${formatInventoryKes(totals.shop)} · ` : ""}
+          {availableLocationSet.has("store") ? `Store: ${formatInventoryKes(totals.store)} · ` : ""}
+          Combined: {formatInventoryKes(combinedVisibleTotal)}
         </p>
       ) : null}
 

@@ -78,6 +78,7 @@ import { notifyError, notifySuccess, notifyWarning } from "@/lib/notify";
 import { SEARCH_TOO_LONG_MESSAGE } from "@/lib/search-length";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { productExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
+import { availableStockLocations } from "@/lib/inventory-settings";
 import { ProductNameCell } from "@/components/products/product-name-cell";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
@@ -212,6 +213,7 @@ function enrichProduct(
   retailByCode,
   globalThreshold,
   hotelCatalogue = false,
+  availableLocations = ["shop", "store"],
 ) {
   const sub = subById.get(String(product.subcategory_id ?? ""));
   const cat = sub ? catById.get(String(sub.category_id ?? "")) : null;
@@ -225,9 +227,13 @@ function enrichProduct(
   const isActive = !product.deleted_at;
   const uomLabel = uom?.uom_type || uom?.full_name || "—";
 
+  const totalStock = availableLocations.reduce(
+    (total, location) => total + (location === "shop" ? shop : store),
+    0,
+  );
   let stockStatus = "in_stock";
-  if (shop + store <= 0) stockStatus = "out_of_stock";
-  else if (reorderPoint > 0 && shop + store <= reorderPoint) stockStatus = "low_stock";
+  if (totalStock <= 0) stockStatus = "out_of_stock";
+  else if (reorderPoint > 0 && totalStock <= reorderPoint) stockStatus = "low_stock";
 
   const pricing =
     product.sell_on_retail === 1 || product.sell_on_retail === true ? "Sells W/R" : "Wholesale";
@@ -285,6 +291,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const { showBranchFilter } = useBranchScope();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const showProductImages = productImagesEnabled(capabilities, workspaceId);
   const listCopy = deletedMode
     ? {
@@ -458,6 +465,11 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const visibleColumns = useMemo(
     () =>
       visibleColumnIds
+        .filter((id) => {
+          if (id === "shop") return availableLocations.includes("shop");
+          if (id === "store") return availableLocations.includes("store");
+          return true;
+        })
         .map((id) => {
           const col = PRODUCT_COLUMNS.find((c) => c.id === id);
           if (!col) return null;
@@ -473,22 +485,30 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
           return col;
         })
         .filter(Boolean),
-    [visibleColumnIds, hotelCatalogue, stockLabels],
+    [availableLocations, visibleColumnIds, hotelCatalogue, stockLabels],
   );
   const exportColumns = useMemo(
-    () => productExportColumnsFromVisibleIds(visibleColumnIds, { hotelCatalogue }),
-    [visibleColumnIds, hotelCatalogue],
+    () =>
+      productExportColumnsFromVisibleIds(
+        visibleColumnIds.filter((id) =>
+          id === "shop" || id === "store" ? availableLocations.includes(id) : true,
+        ),
+        { hotelCatalogue },
+      ),
+    [availableLocations, visibleColumnIds, hotelCatalogue],
   );
   const pickerColumns = useMemo(
     () =>
       PRODUCT_COLUMNS.map((col) => {
+        if (col.id === "shop" && !availableLocations.includes("shop")) return null;
+        if (col.id === "store" && !availableLocations.includes("store")) return null;
         if (!hotelCatalogue) return col;
         if (col.id === "pricing") return { ...col, label: "Menu channels" };
         if (col.id === "shop") return { ...col, label: stockLabels.shop };
         if (col.id === "store") return { ...col, label: stockLabels.store };
         return col;
-      }),
-    [hotelCatalogue, stockLabels],
+      }).filter(Boolean),
+    [availableLocations, hotelCatalogue, stockLabels],
   );
 
   const tableColCount = 1 + visibleColumns.length;
@@ -789,6 +809,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
           retailByCode,
           globalReorderThreshold,
           hotelCatalogue,
+          availableLocations,
         );
         const audit = resolveProductAudit(p, userById);
         return {
@@ -807,6 +828,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       retailByCode,
       globalReorderThreshold,
       hotelCatalogue,
+      availableLocations,
       userById,
     ],
   );

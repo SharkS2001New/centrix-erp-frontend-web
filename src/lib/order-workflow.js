@@ -961,6 +961,12 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
       lockSourceFilter: false,
     };
   }
+  if (
+    capabilities?.module_settings?.sales?.enable_shop_debtors === false &&
+    ["unpaid", "pending_payment"].includes(slug)
+  ) {
+    return null;
+  }
   if (slug === "mobile") {
     if (!includeMobile) return null;
     return {

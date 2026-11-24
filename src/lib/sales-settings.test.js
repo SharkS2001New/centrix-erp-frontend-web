@@ -26,8 +26,21 @@ import {
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
   salesCartChannelForWorkspace,
+  salesOrganizationFormFromApi,
+  salesOrganizationPayloadFromForm,
   posChannelFromStockSource,
 } from "@/lib/sales-settings";
+
+describe("organization shop debtors setting", () => {
+  it("defaults on for existing organizations and preserves an explicit off value", () => {
+    expect(salesOrganizationFormFromApi({ sales: {} }).enable_shop_debtors).toBe(true);
+    const form = salesOrganizationFormFromApi({
+      sales: { enable_shop_debtors: false },
+    });
+    expect(form.enable_shop_debtors).toBe(false);
+    expect(salesOrganizationPayloadFromForm(form).enable_shop_debtors).toBe(false);
+  });
+});
 
 describe("sales-settings discount approvals", () => {
   it("defaults discount approval to disabled on both channels", () => {

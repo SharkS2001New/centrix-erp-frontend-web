@@ -55,7 +55,7 @@ const MODULE_LINKS = [
 
 export function OverviewDashboard() {
   const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission } = useAuth();
-  const { branches, effectiveBranchId } = useBranchScope();
+  const { branches, effectiveBranchId, branchLoadError } = useBranchScope();
   const [dashError, setDashError] = useState(null);
   const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
 
@@ -65,7 +65,9 @@ export function OverviewDashboard() {
     : null;
   const branchLabel = effectiveBranchId
     ? selectedBranch?.branch_name ?? selectedBranch?.name ?? `Branch #${effectiveBranchId}`
-    : "All branches";
+    : branchLoadError
+      ? "Branch unavailable"
+      : "All branches";
 
   const enabledModules = useMemo(
     () => Object.entries(capabilities?.modules ?? {}).filter(([, on]) => on).map(([key]) => key),
@@ -149,7 +151,9 @@ export function OverviewDashboard() {
         </div>
       </div>
 
-      <DashboardErrorBanner message={dashError} />
+      <DashboardErrorBanner
+        message={dashError ?? (branchLoadError ? "Branch information could not be loaded." : null)}
+      />
 
       <ReportsDashboardSection
         workspaceScope="backoffice"

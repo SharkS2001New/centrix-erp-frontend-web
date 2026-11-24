@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   Field,
@@ -20,12 +21,23 @@ import {
   damageQtyToBase,
   normalizeDamageLevel,
 } from "@/lib/stock-uom";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
 
 export function EditDamageDrawer({ open, damage, products = [], uoms = [], onClose, onSaved }) {
+  const { capabilities } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "shop");
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store",
+  }));
   const [form, setForm] = useState({
     quantity: "",
     package_type: "full",
-    stock_location: "shop",
+    stock_location: defaultLocation,
     reason: "",
   });
   const [saving, setSaving] = useState(false);
@@ -48,11 +60,13 @@ export function EditDamageDrawer({ open, damage, products = [], uoms = [], onClo
     setForm({
       quantity: damageBaseToDisplay(damage.quantity, packageType, uom),
       package_type: packageType,
-      stock_location: damage.stock_location ?? "shop",
+      stock_location: availableLocations.includes(damage.stock_location)
+        ? damage.stock_location
+        : defaultLocation,
       reason: damage.reason ?? "",
     });
     setError(null);
-  }, [open, damage, product?.uom]);
+  }, [availableLocations, defaultLocation, open, damage, product?.uom]);
 
   function handleClose() {
     if (saving) return;
@@ -145,10 +159,7 @@ export function EditDamageDrawer({ open, damage, products = [], uoms = [], onClo
           <SearchableSelect
             value={form.stock_location}
             onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
-            options={[
-              { value: "shop", label: "Shop" },
-              { value: "store", label: "Store" },
-            ]}
+            options={locationOptions}
           />
         </Field>
 

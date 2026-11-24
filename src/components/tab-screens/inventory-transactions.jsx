@@ -39,6 +39,7 @@ import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { BranchFilterField } from "@/components/catalog/branch-filter-field";
 import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 import { fetchUomsCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All types" },
@@ -86,7 +87,8 @@ function groupMovementsByProduct(rows) {
 
 export function InventoryTransactionsScreen() {
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const { branches, showBranchFilter, lockedBranchId } = useBranchScope();
 
   const [branchFilter, setBranchFilter] = useState("");
@@ -131,6 +133,9 @@ export function InventoryTransactionsScreen() {
         from_date: fromDate,
         to_date: toDate,
       };
+      if (availableLocations.length === 1) {
+        extra.stock_location = availableLocations[0];
+      }
       if (typeFilter !== "all") extra.transaction_type = typeFilter;
       if (referenceIdFilter) extra.reference_id = referenceIdFilter;
 
@@ -151,7 +156,7 @@ export function InventoryTransactionsScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [branchId, fromDate, toDate, typeFilter, referenceIdFilter, page, debouncedSearch]);
+  }, [availableLocations, branchId, fromDate, toDate, typeFilter, referenceIdFilter, page, debouncedSearch]);
 
   useTabAwareDataLoad(loadReferenceData);
 

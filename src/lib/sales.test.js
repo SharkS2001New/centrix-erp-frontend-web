@@ -472,6 +472,15 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.showRouteColumn).toBe(true);
   });
 
+  it("hides unpaid and partial queues when shop debtors are disabled", () => {
+    const capabilities = {
+      module_settings: { sales: { enable_shop_debtors: false } },
+    };
+
+    expect(resolveSalesOrderQueue("unpaid", pipeline, { capabilities })).toBeNull();
+    expect(resolveSalesOrderQueue("pending_payment", pipeline, { capabilities })).toBeNull();
+  });
+
   it("mobile queue excludes cancelled orders", () => {
     const config = resolveSalesOrderQueue("mobile", pipeline, { includeMobile: true });
     expect(config?.fixedSourceFilter).toBe("mobile");

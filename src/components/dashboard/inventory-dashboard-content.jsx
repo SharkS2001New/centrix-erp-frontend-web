@@ -27,6 +27,7 @@ import {
 } from "@/lib/inventory-routes";
 import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { P } from "@/lib/permission-codes";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 const INVENTORY_LINKS = [
   {
@@ -43,15 +44,17 @@ const INVENTORY_LINKS = [
   { href: "/reports/low-stock", title: "Low stock report", desc: "Items at or below reorder" },
 ];
 
-function availableTotal(row) {
-  return (
-    Number(row.available_shop_quantity ?? row.shop_quantity ?? 0) +
-    Number(row.available_store_quantity ?? row.store_quantity ?? 0)
-  );
+function availableTotal(row, locations) {
+  return locations.reduce((total, location) => {
+    const key = location === "shop" ? "shop" : "store";
+    return total + Number(row[`available_${key}_quantity`] ?? row[`${key}_quantity`] ?? 0);
+  }, 0);
 }
 
 export function InventoryDashboardContent() {
-  const { user, isOrgWide } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const singleLocation = availableLocations.length === 1 ? availableLocations[0] : null;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -92,10 +95,17 @@ export function InventoryDashboardContent() {
       ]);
       setTopStockRows(stockRes.data ?? []);
       setLowStockRows(lowRes.data ?? []);
+      const shopValue = valuationRes?.shop_cost_value ?? valuationRes?.shop_value ?? null;
+      const storeValue = valuationRes?.store_cost_value ?? valuationRes?.store_value ?? null;
       setInventoryValue({
-        shop: valuationRes?.shop_cost_value ?? valuationRes?.shop_value ?? null,
-        store: valuationRes?.store_cost_value ?? valuationRes?.store_value ?? null,
-        total: valuationRes?.cost_value ?? valuationRes?.value ?? null,
+        shop: shopValue,
+        store: storeValue,
+        total:
+          singleLocation === "shop"
+            ? shopValue
+            : singleLocation === "store"
+              ? storeValue
+              : valuationRes?.cost_value ?? valuationRes?.value ?? null,
         skus: Number(valuationRes?.skus_in_stock ?? 0),
         low: Number(valuationRes?.skus_low ?? 0),
         out: Number(valuationRes?.skus_out ?? 0),
@@ -107,7 +117,7 @@ export function InventoryDashboardContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.branch_id, isOrgWide]);
+  }, [user?.branch_id, isOrgWide, singleLocation]);
 
   useTabAwareDataLoad(loadDashboard);
 
@@ -115,9 +125,9 @@ export function InventoryDashboardContent() {
     () =>
       topStockRows.map((r) => ({
         ...r,
-        available_total_units: availableTotal(r),
+        available_total_units: availableTotal(r, availableLocations),
       })),
-    [topStockRows],
+    [availableLocations, topStockRows],
   );
 
   const topByQty = useMemo(
@@ -126,10 +136,10 @@ export function InventoryDashboardContent() {
         .slice(0, 6)
         .map((r, i) => ({
           label: (r.product_name ?? r.product_code ?? "—").slice(0, 18),
-          value: availableTotal(r),
+        value: availableTotal(r, availableLocations),
           color: CHART_COLORS[i % CHART_COLORS.length],
         })),
-    [topStockRows],
+    [availableLocations, topStockRows],
   );
 
   const kpiItems = [
@@ -149,7 +159,7 @@ export function InventoryDashboardContent() {
       id: "total_value",
       label: "Total stock value",
       value: inventoryValue.total != null ? formatReportKes(inventoryValue.total) : "—",
-      hint: "Shop + store at cost (on hand)",
+      hint: singleLocation ? `${singleLocation === "shop" ? "Shop" : "Store"} at cost (on hand)` : "Shop + store at cost (on hand)",
     },
     {
       id: "skus",
@@ -169,13 +179,24 @@ export function InventoryDashboardContent() {
       value: inventoryValue.out.toLocaleString(),
       hint: "Zero on hand",
     },
-  ];
+  ].filter((item) => {
+    if (item.id === "shop_value") return availableLocations.includes("shop");
+    if (item.id === "store_value") return availableLocations.includes("store");
+    return true;
+  });
+  const inventoryLinks = INVENTORY_LINKS.map((link) =>
+    singleLocation && link.href === "/inventory/adjustments"
+      ? { ...link, desc: `Increase or decrease ${singleLocation} stock` }
+      : singleLocation && link.href === "/inventory/transfers/new"
+        ? { ...link, desc: `Issue ${singleLocation} stock for internal use and similar purposes` }
+        : link,
+  );
 
   return (
     <>
     <CatalogPageShell
       title="Inventory dashboard"
-      subtitle="Stock health, valuation, and warehouse activity"
+      subtitle={singleLocation ? `Stock health and ${singleLocation} activity` : "Stock health, valuation, and warehouse activity"}
       action={
         <div className="flex flex-wrap items-center gap-2">
           <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
@@ -215,16 +236,20 @@ export function InventoryDashboardContent() {
                   <dd className="font-medium text-red-700">{inventoryValue.out}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <dt className="text-slate-500">Shop value (converted qty × cost)</dt>
-                  <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
-                    {inventoryValue.shop != null ? formatInventoryKes(inventoryValue.shop) : "—"}
-                  </dd>
+                  {availableLocations.includes("shop") ? <dt className="text-slate-500">Shop value (converted qty × cost)</dt> : null}
+                  {availableLocations.includes("shop") ? (
+                    <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                      {inventoryValue.shop != null ? formatInventoryKes(inventoryValue.shop) : "—"}
+                    </dd>
+                  ) : null}
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Store value (converted qty × cost)</dt>
-                  <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
-                    {inventoryValue.store != null ? formatInventoryKes(inventoryValue.store) : "—"}
-                  </dd>
+                  {availableLocations.includes("store") ? <dt className="text-slate-500">Store value (converted qty × cost)</dt> : null}
+                  {availableLocations.includes("store") ? (
+                    <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                      {inventoryValue.store != null ? formatInventoryKes(inventoryValue.store) : "—"}
+                    </dd>
+                  ) : null}
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <dt className="text-slate-500">Total stock value</dt>
@@ -279,7 +304,7 @@ export function InventoryDashboardContent() {
               ]}
               rows={lowStockRows.map((r) => ({
                 ...r,
-                available_total_units: availableTotal(r),
+                available_total_units: availableTotal(r, availableLocations),
               }))}
               formatValue={(key, value, row) =>
                 key === "available_total_units"
@@ -293,7 +318,7 @@ export function InventoryDashboardContent() {
           </DashboardSection>
 
           <DashboardSection title="Inventory tools">
-            <DashboardQuickLinks links={INVENTORY_LINKS} />
+            <DashboardQuickLinks links={inventoryLinks} />
           </DashboardSection>
         </div>
       )}

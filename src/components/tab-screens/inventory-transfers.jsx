@@ -34,6 +34,7 @@ import { parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { P } from "@/lib/permission-codes";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 function transferLocationLabel(value) {
   const key = String(value ?? "").trim();
@@ -102,6 +103,7 @@ export function InventoryTransfersScreen() {
   const { date } = useOrgFormat();
   const { capabilities, user } = useAuth();
   const showInterBranch = isMultiBranchCatalog(capabilities);
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -188,7 +190,11 @@ export function InventoryTransfersScreen() {
   return (
     <CatalogPageShell
       title="Stock transfers"
-      subtitle="History of shop ↔ store moves and outbound transfers (donations, internal use, and more)"
+      subtitle={
+        availableLocations.length === 1
+          ? "History of stock transfers and outbound stock issues"
+          : "History of shop ↔ store moves and outbound transfers (donations, internal use, and more)"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button

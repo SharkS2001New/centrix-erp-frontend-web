@@ -1,7 +1,7 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
@@ -27,6 +27,7 @@ import {
 } from "@/components/inventory/stock-take-count-inputs";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { productStockAtLocation } from "@/lib/pos-stock";
+import { availableStockLocations, defaultStockLocation } from "@/lib/inventory-settings";
 import {
   formatMixedStockDisplay,
   productSellsRetail,
@@ -35,7 +36,7 @@ import {
   uomForReceiveCount,
 } from "@/lib/stock-uom";
 
-function lineFromProduct(product) {
+function lineFromProduct(product, stockLocation = "shop") {
   const uom = product.uom;
   const sellOnRetail = productSellsRetail(product);
   return {
@@ -44,7 +45,7 @@ function lineFromProduct(product) {
     unit_id: product.unit_id ?? null,
     sell_on_retail: sellOnRetail,
     retail_package: product.retail_package ?? null,
-    stock_location: "shop",
+    stock_location: stockLocation,
     direction: "increase",
     stock_in_shop: Number(product.stock_in_shop ?? product.stock_on_hand_shop ?? 0),
     stock_in_store: Number(product.stock_in_store ?? product.stock_on_hand_store ?? 0),
@@ -84,6 +85,12 @@ export function InventoryAdjustmentsNewScreen() {
   const searchParams = useSearchParams();
   const { user, capabilities, hasPermission } = useAuth();
   const { branches, showBranchFilter, effectiveBranchId, globalBranchId } = useBranchScope();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(capabilities, "shop");
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store",
+  }));
   const presetProductCode = searchParams.get("product")?.trim() ?? "";
 
   const [selectedBranchId, setSelectedBranchId] = useState("");
@@ -133,6 +140,16 @@ export function InventoryAdjustmentsNewScreen() {
   }, [uoms, uomById]);
 
   useEffect(() => {
+    setLines((prev) =>
+      prev.map((line) =>
+        availableLocations.includes(line.stock_location)
+          ? line
+          : { ...line, stock_location: defaultLocation },
+      ),
+    );
+  }, [availableLocations, defaultLocation]);
+
+  useEffect(() => {
     if (!presetProductCode || presetLoaded || !branchId) return;
     let cancelled = false;
     apiRequest(`/products/${encodeURIComponent(presetProductCode)}`, {
@@ -145,7 +162,7 @@ export function InventoryAdjustmentsNewScreen() {
           uomById.get(String(product.unit_id ?? "")) ??
           product.uom ??
           null;
-        const row = lineFromProduct({ ...product, uom });
+        const row = lineFromProduct({ ...product, uom }, defaultLocation);
         setLines([row]);
         setAdjustCounts((prev) => seedAdjustCountsForProduct(row, uomById, prev));
         setPresetLoaded(true);
@@ -156,7 +173,7 @@ export function InventoryAdjustmentsNewScreen() {
     return () => {
       cancelled = true;
     };
-  }, [presetProductCode, presetLoaded, branchId, uomById]);
+  }, [presetProductCode, presetLoaded, branchId, uomById, defaultLocation]);
 
   function setAdjustCount(key, value) {
     setAdjustCounts((prev) => ({ ...prev, [key]: value }));
@@ -169,7 +186,7 @@ export function InventoryAdjustmentsNewScreen() {
     }
     const code = product.product_code;
     if (lines.some((l) => l.product_code === code)) return;
-    const row = lineFromProduct(product);
+    const row = lineFromProduct(product, defaultLocation);
     setLines((prev) => [...prev, row]);
     setAdjustCounts((prev) => seedAdjustCountsForProduct(row, uomById, prev));
   }
@@ -182,7 +199,7 @@ export function InventoryAdjustmentsNewScreen() {
     const existing = new Set(lines.map((l) => l.product_code));
     const toAdd = products.filter((p) => !existing.has(p.product_code));
     if (!toAdd.length) return;
-    const rows = toAdd.map((product) => lineFromProduct(product));
+    const rows = toAdd.map((product) => lineFromProduct(product, defaultLocation));
     setLines((prev) => [...prev, ...rows]);
     setAdjustCounts((prev) => {
       let next = prev;
@@ -251,7 +268,11 @@ export function InventoryAdjustmentsNewScreen() {
   return (
     <InventoryPageShell
       title="Adjust stock"
-      subtitle="Increase or decrease shop or store quantities without a purchase order or stock take"
+      subtitle={
+        availableLocations.length === 1
+          ? `Increase or decrease ${availableLocations[0]} quantities without a purchase order or stock take`
+          : "Increase or decrease shop or store quantities without a purchase order or stock take"
+      }
       backHref="/inventory/adjustments"
       backLabel="Back to stock adjustments"
     >
@@ -347,10 +368,7 @@ export function InventoryAdjustmentsNewScreen() {
                     className={`${inputClassName()} text-xs`}
                     value={line.stock_location}
                     onChange={(stock_location) => updateLine(index, { stock_location })}
-                    options={[
-                      { value: "shop", label: "Shop" },
-                      { value: "store", label: "Store" },
-                    ]}
+                    options={locationOptions}
                   />
                 </td>
               </>

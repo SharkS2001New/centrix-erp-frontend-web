@@ -17,10 +17,23 @@ import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { displayToBaseQty } from "@/lib/stock-uom";
 import { formatQty } from "@/components/inventory/inventory-shared";
+import {
+  availableStockLocations,
+  defaultStockLocation,
+} from "@/lib/inventory-settings";
 
 export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const { user, capabilities } = useAuth();
   const { branches, effectiveBranchId, showBranchFilter } = useBranchScope();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
+  const defaultLocation = defaultStockLocation(
+    capabilities,
+    capabilities?.module_settings?.inventory?.default_receive_location ?? "store",
+  );
+  const locationOptions = availableLocations.map((location) => ({
+    value: location,
+    label: location === "shop" ? "Shop" : "Store / warehouse",
+  }));
   const batchTrackingEnabled = Boolean(
     capabilities?.module_settings?.inventory?.enable_receive_batch_tracking,
   );
@@ -36,7 +49,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const [form, setForm] = useState({
     supplier_id: "",
     lpo_no: "",
-    stock_location: "store",
+    stock_location: defaultLocation,
     invoice_number: "",
     product_code: "",
     cost_price: "",
@@ -50,6 +63,12 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   useEffect(() => {
     if (open) setBranchId(effectiveBranchId || "");
   }, [effectiveBranchId, open]);
+
+  useEffect(() => {
+    if (open) {
+      setForm((current) => ({ ...current, stock_location: defaultLocation }));
+    }
+  }, [defaultLocation, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +141,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
     setForm({
       supplier_id: "",
       lpo_no: "",
-      stock_location: "store",
+      stock_location: defaultLocation,
       invoice_number: "",
       product_code: "",
       cost_price: "",
@@ -313,10 +332,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
               <SearchableSelect
                 value={form.stock_location}
                 onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
-                options={[
-                  { value: "store", label: "Store / warehouse" },
-                  { value: "shop", label: "Shop" },
-                ]}
+                options={locationOptions}
               />
             </Field>
             <Field label="Supplier invoice / GRN ref">
@@ -481,10 +497,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
               <SearchableSelect
                 value={form.stock_location}
                 onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
-                options={[
-                  { value: "store", label: "Store / warehouse" },
-                  { value: "shop", label: "Shop" },
-                ]}
+                options={locationOptions}
               />
             </Field>
             <Field label="Invoice / GRN ref (optional)">

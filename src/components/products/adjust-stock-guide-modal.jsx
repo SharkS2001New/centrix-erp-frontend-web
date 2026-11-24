@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
+import { useAuth } from "@/contexts/auth-context";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 function GuideLink({ href, title, description }) {
   return (
@@ -15,12 +18,16 @@ function GuideLink({ href, title, description }) {
 }
 
 export function AdjustStockGuideModal({ open, onClose, productCode = null }) {
+  const { capabilities } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   if (!open) return null;
 
   const adjustHref = productCode
     ? `/inventory/adjustments/new?product=${encodeURIComponent(productCode)}`
     : "/inventory/adjustments/new";
   const receiveHref = "/inventory/receipts/receive";
+  const locationLabel =
+    availableLocations.length === 1 ? availableLocations[0] : "shop or store";
 
   return (
     <div
@@ -57,12 +64,12 @@ export function AdjustStockGuideModal({ open, onClose, productCode = null }) {
           <GuideLink
             href={adjustHref}
             title="Stock adjustments"
-            description="Increase or decrease shop or store quantities for corrections, opening balances, or small changes without a supplier invoice."
+            description={`Increase or decrease ${locationLabel} quantities for corrections, opening balances, or small changes without a supplier invoice.`}
           />
           <GuideLink
             href={receiveHref}
             title="Goods received"
-            description="Record stock that arrived from a supplier (with or without a purchase order). Choose shop or store per receipt."
+            description={`Record stock that arrived from a supplier (with or without a purchase order). Choose ${locationLabel} per receipt.`}
           />
           <GuideLink
             href="/inventory/stock-take"
@@ -72,12 +79,18 @@ export function AdjustStockGuideModal({ open, onClose, productCode = null }) {
           <GuideLink
             href="/inventory/transfers/new"
             title="Transfer stock"
-            description="Move quantity between shop and store without changing total branch stock."
+            description={
+              availableLocations.length === 1
+                ? `Move ${availableLocations[0]} stock for internal use, donations, or similar purposes.`
+                : "Move quantity between shop and store without changing total branch stock."
+            }
           />
         </div>
 
         <p className="mt-4 text-xs text-slate-500">
-          Shop and store are tracked separately. After any change, check{" "}
+          {availableLocations.length === 1
+            ? `${availableLocations[0]} stock is tracked for this organization. After any change, check `
+            : "Shop and store are tracked separately. After any change, check "}
           <Link href="/inventory/stock" className="text-[#185FA5] hover:underline">
             Stock levels
           </Link>{" "}

@@ -56,7 +56,13 @@ export function buildWorkspaceNavSections({
       showCancelled: isOrderCancellationNavEnabled(capabilities),
       showExpired: isOrderExpiryNavEnabled(capabilities),
     }),
-  ].map(mapSalesOrderNavItem);
+  ]
+    .filter(
+      (item) =>
+        capabilities?.module_settings?.sales?.enable_shop_debtors !== false ||
+        !["unpaid", "pending_payment"].includes(item.slug),
+    )
+    .map(mapSalesOrderNavItem);
   const mobileOrderNavItems = includeMobile
     ? [
         withNavItemIcon({

@@ -59,6 +59,7 @@ import {
 } from "@/components/inventory/stock-take-print";
 import { StockTakeExportModal } from "@/components/inventory/stock-take-export-modal";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { availableStockLocations } from "@/lib/inventory-settings";
 
 function varianceClass(value) {
   if (value > 0) return "text-emerald-700";
@@ -89,6 +90,7 @@ export function InventoryStockTakeIdScreen() {
   const router = useRouter();
   const confirm = useConfirm();
   const { organization, capabilities, hasPermission, user, isOrgWide } = useAuth();
+  const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const sessionId = params.id;
   const canResetStocks = canResetStockTakeStocks({ hasPermission });
 
@@ -151,18 +153,21 @@ export function InventoryStockTakeIdScreen() {
     if (!session) return;
     setListLoading(true);
     try {
-      const allowedLocations =
+      const sessionLocations =
         session?.stock_location === "shop"
           ? ["shop"]
           : session?.stock_location === "store"
             ? ["store"]
-            : null;
+            : ["shop", "store"];
+      const allowedLocations = sessionLocations.filter((location) =>
+        availableLocations.includes(location),
+      );
 
       const filters = { session_id: sessionId };
       if (session?.branch_id != null) {
         filters.branch_id = session.branch_id;
       }
-      if (allowedLocations?.length === 1) {
+      if (allowedLocations.length === 1) {
         filters.stock_location = allowedLocations[0];
       }
 
@@ -185,9 +190,9 @@ export function InventoryStockTakeIdScreen() {
         loading: false,
       });
       const parsed = parsePaginator(res);
-      const pageRows = allowedLocations
-        ? parsed.items.filter((line) => allowedLocations.includes(line.stock_location))
-        : parsed.items;
+      const pageRows = parsed.items.filter((line) =>
+        allowedLocations.includes(line.stock_location),
+      );
 
       const uomMap = new Map((uoms ?? []).map((u) => [u.id, u]));
       const productMap = new Map();
@@ -209,8 +214,8 @@ export function InventoryStockTakeIdScreen() {
 
       setLines(pageRows);
       setProducts([...productMap.values()]);
-      setTotalLines(parsed.total);
-      setTotalPages(parsed.totalPages);
+      setTotalLines(allowedLocations.length === 0 ? 0 : parsed.total);
+      setTotalPages(allowedLocations.length === 0 ? 1 : parsed.totalPages);
       setLineById((prev) => {
         const next = { ...prev };
         for (const line of pageRows) {
@@ -239,6 +244,7 @@ export function InventoryStockTakeIdScreen() {
     categoryFilter,
     subcategoryFilter,
     uoms,
+    availableLocations,
   ]);
 
   useTabAwareDataLoad(loadMeta);
@@ -327,8 +333,16 @@ export function InventoryStockTakeIdScreen() {
     return levels.some((level) => counts[countKey(line.id, level.key)] !== undefined);
   }
 
-  const showShop = session?.stock_location === "shop" || session?.stock_location === "both";
-  const showStore = session?.stock_location === "store" || session?.stock_location === "both";
+  const showShop =
+    availableLocations.includes("shop") &&
+    (session?.stock_location === "shop" || session?.stock_location === "both");
+  const showStore =
+    availableLocations.includes("store") &&
+    (session?.stock_location === "store" || session?.stock_location === "both");
+  const exportSession =
+    availableLocations.length === 1 && session?.stock_location === "both"
+      ? { ...session, stock_location: availableLocations[0] }
+      : session;
 
   const groupedProducts = useMemo(() => {
     const map = new Map();
@@ -545,9 +559,9 @@ export function InventoryStockTakeIdScreen() {
     }
 
     const scopeLabel =
-      session?.stock_location === "shop"
+      exportSession?.stock_location === "shop"
         ? "shop"
-        : session?.stock_location === "store"
+        : exportSession?.stock_location === "store"
           ? "store / warehouse"
           : "shop and store";
 
@@ -597,8 +611,10 @@ export function InventoryStockTakeIdScreen() {
       sort: "product_name",
       sort_dir: "asc",
     };
-    if (session?.stock_location === "shop" || session?.stock_location === "store") {
-      extra["filter[stock_location]"] = session.stock_location;
+    if (exportSession?.stock_location === "shop" || exportSession?.stock_location === "store") {
+      extra["filter[stock_location]"] = exportSession.stock_location;
+    } else if (availableLocations.length === 1) {
+      extra["filter[stock_location]"] = availableLocations[0];
     }
     if (categoryFilter !== "all") extra.category_id = categoryFilter;
     if (subcategoryFilter !== "all") extra.subcategory_id = subcategoryFilter;
@@ -639,7 +655,7 @@ export function InventoryStockTakeIdScreen() {
       const rows = await loadExportRows();
       const isCompleted = String(session?.status ?? "").toLowerCase() === "completed";
       const options = {
-        session,
+        session: exportSession,
         rows,
         organization,
         columns,
@@ -766,7 +782,7 @@ export function InventoryStockTakeIdScreen() {
       title={session?.session_code ?? "Stock take"}
       subtitle={
         session
-          ? `${SESSION_STATUS_LABELS[session.status] ?? session.status} · ${session.stock_location?.replace("_", " ")} · ${stockTakeProductScopeLabel(session, {
+          ? `${SESSION_STATUS_LABELS[session.status] ?? session.status} · ${exportSession?.stock_location?.replace("_", " ")} · ${stockTakeProductScopeLabel(session, {
               categories,
               subCategories,
               suppliers,
