@@ -24,6 +24,23 @@ describe("OrganizationModuleToggles", () => {
 
     expect(markup).toContain("Additional sidebar features for this organization");
   });
+
+  it("shows the organization debtor and credit-report control in Backoffice settings", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationModuleToggles, {
+        moduleOptions: [],
+        enabledModules: { "sales.backend": true },
+        deploymentProfile: "small_shop",
+        profilePresets: [],
+        salesPlatform: { enable_shop_debtors: false },
+        onSalesChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Shop debtors and credit reports");
+    expect(markup).toContain("disables new checkout credit sales.");
+    expect(markup).toContain("Existing orders remain available in All Orders.");
+  });
 });
 
 describe("defaultSalesPlatformState", () => {
@@ -61,6 +78,38 @@ describe("defaultSalesPlatformState", () => {
     expect(defaultSalesPlatformState("small_shop").require_as_mobile_till_float).toBe(false);
     expect(
       salesPlatformFromApi({ require_as_mobile_till_float: true }).require_as_mobile_till_float,
+    ).toBe(true);
+  });
+
+  it("defaults the debtor feature on and reads an organization-level override", () => {
+    expect(defaultSalesPlatformState("small_shop").enable_shop_debtors).toBe(true);
+    expect(salesPlatformFromApi({ enable_shop_debtors: false }).enable_shop_debtors).toBe(false);
+    expect(salesPlatformFromApi({}).enable_shop_debtors).toBe(true);
+  });
+
+  it("defaults AS Mobile home cards on and reads per-card overrides", () => {
+    const defaults = defaultSalesPlatformState("small_shop").as_mobile_home_cards;
+    expect(defaults.products).toBe(true);
+    expect(defaults.reports).toBe(true);
+
+    const fromApi = salesPlatformFromApi({
+      as_mobile_home_cards: { products: false, reports: false },
+    }).as_mobile_home_cards;
+    expect(fromApi.products).toBe(false);
+    expect(fromApi.reports).toBe(false);
+    expect(fromApi.sales).toBe(true);
+  });
+
+  it("defaults AS Mobile product codes to automatic and supports an org override", () => {
+    expect(
+      defaultSalesPlatformState("small_shop").as_mobile_auto_generate_product_code,
+    ).toBe(true);
+    expect(
+      salesPlatformFromApi({ as_mobile_auto_generate_product_code: false })
+        .as_mobile_auto_generate_product_code,
+    ).toBe(false);
+    expect(
+      salesPlatformFromApi({}).as_mobile_auto_generate_product_code,
     ).toBe(true);
   });
 });

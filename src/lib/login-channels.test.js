@@ -29,31 +29,31 @@ const retailCaps = {
 };
 
 describe("hotel login channel labels", () => {
-  it("labels hotel channels as Centrix ERP, CentrixAsMobile, and Managers App", () => {
-    expect(loginChannelLabel("backoffice", hotelCaps)).toBe("Centrix ERP");
+  it("labels hotel channels as CentrixERP, CentrixAsMobile, and Managers App", () => {
+    expect(loginChannelLabel("backoffice", hotelCaps)).toBe("CentrixERP");
     expect(loginChannelLabel("centrix_as_mobile", hotelCaps)).toBe("CentrixAsMobile");
     expect(loginChannelLabel("manager", hotelCaps)).toBe("Managers App");
     expect(formatLoginChannels(["backoffice", "centrix_as_mobile", "manager"], hotelCaps)).toBe(
-      "Centrix ERP, CentrixAsMobile, Managers App",
+      "CentrixERP, CentrixAsMobile, Managers App",
     );
     expect(availableLoginChannelsFromCapabilities(hotelCaps).map((c) => c.label)).toEqual([
-      "Centrix ERP",
+      "CentrixERP",
       "CentrixAsMobile",
       "CentrixFieldSales",
       "Managers App",
     ]);
   });
 
-  it("labels SPA & Kinyozi web sign-in as Centrix ERP", () => {
+  it("labels SPA & Kinyozi web sign-in as CentrixERP", () => {
     const spaCaps = {
       industry: "spa",
       deployment_profile: "spa_kinyozi",
       modules: { spa: true, admin: true },
       allowed_login_channels: ["backoffice"],
     };
-    expect(loginChannelLabel("backoffice", spaCaps)).toBe("Centrix ERP");
+    expect(loginChannelLabel("backoffice", spaCaps)).toBe("CentrixERP");
     expect(availableLoginChannelsFromCapabilities(spaCaps).map((c) => c.label)).toEqual([
-      "Centrix ERP",
+      "CentrixERP",
     ]);
   });
 
@@ -75,11 +75,11 @@ describe("hotel login channel labels", () => {
     ]);
   });
 
-  it("keeps retail channel labels", () => {
-    expect(loginChannelLabel("backoffice", retailCaps)).toBe("Backoffice");
+  it("labels ERP sign-in as CentrixERP", () => {
+    expect(loginChannelLabel("backoffice", retailCaps)).toBe("CentrixERP");
     expect(loginChannelLabel("manager", retailCaps)).toBe("Manager app");
     expect(formatLoginChannels(["backoffice", "pos"], retailCaps)).toBe(
-      "Backoffice, POS (external terminal)",
+      "CentrixERP, POS (external terminal)",
     );
   });
 });

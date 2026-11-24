@@ -301,6 +301,11 @@ export function InventoryExpiringScreen() {
                             <span className="text-[11px] text-slate-500">
                               {daysLabel(row.days_to_expiry)}
                             </span>
+                            {row.pending_approval ? (
+                              <span className="text-[11px] font-medium text-amber-700">
+                                Write-off pending approval
+                              </span>
+                            ) : null}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -364,7 +369,7 @@ export function InventoryExpiringScreen() {
                             {canClear && row.status !== "cleared" ? (
                               <button
                                 type="button"
-                                disabled={clearingId === row.id}
+                                disabled={clearingId === row.id || row.pending_approval}
                                 onClick={() => void clearBatch(row)}
                                 className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
                               >

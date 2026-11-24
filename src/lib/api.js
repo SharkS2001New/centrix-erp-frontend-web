@@ -419,12 +419,12 @@ function getInflightDedupeKey(method, urlString) {
   return `GET:${urlString}`;
 }
 
-/** Org settings must never be served from the browser HTTP cache after Save. */
+/** Organization configuration reads must bypass the browser HTTP cache after Save. */
 export function isOrgSettingsApiPath(path) {
   const normalized = String(path ?? "");
   return (
     /\/erp\/settings(?:\/|$|\?)/i.test(normalized) ||
-    /\/admin\/organizations\/\d+\/settings(?:\/|$|\?)/i.test(normalized)
+    /\/admin\/organizations\/\d+(?:\/settings(?:\/[^?#]*)?)?\/?(?:[?#]|$)/i.test(normalized)
   );
 }
 

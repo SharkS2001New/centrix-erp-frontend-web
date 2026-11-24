@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyGlobalBranchToUrl,
   getGlobalBranchId,
+  getGlobalBranchName,
   globalBranchStorageKey,
   setGlobalBranchId,
 } from "./global-branch";
@@ -23,11 +24,13 @@ describe("global branch scope", () => {
       dispatchEvent: () => true,
     });
     try {
-      setGlobalBranchId(7, 12, 34);
+      setGlobalBranchId(7, 12, 34, "Head Office");
       expect(getGlobalBranchId(12, 34)).toBe("7");
+      expect(getGlobalBranchName(7, 12, 34)).toBe("Head Office");
 
       setGlobalBranchId("", 12, 34);
       expect(getGlobalBranchId(12, 34)).toBe("");
+      expect(getGlobalBranchName(7, 12, 34)).toBe("");
     } finally {
       vi.unstubAllGlobals();
     }

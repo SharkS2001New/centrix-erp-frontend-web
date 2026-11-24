@@ -2,7 +2,7 @@ import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { isDrivingIndustry, isSpaIndustry } from "@/lib/org-settings-tabs";
 
 export const LOGIN_CHANNELS = [
-  { value: "backoffice", label: "Backoffice" },
+  { value: "backoffice", label: "CentrixERP" },
   { value: "pos", label: "POS (external terminal)" },
   { value: "centrix_as_mobile", label: "CentrixAsMobile" },
   { value: "mobile", label: "CentrixFieldSales" },
@@ -20,7 +20,7 @@ export function isHotelLoginChannelContext(capabilities) {
 
 export function loginChannelLabel(value, capabilities) {
   if (isHotelLoginChannelContext(capabilities)) {
-    if (value === "backoffice") return "Centrix ERP";
+    if (value === "backoffice") return "CentrixERP";
     if (value === "centrix_as_mobile") return "CentrixAsMobile";
     if (value === "manager") return "Managers App";
   }
@@ -29,7 +29,7 @@ export function loginChannelLabel(value, capabilities) {
     if (value === "manager") return "CentrixManagersApp";
   }
   if (isSpaIndustry(capabilities) && value === "backoffice") {
-    return "Centrix ERP";
+    return "CentrixERP";
   }
   return LOGIN_CHANNELS.find((channel) => channel.value === value)?.label ?? value;
 }

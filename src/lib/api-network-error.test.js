@@ -5,6 +5,7 @@ import {
   NETWORK_CONNECTIVITY_MESSAGE,
   isStaleWorkspaceChannelError,
   isNetworkFetchError,
+  isOrgSettingsApiPath,
   userFacingNetworkErrorMessage,
 } from "./api";
 
@@ -89,6 +90,20 @@ describe("isStaleWorkspaceChannelError", () => {
         sessionRotated: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("isOrgSettingsApiPath", () => {
+  it("disables browser caching for organization configuration and settings reads", () => {
+    expect(isOrgSettingsApiPath("/admin/organizations/42")).toBe(true);
+    expect(isOrgSettingsApiPath("/api/v1/admin/organizations/42?include=modules")).toBe(true);
+    expect(isOrgSettingsApiPath("/admin/organizations/42/settings/general")).toBe(true);
+    expect(isOrgSettingsApiPath("/erp/settings/general")).toBe(true);
+  });
+
+  it("does not classify the organization list or unrelated organization routes as settings", () => {
+    expect(isOrgSettingsApiPath("/admin/organizations")).toBe(false);
+    expect(isOrgSettingsApiPath("/admin/organizations/42/cache")).toBe(false);
   });
 });
 

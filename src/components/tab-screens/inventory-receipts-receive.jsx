@@ -369,6 +369,16 @@ export function InventoryReceiptsReceiveScreen() {
       notifyError("Enter quantity to receive for at least one line.");
       return;
     }
+    if (batchTrackingEnabled) {
+      const missing = toPost.find((line) => {
+        const meta = lineLotMeta[String(line.id)] ?? {};
+        return !String(meta.batch_no ?? "").trim() || !String(meta.expiry_date ?? "").trim();
+      });
+      if (missing) {
+        notifyError(`${missing.product_name ?? missing.name ?? "Each item"} needs a batch / lot number and expiry date.`);
+        return;
+      }
+    }
     if (supplierInvoices.length === 0) {
       notifyError("Attach the supplier invoice for this LPO before receiving items.");
       setInvoiceModalOpen(true);
@@ -438,6 +448,16 @@ export function InventoryReceiptsReceiveScreen() {
     if (toPost.length === 0) {
       notifyError("Add at least one product with a quantity.");
       return;
+    }
+    if (batchTrackingEnabled) {
+      const missing = toPost.find((line) => {
+        const meta = lineLotMeta[String(line.product_code)] ?? {};
+        return !String(meta.batch_no ?? "").trim() || !String(meta.expiry_date ?? "").trim();
+      });
+      if (missing) {
+        notifyError(`${missing.product_name ?? missing.name ?? "Each item"} needs a batch / lot number and expiry date.`);
+        return;
+      }
     }
 
     const receiptRef = makeReceiptRef(form.invoice_number);
@@ -655,8 +675,8 @@ export function InventoryReceiptsReceiveScreen() {
                         <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
                         {batchTrackingEnabled ? (
                           <>
-                            <th className="px-3 py-2 font-medium">Batch / lot</th>
-                            <th className="px-3 py-2 font-medium">Expiry</th>
+                            <th className="px-3 py-2 font-medium">Batch / lot *</th>
+                            <th className="px-3 py-2 font-medium">Expiry *</th>
                           </>
                         ) : null}
                         <th className="px-3 py-2 font-medium text-right">Total amount</th>
@@ -891,8 +911,8 @@ export function InventoryReceiptsReceiveScreen() {
                 { key: "cost", label: "Cost", align: "right" },
                 ...(batchTrackingEnabled
                   ? [
-                      { key: "batch", label: "Batch / lot" },
-                      { key: "expiry", label: "Expiry" },
+                      { key: "batch", label: "Batch / lot *" },
+                      { key: "expiry", label: "Expiry *" },
                     ]
                   : []),
               ]}

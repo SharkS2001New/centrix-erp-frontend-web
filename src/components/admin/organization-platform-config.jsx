@@ -102,6 +102,36 @@ import { platformCapabilitiesFromOrgConfig } from "@/lib/sales-channels";
 import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
+const AS_MOBILE_HOME_CARD_OPTIONS = [
+  { key: "products", label: "Products" },
+  { key: "suppliers", label: "Suppliers" },
+  { key: "orders", label: "Orders" },
+  { key: "sales", label: "Sales / POS" },
+  { key: "stock", label: "Stock" },
+  { key: "purchases", label: "Purchases / receiving" },
+  { key: "reprint", label: "Past sales" },
+  { key: "expenses", label: "Expenses" },
+  { key: "reconciliation", label: "Stock reconciliation" },
+  { key: "customers", label: "Customers / guests" },
+  { key: "reports", label: "Reports" },
+  { key: "repayment", label: "Repayments / folio pay" },
+];
+
+function defaultAsMobileHomeCards() {
+  return Object.fromEntries(AS_MOBILE_HOME_CARD_OPTIONS.map(({ key }) => [key, true]));
+}
+
+function asMobileHomeCardsFromApi(value) {
+  const defaults = defaultAsMobileHomeCards();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+  for (const { key } of AS_MOBILE_HOME_CARD_OPTIONS) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      defaults[key] = Boolean(value[key]);
+    }
+  }
+  return defaults;
+}
+
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
 
@@ -399,6 +429,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_payments_card: false,
     enable_mobile_orders_expenses_card: false,
     enable_centrix_as_mobile: true,
+    as_mobile_home_cards: defaultAsMobileHomeCards(),
+    as_mobile_auto_generate_product_code: true,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
     as_mobile_post_login_screen: "module_home",
@@ -444,6 +476,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_held_order_amount_paid: false,
     pos_combine_identical_lines: true,
     append_same_day_customer_orders: false,
+    enable_shop_debtors: true,
     enable_backoffice_order_edit: true,
     backoffice_order_edit_layout: "modern",
     backoffice_sections: { ...BACKOFFICE_SECTION_DEFAULTS },
@@ -497,6 +530,9 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
     enable_centrix_as_mobile: apiPayload.enable_centrix_as_mobile !== false,
+    as_mobile_home_cards: asMobileHomeCardsFromApi(apiPayload.as_mobile_home_cards),
+    as_mobile_auto_generate_product_code:
+      apiPayload.as_mobile_auto_generate_product_code !== false,
     as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
     require_product_images: Boolean(apiPayload.require_product_images),
     as_mobile_post_login_screen:
@@ -571,6 +607,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     enable_held_order_amount_paid: Boolean(apiPayload.enable_held_order_amount_paid ?? false),
     pos_combine_identical_lines: apiPayload.pos_combine_identical_lines !== false,
     append_same_day_customer_orders: Boolean(apiPayload.append_same_day_customer_orders ?? false),
+    enable_shop_debtors: apiPayload.enable_shop_debtors !== false,
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     backoffice_order_edit_layout:
       apiPayload.backoffice_order_edit_layout === "classic" ? "classic" : "modern",
@@ -830,6 +867,41 @@ export function OrganizationPlatformSalesSettings({
               description="When on, this organization can use the Centrix AS Mobile outlet app (login channel CentrixAsMobile). When off, staff cannot sign in to that app even if their role has AS Mobile access. Independent of Field Mobile (Enable mobile orders above)."
               checked={salesPlatform?.enable_centrix_as_mobile !== false}
               onChange={(v) => patch({ enable_centrix_as_mobile: v })}
+            />
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-sm font-semibold text-slate-800">Home cards</p>
+              <p className="text-xs text-slate-500">
+                Choose which dashboard cards appear in Centrix AS Mobile. Existing ERP module and
+                organization access still takes precedence.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {AS_MOBILE_HOME_CARD_OPTIONS.map(({ key, label }) => (
+                  <Toggle
+                    key={key}
+                    label={label}
+                    checked={salesPlatform?.as_mobile_home_cards?.[key] !== false}
+                    disabled={salesPlatform?.enable_centrix_as_mobile === false}
+                    onChange={(enabled) =>
+                      patch({
+                        as_mobile_home_cards: {
+                          ...defaultAsMobileHomeCards(),
+                          ...(salesPlatform?.as_mobile_home_cards ?? {}),
+                          [key]: enabled,
+                        },
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+            <Toggle
+              label="Automatically generate product codes in Centrix AS Mobile"
+              description="When on, product codes are generated automatically in the mobile app and the code field stays hidden. When off, staff can enter, generate, or scan a barcode/QR code. This setting does not affect Centrix ERP web."
+              checked={salesPlatform?.as_mobile_auto_generate_product_code !== false}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
+              onChange={(v) =>
+                patch({ as_mobile_auto_generate_product_code: v })
+              }
             />
             <Toggle
               label="Require till float for Centrix AS Mobile"
@@ -2286,6 +2358,17 @@ export function OrganizationModuleToggles({
                       </p>
                     </div>
                   ) : null}
+                  <Toggle
+                    label="Shop debtors and credit reports"
+                    description="When off, hides Shop Debtors, unpaid/partially paid order queues, and debtor/receivables reports, and disables new checkout credit sales. Existing orders remain available in All Orders."
+                    checked={salesPlatform?.enable_shop_debtors !== false}
+                    onChange={(v) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        enable_shop_debtors: v,
+                      })
+                    }
+                  />
                   <MenuGroupPicker
                     title="Backoffice menu groups"
                     description="These are the sidebar groups in Backoffice. Turn a group off to hide those links. Staff can only be given access to groups that stay on."

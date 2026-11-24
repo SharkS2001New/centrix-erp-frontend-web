@@ -33,7 +33,8 @@ export function GlobalBranchSwitcher() {
 
   function changeBranch(event) {
     const branchId = event.target.value;
-    setGlobalBranchId(branchId, user?.id, organization?.id);
+    const branchName = branchOptions.find((branch) => String(branch.id) === branchId)?.branch_name;
+    setGlobalBranchId(branchId, user?.id, organization?.id, branchName);
     invalidateReferenceDataCache();
     invalidateAllTabAwareDataLoads();
   }

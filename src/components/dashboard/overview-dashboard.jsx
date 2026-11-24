@@ -16,6 +16,7 @@ import {
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { isFreePlanPath, usesPackageOne } from "@/lib/organization-license";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useGlobalBranchName } from "@/hooks/use-global-branch-name";
 
 const ReportsDashboardSection = dynamic(
   () =>
@@ -56,6 +57,7 @@ const MODULE_LINKS = [
 export function OverviewDashboard() {
   const { user, organization, capabilities, organizationLicense, isModuleEnabled, hasPermission } = useAuth();
   const { branches, effectiveBranchId, branchLoadError } = useBranchScope();
+  const cachedGlobalBranchName = useGlobalBranchName(effectiveBranchId);
   const [dashError, setDashError] = useState(null);
   const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
 
@@ -64,7 +66,7 @@ export function OverviewDashboard() {
       ?? (String(user?.branch?.id ?? "") === String(effectiveBranchId) ? user.branch : null)
     : null;
   const branchLabel = effectiveBranchId
-    ? selectedBranch?.branch_name ?? selectedBranch?.name ?? `Branch #${effectiveBranchId}`
+    ? selectedBranch?.branch_name || selectedBranch?.name || cachedGlobalBranchName || `Branch #${effectiveBranchId}`
     : branchLoadError
       ? "Branch unavailable"
       : "All branches";

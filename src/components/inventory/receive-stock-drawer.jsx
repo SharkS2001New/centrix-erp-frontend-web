@@ -164,6 +164,15 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
     };
   }
 
+  function hasRequiredLotMeta() {
+    if (!batchTrackingEnabled) return true;
+    if (String(form.batch_no ?? "").trim() && String(form.expiry_date ?? "").trim()) {
+      return true;
+    }
+    setError("Enter both a batch / lot number and expiry date.");
+    return false;
+  }
+
   function handleClose() {
     if (saving) return;
     reset();
@@ -183,6 +192,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       setError("Enter quantity to receive for at least one line.");
       return;
     }
+    if (!hasRequiredLotMeta()) return;
 
     setSaving(true);
     setError(null);
@@ -231,6 +241,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       setError("Enter a valid quantity.");
       return;
     }
+    if (!hasRequiredLotMeta()) return;
 
     setSaving(true);
     setError(null);
@@ -346,7 +357,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
           {batchTrackingEnabled ? (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Batch / lot number">
+              <Field label="Batch / lot number *">
                 <input
                   className={inputClassName()}
                   value={form.batch_no}
@@ -354,7 +365,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
                   placeholder="Supplier batch or lot"
                 />
               </Field>
-              <Field label="Expiry date">
+              <Field label="Expiry date *">
                 <input
                   type="date"
                   className={inputClassName()}
@@ -511,7 +522,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
           {batchTrackingEnabled ? (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Batch / lot number">
+              <Field label="Batch / lot number *">
                 <input
                   className={inputClassName()}
                   value={form.batch_no}
@@ -519,7 +530,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
                   placeholder="Supplier batch or lot"
                 />
               </Field>
-              <Field label="Expiry date">
+              <Field label="Expiry date *">
                 <input
                   type="date"
                   className={inputClassName()}

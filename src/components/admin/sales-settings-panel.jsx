@@ -370,9 +370,15 @@ function PaymentFieldsTab({
     <div className="space-y-3">
       <Toggle
         label="Shop debtors and credit reports"
-        description="Show Shop Debtors, unpaid/partially paid order queues, and debtor/receivables reports. This does not change whether checkout can create credit sales."
+        description="Show Shop Debtors, unpaid/partially paid order queues, and debtor/receivables reports. Turning this off also disables new credit sales at checkout; existing orders remain available in All Orders."
         checked={salesForm.enable_shop_debtors}
-        onChange={(v) => setSalesForm((f) => ({ ...f, enable_shop_debtors: v }))}
+        onChange={(v) =>
+          setSalesForm((f) => ({
+            ...f,
+            enable_shop_debtors: v,
+            ...(v ? {} : { enable_credit_payment: false }),
+          }))
+        }
       />
       <p className="text-xs text-slate-500">
         Controls which payment methods are available across the organization: Collect payment,
@@ -387,12 +393,13 @@ function PaymentFieldsTab({
         ) : (
           <Toggle
             label="Credit customer field at direct checkout"
-            description="External POS and Create order: the only credit path is this credit customer field (I). Selecting a customer always saves a fully unpaid credit sale — cash and other tenders are ignored. Partial payments are not available at the till; use backoffice Collect payment with “Allow collecting small payments” for debtor installments."
-            checked={salesForm.enable_credit_payment}
+            description="External POS and Create order: the only credit path is this credit customer field (I). Selecting a customer always saves a fully unpaid credit sale — cash and other tenders are ignored. This is disabled when Shop debtors and credit reports is off."
+            checked={salesForm.enable_shop_debtors && salesForm.enable_credit_payment}
+            disabled={!salesForm.enable_shop_debtors}
             onChange={(v) =>
               setSalesForm((f) => ({
                 ...f,
-                enable_credit_payment: v,
+                enable_credit_payment: f.enable_shop_debtors && v,
               }))
             }
           />
