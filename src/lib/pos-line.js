@@ -45,8 +45,14 @@ export function productSellsRetail(product) {
   return value === true || value === 1 || value === "1";
 }
 
+export function productSellsByAmount(product) {
+  const value = product?.sell_by_amount;
+  return value === true || value === 1 || value === "1";
+}
+
 /** Wholesale-only products always price as wholesale even when F12 retail is on. */
 export function effectivePosSellWholesale(sellWholesale, product) {
+  if (productSellsByAmount(product)) return false;
   if (!productSellsRetail(product)) return true;
   return Boolean(sellWholesale);
 }
@@ -55,6 +61,7 @@ export function effectivePosSellWholesale(sellWholesale, product) {
  * Cart/API `on_wholesale_retail` flag — mirrors backend HandlesPricing::isRetailLine gate.
  */
 export function posLineWholesaleRetailFlag(product, sellWholesale, computedIsRetail, posSalesConfig) {
+  if (productSellsByAmount(product)) return productSellsRetail(product);
   if (!productSellsRetail(product)) return false;
   if (posSalesConfig?.perLineStockRouting) {
     return sellWholesale === false;
@@ -70,6 +77,7 @@ export function productHasRetailTiers(retailPackage) {
 /** Retail tier pricing applies for this product in the current POS session. */
 export function usesPosRetailPricing(sellWholesale, product, retailPackage) {
   return (
+    !productSellsByAmount(product) &&
     isPosRetailSession(sellWholesale)
     && productSellsRetail(product)
     && productHasRetailTiers(retailPackage)
@@ -78,6 +86,7 @@ export function usesPosRetailPricing(sellWholesale, product, retailPackage) {
 
 /** Default POS quantity: 1 wholesale pack or 1 small unit in retail session. */
 export function defaultPosEntryQty(product, sellWholesale, retailPackage = null) {
+  if (productSellsByAmount(product)) return "";
   return "1";
 }
 
@@ -99,6 +108,16 @@ export function posQuantityFieldMeta(
   const factor = uomConversionFactor(uom);
   const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
   const tiers = tiersForRetailPackage(retailPackage, uom);
+
+  if (productSellsByAmount(product)) {
+    const small = smallPackagingLabel(uom);
+    return {
+      label: "Customer amount (KES)",
+      unit: "KES",
+      hint: `Retail only. Enter the VAT-inclusive total; stock is deducted in ${small}.`,
+      step: "0.01",
+    };
+  }
 
   if (isPosRetailSession(sellWholesale) && !product) {
     return {
@@ -169,6 +188,24 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   const qty = Math.max(0, Number(entryQty) || 0);
   const tiers = tiersForRetailPackage(retailPackage, uom);
   const retailSession = isPosRetailSession(sellWholesale);
+
+  if (productSellsByAmount(product)) {
+    const packPrice = Number(product?.unit_price ?? 0);
+    const baseQty =
+      factor > 1 && packPrice > 0
+        ? Math.round((qty / packPrice) * factor * 10000) / 10000
+        : 0;
+    return {
+      baseQty,
+      packQty: factor > 0 ? baseQty / factor : 0,
+      measureLevel: "small",
+      packagingLabel: smallPackagingLabel(uom),
+      tier: null,
+      isRetail: true,
+      pricingRetail: false,
+      retailSession: true,
+    };
+  }
 
   // Retail / kg mode: keep the typed qty as-is in small units (do not × conversion).
   // Applies even when the product has no retail tiers — otherwise F12 retail still
@@ -325,6 +362,9 @@ export function posUnitPriceFieldLabel(
   if (!product) return base;
 
   const uom = product?.uom ?? null;
+  if (productSellsByAmount(product)) {
+    return `Price per ${smallPackagingLabel(uom)} (KES)`;
+  }
   const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
   const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
   const retailRouteLine = isRetailRouteLine(sellWholesale, retailLine);
@@ -425,6 +465,7 @@ export function computePosLine({
   const tiers = tiersForRetailPackage(retailPackage, uom);
   const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
   const pricingFormulas = formulas;
+  const sellsByAmount = productSellsByAmount(product);
 
   let lineAmount;
   const override =
@@ -443,6 +484,21 @@ export function computePosLine({
       override >= catalogUnitPrice * 0.85);
   const retailPerSmallOverride =
     override != null && retailOverrideLooksLikePack ? override / factor : override;
+
+  if (sellsByAmount) {
+    const amount = Math.max(0, Number(entryQty) || 0);
+    const unitPricePerBase = baseQty > 0 ? amount / baseQty : 0;
+    return {
+      ...resolved,
+      lineAmountBeforeDiscount: Math.round(amount * 100) / 100,
+      discountApplied: 0,
+      lineAmount: finalizePosLineAmount(amount),
+      displayUnitPrice: finalizePosDisplayUnitPrice(unitPricePerBase),
+      unitPricePerBase: Math.round(unitPricePerBase * 10000) / 10000,
+      qtyLabel: `${formatDisplayQty(baseQty)} ${smallPackagingLabel(uom)}`,
+      uomLabel: smallPackagingLabel(uom),
+    };
+  }
 
   if (
     retailPerSmallOverride != null &&
@@ -538,6 +594,9 @@ export function posListUnitPrice(
   routeMarkupPerUnit = 0,
   cashRound = false,
 ) {
+  if (productSellsByAmount(product)) {
+    return finalizePosDisplayUnitPrice(Number(product?.unit_price ?? 0), { cashRound: false });
+  }
   const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
   if (!product?.uom) {
     const base = Number(product?.unit_price ?? 0);
@@ -672,6 +731,9 @@ export function posEntryQtyForSessionMode(entryQty, uom, { fromRetail, toRetail 
 
 /** Rebuild POS entry quantity from a saved cart line (base qty in DB). */
 export function posEntryQtyFromCartLine(line, product, retailPackage) {
+  if (productSellsByAmount(product)) {
+    return String(Math.max(0, Number(line?.amount ?? 0)));
+  }
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
   const baseQty = Number(line?.quantity ?? 0);
@@ -688,6 +750,7 @@ export function posEntryQtyFromCartLine(line, product, retailPackage) {
 
 /** Unit label for the editable cart-line qty (matches `posEntryQtyFromCartLine` unit). */
 export function posCartLineEntryUnitLabel(line, product, retailPackage) {
+  if (productSellsByAmount(product)) return "KES";
   const uom = product?.uom ?? null;
   if (uom) {
     const factor = uomConversionFactor(uom);
@@ -708,6 +771,14 @@ export function posCartLineEntryUnitLabel(line, product, retailPackage) {
 
 /** Rebuild POS entry quantity from a base (stock) quantity. */
 export function posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetailLine) {
+  if (productSellsByAmount(product)) {
+    const factor = uomConversionFactor(product?.uom);
+    const packPrice = Number(product?.unit_price ?? 0);
+    if (factor > 0 && packPrice > 0) {
+      return String(Math.round((Number(baseQty ?? 0) / factor) * packPrice * 100) / 100);
+    }
+    return "0";
+  }
   return posEntryQtyFromCartLine(
     { quantity: baseQty, on_wholesale_retail: isRetailLine ? 1 : 0 },
     product,

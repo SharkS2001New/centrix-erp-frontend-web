@@ -73,6 +73,13 @@ const CATEGORY_LABELS = {
   volume: "volume",
   length: "length",
 };
+const LIQUID_MEASURE_LABELS = new Set([
+  "ml", "millilitre", "millilitres", "milliliter", "milliliters",
+  "l", "litre", "litres", "liter", "liters",
+  "cl", "centilitre", "centilitres", "centiliter", "centiliters",
+  "cc", "cubiccentimetre", "cubiccentimetres", "cubiccentimeter", "cubiccentimeters",
+  "floz", "fluidounce", "fluidounces", "gal", "gallon", "gallons",
+]);
 
 export const UOM_TYPE_OPTIONS = UOM_TYPE_DEFINITIONS.map((d) => ({
   value: d.value,
@@ -228,6 +235,17 @@ export function smallPackagingLabel(uom) {
     return defaultSmallLabelForType(uom.uom_type);
   }
   return (uom.uom_type || "pcs").trim();
+}
+
+export function uomIsLiquidMeasure(uom) {
+  return [
+    smallPackagingLabel(uom),
+    uom?.measure_name,
+    uom?.uom_type,
+  ].some((label) => {
+    const normalized = String(label ?? "").toLowerCase().replace(/[^a-z]/g, "");
+    return LIQUID_MEASURE_LABELS.has(normalized);
+  });
 }
 
 export function fullPackageLabel(uom, fallback = "pack") {

@@ -14,6 +14,7 @@ import {
   normalizePricingTiers,
   pricingTiersToApi,
   smallPackagingLabel,
+  uomIsLiquidMeasure,
   uomHasFullPack,
 } from "@/lib/uom-packaging";
 import { baseToDisplayQty } from "@/lib/stock-uom";
@@ -70,6 +71,7 @@ export const EMPTY_PRODUCT_FORM = {
   reorder_packs: "",
   shelf_location: "",
   sell_on_retail: false,
+  sell_by_amount: false,
   sell_on_bar: true,
   sell_on_hotel: true,
   retail_package_id: "",
@@ -134,8 +136,15 @@ export function productToForm(product, retailPackage = null, uom = null) {
   const storeStock = stockHierarchyToForm(product.stock_in_store ?? 0, uom);
   const factor = Number(uom?.conversion_factor ?? 1);
   const rp = Number(product.reorder_point ?? 0);
+  const sellByAmount = product.sell_by_amount === 1 || product.sell_by_amount === true;
   const reorderPacks =
-    rp > 0 ? (factor > 1 ? String(baseToDisplayQty(rp, factor)) : String(rp)) : "";
+    rp > 0
+      ? sellByAmount
+        ? String(rp)
+        : factor > 1
+          ? String(baseToDisplayQty(rp, factor))
+          : String(rp)
+      : "";
 
   return {
     product_name: product.product_name ?? "",
@@ -161,6 +170,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
     reorder_packs: reorderPacks,
     shelf_location: product.shelf_location ?? "",
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
+    sell_by_amount: sellByAmount,
     sell_on_bar: product.sell_on_bar !== 0 && product.sell_on_bar !== false,
     sell_on_hotel: product.sell_on_hotel !== 0 && product.sell_on_hotel !== false,
     vat_id: product.vat_id ? String(product.vat_id) : "",
@@ -187,10 +197,13 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     product_weight: parseDecimalInput(form.product_weight) || null,
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
     sell_on_retail: hotelCatalogue ? false : Boolean(form.sell_on_retail),
+    sell_by_amount: hotelCatalogue ? false : Boolean(form.sell_by_amount),
     sell_on_bar: Boolean(form.sell_on_bar),
     sell_on_hotel: Boolean(form.sell_on_hotel),
     vat_id: Number(form.vat_id),
-    reorder_point: reorderBaseFromForm(form, uom),
+    reorder_point: form.sell_by_amount
+      ? parseDecimalInput(form.reorder_packs) || 0
+      : reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
 
@@ -262,7 +275,7 @@ export async function loadRetailPackageForProduct(productCode) {
 }
 
 export async function saveRetailPackageSetting(form, productCode, { hotelCatalogue = false } = {}) {
-  if (hotelCatalogue) {
+  if (hotelCatalogue || form.sell_by_amount) {
     return;
   }
   if (!form.sell_on_retail) {
@@ -305,7 +318,7 @@ export function validateProductVatId(form) {
 }
 
 export function validateRetailPackage(form, { hotelCatalogue = false } = {}) {
-  if (hotelCatalogue || !form.sell_on_retail) return null;
+  if (hotelCatalogue || !form.sell_on_retail || form.sell_by_amount) return null;
   const tiers = pricingTiersToApi(form.retail_pricing_tiers);
   if (!tiers.length) {
     return "Add at least one retail pricing tier when sell on retail is enabled.";
@@ -535,6 +548,11 @@ export const ProductFormFields = memo(function ProductFormFields({
           ? "serving"
           : "unit";
   const smallLabel = selectedUom ? smallPackagingLabel(selectedUom) : hotelCatalogue ? "serving" : "unit";
+  const amountSalesAvailable = Boolean(
+    selectedUom &&
+    uomHasFullPack(selectedUom) &&
+    uomIsLiquidMeasure(selectedUom),
+  );
 
   const suggestedUom = useMemo(() => {
     if (hotelCatalogue) {
@@ -711,8 +729,11 @@ export const ProductFormFields = memo(function ProductFormFields({
           value={form.unit_id}
           onChange={(value) => {
             onChange("unit_id", value);
+            const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
+            if (!nextUom || !uomHasFullPack(nextUom) || !uomIsLiquidMeasure(nextUom)) {
+              onChange("sell_by_amount", false);
+            }
             if (!hotelCatalogue && form.sell_on_retail) {
-              const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
               if (!form.retail_pricing_tiers?.length) {
                 onChange("retail_pricing_tiers", [defaultRetailPricingTier(nextUom)]);
               }
@@ -936,20 +957,46 @@ export const ProductFormFields = memo(function ProductFormFields({
               onChange={(e) => {
                 const checked = e.target.checked;
                 onChange("sell_on_retail", checked);
+                if (!checked) onChange("sell_by_amount", false);
                 if (checked) {
                   onChange("retail_pricing_tiers", [defaultRetailPricingTiers(selectedUom)]);
                 }
               }}
               className="mt-0.5 rounded border-slate-300"
             />
-            <span>Sell on retail — configure pack sizes and markups below</span>
+            <span>
+              {form.sell_by_amount
+                ? "Sell on retail — this product uses customer-entered amounts"
+                : "Sell on retail — configure pack sizes and markups below"}
+            </span>
           </label>
-          {form.sell_on_retail ? (
+          {form.sell_on_retail && amountSalesAvailable ? (
+            <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(form.sell_by_amount)}
+                onChange={(e) => onChange("sell_by_amount", e.target.checked)}
+                className="mt-0.5 rounded border-slate-300"
+              />
+              <span>
+                <span className="block font-medium">Sell by customer-entered amount</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  POS charges the entered VAT-inclusive total and converts it into {smallLabel} using
+                  the full-pack price. Reorder level is maintained in {smallLabel}.
+                </span>
+              </span>
+            </label>
+          ) : null}
+          {form.sell_on_retail && !form.sell_by_amount ? (
             <RetailPackageFields
               form={form}
               onChange={onChange}
               productUom={selectedUom}
             />
+          ) : form.sell_by_amount ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Retail price tiers are preserved but not applied while sell-by-amount is enabled.
+            </p>
           ) : null}
         </div>
       ) : (

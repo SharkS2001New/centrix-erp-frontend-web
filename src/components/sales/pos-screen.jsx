@@ -50,6 +50,7 @@ import {
   posEntryQtyFromBaseQty,
   posCartLineEntryUnitLabel,
   posQuantityFieldMeta,
+  productSellsByAmount,
   resolvePosQuantity,
   posStockDeductionHint,
   posUnitPriceFieldLabel,
@@ -6489,12 +6490,13 @@ export function PosScreen({ standalone = false }) {
     const sellMode = sellWholesaleOverride ?? sellWholesaleRef.current;
     const retailPackage = getRetailPackage(product.product_code);
     const lineRetailFlag = retailLineFlagFor(product, entryQty, retailLine, sellMode);
+    const sellsByAmount = productSellsByAmount(product);
     const autoProductDiscount =
-      allowDiscounts && productHasConfiguredDiscount(product);
+      !sellsByAmount && allowDiscounts && productHasConfiguredDiscount(product);
     const cashRound = enablePosCashRounding;
     let discountAmount = 0;
 
-    if (allowDiscounts && autoProductDiscount) {
+    if (!sellsByAmount && allowDiscounts && autoProductDiscount) {
       const preDiscount = computePosLine({
         product,
         entryQty,
@@ -6512,7 +6514,7 @@ export function PosScreen({ standalone = false }) {
         preDiscount.lineAmountBeforeDiscount,
         preDiscount.packQty,
       );
-    } else if (allowEditLineDiscount || discountApprovalActive) {
+    } else if (!sellsByAmount && (allowEditLineDiscount || discountApprovalActive)) {
       const perUnitDiscount = parseDecimalInput(discount);
       const qtyForDiscount = Math.max(1, Number(computePosLine({
         product,
@@ -6535,7 +6537,7 @@ export function PosScreen({ standalone = false }) {
       entryQty,
       sellWholesale: sellMode,
       retailPackage,
-      discount: discountAmount,
+      discount: sellsByAmount ? 0 : discountAmount,
       unitPriceOverride: overridePrice,
       routeMarkupPerUnit,
       retailLine: lineRetailFlag,
@@ -6546,7 +6548,7 @@ export function PosScreen({ standalone = false }) {
     return {
       ...computed,
       autoProductDiscount,
-      discountAmount,
+      discountAmount: sellsByAmount ? 0 : discountAmount,
     };
   }
 
@@ -9456,7 +9458,9 @@ export function PosScreen({ standalone = false }) {
     }
     void ensureRetailPackageForProduct(productForAdd).catch(() => {});
 
-    const discount = parseDecimalInput(lineForm.discount);
+    const discount = productSellsByAmount(productForAdd)
+      ? 0
+      : parseDecimalInput(lineForm.discount);
     const retailPackage = getRetailPackage(productForAdd.product_code);
     // Retail totals come from package settings: aggregate wholesale + markup.
     // Do not treat the Price field as unit×qty override (that drops/doubles the add-on).
@@ -9466,7 +9470,7 @@ export function PosScreen({ standalone = false }) {
       retailPackage,
     );
     const override =
-      unitPriceTouched && !retailPricing
+      !productSellsByAmount(productForAdd) && unitPriceTouched && !retailPricing
         ? parseDecimalInput(lineForm.unit_price)
         : null;
 
@@ -18412,7 +18416,7 @@ export function PosScreen({ standalone = false }) {
                 <p className="mt-0.5 text-[10px] font-medium text-red-700">{lineStockMessage}</p>
               ) : null}
             </div>
-            {showLineDiscountField ? (
+            {showLineDiscountField && !productSellsByAmount(selectedProduct) ? (
               <div className="col-span-2 space-y-1">
                 <PosLabel>{lineDiscountInputLabel(capabilities?.module_settings, { canAutoApprove: canAutoApproveDiscount })}</PosLabel>
                 <input
@@ -18451,14 +18455,14 @@ export function PosScreen({ standalone = false }) {
                 min="0"
                 step="any"
                 value={lineForm.unit_price}
-                readOnly={!allowEditUnitPrice}
-                disabled={!allowEditUnitPrice || busy || !selectedProduct}
+                readOnly={!allowEditUnitPrice || productSellsByAmount(selectedProduct)}
+                disabled={!allowEditUnitPrice || productSellsByAmount(selectedProduct) || busy || !selectedProduct}
                 onChange={(e) => {
-                  if (!allowEditUnitPrice) return;
+                  if (!allowEditUnitPrice || productSellsByAmount(selectedProduct)) return;
                   setUnitPriceTouched(true);
                   setLineForm((p) => ({ ...p, unit_price: e.target.value }));
                 }}
-                onKeyDown={allowEditUnitPrice ? handleUnitPriceEnter : undefined}
+                onKeyDown={allowEditUnitPrice && !productSellsByAmount(selectedProduct) ? handleUnitPriceEnter : undefined}
               />
             </div>
             <div className="col-span-2 flex flex-wrap gap-3 pt-1">

@@ -3,11 +3,15 @@ import {
   applyCatalogPricesToCart,
   cartLineDisplayUnitPrice,
   computePosLine,
+  defaultPosEntryQty,
   posEntryQtyFromCartLine,
   posEntryQtyForSessionMode,
+  posEntryQtyFromBaseQty,
   posEntryToBaseQty,
   posLineWholesaleRetailFlag,
+  posQuantityFieldMeta,
   posListUnitPrice,
+  productSellsByAmount,
   resolvePosQuantity,
 } from "@/lib/pos-line";
 
@@ -165,6 +169,54 @@ describe("sell_on_retail gate", () => {
     expect(
       posLineWholesaleRetailFlag(wholesaleOnly, false, true, { perLineStockRouting: true }),
     ).toBe(false);
+  });
+});
+
+describe("sell by customer-entered amount", () => {
+  const perfume = {
+    product_code: "PERFUME",
+    unit_price: 5000,
+    sell_on_retail: true,
+    sell_by_amount: true,
+    uom: {
+      conversion_factor: 150,
+      full_name: "Bottle",
+      small_packaging_label: "ml",
+      uom_type: "bottle",
+    },
+  };
+
+  it("converts a VAT-inclusive amount into liquid stock while forcing retail pricing", () => {
+    const resolved = resolvePosQuantity("100", perfume, sugarRetailPackage, true);
+    const line = computePosLine({
+      product: perfume,
+      entryQty: "100",
+      sellWholesale: true,
+      retailPackage: sugarRetailPackage,
+      routeMarkupPerUnit: 80,
+      discount: 10,
+    });
+
+    expect(productSellsByAmount(perfume)).toBe(true);
+    expect(resolved.baseQty).toBe(3);
+    expect(resolved.isRetail).toBe(true);
+    expect(line.baseQty).toBe(3);
+    expect(line.lineAmount).toBe(100);
+    expect(line.discountApplied).toBe(0);
+    expect(line.qtyLabel).toBe("3 ml");
+  });
+
+  it("uses the entered total for the POS amount field and restores it when editing", () => {
+    expect(defaultPosEntryQty(perfume, true)).toBe("");
+    expect(posQuantityFieldMeta(perfume, true).label).toBe("Customer amount (KES)");
+    expect(
+      posEntryQtyFromCartLine(
+        { quantity: 3, amount: 100, on_wholesale_retail: 1 },
+        perfume,
+        null,
+      ),
+    ).toBe("100");
+    expect(posEntryQtyFromBaseQty(3, perfume, null, true)).toBe("100");
   });
 });
 

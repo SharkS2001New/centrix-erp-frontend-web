@@ -9,7 +9,12 @@ import {
   fullPackageLabel,
   smallPackagingLabel,
 } from "./uom-packaging";
-import { posEntryQtyFromBaseQty, productSellsRetail, usesPosRetailPricing } from "./pos-line";
+import {
+  posEntryQtyFromBaseQty,
+  productSellsByAmount,
+  productSellsRetail,
+  usesPosRetailPricing,
+} from "./pos-line";
 import { cartLineMatchesRef } from "./pos-cart-merge";
 
 export { productSellsRetail };
@@ -24,6 +29,7 @@ export function saleLineStockAsRetail(product, onWholesaleRetailFlag) {
  * Per-line routing: retail session + product sells retail → shop; otherwise store.
  */
 export function posLineRetailStockFlag(posSalesConfig, sellWholesale, computedIsRetail, product) {
+  if (productSellsByAmount(product)) return productSellsRetail(product);
   const retailIntent = posSalesConfig.perLineStockRouting
     ? sellWholesale === false
     : Boolean(computedIsRetail);
@@ -364,6 +370,7 @@ export function productCartStockDisplayMode(product, posSalesConfig, sellWholesa
     return productSellsRetail(product) ? "both" : "store";
   }
 
+  if (productSellsByAmount(product) && posSalesConfig.perLineStockRouting) return "shop";
   return posStockDisplayMode(posSalesConfig, sellWholesale);
 }
 

@@ -109,11 +109,11 @@ export function ProductInventoryFields({
   const hasFull = productUom ? uomHasFullPack(productUom) : false;
   const factor = productUom ? uomConversionFactor(productUom) : 1;
   const globalDisplay =
-    globalReorderLevel != null && factor > 1
+    globalReorderLevel != null && factor > 1 && !form.sell_by_amount
       ? baseToDisplayQty(globalReorderLevel, factor)
       : globalReorderLevel;
 
-  const reorderLabel = hasFull
+  const reorderLabel = hasFull && !form.sell_by_amount
     ? `Reorder level (${packName})`
     : `Reorder level (${smallName})`;
 
@@ -196,7 +196,11 @@ export function ProductInventoryFields({
             placeholder="0"
           />
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            {hasFull ? (
+            {form.sell_by_amount ? (
+              <>
+                Minimum stock in <strong>{smallName}</strong> before a low-stock alert.
+              </>
+            ) : hasFull ? (
               <>
                 Minimum stock in <strong>{packName}</strong> before a low-stock alert. Example: sugar
                 with 50&nbsp;kg bags — enter <strong>2</strong> to alert when total stock falls below 2
