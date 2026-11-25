@@ -7860,6 +7860,10 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
+    if (productSellsByAmount(product)) {
+      void pickProduct(product);
+      return;
+    }
     healStuckCartLineSaveGate();
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) {
       setStatusMessage("Cancel payment first, then add items.");
@@ -9425,6 +9429,15 @@ export function PosScreen({ standalone = false }) {
       String(entryQtyRaw) !== String(lineForm.quantity ?? "")
     ) {
       setLineForm((p) => ({ ...p, quantity: String(entryQtyRaw) }));
+    }
+    if (productSellsByAmount(productForAdd)) {
+      const minimumAmount = Number(productForAdd.sell_by_amount_price ?? 0);
+      const enteredAmount = Number(entryQtyRaw);
+      if (!Number.isFinite(enteredAmount) || enteredAmount < minimumAmount) {
+        releaseCartLineMutationGate();
+        setStatusMessage(`Minimum sale amount is KES ${minimumAmount.toFixed(2)}.`);
+        return;
+      }
     }
 
     // Qty Enter (from Search Enter leak) + Add click both call this within one beat;
@@ -18387,7 +18400,7 @@ export function PosScreen({ standalone = false }) {
               <input
                 ref={qtyInputRef}
                 type="number"
-                min="0"
+                min={qtyFieldMeta?.min ?? "0"}
                 step={qtyFieldMeta?.step ?? "any"}
                 className={fieldInput}
                 value={lineForm.quantity}

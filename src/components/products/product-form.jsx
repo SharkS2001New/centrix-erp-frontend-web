@@ -72,6 +72,8 @@ export const EMPTY_PRODUCT_FORM = {
   shelf_location: "",
   sell_on_retail: false,
   sell_by_amount: false,
+  sell_by_amount_quantity: "",
+  sell_by_amount_price: "",
   sell_on_bar: true,
   sell_on_hotel: true,
   retail_package_id: "",
@@ -171,6 +173,10 @@ export function productToForm(product, retailPackage = null, uom = null) {
     shelf_location: product.shelf_location ?? "",
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
     sell_by_amount: sellByAmount,
+    sell_by_amount_quantity:
+      product.sell_by_amount_quantity != null ? String(product.sell_by_amount_quantity) : "",
+    sell_by_amount_price:
+      product.sell_by_amount_price != null ? String(product.sell_by_amount_price) : "",
     sell_on_bar: product.sell_on_bar !== 0 && product.sell_on_bar !== false,
     sell_on_hotel: product.sell_on_hotel !== 0 && product.sell_on_hotel !== false,
     vat_id: product.vat_id ? String(product.vat_id) : "",
@@ -182,7 +188,8 @@ export function productToForm(product, retailPackage = null, uom = null) {
 }
 
 export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null, includeShelfLocation = false, hotelCatalogue = false } = {}) {
-  const unitPrice = parseDecimalInput(form.unit_price);
+  const amountMode = !hotelCatalogue && Boolean(form.sell_by_amount);
+  const unitPrice = amountMode ? null : parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
     product_name: form.product_name.trim(),
@@ -198,6 +205,12 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
     sell_on_retail: hotelCatalogue ? false : Boolean(form.sell_on_retail),
     sell_by_amount: hotelCatalogue ? false : Boolean(form.sell_by_amount),
+    sell_by_amount_quantity: form.sell_by_amount
+      ? parseDecimalInput(form.sell_by_amount_quantity)
+      : null,
+    sell_by_amount_price: form.sell_by_amount
+      ? parseDecimalInput(form.sell_by_amount_price)
+      : null,
     sell_on_bar: Boolean(form.sell_on_bar),
     sell_on_hotel: Boolean(form.sell_on_hotel),
     vat_id: Number(form.vat_id),
@@ -550,7 +563,6 @@ export const ProductFormFields = memo(function ProductFormFields({
   const smallLabel = selectedUom ? smallPackagingLabel(selectedUom) : hotelCatalogue ? "serving" : "unit";
   const amountSalesAvailable = Boolean(
     selectedUom &&
-    uomHasFullPack(selectedUom) &&
     uomIsLiquidMeasure(selectedUom),
   );
 
@@ -730,7 +742,7 @@ export const ProductFormFields = memo(function ProductFormFields({
           onChange={(value) => {
             onChange("unit_id", value);
             const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
-            if (!nextUom || !uomHasFullPack(nextUom) || !uomIsLiquidMeasure(nextUom)) {
+            if (!nextUom || !uomIsLiquidMeasure(nextUom)) {
               onChange("sell_by_amount", false);
             }
             if (!hotelCatalogue && form.sell_on_retail) {
@@ -793,38 +805,49 @@ export const ProductFormFields = memo(function ProductFormFields({
             </>
           ) : (
             <>
-              Wholesale prices are per <strong>{packLabel}</strong>
-              {selectedUom && uomHasFullPack(selectedUom) ? (
+              {form.sell_by_amount ? (
                 <>
-                  {" "}
-                  (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                  This product is sold by customer-entered amount. Set the minimum sale amount and
+                  the quantity it buys below; a separate selling price is not needed.
                 </>
               ) : (
-                <> (base {smallLabel})</>
+                <>
+                  Wholesale prices are per <strong>{packLabel}</strong>
+                  {selectedUom && uomHasFullPack(selectedUom) ? (
+                    <>
+                      {" "}
+                      (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                    </>
+                  ) : (
+                    <> (base {smallLabel})</>
+                  )}
+                  . Cost, selling price, and discounts all apply to that same wholesale unit — e.g.
+                  price for one bag of sugar, not per kg.
+                </>
               )}
-              . Cost, selling price, and discounts all apply to that same wholesale unit — e.g. price
-              for one bag of sugar, not per kg.
             </>
           )}
         </p>
       </div>
 
-      <Field label={`Selling price per ${packLabel} (KES)`} required>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.unit_price}
-          onChange={(e) => onChange("unit_price", e.target.value)}
-          required
-          className={inputClassName()}
-          placeholder="0.00"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          {hotelCatalogue
-            ? `Menu price charged per ${packLabel} on Hotel POS.`
-            : `Wholesale price charged per ${packLabel}.`}
-        </p>
-      </Field>
+      {!form.sell_by_amount ? (
+        <Field label={`Selling price per ${packLabel} (KES)`} required>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.unit_price}
+            onChange={(e) => onChange("unit_price", e.target.value)}
+            required
+            className={inputClassName()}
+            placeholder="0.00"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            {hotelCatalogue
+              ? `Menu price charged per ${packLabel} on Hotel POS.`
+              : `Wholesale price charged per ${packLabel}.`}
+          </p>
+        </Field>
+      ) : null}
 
       <Field label={`Cost price per ${packLabel} (KES)`}>
         <input
@@ -981,8 +1004,8 @@ export const ProductFormFields = memo(function ProductFormFields({
               <span>
                 <span className="block font-medium">Sell by customer-entered amount</span>
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  POS charges the entered VAT-inclusive total and converts it into {smallLabel} using
-                  the full-pack price. Reorder level is maintained in {smallLabel}.
+                  POS charges the entered VAT-inclusive amount and converts it into {smallLabel}
+                  using the configured minimum sale pair.
                 </span>
               </span>
             </label>
@@ -994,9 +1017,38 @@ export const ProductFormFields = memo(function ProductFormFields({
               productUom={selectedUom}
             />
           ) : form.sell_by_amount ? (
-            <p className="mt-2 text-xs text-slate-500">
-              Retail price tiers are preserved but not applied while sell-by-amount is enabled.
-            </p>
+            <div className="mt-2 grid gap-3 md:grid-cols-2">
+              <Field label={`Quantity for minimum amount (${smallLabel})`} required>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  value={form.sell_by_amount_quantity}
+                  onChange={(e) => onChange("sell_by_amount_quantity", e.target.value)}
+                  className={inputClassName()}
+                  placeholder={`e.g. 3 ${smallLabel}`}
+                  required
+                />
+              </Field>
+              <Field label="Minimum sale amount (KES)" required>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.sell_by_amount_price}
+                  onChange={(e) => onChange("sell_by_amount_price", e.target.value)}
+                  className={inputClassName()}
+                  placeholder="e.g. 100"
+                  required
+                />
+              </Field>
+              <p className="text-xs text-slate-500 md:col-span-2">
+                Example: KES {form.sell_by_amount_price || "100"} buys{" "}
+                {form.sell_by_amount_quantity || "3"} {smallLabel}. Higher amounts scale the
+                quantity proportionally; the entered amount must be at least the minimum.
+                Retail price tiers are not used while this mode is enabled.
+              </p>
+            </div>
           ) : null}
         </div>
       ) : (

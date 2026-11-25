@@ -111,10 +111,12 @@ export function posQuantityFieldMeta(
 
   if (productSellsByAmount(product)) {
     const small = smallPackagingLabel(uom);
+    const minimumAmount = Number(product?.sell_by_amount_price ?? 0);
     return {
       label: "Customer amount (KES)",
       unit: "KES",
-      hint: `Retail only. Enter the VAT-inclusive total; stock is deducted in ${small}.`,
+      hint: `Minimum KES ${minimumAmount.toFixed(2)}. Enter the VAT-inclusive amount; stock is deducted in ${small}.`,
+      min: minimumAmount > 0 ? String(minimumAmount) : "0",
       step: "0.01",
     };
   }
@@ -190,10 +192,11 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   const retailSession = isPosRetailSession(sellWholesale);
 
   if (productSellsByAmount(product)) {
-    const packPrice = Number(product?.unit_price ?? 0);
+    const referenceQuantity = Number(product?.sell_by_amount_quantity ?? 0);
+    const referencePrice = Number(product?.sell_by_amount_price ?? 0);
     const baseQty =
-      factor > 1 && packPrice > 0
-        ? Math.round((qty / packPrice) * factor * 10000) / 10000
+      referenceQuantity > 0 && referencePrice > 0
+        ? Math.round((qty / referencePrice) * referenceQuantity * 10000) / 10000
         : 0;
     return {
       baseQty,
@@ -595,7 +598,9 @@ export function posListUnitPrice(
   cashRound = false,
 ) {
   if (productSellsByAmount(product)) {
-    return finalizePosDisplayUnitPrice(Number(product?.unit_price ?? 0), { cashRound: false });
+    return finalizePosDisplayUnitPrice(Number(product?.sell_by_amount_price ?? 0), {
+      cashRound: false,
+    });
   }
   const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
   if (!product?.uom) {
@@ -772,10 +777,12 @@ export function posCartLineEntryUnitLabel(line, product, retailPackage) {
 /** Rebuild POS entry quantity from a base (stock) quantity. */
 export function posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetailLine) {
   if (productSellsByAmount(product)) {
-    const factor = uomConversionFactor(product?.uom);
-    const packPrice = Number(product?.unit_price ?? 0);
-    if (factor > 0 && packPrice > 0) {
-      return String(Math.round((Number(baseQty ?? 0) / factor) * packPrice * 100) / 100);
+    const referenceQuantity = Number(product?.sell_by_amount_quantity ?? 0);
+    const referencePrice = Number(product?.sell_by_amount_price ?? 0);
+    if (referenceQuantity > 0 && referencePrice > 0) {
+      return String(
+        Math.round((Number(baseQty ?? 0) / referenceQuantity) * referencePrice * 100) / 100,
+      );
     }
     return "0";
   }

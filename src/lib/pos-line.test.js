@@ -175,9 +175,11 @@ describe("sell_on_retail gate", () => {
 describe("sell by customer-entered amount", () => {
   const perfume = {
     product_code: "PERFUME",
-    unit_price: 5000,
+    unit_price: 9000,
     sell_on_retail: true,
     sell_by_amount: true,
+    sell_by_amount_quantity: 3,
+    sell_by_amount_price: 100,
     uom: {
       conversion_factor: 150,
       full_name: "Bottle",
@@ -188,6 +190,8 @@ describe("sell by customer-entered amount", () => {
 
   it("converts a VAT-inclusive amount into liquid stock while forcing retail pricing", () => {
     const resolved = resolvePosQuantity("100", perfume, sugarRetailPackage, true);
+    const doubleAmount = resolvePosQuantity("200", perfume, sugarRetailPackage, true);
+    const arbitraryAmount = resolvePosQuantity("350", perfume, sugarRetailPackage, true);
     const line = computePosLine({
       product: perfume,
       entryQty: "100",
@@ -199,6 +203,8 @@ describe("sell by customer-entered amount", () => {
 
     expect(productSellsByAmount(perfume)).toBe(true);
     expect(resolved.baseQty).toBe(3);
+    expect(doubleAmount.baseQty).toBe(6);
+    expect(arbitraryAmount.baseQty).toBe(10.5);
     expect(resolved.isRetail).toBe(true);
     expect(line.baseQty).toBe(3);
     expect(line.lineAmount).toBe(100);
@@ -209,6 +215,7 @@ describe("sell by customer-entered amount", () => {
   it("uses the entered total for the POS amount field and restores it when editing", () => {
     expect(defaultPosEntryQty(perfume, true)).toBe("");
     expect(posQuantityFieldMeta(perfume, true).label).toBe("Customer amount (KES)");
+    expect(posQuantityFieldMeta(perfume, true).min).toBe("100");
     expect(
       posEntryQtyFromCartLine(
         { quantity: 3, amount: 100, on_wholesale_retail: 1 },
@@ -217,6 +224,8 @@ describe("sell by customer-entered amount", () => {
       ),
     ).toBe("100");
     expect(posEntryQtyFromBaseQty(3, perfume, null, true)).toBe("100");
+    expect(posEntryQtyFromBaseQty(6, perfume, null, true)).toBe("200");
+    expect(posListUnitPrice(perfume, true, null)).toBe(100);
   });
 });
 
