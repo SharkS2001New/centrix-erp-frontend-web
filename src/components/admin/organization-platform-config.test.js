@@ -53,7 +53,7 @@ describe("OrganizationModuleToggles", () => {
       }),
     );
 
-    expect(markup).toContain("Ask for quantity when adding products");
+    expect(markup).toContain("Ask for quantity when adding to cart");
     expect(markup).toContain("products are added at quantity 1");
   });
 });

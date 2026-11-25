@@ -906,7 +906,7 @@ export function OrganizationPlatformSalesSettings({
               }
             />
             <Toggle
-              label="Ask for quantity when adding products"
+              label="Ask for quantity when adding to cart"
               description="When on, Centrix AS Mobile prompts for quantity in POS and order creation. When off, products are added at quantity 1 with the existing pricing and stock checks."
               checked={Boolean(salesPlatform?.as_mobile_ask_quantity_on_add)}
               disabled={salesPlatform?.enable_centrix_as_mobile === false}
