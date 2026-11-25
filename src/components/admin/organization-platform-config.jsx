@@ -433,6 +433,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     as_mobile_auto_generate_product_code: true,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
+    as_mobile_ask_quantity_on_add: false,
     as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
@@ -535,6 +536,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
       apiPayload.as_mobile_auto_generate_product_code !== false,
     as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
     require_product_images: Boolean(apiPayload.require_product_images),
+    as_mobile_ask_quantity_on_add: Boolean(apiPayload.as_mobile_ask_quantity_on_add),
     as_mobile_post_login_screen:
       apiPayload.as_mobile_post_login_screen === "operations_dashboard"
         ? "operations_dashboard"
@@ -901,6 +903,15 @@ export function OrganizationPlatformSalesSettings({
               disabled={salesPlatform?.enable_centrix_as_mobile === false}
               onChange={(v) =>
                 patch({ as_mobile_auto_generate_product_code: v })
+              }
+            />
+            <Toggle
+              label="Ask for quantity when adding products"
+              description="When on, Centrix AS Mobile prompts for quantity in POS and order creation. When off, products are added at quantity 1 with the existing pricing and stock checks."
+              checked={Boolean(salesPlatform?.as_mobile_ask_quantity_on_add)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
+              onChange={(v) =>
+                patch({ as_mobile_ask_quantity_on_add: v })
               }
             />
             <Toggle

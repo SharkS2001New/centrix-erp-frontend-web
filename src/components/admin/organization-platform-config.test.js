@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   OrganizationModuleToggles,
+  OrganizationPlatformSalesSettings,
   defaultSalesPlatformState,
   payrollPlatformFromApi,
   payrollPlatformToApi,
@@ -40,6 +41,20 @@ describe("OrganizationModuleToggles", () => {
     expect(markup).toContain("Shop debtors and credit reports");
     expect(markup).toContain("disables new checkout credit sales.");
     expect(markup).toContain("Existing orders remain available in All Orders.");
+  });
+
+  it("shows the AS Mobile quantity prompt control in organization settings", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: { enable_centrix_as_mobile: true },
+        onChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Ask for quantity when adding products");
+    expect(markup).toContain("products are added at quantity 1");
   });
 });
 
@@ -111,6 +126,18 @@ describe("defaultSalesPlatformState", () => {
     expect(
       salesPlatformFromApi({}).as_mobile_auto_generate_product_code,
     ).toBe(true);
+  });
+
+  it("defaults AS Mobile quantity prompts off and reads the organization setting", () => {
+    expect(defaultSalesPlatformState("small_shop").as_mobile_ask_quantity_on_add).toBe(false);
+    expect(
+      salesPlatformFromApi({ as_mobile_ask_quantity_on_add: true })
+        .as_mobile_ask_quantity_on_add,
+    ).toBe(true);
+    expect(
+      salesPlatformFromApi({ as_mobile_ask_quantity_on_add: false })
+        .as_mobile_ask_quantity_on_add,
+    ).toBe(false);
   });
 });
 
