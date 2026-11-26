@@ -258,7 +258,17 @@ Get-ChildItem -Path $publishDir -Force | Where-Object {
 } | Copy-Item -Destination $InstallDir -Recurse -Force
 $installedExe = Join-Path $InstallDir "Centrix.PrintAgent.exe"
 
-& schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
+$taskScheduler = New-Object -ComObject "Schedule.Service"
+$taskScheduler.Connect()
+$taskFolder = $taskScheduler.GetFolder("\")
+$registeredTasks = $taskFolder.GetTasks(0)
+for ($taskIndex = 1; $taskIndex -le $registeredTasks.Count; $taskIndex++) {
+    $registeredTask = $registeredTasks.Item($taskIndex)
+    if ([String]::Equals($registeredTask.Name, $TaskName, [StringComparison]::OrdinalIgnoreCase)) {
+        $taskFolder.DeleteTask($TaskName, 0)
+        break
+    }
+}
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingService) {
     if ($existingService.Status -eq "Running") {
