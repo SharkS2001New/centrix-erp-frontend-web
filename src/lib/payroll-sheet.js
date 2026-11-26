@@ -171,7 +171,7 @@ export function formatPayrollSheetDisplayAmount(
   if (!Number.isFinite(amount)) return "—";
 
   const general = settings ?? GENERAL_DEFAULTS;
-  const number = formatOrgNumber(amount, general);
+  const number = formatOrgNumber(amount, general, { decimals: 2 }).replace(/\.00$/, "");
   const currency = general.currency || "KES";
   return `${currency} ${number}`;
 }

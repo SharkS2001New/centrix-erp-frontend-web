@@ -83,6 +83,7 @@ export function loadingSheetPrintPayloadFromForm(form) {
 
 /** Picking list + trip chart tonnage (screen and print). */
 export function isLoadTonnageEnabled(source = {}) {
+  if (source == null) return true;
   const distribution =
     source?.module_settings?.distribution ?? source?.distribution ?? source;
   if (Object.prototype.hasOwnProperty.call(distribution, "show_load_tonnage")) {
