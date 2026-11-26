@@ -41,9 +41,63 @@ describe("organization shop debtors setting", () => {
     expect(form.enable_shop_debtors).toBe(false);
     expect(salesOrganizationPayloadFromForm(form).enable_shop_debtors).toBe(false);
   });
+
+  it("sends the collect-small-payments setting when enabled", () => {
+    const form = salesOrganizationFormFromApi({
+      sales: { allow_credit_pay_now: false },
+    });
+
+    expect(
+      salesOrganizationPayloadFromForm({
+        ...form,
+        allow_credit_pay_now: true,
+      }).allow_credit_pay_now,
+    ).toBe(true);
+  });
 });
 
 describe("customer details checkout settings", () => {
+  it("preserves credit checkout for Backoffice when External POS is disabled", () => {
+    const form = salesOrganizationFormFromApi({
+      sales: {
+        enable_shop_debtors: true,
+        enable_credit_payment: true,
+      },
+    });
+    const capabilities = {
+      modules: { sales: true, "sales.pos": false, customers_suppliers: true },
+      module_settings: {
+        sales: {
+          show_checkout_on_create_order: true,
+          show_pos_checkout_on_create: false,
+        },
+      },
+    };
+
+    expect(sanitizeSalesOrganizationFormForModules(form, capabilities).enable_credit_payment)
+      .toBe(true);
+    expect(salesOrganizationPayloadFromForm(form, capabilities).enable_credit_payment)
+      .toBe(true);
+  });
+
+  it("clears credit checkout when neither direct checkout flow is available", () => {
+    const form = salesOrganizationFormFromApi({
+      sales: { enable_credit_payment: true },
+    });
+    const capabilities = {
+      modules: { sales: true, "sales.pos": false, customers_suppliers: true },
+      module_settings: {
+        sales: {
+          show_checkout_on_create_order: false,
+          show_pos_checkout_on_create: false,
+        },
+      },
+    };
+
+    expect(sanitizeSalesOrganizationFormForModules(form, capabilities).enable_credit_payment)
+      .toBe(false);
+  });
+
   it("preserves the setting for Backoffice and mobile-only sales organizations", () => {
     const form = salesOrganizationFormFromApi({
       sales: { enable_checkout_customer_name: true },

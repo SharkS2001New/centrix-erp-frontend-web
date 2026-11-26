@@ -803,13 +803,19 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
   const hasCustomers = Boolean(modules.customers_suppliers);
 
   if (!hasPosSales) {
-    next.enable_credit_payment = false;
     next.enable_pos_auto_continue_after_print = false;
     next.allow_pos_edit_line_discount = false;
     next.allow_pos_edit_unit_price = false;
     next.enable_barcode_scanner = false;
     next.blind_till_close = false;
     next.pos_order_type_mode = "normal";
+  }
+
+  const hasDirectCheckout =
+    resolveShowBackofficeCheckoutOnCreate(capabilities?.module_settings) ||
+    resolveShowPosCheckoutOnCreate(capabilities?.module_settings);
+  if (!hasDirectCheckout) {
+    next.enable_credit_payment = false;
   }
 
   if (!hasCustomers) {
