@@ -65,7 +65,7 @@ function unavailableResponse() {
   return Response.json(
     {
       message:
-        "Windows print service zip is not on this server yet. Build print-agent-dotnet on a Windows PC (scripts/publish.ps1) and upload CentrixPrintAgent-win-x64.zip, or set PRINT_AGENT_DOTNET_URL.",
+        "Windows print service zip is not on this server yet. Run BUILD-AND-INSTALL.bat on a Windows PC to create publish/CentrixPrintAgent-win-x64.zip, then upload it or set PRINT_AGENT_DOTNET_URL.",
       available: false,
     },
     { status: 404 },

@@ -559,10 +559,29 @@ function TillsCheckoutSettingsTab({
       <div className="space-y-3">
         <h3 className="theme-heading text-sm font-medium">Customer details</h3>
         <Toggle
-          label="Request customer name and phone on save / checkout"
-          description="When enabled, prompt for a walk-in name and phone, or an existing customer with a phone, on Backoffice order checkout, External POS save / hold / checkout, and CentrixAsMobile sales. Backoffice Create order always requests a name on save."
+          label="Request customer name on save / checkout"
+          description="When enabled, prompt for a walk-in name or an existing customer on Backoffice order checkout, External POS save / hold / checkout, and CentrixAsMobile sales. Backoffice Create order always requests a name on save."
           checked={salesForm.enable_checkout_customer_name}
-          onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
+          onChange={(v) =>
+            setSalesForm((f) => ({
+              ...f,
+              enable_checkout_customer_name: v,
+              ...(!v ? { enable_checkout_customer_phone: false } : {}),
+            }))
+          }
+        />
+        <Toggle
+          label="Request customer phone number"
+          description="When enabled, also request and validate a phone number wherever the customer name is requested."
+          checked={salesForm.enable_checkout_customer_phone}
+          disabled={!salesForm.enable_checkout_customer_name}
+          onChange={(v) =>
+            setSalesForm((f) => ({
+              ...f,
+              enable_checkout_customer_phone:
+                Boolean(f.enable_checkout_customer_name) && v,
+            }))
+          }
         />
       </div>
     </div>

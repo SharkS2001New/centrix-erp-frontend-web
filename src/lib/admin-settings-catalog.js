@@ -257,7 +257,7 @@ export const ADMIN_SETTINGS_CATALOG = [
   {
     id: "org.sales.pos",
     label: "Tills",
-    description: "Till float, barcode, customer name and phone prompts for Backoffice, POS, and CentrixAsMobile",
+    description: "Till float, barcode, customer name and dependent phone prompts for Backoffice, POS, and CentrixAsMobile",
     keywords: [
       "till float",
       "float",
@@ -270,6 +270,7 @@ export const ADMIN_SETTINGS_CATALOG = [
       "walk-in name",
       "backoffice customer name",
       "centrixasmobile customer name",
+      "request customer phone",
       "customer phone",
       "phone number",
       "expected cash",

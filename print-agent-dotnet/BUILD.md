@@ -1,113 +1,52 @@
 # Build Centrix Print Agent (Windows)
 
-Do this on a **Windows 10/11 x64** PC.
+## Supported Windows versions
 
----
+- Windows 7 **Service Pack 1**, 64-bit, with .NET Framework 4.8
+- Windows 8.1 and Windows 10/11, 64-bit
 
-## Easiest way (recommended)
+The primary build and install path is compatible with Windows PowerShell 2.0, which ships with Windows 7. No .NET SDK, Node.js, or PowerShell upgrade is needed. The first install requires internet access to obtain the printer utilities.
 
-1. In Centrix: **Administration → Local printing → Centrix Print Agent (Windows)**
-2. Click **Download build package (source)**
-3. Unzip `CentrixPrintAgent-source.zip`
-4. Open the unzipped folder `print-agent-dotnet`
-5. **Double‑click `BUILD-AND-INSTALL.bat`**
-6. Click **Yes** if Windows asks for Administrator permission
-7. Wait until it says **SUCCESS**
+## Build and install
 
-The installer **downloads and bundles wkhtmltopdf by default** (needs network once). It also reuses `Program Files\wkhtmltopdf` when already installed. To skip the download: `.\scripts\install-windows-service.ps1 -SkipWkhtmlDownload`.
+1. In Centrix, open **Administration → Local printing**.
+2. Click **Download build package (source)**.
+3. Unzip `CentrixPrintAgent-source.zip`.
+4. Open the extracted `print-agent-dotnet` folder.
+5. Right-click **`BUILD-AND-INSTALL.bat`** and choose **Run as administrator**.
+6. Wait for **SUCCESS**.
+7. Open `http://127.0.0.1:9247/v1/health`, then use **Test connection → Save** in Centrix.
 
-**wkhtmltopdf (auto on install; manual fallback):**  
-https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
+The build uses the C# compiler included with .NET Framework 4.8. The installer installs the Windows service and bundles wkhtmltopdf and a SumatraPDF version compatible with Windows 7.
+It also creates `publish\CentrixPrintAgent-win-x64.zip`; upload that package to the server's configured print-agent download location to distribute it to other tills.
 
-**SumatraPDF (silent PDF → printer):** bundled automatically by publish / BUILD-AND-INSTALL into:
+For USB printers, set the service's **Log On** account to the Windows user who can access that printer, then restart the service.
 
-`C:\Program Files\Centrix\PrintAgent\tools\SumatraPDF\SumatraPDF.exe`
+## Manual commands
 
-You should **not** need a separate copy step. Install fails if Sumatra cannot be downloaded or found. Fallback only:
-
-```powershell
-.\scripts\configure-sumatra.ps1
-```
-
-Agent **0.3.2+** also auto-copies Sumatra from Program Files / user AppData into `tools\` when found.
-
-If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
-
----
-
-## One-time requirement: .NET 8 SDK
-
-Before the build can succeed:
-
-1. Open https://dotnet.microsoft.com/download/dotnet/8.0  
-2. Install **SDK 8.x — Windows x64** (not “Runtime”)
-3. **Close all** PowerShell / CMD windows, then run `BUILD-AND-INSTALL.bat` again
-
-Check:
+Run PowerShell as Administrator from the extracted folder:
 
 ```powershell
-dotnet --version
+.\scripts\publish.ps1
+.\scripts\install-windows-service.ps1
 ```
 
----
-
-## Do NOT do this
-
-Do **not** type this literally:
-
-```text
-cd path\to\print-agent-dotnet
-```
-
-`path\to` was only a placeholder. Use the real folder you unzipped, or just double‑click `BUILD-AND-INSTALL.bat` (no `cd` needed).
-
----
-
-## After SUCCESS
-
-1. Open http://127.0.0.1:9247/v1/health — you should see JSON with `"sumatra_available": true` and version `0.3.2+`
-2. Centrix → Local printing → Centrix Print Agent → **Test connection** → Save
-
----
-
-## If you prefer PowerShell by hand
-
-Open **PowerShell as Administrator**, then:
-
-```powershell
-cd $HOME\Downloads\print-agent-dotnet
-# ^ change this to wherever YOU unzipped the folder
-
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-and-install.ps1
-```
-
----
-
-## Common errors
+## Troubleshooting
 
 | Message / symptom | Fix |
-|-------------------|-----|
-| `path\to` not found | You copied the placeholder. Use double‑click `BUILD-AND-INSTALL.bat` instead |
-| Scripts are disabled / cannot be loaded | Use `BUILD-AND-INSTALL.bat` (bypasses policy) or `Set-ExecutionPolicy -Scope Process Bypass` |
-| `dotnet` is not recognized | Install .NET 8 **SDK**, close terminals, retry |
-| `Unexpected token ')'` in `build-and-install.ps1` | You have an **old** build package. Download **build package (source)** again from Centrix (Administration → Local printing). The script must use `Step 1.` lines, not `1)` |
-| `NU1101` / WebView2 package error | Re-download the source zip (0.2.2+ no longer needs WebView2). Only .NET 8 SDK is required |
-| `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
-| Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
-| Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
-| Agent runs but Centrix says offline | Usually Chrome **Private Network Access**: HTTPS ERP → `http://127.0.0.1`. Install print agent **0.3.3+** (sends `Access-Control-Allow-Private-Network`). Also hard-refresh Centrix so health GETs no longer send `Content-Type` |
-| `Could not render receipt HTML to PDF` | Install wkhtmltopdf manually (link above), re-run install. Health must show `"wkhtmltopdf_available": true` |
-| Test sent but nothing prints | Run `.\scripts\configure-sumatra.ps1` as Administrator. Health must show `"sumatra_available": true`. USB printers: service Log On -> this Windows user |
-| Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles SumatraPDF + sets SUMATRA_PATH). If already installed manually: `.\scripts\configure-sumatra.ps1 -SkipDownload` |
-| Sumatra download 404 | Fixed in latest scripts (URL is `/dl/rel/3.6.1/...` not `/dl/rel/SumatraPDF-3.6.1-64.zip`). Or install Sumatra manually and run with `-SkipDownload` |
-| wkhtmltopdf download slow / hangs | Install wkhtmltopdf manually (link above). Re-run `BUILD-AND-INSTALL.bat` - it copies from `Program Files\wkhtmltopdf` and skips download |
-| Force download during install | `.\scripts\install-windows-service.ps1 -DownloadWkhtml` |
-| Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix -> Local printing -> Save |
-
----
+|---|---|
+| `#Requires -Version 5.1` error | Re-download the latest source package. The current build scripts support PowerShell 2.0. |
+| .NET Framework 4.8 is missing | Install .NET Framework 4.8 on Windows 7 SP1, restart if requested, then retry. |
+| Scripts are disabled | Run `BUILD-AND-INSTALL.bat` as Administrator; it uses execution-policy bypass. |
+| wkhtmltopdf download fails | Install [wkhtmltopdf 0.12.6](https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe), then rerun the installer. |
+| SumatraPDF download fails | Install a Windows 7-compatible SumatraPDF version manually and rerun `install-windows-service.ps1 -SkipSumatraDownload`. |
+| Port / health fails | Check that `CentrixPrintAgent` is running in Windows Services, then open `http://127.0.0.1:9247/v1/health`. |
+| Agent runs but Centrix says offline | Hard-refresh Centrix. HTTPS pages need the agent's Private Network Access headers. |
+| Agent is online but printing fails | Confirm `wkhtmltopdf_available` and `sumatra_available` are true in `/v1/health`; check the Windows default printer and service Log On account. |
 
 ## Uninstall
+
+Run PowerShell as Administrator from the extracted folder:
 
 ```powershell
 .\scripts\uninstall-windows-service.ps1

@@ -58,6 +58,7 @@ const SALES_DEFAULTS = {
   /** External POS (/pos) — complete sale with checkout. Independent of backoffice Create order. */
   show_pos_checkout_on_create: true,
   enable_checkout_customer_name: false,
+  enable_checkout_customer_phone: false,
   /** External POS: after F10 checkout, skip “Press Ok” once the receipt has printed. */
   enable_pos_auto_continue_after_print: false,
   retail_shop_wholesale_store_stock: false,
@@ -623,6 +624,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
+  enable_checkout_customer_phone: false,
   /** External POS: after F10 checkout, skip “Press Ok” once the receipt has printed. */
   enable_pos_auto_continue_after_print: false,
   add_route_markup_prices: false,
@@ -724,6 +726,9 @@ export function salesOrganizationFormFromApi(res) {
     allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
+    enable_checkout_customer_phone:
+      Boolean(sales.enable_checkout_customer_name) &&
+      Boolean(sales.enable_checkout_customer_phone),
     enable_pos_auto_continue_after_print: Boolean(sales.enable_pos_auto_continue_after_print),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pricing_formulas: normalizePricingFormulas(
@@ -783,14 +788,19 @@ export function salesOrganizationFormFromApi(res) {
 
 /** Clear sales form keys that do not apply to the organization's enabled modules. */
 export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
+  const next = {
+    ...form,
+    enable_checkout_customer_phone:
+      Boolean(form.enable_checkout_customer_name) &&
+      Boolean(form.enable_checkout_customer_phone),
+  };
   const modules = capabilities?.modules;
   // Incomplete/stale capabilities (empty modules map) must not uncheck saved toggles.
   if (!modules || typeof modules !== "object" || Object.keys(modules).length === 0) {
-    return form;
+    return next;
   }
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
-  const next = { ...form };
 
   if (!hasPosSales) {
     next.enable_credit_payment = false;
@@ -838,9 +848,7 @@ export function applyDiscountApprovalFormUpdates(form, patch) {
 }
 
 export function salesOrganizationPayloadFromForm(form, capabilities = null) {
-  const sanitized = capabilities
-    ? sanitizeSalesOrganizationFormForModules(form, capabilities)
-    : form;
+  const sanitized = sanitizeSalesOrganizationFormForModules(form, capabilities);
   const withDiscountApproval = applyDiscountApprovalFormUpdates(sanitized, {
     mobile: sanitized.discount_approval_enabled_mobile,
     backoffice: sanitized.discount_approval_enabled_backoffice,
@@ -1662,6 +1670,9 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       ? resolveShowPosCheckoutOnCreate(moduleSettings)
       : resolveShowBackofficeCheckoutOnCreate(moduleSettings),
     enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
+    enableCheckoutCustomerPhone:
+      Boolean(sales.enable_checkout_customer_name) &&
+      Boolean(sales.enable_checkout_customer_phone),
     enablePosAutoContinueAfterPrint: Boolean(sales.enable_pos_auto_continue_after_print),
     retailShopWholesaleStoreStock,
     enableRetailPricing,
@@ -1771,6 +1782,10 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
     checkoutContext,
     enableCheckoutCustomerName:
       checkoutContext === "pos" && Boolean(sales.enable_checkout_customer_name),
+    enableCheckoutCustomerPhone:
+      checkoutContext === "pos" &&
+      Boolean(sales.enable_checkout_customer_name) &&
+      Boolean(sales.enable_checkout_customer_phone),
     otherBankLabel,
     bankOptions,
     hasBankPayments: useBankSelect

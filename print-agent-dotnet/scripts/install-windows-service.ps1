@@ -1,224 +1,296 @@
-#Requires -RunAsAdministrator
 param(
     [string]$InstallDir = "C:\Program Files\Centrix\PrintAgent",
     [string]$ServiceName = "CentrixPrintAgent",
     [string]$TaskName = "CentrixPrintAgent",
     [string]$DisplayName = "Centrix Print Agent",
-    # Default ON so a fresh till install gets wkhtmltopdf without a second step.
     [bool]$DownloadWkhtml = $true,
     [switch]$SkipWkhtmlDownload,
     [switch]$SkipSumatraDownload
 )
 
-$DownloadWkhtml = $DownloadWkhtml -and -not $SkipWkhtmlDownload
-
 $ErrorActionPreference = "Stop"
-
-. (Join-Path $PSScriptRoot "sumatra-setup.ps1")
-
-$sourceDir = Split-Path -Parent $PSScriptRoot
-$publishDir = Join-Path $sourceDir "publish"
+$DownloadWkhtml = $DownloadWkhtml -and -not $SkipWkhtmlDownload
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$parentDir = Split-Path -Parent $scriptDir
+$readyPackage = $false
+if (Test-Path (Join-Path $scriptDir "Centrix.PrintAgent.exe")) {
+    $sourceDir = $scriptDir
+    $publishDir = $scriptDir
+    $readyPackage = $true
+} elseif (Test-Path (Join-Path $parentDir "Centrix.PrintAgent.exe")) {
+    $sourceDir = $parentDir
+    $publishDir = $parentDir
+    $readyPackage = $true
+} else {
+    $sourceDir = $parentDir
+    $publishDir = Join-Path $sourceDir "publish"
+}
 $exe = Join-Path $publishDir "Centrix.PrintAgent.exe"
-
-if (-not (Test-Path $exe)) {
-    Write-Host "Publish folder not found. Run scripts\publish.ps1 first." -ForegroundColor Yellow
-    exit 1
+$frameworkCompiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (-not (Test-Path $frameworkCompiler)) {
+    $frameworkCompiler = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe"
 }
 
-function Find-WkhtmlTopdfSystemBin {
-    $candidates = @()
-
-    if ($env:WKHTMLTOPDF_PATH -and (Test-Path $env:WKHTMLTOPDF_PATH)) {
-        $customDir = Split-Path -Parent $env:WKHTMLTOPDF_PATH
-        if ($customDir) {
-            $candidates += $customDir
-        }
+function Invoke-PackageTool([string[]]$Arguments) {
+    $packageToolsSource = Join-Path $scriptDir "PackageTools.cs"
+    if (-not (Test-Path $packageToolsSource)) {
+        $packageToolsSource = Join-Path $scriptDir "scripts\PackageTools.cs"
+    }
+    if (-not (Test-Path $packageToolsSource)) {
+        $packageToolsSource = Join-Path $sourceDir "scripts\PackageTools.cs"
+    }
+    if (-not (Test-Path $frameworkCompiler)) {
+        throw ".NET Framework 4.8 compiler was not found. Install .NET Framework 4.8 and retry."
+    }
+    if (-not (Test-Path $packageToolsSource)) {
+        throw "PackageTools.cs is missing; re-download the latest Centrix Print Agent source package."
     }
 
+    $toolExe = Join-Path $env:TEMP ("CentrixPrintAgentTools-" + [Guid]::NewGuid().ToString("N") + ".exe")
+    try {
+        & $frameworkCompiler /nologo /target:exe /out:$toolExe `
+            /reference:System.dll `
+            /reference:System.IO.Compression.dll `
+            $packageToolsSource
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $toolExe)) {
+            throw "Could not compile the .NET Framework packaging utility."
+        }
+
+        & $toolExe @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "The packaging utility failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Remove-Item -Path $toolExe -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Find-ExecutableOnPath([string]$FileName) {
+    foreach ($directory in $env:Path.Split(";")) {
+        if ($directory) {
+            $candidate = Join-Path $directory.Trim() $FileName
+            if (Test-Path $candidate) {
+                return $candidate
+            }
+        }
+    }
+    return $null
+}
+
+function Find-WkhtmlTopdfBin {
+    $candidates = @()
+    if ($env:WKHTMLTOPDF_PATH -and (Test-Path $env:WKHTMLTOPDF_PATH)) {
+        $candidates += Split-Path -Parent $env:WKHTMLTOPDF_PATH
+    }
     $candidates += @(
         (Join-Path $env:ProgramFiles "wkhtmltopdf\bin"),
         (Join-Path ${env:ProgramFiles(x86)} "wkhtmltopdf\bin")
     )
-
-    $pathDirs = $env:Path -split ';' | Where-Object { $_ -and (Test-Path $_) }
-    foreach ($dir in $pathDirs) {
-        $candidate = Join-Path $dir "wkhtmltopdf.exe"
-        if (Test-Path $candidate) {
-            return Split-Path -Parent $candidate
-        }
+    $pathExe = Find-ExecutableOnPath "wkhtmltopdf.exe"
+    if ($pathExe) {
+        $candidates += Split-Path -Parent $pathExe
     }
 
     foreach ($candidate in $candidates) {
-        $exePath = Join-Path $candidate "wkhtmltopdf.exe"
-        if (Test-Path $exePath) {
+        if ($candidate -and (Test-Path (Join-Path $candidate "wkhtmltopdf.exe"))) {
             return $candidate
         }
     }
-
     return $null
 }
 
-function Copy-WkhtmlTopdfBin {
-    param(
-        [string]$SourceBin,
-        [string]$TargetBinDir
-    )
-
-    New-Item -ItemType Directory -Force -Path $TargetBinDir | Out-Null
-    Copy-Item -Path (Join-Path $SourceBin "*") -Destination $TargetBinDir -Force
+function Copy-WkhtmlTopdf([string]$SourceBin, [string]$TargetBin) {
+    New-Item -ItemType Directory -Force -Path $TargetBin | Out-Null
+    Copy-Item -Path (Join-Path $SourceBin "*") -Destination $TargetBin -Force -Recurse
 }
 
-function Ensure-WkhtmlTopdf {
-    param([string]$TargetInstallDir)
+function Download-File([string]$Url, [string]$OutFile) {
+    Invoke-PackageTool @("download", $Url, $OutFile)
+}
 
-    $binDir = Join-Path $TargetInstallDir "tools\wkhtmltopdf\bin"
-    $wkhtmlExe = Join-Path $binDir "wkhtmltopdf.exe"
-    if (Test-Path $wkhtmlExe) {
-        Write-Host ("wkhtmltopdf already bundled: {0}" -f $wkhtmlExe)
-        return $wkhtmlExe
+function Ensure-WkhtmlTopdf([string]$TargetPublishDir) {
+    $targetBin = Join-Path $TargetPublishDir "tools\wkhtmltopdf\bin"
+    if (Test-Path (Join-Path $targetBin "wkhtmltopdf.exe")) {
+        return
     }
 
-    $systemBin = Find-WkhtmlTopdfSystemBin
+    $systemBin = Find-WkhtmlTopdfBin
+    if (-not $systemBin -and $DownloadWkhtml) {
+        $toolsDir = Join-Path $TargetPublishDir "tools"
+        New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+        $installerPath = Join-Path $toolsDir "wkhtmltox-installer.exe"
+        $url = "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe"
+        Write-Host "Downloading wkhtmltopdf for Windows service printing..."
+        Download-File $url $installerPath
+        $process = Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw ("wkhtmltopdf installer failed with exit code {0}." -f $process.ExitCode)
+        }
+        Start-Sleep -Seconds 2
+        $systemBin = Find-WkhtmlTopdfBin
+        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
+    }
+
     if ($systemBin) {
-        Write-Host ("Using existing wkhtmltopdf install: {0}" -f $systemBin)
-        Copy-WkhtmlTopdfBin -SourceBin $systemBin -TargetBinDir $binDir
-        if (Test-Path $wkhtmlExe) {
-            Write-Host ("wkhtmltopdf bundled for Print Agent: {0}" -f $wkhtmlExe)
-            return $wkhtmlExe
+        Copy-WkhtmlTopdf $systemBin $targetBin
+    }
+
+    if (-not (Test-Path (Join-Path $targetBin "wkhtmltopdf.exe"))) {
+        Write-Host "WARNING: wkhtmltopdf is unavailable. Install it manually and rerun this script." -ForegroundColor Yellow
+    }
+}
+
+function Find-SumatraExecutable {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "SumatraPDF\SumatraPDF.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "SumatraPDF\SumatraPDF.exe"),
+        (Join-Path $env:LOCALAPPDATA "SumatraPDF\SumatraPDF.exe")
+    )
+    $pathExe = Find-ExecutableOnPath "SumatraPDF.exe"
+    if ($pathExe) {
+        $candidates += $pathExe
+    }
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Ensure-SumatraPdf([string]$TargetPublishDir) {
+    $targetExe = Join-Path $TargetPublishDir "tools\SumatraPDF\SumatraPDF.exe"
+    if (Test-Path $targetExe) {
+        return $targetExe
+    }
+
+    $existing = Find-SumatraExecutable
+    if ($existing) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $targetExe) | Out-Null
+        Copy-Item -Path $existing -Destination $targetExe -Force
+        return $targetExe
+    }
+
+    if ($SkipSumatraDownload) {
+        Write-Host "WARNING: SumatraPDF is missing. Install it and rerun the installer." -ForegroundColor Yellow
+        return $null
+    }
+
+    $toolsDir = Join-Path $TargetPublishDir "tools"
+    $zipPath = Join-Path $toolsDir "SumatraPDF-3.5.2-64.zip"
+    $extractDir = Join-Path $toolsDir "SumatraPDF-extract"
+    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+    Write-Host "Downloading the Windows 7-compatible SumatraPDF release..."
+    Download-File "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip" $zipPath
+    if (Test-Path $extractDir) {
+        Remove-Item -Path $extractDir -Recurse -Force
+    }
+    Invoke-PackageTool @("extract", $zipPath, $extractDir)
+    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "SumatraPDF.exe" | Select-Object -First 1
+    if (-not $found) {
+        throw "SumatraPDF.exe was not found in the downloaded archive."
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $targetExe) | Out-Null
+    Copy-Item -Path $found.FullName -Destination $targetExe -Force
+    Remove-Item -Path $extractDir -Recurse -Force
+    Remove-Item -Path $zipPath -Force
+    return $targetExe
+}
+
+if (-not (Test-Path $exe)) {
+    Write-Host "Build output missing. Run scripts\publish.ps1 first." -ForegroundColor Red
+    exit 1
+}
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Run this script as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ("Installing Centrix Print Agent to {0}..." -f $InstallDir)
+Ensure-WkhtmlTopdf $publishDir
+Ensure-SumatraPdf $publishDir | Out-Null
+
+if (-not $readyPackage) {
+    foreach ($fileName in @("install-windows-service.ps1", "uninstall-windows-service.ps1", "PackageTools.cs")) {
+        $sourceFile = Join-Path $scriptDir $fileName
+        if (Test-Path $sourceFile) {
+            Copy-Item -Path $sourceFile -Destination (Join-Path $publishDir $fileName) -Force
         }
     }
 
-    if (-not $DownloadWkhtml) {
-        Write-Host ""
-        Write-Host "wkhtmltopdf was not bundled (download skipped)." -ForegroundColor Yellow
-        Write-Host "Re-run: .\install-windows-service.ps1   (downloads by default)" -ForegroundColor Yellow
-        Write-Host "Or install from:" -ForegroundColor Yellow
-        Write-Host "  https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe" -ForegroundColor Yellow
-        Write-Host ""
-        return $null
-    }
-
-    $toolsDir = Join-Path $TargetInstallDir "tools"
-    $installerPath = Join-Path $toolsDir "wkhtmltox-installer.exe"
-    $url = "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe"
-
-    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
-    Write-Host "Downloading wkhtmltopdf into Print Agent tools (one-time, required for fast silent printing)..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $installerPath -UseBasicParsing -TimeoutSec 600
-    } catch {
-        Write-Host ("WARNING: wkhtmltopdf download failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
-        Write-Host "Install manually, then re-run this installer." -ForegroundColor Yellow
-        return $null
-    }
-
-    Write-Host "Installing wkhtmltopdf silently..."
-    $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait -PassThru
-    if ($installProcess.ExitCode -ne 0) {
-        Write-Host ("WARNING: wkhtmltopdf installer exit code {0}." -f $installProcess.ExitCode) -ForegroundColor Yellow
-        return $null
-    }
-
-    Start-Sleep -Seconds 2
-    $sourceBin = Find-WkhtmlTopdfSystemBin
-    if (-not $sourceBin) {
-        Write-Host "WARNING: wkhtmltopdf installer finished but wkhtmltopdf.exe was not found." -ForegroundColor Yellow
-        return $null
-    }
-
-    Copy-WkhtmlTopdfBin -SourceBin $sourceBin -TargetBinDir $binDir
-    Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
-
-    if (-not (Test-Path $wkhtmlExe)) {
-        Write-Host "WARNING: Failed to copy wkhtmltopdf into the Print Agent folder." -ForegroundColor Yellow
-        return $null
-    }
-
-    Write-Host ("wkhtmltopdf installed: {0}" -f $wkhtmlExe)
-    return $wkhtmlExe
+    $installBat = @"
+@echo off
+setlocal EnableExtensions
+title Centrix Print Agent - Install
+cd /d "%~dp0"
+net session >nul 2>&1
+if errorlevel 1 (
+  echo Requesting Administrator permission...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-windows-service.ps1"
+set "EXITCODE=%ERRORLEVEL%"
+echo.
+if not "%EXITCODE%"=="0" (
+  echo FAILED with exit code %EXITCODE%.
+) else (
+  echo Done. Open http://127.0.0.1:9247/v1/health then Test connection in Centrix.
+)
+pause
+exit /b %EXITCODE%
+"@
+    Set-Content -Path (Join-Path $publishDir "INSTALL.bat") -Value $installBat -Encoding ASCII
+    $packagePath = Join-Path $publishDir "CentrixPrintAgent-win-x64.zip"
+    Invoke-PackageTool @("zip", $publishDir, $packagePath)
+    Write-Host ("Ready-to-install package: {0}" -f $packagePath) -ForegroundColor Green
 }
-
-Write-Host ("Installing Centrix Print Agent to {0} (Windows service)..." -f $InstallDir)
 
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
-
-Copy-Item -Path (Join-Path $publishDir "*") -Destination $InstallDir -Recurse -Force
+Get-ChildItem -Path $publishDir -Force | Where-Object {
+    $_.Name -ne "CentrixPrintAgent-win-x64.zip"
+} | Copy-Item -Destination $InstallDir -Recurse -Force
 $installedExe = Join-Path $InstallDir "Centrix.PrintAgent.exe"
 
-Ensure-WkhtmlTopdf -TargetInstallDir $InstallDir | Out-Null
-
-# Prefer Sumatra already shipped in publish\tools; otherwise copy/download into InstallDir.
-$sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipSumatraDownload
-if (-not $sumatraPath -or -not (Test-Path $sumatraPath)) {
-    Write-Host ""
-    Write-Host "ERROR: SumatraPDF is required and was not installed into:" -ForegroundColor Red
-    Write-Host "  $InstallDir\tools\SumatraPDF\SumatraPDF.exe" -ForegroundColor Red
-    Write-Host "Fix network/firewall, or place SumatraPDF.exe there, then re-run install." -ForegroundColor Red
-    exit 1
-}
-
-# Always use the bundled path under Program Files (service-safe).
-$bundledSumatra = Join-Path $InstallDir "tools\SumatraPDF\SumatraPDF.exe"
-if ((Test-Path $sumatraPath) -and ($sumatraPath -ne $bundledSumatra)) {
-    $sumatraPath = Copy-SumatraToBundle -SourceExe $sumatraPath -TargetInstallDir $InstallDir
-}
-$sumatraPath = $bundledSumatra
-
-$wkhtmlPath = Join-Path $InstallDir "tools\wkhtmltopdf\bin\wkhtmltopdf.exe"
-if (-not (Test-Path $wkhtmlPath)) {
-    $wkhtmlPath = Find-WkhtmlTopdfSystemBin
-    if ($wkhtmlPath) {
-        $wkhtmlPath = Join-Path $wkhtmlPath "wkhtmltopdf.exe"
-    } else {
-        $wkhtmlPath = $null
+& schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
+$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($existingService) {
+    if ($existingService.Status -eq "Running") {
+        & sc.exe stop $ServiceName | Out-Null
+        Start-Sleep -Seconds 2
     }
-}
-
-$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($existingTask) {
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    Write-Host "Removed legacy logon scheduled task."
-}
-
-Get-Process -Name "Centrix.PrintAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
-$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existing) {
-    if ($existing.Status -eq "Running") {
-        Stop-Service -Name $ServiceName -Force
-    }
-    sc.exe delete $ServiceName | Out-Null
+    & sc.exe delete $ServiceName | Out-Null
     Start-Sleep -Seconds 2
 }
 
-New-Service `
-    -Name $ServiceName `
-    -BinaryPathName "`"$installedExe`"" `
-    -DisplayName $DisplayName `
-    -Description "Centrix ERP silent receipt printing for POS tills (http://127.0.0.1:9247)" `
-    -StartupType Automatic | Out-Null
-
-Set-PrintAgentServiceEnvironment `
-    -ServiceName $ServiceName `
-    -InstallDir $InstallDir `
-    -SumatraPath $sumatraPath `
-    -WkhtmlPath $(if (Test-Path $wkhtmlPath) { $wkhtmlPath } else { $null })
-
-Start-Service -Name $ServiceName
-
-Write-Host ""
-Write-Host "Centrix Print Agent installed and started as a Windows service." -ForegroundColor Green
-Write-Host "Health check: http://127.0.0.1:9247/v1/health"
-Write-Host ("SumatraPDF: {0}" -f $sumatraPath) -ForegroundColor Green
-if ($wkhtmlPath -and (Test-Path $wkhtmlPath)) {
-    Write-Host ("wkhtmltopdf: {0}" -f $wkhtmlPath) -ForegroundColor Green
-} else {
-    Write-Host "wkhtmltopdf is missing - re-run this script with network access (download is on by default)." -ForegroundColor Yellow
+& netsh.exe http add urlacl url=http://127.0.0.1:9247/ user=S-1-1-0 | Out-Null
+if (-not [System.Diagnostics.EventLog]::SourceExists("CentrixPrintAgent")) {
+    New-EventLog -LogName Application -Source "CentrixPrintAgent"
 }
+
+& sc.exe create $ServiceName binPath= "`"$installedExe`"" start= auto DisplayName= "$DisplayName" | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows could not create the Centrix Print Agent service."
+}
+& sc.exe description $ServiceName "Centrix ERP local print service for POS tills" | Out-Null
+& sc.exe start $ServiceName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows could not start the service. Check the Application event log."
+}
+
+Start-Sleep -Seconds 3
+$service = Get-Service -Name $ServiceName
+if ($service.Status -ne "Running") {
+    throw "The print agent service did not remain running. Check the Application event log."
+}
+
 Write-Host ""
-Write-Host "USB receipt printers: if Test print fails while health is OK, open services.msc ->" -ForegroundColor Cyan
-Write-Host "  Centrix Print Agent -> Log On -> This account (the Windows user who sees the printer) -> Restart." -ForegroundColor Cyan
-Write-Host "In Centrix: Administration -> Local printing -> Centrix Print Agent -> Test connection -> Save."
+Write-Host "Centrix Print Agent installed and started." -ForegroundColor Green
+Write-Host "Health check: http://127.0.0.1:9247/v1/health"
+Write-Host "For USB printers, set the service Log On user to the Windows account that can access the printer."

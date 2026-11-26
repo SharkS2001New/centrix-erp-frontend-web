@@ -1,118 +1,132 @@
-using System.Threading.Channels;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading;
 
-namespace Centrix.PrintAgent.Services;
-
-/// <summary>
-/// Queues receipt print jobs so HTTP can return immediately while PDF/print runs in the background.
-/// </summary>
-public sealed class PrintJobQueue : IHostedService, IDisposable
+namespace Centrix.PrintAgent.Services
 {
-    private readonly HtmlPrintService _printer;
-    private readonly ILogger<PrintJobQueue>? _logger;
-    private readonly Channel<QueuedPrintJob> _channel;
-    private readonly CancellationTokenSource _cts = new();
-    private Task? _worker;
-
-    public PrintJobQueue(HtmlPrintService printer, ILogger<PrintJobQueue>? logger = null)
+    /// <summary>
+    /// Queues print jobs so HTTP can return immediately while PDF rendering runs in the background.
+    /// </summary>
+    public sealed class PrintJobQueue : IDisposable
     {
-        _printer = printer;
-        _logger = logger;
-        _channel = Channel.CreateUnbounded<QueuedPrintJob>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false,
-        });
-    }
+        private readonly HtmlPrintService _printer;
+        private readonly BlockingCollection<QueuedPrintJob> _jobs =
+            new BlockingCollection<QueuedPrintJob>();
+        private Thread _worker;
 
-    public string Enqueue(string html, string? printerName, int copies, string documentId, string? jobType)
-    {
-        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var jobId = $"{Sanitize(documentId)}-{stamp}";
-        var job = new QueuedPrintJob(jobId, html, printerName, Math.Max(1, copies), documentId, jobType);
-        if (!_channel.Writer.TryWrite(job))
+        public PrintJobQueue(HtmlPrintService printer)
         {
-            throw new InvalidOperationException("Print queue is unavailable.");
+            _printer = printer;
         }
 
-        return jobId;
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _worker = Task.Run(() => ProcessLoopAsync(_cts.Token), CancellationToken.None);
-        return Task.CompletedTask;
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        _channel.Writer.TryComplete();
-        _cts.Cancel();
-        if (_worker is not null)
+        public void Start()
         {
-            try
+            if (_worker != null)
             {
-                await _worker.WaitAsync(cancellationToken);
+                return;
             }
-            catch (OperationCanceledException)
-            {
-                // shutting down
-            }
+
+            _worker = new Thread(ProcessLoop);
+            _worker.IsBackground = true;
+            _worker.Name = "Centrix Print Agent queue";
+            _worker.Start();
         }
-    }
 
-    public void Dispose()
-    {
-        _cts.Cancel();
-        _cts.Dispose();
-    }
-
-    private async Task ProcessLoopAsync(CancellationToken cancellationToken)
-    {
-        try
+        public string Enqueue(string html, string printerName, int copies, string documentId, string jobType)
         {
-            await foreach (var job in _channel.Reader.ReadAllAsync(cancellationToken))
+            var stamp = DateTime.UtcNow.Ticks;
+            var jobId = String.Format("{0}-{1}", Sanitize(documentId), stamp);
+            var job = new QueuedPrintJob(jobId, html, printerName, Math.Max(1, copies), documentId, jobType);
+            _jobs.Add(job);
+            return jobId;
+        }
+
+        public void Stop()
+        {
+            if (!_jobs.IsAddingCompleted)
+            {
+                _jobs.CompleteAdding();
+            }
+
+            if (_worker != null && !_worker.Join(TimeSpan.FromSeconds(10)))
+            {
+                _worker.Interrupt();
+            }
+            _worker = null;
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _jobs.Dispose();
+        }
+
+        private void ProcessLoop()
+        {
+            foreach (var job in _jobs.GetConsumingEnumerable())
             {
                 try
                 {
-                    await _printer.PrintHtmlAsync(
-                        job.Html,
-                        job.PrinterName,
-                        job.Copies,
-                        job.DocumentId,
-                        job.JobType,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    break;
+                    _printer.PrintHtml(job.Html, job.PrinterName, job.Copies, job.DocumentId, job.JobType);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Background print failed for job {JobId}", job.JobId);
+                    try
+                    {
+                        EventLog.WriteEntry(
+                            "CentrixPrintAgent",
+                            String.Format("Background print failed for job {0}: {1}", job.JobId, ex),
+                            EventLogEntryType.Error);
+                    }
+                    catch
+                    {
+                        // The service may run before its event source is registered.
+                    }
                 }
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+        private static string Sanitize(string value)
         {
-            // normal shutdown
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var chars = (value ?? String.Empty).ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (Array.IndexOf(invalid, chars[i]) >= 0)
+                {
+                    chars[i] = '_';
+                }
+            }
+
+            var cleaned = new String(chars).Trim();
+            return String.IsNullOrWhiteSpace(cleaned) ? "job" : cleaned;
+        }
+
+        private sealed class QueuedPrintJob
+        {
+            public QueuedPrintJob(
+                string jobId,
+                string html,
+                string printerName,
+                int copies,
+                string documentId,
+                string jobType)
+            {
+                JobId = jobId;
+                Html = html;
+                PrinterName = printerName;
+                Copies = copies;
+                DocumentId = documentId;
+                JobType = jobType;
+            }
+
+            public string JobId { get; private set; }
+            public string Html { get; private set; }
+            public string PrinterName { get; private set; }
+            public int Copies { get; private set; }
+            public string DocumentId { get; private set; }
+            public string JobType { get; private set; }
         }
     }
-
-    private static string Sanitize(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray();
-        var cleaned = new string(chars).Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? "job" : cleaned;
-    }
-
-    private sealed record QueuedPrintJob(
-        string JobId,
-        string Html,
-        string? PrinterName,
-        int Copies,
-        string DocumentId,
-        string? JobType);
 }

@@ -9,14 +9,17 @@ Runs as a **Windows service** and renders with **wkhtmltopdf** (works in the bac
 
 Agent **0.3.3+** allows Chrome/Edge on the HTTPS Centrix UI to reach the loopback agent (Private Network Access). **0.3.2+** bundles Sumatra on publish/install and downloads **wkhtmltopdf** during install by default so a till works after one admin install.
 
+## Windows compatibility
+
+The .NET Framework 4.8 agent supports **Windows 7 SP1 x64 and later**. Windows 7 must have .NET Framework 4.8 installed. The build/install scripts run with Windows PowerShell 2.0, which is the version included with Windows 7.
+
 ## For till / office staff
 
 1. In Centrix open **Administration → Local printing**
 2. Select **Centrix Print Agent (Windows)**
-3. Prefer **Download Windows print service** (ready zip): unzip → right-click **`INSTALL.bat`** → Run as administrator
-4. Open `http://127.0.0.1:9247/v1/health`, then **Test connection → Save** in Centrix
-
-If only the source package is available, use **Download build package (source)** and follow **`BUILD.md`** / **`BUILD-AND-INSTALL.bat`** (.NET 8 SDK once).
+3. If **Download Windows print service** is available, unzip it and run **`INSTALL.bat`** as administrator.
+4. If only **Download build package (source)** is available, unzip it and run **`BUILD-AND-INSTALL.bat`** as administrator. This builds and installs the agent and creates `publish\CentrixPrintAgent-win-x64.zip` for distribution.
+5. Open `http://127.0.0.1:9247/v1/health`, then **Test connection → Save** in Centrix.
 
 USB receipt printers: if health is OK but nothing prints, set the Windows service **Log On** to the Windows user who can see that printer, then restart the service.
 
@@ -24,15 +27,13 @@ USB receipt printers: if health is OK but nothing prints, set the Windows servic
 
 Full step-by-step: **[BUILD.md](./BUILD.md)**
 
-Quick publish (Windows + .NET 8 SDK):
+Quick build/install (Windows 7 SP1 x64 or later + .NET Framework 4.8):
 
-```powershell
-cd print-agent-dotnet
-.\scripts\publish.ps1
-.\scripts\install-windows-service.ps1
+```text
+BUILD-AND-INSTALL.bat
 ```
 
-Host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` or `print-agent-dotnet/publish/` so tills can download the ready zip.
+The source build uses the C# compiler included with .NET Framework; no .NET SDK or PowerShell upgrade is needed.
 
 ## API
 

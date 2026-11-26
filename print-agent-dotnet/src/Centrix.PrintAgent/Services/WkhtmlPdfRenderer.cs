@@ -1,384 +1,364 @@
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Centrix.PrintAgent.Services;
-
-/// <summary>
-/// Renders HTML to PDF using wkhtmltopdf. Works from a Windows service (session 0).
-/// Thermal (80mm) and A4 document jobs use different page geometry — mixing them
-/// squeezes payslips / HR forms onto receipt paper (distorted printouts).
-/// </summary>
-internal static class WkhtmlPdfRenderer
+namespace Centrix.PrintAgent.Services
 {
-    private const int ThermalPaperWidthTenthsMm = 800;
-
-    public static string? FindExecutable()
-    {
-        var env = Environment.GetEnvironmentVariable("WKHTMLTOPDF_PATH");
-        if (!string.IsNullOrWhiteSpace(env) && File.Exists(env))
-        {
-            return env;
-        }
-
-        var baseDir = AppContext.BaseDirectory;
-        var candidates = new[]
-        {
-            Path.Combine(baseDir, "tools", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
-            Path.Combine(baseDir, "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        var pathExe = FindOnPath("wkhtmltopdf.exe");
-        return pathExe;
-    }
-
     /// <summary>
-    /// POS receipts default to thermal. HR / A4 documents must not use 80mm paper.
+    /// Renders HTML to PDF using wkhtmltopdf, which works from a Windows service.
+    /// Thermal and A4 jobs use different page geometry.
     /// </summary>
-    public static bool IsThermalJob(string? jobType, string? html = null)
+    internal static class WkhtmlPdfRenderer
     {
-        if (!string.IsNullOrWhiteSpace(jobType))
+        private const int ThermalPaperWidthTenthsMm = 800;
+
+        public static string FindExecutable()
         {
-            var t = jobType.Trim().ToLowerInvariant();
-            if (t is "receipt" or "thermal" or "kra" or "kra_receipt" or "pos_receipt" or "hospitality_check")
+            var env = Environment.GetEnvironmentVariable("WKHTMLTOPDF_PATH");
+            if (!String.IsNullOrWhiteSpace(env) && File.Exists(env))
             {
-                return true;
+                return env;
             }
 
-            if (t is "document" or "invoice" or "a4" or "payroll_receipt" or "cash_advance"
-                or "leave_application" or "lpo" or "picking_list" or "report")
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var candidates = new[]
             {
-                return false;
-            }
-        }
+                Path.Combine(baseDir, "tools", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
+                Path.Combine(baseDir, "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "wkhtmltopdf", "bin", "wkhtmltopdf.exe")
+            };
 
-        if (!string.IsNullOrEmpty(html))
-        {
-            if (html.Contains("centrix-print-thermal", StringComparison.OrdinalIgnoreCase))
+            foreach (var candidate in candidates)
             {
-                return true;
-            }
-
-            if (html.Contains("size: A4", StringComparison.OrdinalIgnoreCase)
-                || html.Contains("size:A4", StringComparison.OrdinalIgnoreCase)
-                || html.Contains("210mm 297mm", StringComparison.OrdinalIgnoreCase)
-                || html.Contains("297mm 210mm", StringComparison.OrdinalIgnoreCase)
-                || html.Contains("page: centrix-edge", StringComparison.OrdinalIgnoreCase)
-                || html.Contains("has-doc-print-edge-footer", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-        }
-
-        // Unknown jobs: keep thermal defaults so POS receipts stay safe.
-        return true;
-    }
-
-    /// <summary>
-    /// Centrix picks orientation in HTML (@page size mm). Landscape reports use
-    /// 297mm×210mm when columns won't fit portrait; forms use 210mm×297mm.
-    /// Returns null when the document does not declare a page box — do not guess.
-    /// </summary>
-    public static string? ResolveA4Orientation(string? html)
-    {
-        if (string.IsNullOrEmpty(html))
-        {
-            return null;
-        }
-
-        // Prefer landscape match first (width > height).
-        if (Regex.IsMatch(html, @"297mm\s+210mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            return "landscape";
-        }
-
-        if (Regex.IsMatch(html, @"210mm\s+297mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            return "portrait";
-        }
-
-        return null;
-    }
-
-    public static bool IsLandscapeDocument(string? html) =>
-        string.Equals(ResolveA4Orientation(html), "landscape", StringComparison.OrdinalIgnoreCase);
-
-    public static async Task<int> RenderAsync(
-        string htmlPath,
-        string pdfPath,
-        string? jobType,
-        CancellationToken cancellationToken)
-    {
-        var executable = FindExecutable()
-            ?? throw new InvalidOperationException(
-                "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
-
-        var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
-        if (!IsThermalJob(jobType, html))
-        {
-            var landscape = IsLandscapeDocument(html);
-            await RenderA4Async(executable, htmlPath, pdfPath, landscape, cancellationToken);
-            return landscape ? 210 : 297;
-        }
-
-        var pageHeightMm = EstimateThermalPageHeightMm(html);
-
-        await RenderAtHeightAsync(executable, htmlPath, pdfPath, pageHeightMm, cancellationToken);
-
-        // Undersized height splits footer/KRA onto page 2 → thermal prints a clipped QR slip.
-        if (CountPdfPages(pdfPath) > 1)
-        {
-            pageHeightMm = Math.Min(520, (int)Math.Ceiling(pageHeightMm * 1.45) + 24);
-            await RenderAtHeightAsync(executable, htmlPath, pdfPath, pageHeightMm, cancellationToken);
-        }
-
-        return pageHeightMm;
-    }
-
-    private static async Task RenderA4Async(
-        string executable,
-        string htmlPath,
-        string pdfPath,
-        bool landscape,
-        CancellationToken cancellationToken)
-    {
-        // Match Centrix @page box. Landscape reports need a wide viewport so columns are not squeezed.
-        var orientation = landscape ? "Landscape" : "Portrait";
-        var viewport = landscape ? "1123x794" : "794x1123";
-        var args = new[]
-        {
-            "--quiet",
-            "--enable-local-file-access",
-            "--encoding",
-            "utf-8",
-            "--page-size",
-            "A4",
-            "--orientation",
-            orientation,
-            "--margin-top",
-            "0mm",
-            "--margin-bottom",
-            "0mm",
-            "--margin-left",
-            "0mm",
-            "--margin-right",
-            "0mm",
-            "--disable-smart-shrinking",
-            "--print-media-type",
-            "--viewport-size",
-            viewport,
-            htmlPath,
-            pdfPath,
-        };
-
-        var (exitCode, stderr) = await RunProcessAsync(executable, args, cancellationToken);
-        if (exitCode != 0 || !File.Exists(pdfPath) || new FileInfo(pdfPath).Length == 0)
-        {
-            var detail = string.IsNullOrWhiteSpace(stderr)
-                ? $"wkhtmltopdf exited with code {exitCode}."
-                : stderr.Trim();
-            throw new InvalidOperationException(detail);
-        }
-    }
-
-    private static async Task RenderAtHeightAsync(
-        string executable,
-        string htmlPath,
-        string pdfPath,
-        int pageHeightMm,
-        CancellationToken cancellationToken)
-    {
-        var viewportHeightPx = Math.Max(120, (int)Math.Ceiling(pageHeightMm / 25.4 * 96.0));
-        var args = new[]
-        {
-            "--quiet",
-            "--enable-local-file-access",
-            "--encoding",
-            "utf-8",
-            "--page-width",
-            "80mm",
-            "--page-height",
-            $"{pageHeightMm}mm",
-            "--margin-top",
-            "0mm",
-            "--margin-bottom",
-            "0mm",
-            "--margin-left",
-            "0mm",
-            "--margin-right",
-            "0mm",
-            "--disable-smart-shrinking",
-            "--print-media-type",
-            "--viewport-size",
-            $"302x{viewportHeightPx}",
-            htmlPath,
-            pdfPath,
-        };
-
-        var (exitCode, stderr) = await RunProcessAsync(executable, args, cancellationToken);
-        if (exitCode != 0 || !File.Exists(pdfPath) || new FileInfo(pdfPath).Length == 0)
-        {
-            var detail = string.IsNullOrWhiteSpace(stderr)
-                ? $"wkhtmltopdf exited with code {exitCode}."
-                : stderr.Trim();
-            throw new InvalidOperationException(detail);
-        }
-    }
-
-    /// <summary>
-    /// Best-effort PDF page count (wkhtmltopdf multi-page = clipped thermal slip risk).
-    /// </summary>
-    internal static int CountPdfPages(string pdfPath)
-    {
-        try
-        {
-            var bytes = File.ReadAllBytes(pdfPath);
-            var text = System.Text.Encoding.Latin1.GetString(bytes);
-            // Count page objects; ignore /Pages catalogs.
-            return Regex.Matches(text, @"/Type\s*/Page(?!\s*s)", RegexOptions.CultureInvariant).Count;
-        }
-        catch
-        {
-            return 1;
-        }
-    }
-
-    public static string BuildSumatraPrintSettings(int pageHeightMm, bool thermal, string? a4Orientation = null)
-    {
-        if (!thermal)
-        {
-            // Follow Centrix @page orientation when declared; never blanket-force all A4.
-            if (string.Equals(a4Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
-            {
-                return "noscale,paper=A4,landscape";
-            }
-
-            if (string.Equals(a4Orientation, "portrait", StringComparison.OrdinalIgnoreCase))
-            {
-                return "noscale,paper=A4,portrait";
-            }
-
-            return "noscale,paper=A4";
-        }
-
-        return $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";
-    }
-
-    /// <summary>
-    /// Rough mm height for an 80mm thermal receipt.
-    /// Too tall (e.g. fixed 300mm) wastes blank feed; too short creates a 2nd PDF page
-    /// and thermal printers print that as a second slip (footer/QR alone).
-    /// </summary>
-    internal static int EstimateThermalPageHeightMm(string html)
-    {
-        if (string.IsNullOrWhiteSpace(html))
-        {
-            return 90;
-        }
-
-        static int Count(string source, string token) =>
-            Regex.Matches(source, token, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Count;
-
-        var trCount = Count(html, "<tr\\b");
-        var divCount = Count(html, "<div\\b");
-        var pCount = Count(html, "<p\\b");
-        var brCount = Count(html, "<br\\b");
-        var imgCount = Count(html, "<img\\b");
-        var preCount = Count(html, "<pre\\b");
-        var footerLineCount = Count(html, "footer-text")
-            + Count(html, "footer-powered-by")
-            + Count(html, "footer-line-divider");
-        var hasKraQr = html.Contains("kra-etims-block", StringComparison.OrdinalIgnoreCase)
-            || html.Contains("KRA eTIMS", StringComparison.OrdinalIgnoreCase)
-            || html.Contains("Scan to verify", StringComparison.OrdinalIgnoreCase);
-
-        // Match classic WinForms density: compact header + rows, room for footer + QR on ONE page.
-        // Header/meta ~24mm, rows ~6mm, misc blocks ~2mm, images/QR ~26mm each.
-        var mm = 24
-            + trCount * 6
-            + Math.Max(0, divCount - 10) * 2
-            + pCount * 3
-            + brCount * 3
-            + imgCount * 26
-            + preCount * 18
-            + footerLineCount * 4;
-
-        // Footer + KRA QR must never spill onto page 2 (that becomes a "clipped" QR slip).
-        // 100px QR ≈ 26mm; caption + CU invoice + dashed rule + tear-off ≈ 20mm more.
-        // imgCount already includes the QR <img>, so reserve the caption/tear-off band here.
-        if (hasKraQr)
-        {
-            mm += 28;
-        }
-
-        // Safety margin: wkhtmltopdf line-box height often exceeds our tag heuristic.
-        mm = (int)Math.Ceiling(mm * 1.14) + 12;
-        // Cap high enough for long tickets + eTIMS QR on one continuous slip.
-        return Math.Clamp(mm, 80, 480);
-    }
-
-    private static string? FindOnPath(string fileName)
-    {
-        var pathValue = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(pathValue))
-        {
-            return null;
-        }
-
-        foreach (var dir in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            try
-            {
-                var candidate = Path.Combine(dir.Trim(), fileName);
                 if (File.Exists(candidate))
                 {
                     return candidate;
                 }
             }
-            catch
+
+            return FindOnPath("wkhtmltopdf.exe");
+        }
+
+        public static bool IsThermalJob(string jobType, string html)
+        {
+            if (!String.IsNullOrWhiteSpace(jobType))
             {
-                // ignore invalid PATH entries
+                var type = jobType.Trim().ToLowerInvariant();
+                if (new[] { "receipt", "thermal", "kra", "kra_receipt", "pos_receipt", "hospitality_check" }
+                    .Contains(type))
+                {
+                    return true;
+                }
+
+                if (new[] { "document", "invoice", "a4", "payroll_receipt", "cash_advance",
+                    "leave_application", "lpo", "picking_list", "report" }.Contains(type))
+                {
+                    return false;
+                }
+            }
+
+            if (!String.IsNullOrEmpty(html))
+            {
+                if (ContainsIgnoreCase(html, "centrix-print-thermal"))
+                {
+                    return true;
+                }
+
+                if (ContainsIgnoreCase(html, "size: A4")
+                    || ContainsIgnoreCase(html, "size:A4")
+                    || ContainsIgnoreCase(html, "210mm 297mm")
+                    || ContainsIgnoreCase(html, "297mm 210mm")
+                    || ContainsIgnoreCase(html, "page: centrix-edge")
+                    || ContainsIgnoreCase(html, "has-doc-print-edge-footer"))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public static string ResolveA4Orientation(string html)
+        {
+            if (String.IsNullOrEmpty(html))
+            {
+                return null;
+            }
+
+            if (Regex.IsMatch(html, @"297mm\s+210mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                return "landscape";
+            }
+
+            if (Regex.IsMatch(html, @"210mm\s+297mm", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                return "portrait";
+            }
+
+            return null;
+        }
+
+        public static bool IsLandscapeDocument(string html)
+        {
+            return String.Equals(ResolveA4Orientation(html), "landscape", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static int Render(string htmlPath, string pdfPath, string jobType)
+        {
+            var executable = FindExecutable();
+            if (executable == null)
+            {
+                throw new InvalidOperationException(
+                    "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
+            }
+
+            var html = File.ReadAllText(htmlPath);
+            if (!IsThermalJob(jobType, html))
+            {
+                var landscape = IsLandscapeDocument(html);
+                RenderA4(executable, htmlPath, pdfPath, landscape);
+                return landscape ? 210 : 297;
+            }
+
+            var pageHeightMm = EstimateThermalPageHeightMm(html);
+            RenderAtHeight(executable, htmlPath, pdfPath, pageHeightMm);
+            if (CountPdfPages(pdfPath) > 1)
+            {
+                pageHeightMm = Math.Min(520, (int)Math.Ceiling(pageHeightMm * 1.45) + 24);
+                RenderAtHeight(executable, htmlPath, pdfPath, pageHeightMm);
+            }
+
+            return pageHeightMm;
+        }
+
+        private static void RenderA4(string executable, string htmlPath, string pdfPath, bool landscape)
+        {
+            var orientation = landscape ? "Landscape" : "Portrait";
+            var viewport = landscape ? "1123x794" : "794x1123";
+            var args = new[]
+            {
+                "--quiet", "--enable-local-file-access", "--encoding", "utf-8",
+                "--page-size", "A4", "--orientation", orientation,
+                "--margin-top", "0mm", "--margin-bottom", "0mm",
+                "--margin-left", "0mm", "--margin-right", "0mm",
+                "--disable-smart-shrinking", "--print-media-type", "--viewport-size", viewport,
+                htmlPath, pdfPath
+            };
+
+            EnsureRendered(executable, args, pdfPath);
+        }
+
+        private static void RenderAtHeight(string executable, string htmlPath, string pdfPath, int pageHeightMm)
+        {
+            var viewportHeightPx = Math.Max(120, (int)Math.Ceiling(pageHeightMm / 25.4 * 96.0));
+            var args = new[]
+            {
+                "--quiet", "--enable-local-file-access", "--encoding", "utf-8",
+                "--page-width", "80mm", "--page-height", pageHeightMm + "mm",
+                "--margin-top", "0mm", "--margin-bottom", "0mm",
+                "--margin-left", "0mm", "--margin-right", "0mm",
+                "--disable-smart-shrinking", "--print-media-type", "--viewport-size",
+                "302x" + viewportHeightPx, htmlPath, pdfPath
+            };
+
+            EnsureRendered(executable, args, pdfPath);
+        }
+
+        private static void EnsureRendered(string executable, string[] args, string pdfPath)
+        {
+            var result = RunProcess(executable, args);
+            if (result.ExitCode != 0 || !File.Exists(pdfPath) || new FileInfo(pdfPath).Length == 0)
+            {
+                var detail = String.IsNullOrWhiteSpace(result.StdErr)
+                    ? "wkhtmltopdf exited with code " + result.ExitCode + "."
+                    : result.StdErr.Trim();
+                throw new InvalidOperationException(detail);
             }
         }
 
-        return null;
-    }
-
-    private static async Task<(int ExitCode, string StdErr)> RunProcessAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
-    {
-        var psi = new ProcessStartInfo
+        internal static int CountPdfPages(string pdfPath)
         {
-            FileName = fileName,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetDirectoryName(fileName) ?? AppContext.BaseDirectory,
-        };
-
-        foreach (var argument in arguments)
-        {
-            psi.ArgumentList.Add(argument);
+            try
+            {
+                var bytes = File.ReadAllBytes(pdfPath);
+                var text = Encoding.GetEncoding(28591).GetString(bytes);
+                return Regex.Matches(text, @"/Type\s*/Page(?!\s*s)", RegexOptions.CultureInvariant).Count;
+            }
+            catch
+            {
+                return 1;
+            }
         }
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Could not start wkhtmltopdf: {fileName}");
+        public static string BuildSumatraPrintSettings(int pageHeightMm, bool thermal, string a4Orientation)
+        {
+            if (!thermal)
+            {
+                if (String.Equals(a4Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "noscale,paper=A4,landscape";
+                }
+                if (String.Equals(a4Orientation, "portrait", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "noscale,paper=A4,portrait";
+                }
+                return "noscale,paper=A4";
+            }
 
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        var stderr = await stderrTask;
-        return (process.ExitCode, stderr);
+            return String.Format(
+                "noscale,paper={0}x{1}",
+                ThermalPaperWidthTenthsMm,
+                Math.Max(700, pageHeightMm * 10));
+        }
+
+        internal static int EstimateThermalPageHeightMm(string html)
+        {
+            if (String.IsNullOrWhiteSpace(html))
+            {
+                return 90;
+            }
+
+            var trCount = Count(html, "<tr\\b");
+            var divCount = Count(html, "<div\\b");
+            var pCount = Count(html, "<p\\b");
+            var brCount = Count(html, "<br\\b");
+            var imgCount = Count(html, "<img\\b");
+            var preCount = Count(html, "<pre\\b");
+            var footerLineCount = Count(html, "footer-text")
+                + Count(html, "footer-powered-by")
+                + Count(html, "footer-line-divider");
+            var hasKraQr = ContainsIgnoreCase(html, "kra-etims-block")
+                || ContainsIgnoreCase(html, "KRA eTIMS")
+                || ContainsIgnoreCase(html, "Scan to verify");
+
+            var mm = 24
+                + trCount * 6
+                + Math.Max(0, divCount - 10) * 2
+                + pCount * 3
+                + brCount * 3
+                + imgCount * 26
+                + preCount * 18
+                + footerLineCount * 4;
+
+            if (hasKraQr)
+            {
+                mm += 28;
+            }
+
+            mm = (int)Math.Ceiling(mm * 1.14) + 12;
+            return Math.Max(80, Math.Min(480, mm));
+        }
+
+        private static int Count(string source, string token)
+        {
+            return Regex.Matches(source, token, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Count;
+        }
+
+        private static bool ContainsIgnoreCase(string source, string value)
+        {
+            return source.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string FindOnPath(string fileName)
+        {
+            var pathValue = Environment.GetEnvironmentVariable("PATH");
+            if (String.IsNullOrWhiteSpace(pathValue))
+            {
+                return null;
+            }
+
+            foreach (var dir in pathValue.Split(new[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                try
+                {
+                    var candidate = Path.Combine(dir.Trim(), fileName);
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+                catch
+                {
+                    // Ignore invalid PATH entries.
+                }
+            }
+
+            return null;
+        }
+
+        private static ProcessResult RunProcess(string fileName, string[] arguments)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetDirectoryName(fileName) ?? AppDomain.CurrentDomain.BaseDirectory,
+                Arguments = String.Join(" ", arguments.Select(QuoteArgument).ToArray())
+            };
+
+            using (var process = Process.Start(psi))
+            {
+                if (process == null)
+                {
+                    throw new InvalidOperationException("Could not start wkhtmltopdf: " + fileName);
+                }
+
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                process.WaitForExit();
+                return new ProcessResult(process.ExitCode, stderrTask.Result);
+            }
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            if (value.Length > 0 && value.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"' }) < 0)
+            {
+                return value;
+            }
+
+            var result = new StringBuilder("\"");
+            var backslashes = 0;
+            foreach (var ch in value)
+            {
+                if (ch == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+                if (ch == '"')
+                {
+                    result.Append('\\', backslashes * 2 + 1);
+                    result.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+
+                result.Append('\\', backslashes);
+                result.Append(ch);
+                backslashes = 0;
+            }
+
+            result.Append('\\', backslashes * 2);
+            result.Append('"');
+            return result.ToString();
+        }
+
+        private sealed class ProcessResult
+        {
+            public ProcessResult(int exitCode, string stdErr)
+            {
+                ExitCode = exitCode;
+                StdErr = stdErr;
+            }
+
+            public int ExitCode { get; private set; }
+            public string StdErr { get; private set; }
+        }
     }
 }

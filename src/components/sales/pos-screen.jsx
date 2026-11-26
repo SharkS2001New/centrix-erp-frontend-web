@@ -14113,7 +14113,9 @@ export function PosScreen({ standalone = false }) {
     ).trim();
     if (
       posSalesConfig.enableCheckoutCustomerName &&
-      (!mpesaCustomerName || !isValidCustomerPhone(mpesaCustomerPhone))
+      (!mpesaCustomerName ||
+        (posSalesConfig.enableCheckoutCustomerPhone &&
+          !isValidCustomerPhone(mpesaCustomerPhone)))
     ) {
       const currentCart = cartRef.current ?? cart;
       if (currentCart) {
@@ -19621,6 +19623,7 @@ export function PosScreen({ standalone = false }) {
         error={saveOrderError}
         onSave={handleSaveOrder}
         enableHeldAmountPaid={Boolean(posSalesConfig.enableHeldOrderAmountPaid)}
+        requireCustomerPhone={Boolean(posSalesConfig.enableCheckoutCustomerPhone)}
         saveStatusLabel={resolveSaveOrderStatusLabel({
           channel,
           workflow: channelWorkflow,

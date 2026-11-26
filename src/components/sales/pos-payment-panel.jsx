@@ -600,8 +600,11 @@ export function PosPaymentPanel({
   function needsCustomerNameStep() {
     if (!cfg.enableCheckoutCustomerName) return false;
     if (!hasCreditCustomer && !linkedReceiptCustomer) return true;
-    return !isValidCustomerPhone(
-      customerPhoneFromRecord(creditCustomer ?? linkedReceiptCustomer),
+    return (
+      cfg.enableCheckoutCustomerPhone &&
+      !isValidCustomerPhone(
+        customerPhoneFromRecord(creditCustomer ?? linkedReceiptCustomer),
+      )
     );
   }
 
@@ -1647,7 +1650,10 @@ export function PosPaymentPanel({
         setLocalError("Search and select an existing customer.");
         return;
       }
-      if (!isValidCustomerPhone(walkInCustomerPhone)) {
+      if (
+        cfg.enableCheckoutCustomerPhone &&
+        !isValidCustomerPhone(walkInCustomerPhone)
+      ) {
         setLocalError("Enter a valid customer phone number.");
         return;
       }
@@ -1659,7 +1665,10 @@ export function PosPaymentPanel({
       setLocalError("Enter the walk-in customer name.");
       return;
     }
-    if (!isValidCustomerPhone(walkInCustomerPhone)) {
+    if (
+      cfg.enableCheckoutCustomerPhone &&
+      !isValidCustomerPhone(walkInCustomerPhone)
+    ) {
       setLocalError("Enter a valid customer phone number.");
       return;
     }
@@ -1970,7 +1979,10 @@ export function PosPaymentPanel({
 
         {customerNameMode === "walkin" ? (
           <>
-            <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
+            <p className="mb-3 text-sm">
+              Enter the walk-in customer name
+              {cfg.enableCheckoutCustomerPhone ? " and phone number" : ""} for this order.
+            </p>
             <PosField label="Customer name">
               <input
                 ref={walkInNameRef}
@@ -1990,27 +2002,29 @@ export function PosPaymentPanel({
                 }}
               />
             </PosField>
-            <PosField label="Customer phone number">
-              <input
-                ref={customerPhoneRef}
-                type="tel"
-                inputMode="tel"
-                className={inputCls}
-                value={walkInCustomerPhone}
-                onChange={(e) => {
-                  setWalkInCustomerPhone(e.target.value);
-                  setLocalError(null);
-                }}
-                placeholder="Phone number"
-                autoComplete="tel"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleCustomerNameContinue();
-                  }
-                }}
-              />
-            </PosField>
+            {cfg.enableCheckoutCustomerPhone ? (
+              <PosField label="Customer phone number">
+                <input
+                  ref={customerPhoneRef}
+                  type="tel"
+                  inputMode="tel"
+                  className={inputCls}
+                  value={walkInCustomerPhone}
+                  onChange={(e) => {
+                    setWalkInCustomerPhone(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder="Phone number"
+                  autoComplete="tel"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleCustomerNameContinue();
+                    }
+                  }}
+                />
+              </PosField>
+            ) : null}
           </>
         ) : (
           <>
@@ -2037,27 +2051,29 @@ export function PosPaymentPanel({
                 inputClassName={inputCls}
               />
             </PosField>
-            <PosField label="Customer phone number">
-              <input
-                ref={customerPhoneRef}
-                type="tel"
-                inputMode="tel"
-                className={inputCls}
-                value={walkInCustomerPhone}
-                onChange={(e) => {
-                  setWalkInCustomerPhone(e.target.value);
-                  setLocalError(null);
-                }}
-                placeholder="Phone number"
-                autoComplete="tel"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleCustomerNameContinue();
-                  }
-                }}
-              />
-            </PosField>
+            {cfg.enableCheckoutCustomerPhone ? (
+              <PosField label="Customer phone number">
+                <input
+                  ref={customerPhoneRef}
+                  type="tel"
+                  inputMode="tel"
+                  className={inputCls}
+                  value={walkInCustomerPhone}
+                  onChange={(e) => {
+                    setWalkInCustomerPhone(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder="Phone number"
+                  autoComplete="tel"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleCustomerNameContinue();
+                    }
+                  }}
+                />
+              </PosField>
+            ) : null}
             {selectedReceiptCustomer ? (
               <p className="theme-text-muted mt-2 text-[11px]">
                 KRA PIN:{" "}

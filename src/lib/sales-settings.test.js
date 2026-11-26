@@ -43,7 +43,7 @@ describe("organization shop debtors setting", () => {
   });
 });
 
-describe("customer-name checkout setting", () => {
+describe("customer details checkout settings", () => {
   it("preserves the setting for Backoffice and mobile-only sales organizations", () => {
     const form = salesOrganizationFormFromApi({
       sales: { enable_checkout_customer_name: true },
@@ -77,6 +77,46 @@ describe("customer-name checkout setting", () => {
       },
     );
     expect(collectPaymentConfig.enableCheckoutCustomerName).toBe(false);
+  });
+
+  it("only enables the customer phone request when the name request is enabled", () => {
+    const invalidForm = salesOrganizationFormFromApi({
+      sales: {
+        enable_checkout_customer_name: false,
+        enable_checkout_customer_phone: true,
+      },
+    });
+    expect(invalidForm.enable_checkout_customer_phone).toBe(false);
+    expect(
+      salesOrganizationPayloadFromForm({
+        ...invalidForm,
+        enable_checkout_customer_phone: true,
+      }).enable_checkout_customer_phone,
+    ).toBe(false);
+
+    const config = getCheckoutPaymentConfig(
+      {
+        sales: {
+          enable_checkout_customer_name: true,
+          enable_checkout_customer_phone: true,
+        },
+      },
+      { checkoutContext: "pos" },
+    );
+    expect(config.enableCheckoutCustomerName).toBe(true);
+    expect(config.enableCheckoutCustomerPhone).toBe(true);
+
+    const nameOnlyConfig = getCheckoutPaymentConfig(
+      {
+        sales: {
+          enable_checkout_customer_name: true,
+          enable_checkout_customer_phone: false,
+        },
+      },
+      { checkoutContext: "pos" },
+    );
+    expect(nameOnlyConfig.enableCheckoutCustomerName).toBe(true);
+    expect(nameOnlyConfig.enableCheckoutCustomerPhone).toBe(false);
   });
 });
 

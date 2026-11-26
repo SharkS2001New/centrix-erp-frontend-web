@@ -45,7 +45,7 @@ function CustomerPhoneField({ value, onChange, disabled, inputRef = null }) {
  * (links customer_num + KRA PIN onto the sale for receipt / eTIMS).
  *
  * When `enableHeldAmountPaid` is on (hold mode), shows Amount Paid + payment method
- * (default Cash; shortcuts C/M/E/K). Enter on phone (or amount) holds the order.
+ * (default Cash; shortcuts C/M/E/K).
  */
 export function PosSaveOrderDialog({
   open,
@@ -61,6 +61,7 @@ export function PosSaveOrderDialog({
   workflowPipeline = [],
   embedded = false,
   enableHeldAmountPaid = false,
+  requireCustomerPhone = false,
 }) {
   const isHold = mode === "hold";
   const capturePaid = isHold && Boolean(enableHeldAmountPaid);
@@ -211,7 +212,7 @@ export function PosSaveOrderDialog({
           setLocalError("Enter the walk-in customer's name.");
           return false;
         }
-        if (!isValidCustomerPhone(customerPhone)) {
+        if (requireCustomerPhone && !isValidCustomerPhone(customerPhone)) {
           setLocalError("Enter a valid customer phone number.");
           return false;
         }
@@ -247,7 +248,7 @@ export function PosSaveOrderDialog({
         setLocalError("Search and select a valid customer.");
         return false;
       }
-      if (!isValidCustomerPhone(customerPhone)) {
+      if (requireCustomerPhone && !isValidCustomerPhone(customerPhone)) {
         setLocalError("Enter a valid customer phone number.");
         return false;
       }
@@ -281,6 +282,7 @@ export function PosSaveOrderDialog({
       customerNum,
       isHold,
       linkedCustomer,
+      requireCustomerPhone,
       onSave,
     ],
   );
@@ -302,7 +304,7 @@ export function PosSaveOrderDialog({
         if (target.tagName === "TEXTAREA") return;
       }
 
-      if (target === walkInNameRef.current) {
+      if (target === walkInNameRef.current && requireCustomerPhone) {
         e.preventDefault();
         e.stopPropagation();
         customerPhoneRef.current?.focus();
@@ -335,7 +337,7 @@ export function PosSaveOrderDialog({
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [open, saving, onClose, isHold, capturePaid, handleSave]);
+  }, [open, saving, onClose, isHold, capturePaid, requireCustomerPhone, handleSave]);
 
   if (!open || !mounted) return null;
 
@@ -425,15 +427,17 @@ export function PosSaveOrderDialog({
                   disabled={saving}
                 />
               </label>
-              <CustomerPhoneField
-                inputRef={customerPhoneRef}
-                value={customerPhone}
-                onChange={(value) => {
-                  setCustomerPhone(value);
-                  setLocalError(null);
-                }}
-                disabled={saving}
-              />
+              {requireCustomerPhone ? (
+                <CustomerPhoneField
+                  inputRef={customerPhoneRef}
+                  value={customerPhone}
+                  onChange={(value) => {
+                    setCustomerPhone(value);
+                    setLocalError(null);
+                  }}
+                  disabled={saving}
+                />
+              ) : null}
             </div>
           ) : (
             <div className="space-y-2">
@@ -481,14 +485,16 @@ export function PosSaveOrderDialog({
                   Use for registered customers when the receipt or KRA eTIMS must carry their PIN.
                 </p>
               )}
-              <CustomerPhoneField
-                value={customerPhone}
-                onChange={(value) => {
-                  setCustomerPhone(value);
-                  setLocalError(null);
-                }}
-                disabled={saving}
-              />
+              {requireCustomerPhone ? (
+                <CustomerPhoneField
+                  value={customerPhone}
+                  onChange={(value) => {
+                    setCustomerPhone(value);
+                    setLocalError(null);
+                  }}
+                  disabled={saving}
+                />
+              ) : null}
             </div>
           )}
 
@@ -514,7 +520,7 @@ export function PosSaveOrderDialog({
                   disabled={saving}
                 />
                 <span className="theme-text-muted mt-1 block text-[10px] leading-relaxed">
-                  Optional · Enter on phone holds now (0 if blank) · Tab here for a deposit
+                  Optional · Enter on {requireCustomerPhone ? "phone" : "name"} holds now (0 if blank) · Tab here for a deposit
                 </span>
               </label>
               <label className="block">
