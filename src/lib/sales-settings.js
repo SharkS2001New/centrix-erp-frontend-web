@@ -1653,6 +1653,16 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     Boolean(sales.enable_retail_pricing) && Boolean(sales.retail_shop_wholesale_store_stock);
   const enableRetailPricing = Boolean(sales.enable_retail_pricing);
   const standalone = Boolean(options.standalone);
+  const showCheckoutOnCreate = standalone
+    ? resolveShowPosCheckoutOnCreate(moduleSettings)
+    : resolveShowBackofficeCheckoutOnCreate(moduleSettings);
+  const modules = options.capabilities?.modules;
+  const allowCreditCheckout =
+    modules && typeof modules === "object"
+      ? Boolean(modules.sales) &&
+        showCheckoutOnCreate &&
+        (!standalone || Boolean(modules["sales.pos"]))
+      : undefined;
 
   return {
     sales,
@@ -1672,9 +1682,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
           ? "Store stock"
           : null,
     perLineStockRouting: retailShopWholesaleStoreStock,
-    showCheckoutOnCreate: standalone
-      ? resolveShowPosCheckoutOnCreate(moduleSettings)
-      : resolveShowBackofficeCheckoutOnCreate(moduleSettings),
+    showCheckoutOnCreate,
     enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
     enableCheckoutCustomerPhone:
       Boolean(sales.enable_checkout_customer_name) &&
@@ -1728,6 +1736,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     payment: getCheckoutPaymentConfig(moduleSettings, {
       checkoutContext: "pos",
       capabilities: options.capabilities ?? null,
+      allowCreditCheckout,
     }),
   };
 }
@@ -1740,6 +1749,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
   const checkoutContext = options.checkoutContext ?? "pos";
+  const allowCreditCheckout = options.allowCreditCheckout ?? hasPosSales;
   const useBankSelect = Boolean(sales.enable_bank_select);
   const equityEnabled = equityPlatformOn && Boolean(sales.enable_equity_bank);
   const individualBanks = !useBankSelect && (
@@ -1773,7 +1783,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       checkoutContext === "order_payment" && Boolean(sales.enable_payment_date),
     enableCreditPayment:
       checkoutContext === "pos" &&
-      hasPosSales &&
+      allowCreditCheckout &&
       hasCustomers &&
       Boolean(sales.enable_credit_payment),
     // External POS / Create order (checkoutContext "pos"): never allow partial tenders.

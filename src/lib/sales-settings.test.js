@@ -64,20 +64,26 @@ describe("customer details checkout settings", () => {
         enable_credit_payment: true,
       },
     });
+    const moduleSettings = {
+      sales: {
+        show_checkout_on_create_order: true,
+        show_pos_checkout_on_create: false,
+        enable_shop_debtors: true,
+        enable_credit_payment: true,
+      },
+    };
     const capabilities = {
       modules: { sales: true, "sales.pos": false, customers_suppliers: true },
-      module_settings: {
-        sales: {
-          show_checkout_on_create_order: true,
-          show_pos_checkout_on_create: false,
-        },
-      },
+      module_settings: moduleSettings,
     };
 
     expect(sanitizeSalesOrganizationFormForModules(form, capabilities).enable_credit_payment)
       .toBe(true);
     expect(salesOrganizationPayloadFromForm(form, capabilities).enable_credit_payment)
       .toBe(true);
+    expect(
+      getPosSalesConfig(moduleSettings, { capabilities }).payment.enableCreditPayment,
+    ).toBe(true);
   });
 
   it("clears credit checkout when neither direct checkout flow is available", () => {
