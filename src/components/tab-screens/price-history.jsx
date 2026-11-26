@@ -18,10 +18,11 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { PRICE_HISTORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { formatOrgCurrency } from "@/lib/format";
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(value);
 }
 
 function formatDateTime(value) {

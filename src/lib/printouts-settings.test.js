@@ -48,7 +48,7 @@ describe("resolvePrintoutSections", () => {
 
   it("keeps the admin tonnage switch in the default printout form and payload", () => {
     const form = printoutsFormFromApis({});
-    expect(form.show_load_tonnage).toBe(true);
+    expect(form.show_load_tonnage).toBe(false);
 
     const payload = printoutsDistributionPayloadFromForm({ show_load_tonnage: false });
     expect(payload.show_load_tonnage).toBe(false);

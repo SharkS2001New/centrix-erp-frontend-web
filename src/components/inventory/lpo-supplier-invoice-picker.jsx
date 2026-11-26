@@ -2,13 +2,10 @@
 
 import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
 import { ProtectedFileLink } from "@/components/media/protected-file-preview";
+import { formatOrgCurrency } from "@/lib/format";
 
 function formatKes(amount) {
-  return Number(amount).toLocaleString("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 2,
-  });
+  return formatOrgCurrency(amount);
 }
 
 function hasInvoiceAmount(inv) {

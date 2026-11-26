@@ -8,6 +8,7 @@ import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { FISCAL_PERIOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { formatOrgNumber } from "@/lib/format";
 
 export function AccountingFiscalPeriodsScreen() {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -69,7 +70,7 @@ export function AccountingFiscalPeriodsScreen() {
         body: { year: closeYear },
       });
       notifySuccess(
-        `Year ${closeYear} closed. Net income: ${Number(res.net_income ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+        `Year ${closeYear} closed. Net income: ${formatOrgNumber(res.net_income ?? 0)}`,
       );
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Year-end close failed");

@@ -27,6 +27,7 @@ import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment
 import { useConfirm } from "@/lib/use-confirm";
 import { addDaysToCalendarDate, todayCalendarDate } from "@/lib/datetime";
 import { occupancySourceLabel } from "@/lib/hospitality-room-numbers";
+import { formatOrgNumber } from "@/lib/format";
 
 function defaultWalkInDepartureDate() {
   return addDaysToCalendarDate(todayCalendarDate(), 1);
@@ -309,7 +310,7 @@ function FrontDeskManager() {
       const nextBal = Number(folio?.balance ?? 0);
       if (Math.abs(nextBal) > 0.009) {
         setCheckoutPayRow({ ...checkoutPayRow, balance: nextBal });
-        notifySuccess(`Payment recorded — balance ${nextBal.toFixed(2)} remaining`);
+        notifySuccess(`Payment recorded — balance ${formatOrgNumber(nextBal)} remaining`);
         await load();
         return;
       }
@@ -328,7 +329,7 @@ function FrontDeskManager() {
     const bal = Number(checkoutPayRow.balance ?? 0);
     const ok = await confirm({
       title: "Check out with balance",
-      message: `Balance is ${bal.toFixed(2)}. Check out without collecting the rest?`,
+      message: `Balance is ${formatOrgNumber(bal)}. Check out without collecting the rest?`,
       confirmLabel: "Check out with balance",
       destructive: true,
     });
@@ -456,7 +457,7 @@ function FrontDeskManager() {
                   <td className="px-3 py-2">{row.room_number || "—"}</td>
                   {foliosEnabled ? (
                     <td className="px-3 py-2 text-right tabular-nums">
-                      {Number(row.balance ?? 0).toFixed(2)}
+                      {formatOrgNumber(row.balance ?? 0)}
                     </td>
                   ) : null}
                   <td className="px-3 py-2">
@@ -538,7 +539,7 @@ function FrontDeskManager() {
                     <td className="px-3 py-2 text-xs">{occupancySourceLabel(row.occupancy_source)}</td>
                     {foliosEnabled ? (
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {Number(row.balance).toFixed(2)}
+                        {formatOrgNumber(row.balance)}
                       </td>
                     ) : null}
                     <td className="px-3 py-2">

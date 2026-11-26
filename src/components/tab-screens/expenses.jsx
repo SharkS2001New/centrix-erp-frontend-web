@@ -36,6 +36,7 @@ import { fetchActiveUsersCached } from "@/lib/reference-data-cache";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
 import { listExpensePaymentMethods, pickPreferredPaymentMethodId } from "@/lib/org-payment-methods";
+import { formatOrgCurrency, formatOrgCurrencyCompact } from "@/lib/format";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -58,17 +59,11 @@ const EMPTY_EXPENSE_FORM = {
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return formatOrgCurrency(value);
 }
 
 function formatKesCompact(value) {
-  const n = Number(value ?? 0);
-  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
-  return formatKes(n);
+  return formatOrgCurrencyCompact(value);
 }
 
 function isSameDay(a, b) {

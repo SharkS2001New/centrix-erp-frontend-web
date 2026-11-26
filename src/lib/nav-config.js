@@ -1,4 +1,5 @@
 import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
+import { ITEMS_CURRENTLY_IN_STOCK_LABEL } from "@/lib/inventory-routes";
 import { canViewReport, ORDER_QUEUE_VIEW_PERMISSIONS, P } from "@/lib/permission-codes";
 import { hasOperationalModule, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
@@ -468,7 +469,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/inventory/stock",
-        label: "View Stock",
+        label: ITEMS_CURRENTLY_IN_STOCK_LABEL,
         module: "inventory",
         permission: P.inventory.stock.view,
       },
@@ -1134,7 +1135,7 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/inventory/stock",
-        label: "View Stock",
+        label: ITEMS_CURRENTLY_IN_STOCK_LABEL,
         module: "inventory",
         permission: P.inventory.stock.view,
       },

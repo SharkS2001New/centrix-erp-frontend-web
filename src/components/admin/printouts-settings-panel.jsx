@@ -819,6 +819,7 @@ function LoadingSheetsTab({ form, setForm, hasDistribution = false, hasMobileSal
         form={form}
         setForm={setForm}
         showTripFields={hasDistribution}
+        showWeightToggle={false}
       />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading

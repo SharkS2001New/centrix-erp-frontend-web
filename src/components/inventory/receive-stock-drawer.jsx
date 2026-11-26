@@ -187,7 +187,19 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       return;
     }
     const lines = lpoData?.lines ?? [];
-    const toPost = lines.filter((line) => Number(receiveQty[line.id] ?? 0) > 0);
+    const toPost = lines.filter((line) =>
+      line.manage_stock !== false &&
+      line.manage_stock !== 0 &&
+      Number(receiveQty[line.id] ?? 0) > 0
+    );
+    const unmanagedCount = lines.filter((line) =>
+      (line.manage_stock === false || line.manage_stock === 0) &&
+      Number(receiveQty[line.id] ?? 0) > 0
+    ).length;
+    if (unmanagedCount > 0) {
+      setError("Stock is not managed for one or more selected products.");
+      return;
+    }
     if (toPost.length === 0) {
       setError("Enter quantity to receive for at least one line.");
       return;
@@ -234,6 +246,10 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
     }
     if (!form.product_code || !receiveQty.manual) {
       setError("Select a product and enter quantity received.");
+      return;
+    }
+    if (manualProduct?.manage_stock === false || manualProduct?.manage_stock === 0) {
+      setError("This product does not manage stock. Stock cannot be received.");
       return;
     }
     const packQty = Number(receiveQty.manual);
@@ -392,17 +408,25 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500">{line.package_name || "Qty"}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        className={`${inputClassName()} w-24 text-right`}
-                        value={receiveQty[line.id] ?? ""}
-                        onChange={(e) =>
-                          setReceiveQty((p) => ({ ...p, [line.id]: e.target.value }))
-                        }
-                      />
+                      {line.manage_stock === false || line.manage_stock === 0 ? (
+                        <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                          Stock not managed
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-xs text-slate-500">{line.package_name || "Qty"}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            className={`${inputClassName()} w-24 text-right`}
+                            value={receiveQty[line.id] ?? ""}
+                            onChange={(e) =>
+                              setReceiveQty((p) => ({ ...p, [line.id]: e.target.value }))
+                            }
+                          />
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}

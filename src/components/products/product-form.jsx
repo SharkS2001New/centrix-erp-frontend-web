@@ -34,6 +34,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
+import { isLoadTonnageEnabled } from "@/lib/loading-sheet-print-settings";
 import { availableStockLocations } from "@/lib/inventory-settings";
 import {
   defaultProductBranchId,
@@ -74,6 +75,7 @@ export const EMPTY_PRODUCT_FORM = {
   sell_by_amount: false,
   sell_by_amount_quantity: "",
   sell_by_amount_price: "",
+  manage_stock: false,
   sell_on_bar: true,
   sell_on_hotel: true,
   retail_package_id: "",
@@ -177,6 +179,10 @@ export function productToForm(product, retailPackage = null, uom = null) {
       product.sell_by_amount_quantity != null ? String(product.sell_by_amount_quantity) : "",
     sell_by_amount_price:
       product.sell_by_amount_price != null ? String(product.sell_by_amount_price) : "",
+    manage_stock:
+      product.manage_stock == null
+        ? !sellByAmount
+        : product.manage_stock !== false && product.manage_stock !== 0,
     sell_on_bar: product.sell_on_bar !== 0 && product.sell_on_bar !== false,
     sell_on_hotel: product.sell_on_hotel !== 0 && product.sell_on_hotel !== false,
     vat_id: product.vat_id ? String(product.vat_id) : "",
@@ -189,6 +195,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
 
 export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null, includeShelfLocation = false, hotelCatalogue = false } = {}) {
   const amountMode = !hotelCatalogue && Boolean(form.sell_by_amount);
+  const manageStock = amountMode ? Boolean(form.manage_stock) : true;
   const unitPrice = amountMode ? null : parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -211,12 +218,17 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     sell_by_amount_price: form.sell_by_amount
       ? parseDecimalInput(form.sell_by_amount_price)
       : null,
+    manage_stock: manageStock,
     sell_on_bar: Boolean(form.sell_on_bar),
     sell_on_hotel: Boolean(form.sell_on_hotel),
     vat_id: Number(form.vat_id),
-    reorder_point: form.sell_by_amount
-      ? parseDecimalInput(form.reorder_packs) || 0
-      : reorderBaseFromForm(form, uom),
+    ...(!amountMode || manageStock
+      ? {
+          reorder_point: amountMode
+            ? parseDecimalInput(form.reorder_packs) || 0
+            : reorderBaseFromForm(form, uom),
+        }
+      : {}),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
 
@@ -251,7 +263,7 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     }
   }
 
-  if (openingStockBranchId != null) {
+  if (manageStock && openingStockBranchId != null) {
     const shopQty = stockBaseFromForm(form, "shop", uom);
     const storeQty = stockBaseFromForm(form, "store", uom);
     if (shopQty > 0 || storeQty > 0) {
@@ -537,6 +549,7 @@ export const ProductFormFields = memo(function ProductFormFields({
   // Branch-limited users never choose scope; their products belong to their branch.
   const showCatalogScope = multiBranch && isOrgWide() && branches.length > 1;
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
+  const weightEnabled = isLoadTonnageEnabled(capabilities);
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
@@ -769,7 +782,7 @@ export const ProductFormFields = memo(function ProductFormFields({
         ) : null}
       </Field>
 
-      {!hotelCatalogue ? (
+      {!hotelCatalogue && weightEnabled ? (
         <Field label="Product weight (kg)">
           <input
             type="text"
@@ -787,48 +800,91 @@ export const ProductFormFields = memo(function ProductFormFields({
         </Field>
       ) : null}
 
-      <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing</p>
-        <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
-          {hotelCatalogue ? (
-            <>
-              Menu prices are per <strong>{packLabel}</strong>
-              {selectedUom && uomHasFullPack(selectedUom) ? (
-                <>
-                  {" "}
-                  (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
-                </>
-              ) : (
-                <> (base {smallLabel})</>
-              )}
-              . Cost and selling price apply to that same unit on Hotel POS.
-            </>
-          ) : (
-            <>
-              {form.sell_by_amount ? (
-                <>
-                  This product is sold by customer-entered amount. Set the minimum sale amount and
-                  the quantity it buys below; a separate selling price is not needed.
-                </>
-              ) : (
-                <>
-                  Wholesale prices are per <strong>{packLabel}</strong>
-                  {selectedUom && uomHasFullPack(selectedUom) ? (
-                    <>
-                      {" "}
-                      (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
-                    </>
-                  ) : (
-                    <> (base {smallLabel})</>
-                  )}
-                  . Cost, selling price, and discounts all apply to that same wholesale unit — e.g.
-                  price for one bag of sugar, not per kg.
-                </>
-              )}
-            </>
-          )}
-        </p>
-      </div>
+      {!hotelCatalogue ? (
+        <div className="md:col-span-2 xl:col-span-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.sell_on_retail}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                onChange("sell_on_retail", checked);
+                if (!checked) onChange("sell_by_amount", false);
+                if (checked) onChange("retail_pricing_tiers", [defaultRetailPricingTiers(selectedUom)]);
+              }}
+              className="mt-0.5 rounded border-slate-300"
+            />
+            <span>
+              <span className="block font-medium">Sell on retail</span>
+              <span className="mt-0.5 block text-xs text-slate-500">Enable retail sales for this product.</span>
+            </span>
+          </label>
+          {amountSalesAvailable ? (
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(form.sell_by_amount)}
+                onChange={(e) => onChange("sell_by_amount", e.target.checked)}
+                className="mt-0.5 rounded border-slate-300"
+              />
+              <span>
+                <span className="block font-medium">Sell by customer-entered amount</span>
+                <span className="mt-0.5 block text-xs text-slate-500">Replace wholesale/retail unit pricing with the minimum amount and quantity pair.</span>
+              </span>
+            </label>
+          ) : null}
+          {form.sell_by_amount ? (
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(form.manage_stock)}
+                onChange={(e) => onChange("manage_stock", e.target.checked)}
+                className="mt-0.5 rounded border-slate-300"
+              />
+              <span>
+                <span className="block font-medium">Manage stock for this product</span>
+                <span className="mt-0.5 block text-xs text-slate-500">When off, stock is not shown, received, reconciled, or deducted.</span>
+              </span>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!form.sell_by_amount ? (
+        <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing</p>
+          <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+            {hotelCatalogue ? (
+              <>
+                Menu prices are per <strong>{packLabel}</strong>
+                {selectedUom && uomHasFullPack(selectedUom) ? (
+                  <>
+                    {" "}
+                    (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                  </>
+                ) : (
+                  <> (base {smallLabel})</>
+                )}
+                . Cost and selling price apply to that same unit on Hotel POS.
+              </>
+            ) : (
+              <>
+                Wholesale prices are per <strong>{packLabel}</strong>
+                {selectedUom && uomHasFullPack(selectedUom) ? (
+                  <>
+                    {" "}
+                    (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                  </>
+                ) : (
+                  <> (base {smallLabel})</>
+                )}
+                . Cost, selling price, and discounts all apply to that same wholesale unit — e.g.
+                price for one bag of sugar, not per kg.
+              </>
+            )}
+          </p>
+        </div>
+      ) : null}
 
       {!form.sell_by_amount ? (
         <Field label={`Selling price per ${packLabel} (KES)`} required>
@@ -849,23 +905,25 @@ export const ProductFormFields = memo(function ProductFormFields({
         </Field>
       ) : null}
 
-      <Field label={`Cost price per ${packLabel} (KES)`}>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.last_cost_price}
-          onChange={(e) => onChange("last_cost_price", e.target.value)}
-          className={inputClassName()}
-          placeholder="0.00"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          {hotelCatalogue
-            ? `What you pay per ${packLabel} (ingredient or purchase cost).`
-            : `What you pay suppliers per ${packLabel}.`}
-        </p>
-      </Field>
+      {!form.sell_by_amount ? (
+        <Field label={`Cost price per ${packLabel} (KES)`}>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.last_cost_price}
+            onChange={(e) => onChange("last_cost_price", e.target.value)}
+            className={inputClassName()}
+            placeholder="0.00"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            {hotelCatalogue
+              ? `What you pay per ${packLabel} (ingredient or purchase cost).`
+              : `What you pay suppliers per ${packLabel}.`}
+          </p>
+        </Field>
+      ) : null}
 
-      {!hotelCatalogue && allowDiscounts ? (
+      {!hotelCatalogue && allowDiscounts && !form.sell_by_amount ? (
         <>
           <Field label="Discount type">
             <SearchableSelect
@@ -973,43 +1031,6 @@ export const ProductFormFields = memo(function ProductFormFields({
 
       {!hotelCatalogue ? (
         <div className="md:col-span-2 xl:col-span-3">
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={form.sell_on_retail}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                onChange("sell_on_retail", checked);
-                if (!checked) onChange("sell_by_amount", false);
-                if (checked) {
-                  onChange("retail_pricing_tiers", [defaultRetailPricingTiers(selectedUom)]);
-                }
-              }}
-              className="mt-0.5 rounded border-slate-300"
-            />
-            <span>
-              {form.sell_by_amount
-                ? "Sell on retail — this product uses customer-entered amounts"
-                : "Sell on retail — configure pack sizes and markups below"}
-            </span>
-          </label>
-          {form.sell_on_retail && amountSalesAvailable ? (
-            <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={Boolean(form.sell_by_amount)}
-                onChange={(e) => onChange("sell_by_amount", e.target.checked)}
-                className="mt-0.5 rounded border-slate-300"
-              />
-              <span>
-                <span className="block font-medium">Sell by customer-entered amount</span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  POS charges the entered VAT-inclusive amount and converts it into {smallLabel}
-                  using the configured minimum sale pair.
-                </span>
-              </span>
-            </label>
-          ) : null}
           {form.sell_on_retail && !form.sell_by_amount ? (
             <RetailPackageFields
               form={form}
@@ -1018,18 +1039,6 @@ export const ProductFormFields = memo(function ProductFormFields({
             />
           ) : form.sell_by_amount ? (
             <div className="mt-2 grid gap-3 md:grid-cols-2">
-              <Field label={`Quantity for minimum amount (${smallLabel})`} required>
-                <input
-                  type="number"
-                  min="0.0001"
-                  step="any"
-                  value={form.sell_by_amount_quantity}
-                  onChange={(e) => onChange("sell_by_amount_quantity", e.target.value)}
-                  className={inputClassName()}
-                  placeholder={`e.g. 3 ${smallLabel}`}
-                  required
-                />
-              </Field>
               <Field label="Minimum sale amount (KES)" required>
                 <input
                   type="number"
@@ -1042,9 +1051,21 @@ export const ProductFormFields = memo(function ProductFormFields({
                   required
                 />
               </Field>
+              <Field label={`Quantity for minimum amount (${smallLabel})`} required>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  value={form.sell_by_amount_quantity}
+                  onChange={(e) => onChange("sell_by_amount_quantity", e.target.value)}
+                  className={inputClassName()}
+                  placeholder={`e.g. 300 ${smallLabel}`}
+                  required
+                />
+              </Field>
               <p className="text-xs text-slate-500 md:col-span-2">
-                Example: KES {form.sell_by_amount_price || "100"} buys{" "}
-                {form.sell_by_amount_quantity || "3"} {smallLabel}. Higher amounts scale the
+                Example: KES {form.sell_by_amount_price || "100"} ={" "}
+                {form.sell_by_amount_quantity || "300"} {smallLabel}. Higher amounts scale the
                 quantity proportionally; the entered amount must be at least the minimum.
                 Retail price tiers are not used while this mode is enabled.
               </p>
@@ -1077,21 +1098,24 @@ export const ProductFormFields = memo(function ProductFormFields({
         </div>
       )}
 
-      <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inventory</p>
-      </div>
-
-      <ProductInventoryFields
-        form={form}
-        onChange={onChange}
-        productUom={selectedUom}
-        globalReorderLevel={globalReorderLevel}
-        stockReadOnly={mode !== "create"}
-        productCode={mode === "edit" ? form.product_code : null}
-        includeShelfLocation={includeShelfLocation}
-        hotelCatalogue={hotelCatalogue}
-        availableLocations={availableStockLocations(capabilities)}
-      />
+      {!form.sell_by_amount || form.manage_stock ? (
+        <>
+          <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inventory</p>
+          </div>
+          <ProductInventoryFields
+            form={form}
+            onChange={onChange}
+            productUom={selectedUom}
+            globalReorderLevel={globalReorderLevel}
+            stockReadOnly={mode !== "create"}
+            productCode={mode === "edit" ? form.product_code : null}
+            includeShelfLocation={includeShelfLocation}
+            hotelCatalogue={hotelCatalogue}
+            availableLocations={availableStockLocations(capabilities)}
+          />
+        </>
+      ) : null}
 
       {mode === "edit" ? (
         <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">

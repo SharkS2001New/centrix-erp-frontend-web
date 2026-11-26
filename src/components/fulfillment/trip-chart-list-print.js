@@ -23,6 +23,7 @@ import { saleCustomerLabel } from "@/lib/sales";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
 import { isLoadTonnageEnabled } from "@/lib/loading-sheet-print-settings";
+import { formatOrgNumber } from "@/lib/format";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -33,8 +34,7 @@ function escapeHtml(value) {
 }
 
 function formatKes(amount) {
-  const n = Number(amount) || 0;
-  return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return formatOrgNumber(amount ?? 0);
 }
 
 function resolveTripMeta({ trip, loadingList, pickingList } = {}) {

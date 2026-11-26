@@ -430,6 +430,10 @@ export function saleLineQtyLabel(
 
   const uom = saleLineUom(line, uomById);
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+  if (isAmountSaleLine(line)) {
+    const { quantity, package: packageLabel } = amountSaleQtyParts(line, uom);
+    return `${quantity} ${packageLabel}`;
+  }
 
   if (uom) {
     return formatSaleLineQtyDisplay(line?.quantity, uom, {
@@ -459,6 +463,10 @@ export function saleLinePrintQtyPackage(
   const baseQty = Number(line?.quantity ?? 0);
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
+  if (isAmountSaleLine(line)) {
+    return amountSaleQtyParts(line, uom);
+  }
+
   if (uom) {
     return saleLineQtyPartsForPrint(baseQty, uom, {
       isRetailLine,
@@ -480,6 +488,23 @@ export function saleLinePrintQtyPackage(
     quantity: formatDisplayQty(fallback.display),
     package: fallback.unit,
   };
+}
+
+function isAmountSaleLine(line) {
+  const raw = line?.product?.sell_by_amount ?? line?.sell_by_amount;
+  return raw === true || raw === 1 || raw === "1" || raw === "true";
+}
+
+function amountSaleQtyParts(line, uom) {
+  const smallLabel = String(uom?.small_packaging_label ?? uom?.measure_name ?? "")
+    .trim()
+    .toLowerCase();
+  const baseQty = Number(line?.quantity ?? 0);
+  const quantity =
+    ["l", "litre", "litres", "liter", "liters"].includes(smallLabel)
+      ? baseQty * 1000
+      : baseQty;
+  return { quantity: formatDisplayQty(quantity), package: "ml" };
 }
 
 /** Build { [product_code]: product } from /products list response. */

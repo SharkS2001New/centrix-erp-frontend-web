@@ -19,7 +19,7 @@ export const DISTRIBUTION_DEFAULTS = {
   dispatch_board_processed_only: true,
   enable_fulfillment_guidance: false,
   enable_product_shelf_location: false,
-  show_load_tonnage: true,
+  show_load_tonnage: false,
   mobile_enable_driver_app: true,
   mobile_enable_driver_attendance: false,
 };

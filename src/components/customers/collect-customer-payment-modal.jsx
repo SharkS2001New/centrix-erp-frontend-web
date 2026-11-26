@@ -8,6 +8,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
 import { mergeSalesSettings } from "@/lib/sales-settings";
+import { formatOrgInputNumber } from "@/lib/format";
 
 /**
  * Collect AR payment against a customer's open invoices (FIFO by default).
@@ -29,7 +30,10 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
-    amount_paid: outstanding > 0 ? outstanding.toFixed(2) : "",
+    amount_paid:
+      outstanding > 0
+        ? formatOrgInputNumber(outstanding)
+        : "",
     payment_method_id: "",
     customer_invoice_id: "",
     reference_number: "",
@@ -79,7 +83,10 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
         }, 0);
         setForm((f) => ({
           ...f,
-          amount_paid: liveOutstanding > 0 ? liveOutstanding.toFixed(2) : f.amount_paid,
+          amount_paid:
+            liveOutstanding > 0
+              ? formatOrgInputNumber(liveOutstanding)
+              : f.amount_paid,
         }));
       })
       .catch((e) => {
@@ -189,7 +196,7 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
                 type="number"
                 min="0.01"
                 step="0.01"
-                max={maxAmount > 0 ? maxAmount.toFixed(2) : undefined}
+                max={maxAmount > 0 ? String(maxAmount) : undefined}
                 className={inputClassName()}
                 value={form.amount_paid}
                 onChange={(e) => setForm((f) => ({ ...f, amount_paid: e.target.value }))}
@@ -225,7 +232,9 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
                     ...f,
                     customer_invoice_id: id,
                     amount_paid:
-                      due != null && due > 0 ? due.toFixed(2) : f.amount_paid,
+                      due != null && due > 0
+                        ? formatOrgInputNumber(due)
+                        : f.amount_paid,
                   }));
                 }}
                 options={invoices.map((inv) => {

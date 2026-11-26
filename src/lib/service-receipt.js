@@ -2,6 +2,7 @@ import { PRODUCT_SHORT_NAME } from "@/lib/branding";
 import { escapeHtml } from "@/lib/html-escape";
 import { printHtmlDocument } from "@/lib/print-dispatch";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
+import { formatOrgNumber } from "@/lib/format";
 
 /** Code 39 patterns: n = narrow, w = wide. Bars and spaces alternate, starting with a bar. */
 const CODE39 = {
@@ -55,11 +56,7 @@ export function formatReceiptDate(value) {
 
 export function formatReceiptAmount(value) {
   const amount = Number(value) || 0;
-  const digits = Math.abs(amount % 1) < 0.001 ? 0 : 2;
-  return amount.toLocaleString("en-KE", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(amount);
 }
 
 export function organizationReceiptIdentity(organization) {

@@ -115,7 +115,7 @@ export function posQuantityFieldMeta(
     return {
       label: "Customer amount (KES)",
       unit: "KES",
-      hint: `Minimum KES ${minimumAmount.toFixed(2)}. Enter the VAT-inclusive amount; stock is deducted in ${small}.`,
+      hint: `Minimum ${formatSaleKes(minimumAmount)}. Enter the VAT-inclusive amount; stock is deducted in ${small}.`,
       min: minimumAmount > 0 ? String(minimumAmount) : "0",
       step: "0.01",
     };

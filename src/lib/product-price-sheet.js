@@ -19,13 +19,11 @@ import {
 } from "./retail-pricing";
 import { uomConversionFactor } from "./stock-uom";
 import { computeProfitMarginPercent } from "./product-margin";
+import { formatOrgNumber } from "./format";
 
 export function formatPriceSheetAmount(value) {
   if (value == null || value === "" || !Number.isFinite(Number(value))) return null;
-  return Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(value);
 }
 
 /** Packaging label e.g. "1 x 16pcs" or "1 x 60 pcs". */

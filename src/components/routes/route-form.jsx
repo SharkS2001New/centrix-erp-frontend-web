@@ -20,6 +20,7 @@ import {
 import { calendarDateInTimezone } from "@/lib/datetime";
 import { selectedGlobalBranchId } from "@/lib/global-branch";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
+import { formatOrgCurrencyCompact } from "@/lib/format";
 
 export const EMPTY_ROUTE_FORM = {
   branch_id: "",
@@ -512,8 +513,5 @@ export function sumRouteSales(map) {
 }
 
 export function formatRouteKes(value) {
-  const n = Number(value ?? 0);
-  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
-  return `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`;
+  return formatOrgCurrencyCompact(value);
 }

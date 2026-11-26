@@ -22,6 +22,8 @@ import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { availableStockLocations } from "@/lib/inventory-settings";
 import { ProductStockHistoryPanel } from "@/components/products/product-stock-history-panel";
+import { formatOrgCurrency } from "@/lib/format";
+import { formatDisplayQty } from "@/lib/stock-uom";
 import {
   formatShortDate,
   PencilIcon,
@@ -110,12 +112,12 @@ function parsePageTabs(searchParams) {
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(value);
 }
 
 function formatQty(value) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", { maximumFractionDigits: 2 });
+  return formatDisplayQty(value);
 }
 
 function formatDiscount(product) {

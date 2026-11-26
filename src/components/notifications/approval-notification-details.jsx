@@ -12,11 +12,12 @@ import {
   discountApprovalLineAmount,
   discountApprovalUnitPrice,
 } from "@/lib/advised-discount-lines";
+import { formatOrgCurrency } from "@/lib/format";
 
 function formatKes(value) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount) || amount <= 0) return "—";
-  return `Ksh ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(amount);
 }
 
 function approvalReason(item) {

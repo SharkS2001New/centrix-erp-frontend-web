@@ -1,5 +1,7 @@
 "use client";
 
+import { formatOrgCurrency } from "@/lib/format";
+
 export {
   EMPTY_SUPPLIER_FORM,
   buildSupplierBody,
@@ -7,8 +9,7 @@ export {
 } from "./supplier-form";
 
 export function formatSupplierKes(value) {
-  const n = Number(value ?? 0);
-  return `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(value);
 }
 
 export function SupplierStatusBadge({ active }) {

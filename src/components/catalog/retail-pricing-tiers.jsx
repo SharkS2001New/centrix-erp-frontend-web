@@ -8,6 +8,7 @@ import {
   wholesalePricePerSmallUnit,
 } from "@/lib/retail-pricing";
 import { uomConversionFactor } from "@/lib/stock-uom";
+import { formatOrgNumber } from "@/lib/format";
 import {
   EMPTY_PRICING_TIER,
   measureLevelLabel,
@@ -128,7 +129,7 @@ export function RetailPricingTiersEditor({
             {" "}
             Base wholesale per {smallLabel}:{" "}
             <strong>
-              {wholesalePerSmall.toLocaleString(undefined, { maximumFractionDigits: 2 })} KES
+              {formatOrgNumber(wholesalePerSmall)} KES
             </strong>
             .
           </>
@@ -222,7 +223,7 @@ export function RetailPricingTiersEditor({
                   {wholesaleBase != null ? (
                     <>
                       {" "}
-                      · base {wholesaleBase.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      · base {formatOrgNumber(wholesaleBase)}
                       {" + markup"}
                     </>
                   ) : null}
@@ -230,7 +231,7 @@ export function RetailPricingTiersEditor({
                 {lineExample != null ? (
                   <p className="text-[11px] font-semibold text-[var(--theme-primary)]">
                     Example {previewQty} {smallLabel} line:{" "}
-                    {lineExample.toLocaleString(undefined, { maximumFractionDigits: 2 })} KES
+                    {formatOrgNumber(lineExample)} KES
                   </p>
                 ) : null}
                 <button

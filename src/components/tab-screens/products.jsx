@@ -19,7 +19,8 @@ import {
   submitKraProductRegistration,
 } from "@/components/products/kra-product-upload-bar";
 import { useQueuedTask } from "@/lib/use-queued-task";
-import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
+import { baseToDisplayQty, formatDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
+import { formatOrgCurrency } from "@/lib/format";
 import {
   FilterSelect,
   FilterToolbar,
@@ -135,12 +136,12 @@ function alignClass(align) {
 
 function formatMoneyAmount(value) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatOrgCurrency(value);
 }
 
 function formatQty(value) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", { maximumFractionDigits: 2 });
+  return formatDisplayQty(value);
 }
 
 function formatDiscount(product) {
@@ -221,8 +222,13 @@ function enrichProduct(
   const uom = uomById.get(String(product.unit_id ?? ""));
   const supplier = supplierById.get(String(product.supplier_id ?? ""));
   const retailPackage = retailByCode.get(product.product_code);
-  const shop = Number(product.stock_available_shop ?? product.stock_in_shop ?? 0);
-  const store = Number(product.stock_available_store ?? product.stock_in_store ?? 0);
+  const managesStock = product.manage_stock !== false && product.manage_stock !== 0;
+  const shop = managesStock
+    ? Number(product.stock_available_shop ?? product.stock_in_shop ?? 0)
+    : null;
+  const store = managesStock
+    ? Number(product.stock_available_store ?? product.stock_in_store ?? 0)
+    : null;
   const reorderPoint = effectiveReorderPoint(product, globalThreshold);
   const isActive = !product.deleted_at;
   const uomLabel = uom?.uom_type || uom?.full_name || "—";
@@ -231,9 +237,11 @@ function enrichProduct(
     (total, location) => total + (location === "shop" ? shop : store),
     0,
   );
-  let stockStatus = "in_stock";
-  if (totalStock <= 0) stockStatus = "out_of_stock";
-  else if (reorderPoint > 0 && totalStock <= reorderPoint) stockStatus = "low_stock";
+  let stockStatus = managesStock ? "in_stock" : "not_managed";
+  if (managesStock) {
+    if (totalStock <= 0) stockStatus = "out_of_stock";
+    else if (reorderPoint > 0 && totalStock <= reorderPoint) stockStatus = "low_stock";
+  }
 
   const pricing =
     product.sell_on_retail === 1 || product.sell_on_retail === true ? "Sells W/R" : "Wholesale";
@@ -260,8 +268,8 @@ function enrichProduct(
     effective_reorder_point: reorderPoint,
     uses_global_reorder: Number(product.reorder_point ?? 0) <= 0,
     stock_status: stockStatus,
-    shop_stock_status: locationStockStatus(shop, reorderPoint),
-    store_stock_status: locationStockStatus(store, reorderPoint),
+    shop_stock_status: managesStock ? locationStockStatus(shop, reorderPoint) : "not_managed",
+    store_stock_status: managesStock ? locationStockStatus(store, reorderPoint) : "not_managed",
     pricing,
     menu_channels: menuChannels,
     menu_channels_label: menuChannels.length ? menuChannels.join(", ") : "Not on POS",
@@ -1628,7 +1636,7 @@ function renderProductCell(
         />
       );
     case "reorder":
-      return product.effective_reorder_point != null ? (
+      return product.manage_stock !== false && product.manage_stock !== 0 && product.effective_reorder_point != null ? (
         <div className="theme-text-muted text-sm">
           <span>
             {formatQty(baseToDisplayQty(product.effective_reorder_point, product.uom_factor))}{" "}
@@ -1639,7 +1647,7 @@ function renderProductCell(
           </span>
         </div>
       ) : (
-        "—"
+        "-"
       );
     case "supplier":
       return <span className="theme-text-muted">{product.supplier_name}</span>;
@@ -1864,6 +1872,9 @@ function InlineProductPriceCell({ productCode, price, field, onSaved, title }) {
 }
 
 function StockCell({ qty, uom, unit, factor, status }) {
+  if (qty == null || status === "not_managed") {
+    return <div className="text-center theme-text-muted text-sm">-</div>;
+  }
   const stockText = formatMixedStockDisplay(qty, uom ?? factor ?? 1, unit).text;
   const styles = {
     in_stock: {

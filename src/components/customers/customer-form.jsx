@@ -12,6 +12,7 @@ import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { customerLocationPayload } from "@/lib/customer-location";
 import { selectedGlobalBranchId } from "@/lib/global-branch";
 import { useGlobalBranchId } from "@/hooks/use-global-branch-id";
+import { formatOrgCurrency } from "@/lib/format";
 
 export const EMPTY_CUSTOMER_FORM = {
   branch_id: "",
@@ -393,10 +394,7 @@ export function CustomerFormCard({ children, onSubmit, actions }) {
 
 export function formatCustomerKes(value) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatOrgCurrency(value);
 }
 
 export function customerInitials(name) {

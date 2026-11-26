@@ -59,6 +59,7 @@ import {
   usesPosRetailPricing,
 } from "@/lib/pos-line";
 import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-uom";
+import { formatOrgNumber } from "@/lib/format";
 import {
   hydrateProductLiveStock,
   mergeProductStockFields,
@@ -9435,7 +9436,7 @@ export function PosScreen({ standalone = false }) {
       const enteredAmount = Number(entryQtyRaw);
       if (!Number.isFinite(enteredAmount) || enteredAmount < minimumAmount) {
         releaseCartLineMutationGate();
-        setStatusMessage(`Minimum sale amount is KES ${minimumAmount.toFixed(2)}.`);
+        setStatusMessage(`Minimum sale amount is ${formatSaleKes(minimumAmount)}.`);
         return;
       }
     }
@@ -18890,19 +18891,17 @@ export function PosScreen({ standalone = false }) {
                     : (line.uom ?? productMeta?.packaging_label ?? "—");
                 }}
                 formatMoney={(value) =>
-                  Number(value || 0).toLocaleString(undefined, {
-                    maximumFractionDigits: 2,
-                  })
+                  formatOrgNumber(value || 0)
                 }
                 lineUnitPrice={(line) => {
                   const productMeta = productByCode[line.product_code];
                   const uom = productMeta?.uom;
                   const isRetailLine = Number(line.on_wholesale_retail) === 1;
-                  return Number(
+                  return formatOrgNumber(
                     cartLineDisplayUnitPrice(line, uom, isRetailLine, {
                       cashRound: enablePosCashRounding,
                     }),
-                  ).toLocaleString();
+                  );
                 }}
                 lineDiscount={(line) => {
                   const productMeta = productByCode[line.product_code];

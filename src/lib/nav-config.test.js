@@ -22,8 +22,8 @@ describe("products navigation active state", () => {
       const hospitalityStock = navSections.find((section) => section.id === "hospitality_stock");
       const distributionOrders = navSections.find((section) => section.id === "distribution_orders");
 
-      expect(inventory.items.find((item) => item.href === "/inventory/stock").label).toBe("View Stock");
-      expect(hospitalityStock.items.find((item) => item.href === "/inventory/stock").label).toBe("View Stock");
+      expect(inventory.items.find((item) => item.href === "/inventory/stock").label).toBe("Items Currently in Stock");
+      expect(hospitalityStock.items.find((item) => item.href === "/inventory/stock").label).toBe("Items Currently in Stock");
       expect(distributionOrders.label).toBe("Today's Orders");
     });
 

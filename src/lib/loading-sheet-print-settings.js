@@ -16,7 +16,7 @@ export const LOADING_SHEET_PRINT_DEFAULTS = {
   loading_sheet_show_trip_expenses: true,
   loading_sheet_show_trip_profit: true,
   loading_sheet_default_checked_by: "",
-  show_load_tonnage: true,
+  show_load_tonnage: false,
 };
 
 export function resolveLoadingSheetPrintSettings(distribution = {}) {
@@ -81,11 +81,15 @@ export function loadingSheetPrintPayloadFromForm(form) {
   };
 }
 
-/** Picking list + trip chart tonnage (screen and print). Default on. */
+/** Picking list + trip chart tonnage (screen and print). */
 export function isLoadTonnageEnabled(source = {}) {
   const distribution =
     source?.module_settings?.distribution ?? source?.distribution ?? source;
-  return mergeLoadingSheetPrintSettings(distribution).show_load_tonnage !== false;
+  if (Object.prototype.hasOwnProperty.call(distribution, "show_load_tonnage")) {
+    return distribution.show_load_tonnage !== false;
+  }
+  const modules = source?.modules ?? source?.module_settings?.modules ?? {};
+  return Boolean(modules.distribution || modules["sales.mobile"]);
 }
 
 export function resolveLoadingSheetFooterLines(printSettings = {}) {

@@ -27,6 +27,7 @@ import {
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { printHospitalityFolioStatement } from "@/components/hospitality/hospitality-folio-statement-print";
+import { formatOrgNumber } from "@/lib/format";
 
 export function HospitalityFoliosScreen() {
   const { capabilities } = useAuth();
@@ -260,7 +261,7 @@ function FoliosManager() {
                     <td className="px-3 py-2 font-medium">{row.folio_number}</td>
                     <td className="px-3 py-2">{row.guest_name}</td>
                     <td className="px-3 py-2">{row.room_number || "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{Number(row.balance).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatOrgNumber(row.balance)}</td>
                     <td className="px-3 py-2 capitalize">{row.status?.replace("_", " ")}</td>
                   </tr>
                 ))}
@@ -292,7 +293,7 @@ function FoliosManager() {
               <span className="font-medium">{detail.guest_name}</span>
               <span className="theme-subtext"> · Room {detail.room_number || "—"}</span>
             </p>
-            <p className="text-lg font-semibold tabular-nums">Balance {balance.toFixed(2)}</p>
+            <p className="text-lg font-semibold tabular-nums">Balance {formatOrgNumber(balance)}</p>
             <div className="flex flex-wrap gap-2">
               <SecondaryButton type="button" disabled={saving} onClick={() => void printStatement()}>
                 Print statement
@@ -308,7 +309,7 @@ function FoliosManager() {
                       {c.description}{" "}
                       <span className="theme-subtext text-xs">({c.charge_type})</span>
                     </span>
-                    <span className="tabular-nums">{Number(c.amount).toFixed(2)}</span>
+                    <span className="tabular-nums">{formatOrgNumber(c.amount)}</span>
                   </li>
                 ))}
                 {!detail.charges?.length ? <li className="theme-subtext">No charges</li> : null}
@@ -325,7 +326,7 @@ function FoliosManager() {
                         <span className="theme-subtext text-xs"> · {p.reference}</span>
                       ) : null}
                     </span>
-                    <span className="tabular-nums">{Number(p.amount).toFixed(2)}</span>
+                    <span className="tabular-nums">{formatOrgNumber(p.amount)}</span>
                   </li>
                 ))}
                 {!detail.payments?.length ? <li className="theme-subtext">No payments</li> : null}
@@ -341,9 +342,9 @@ function FoliosManager() {
                   >
                     <p className="text-xs font-semibold uppercase">Deposit refund</p>
                     <p className="theme-subtext text-xs">
-                      Deposit on folio: {depositPaid.toFixed(2)}
-                      {refunded > 0 ? ` · already refunded ${refunded.toFixed(2)}` : ""} · refundable{" "}
-                      {refundableDeposit.toFixed(2)}
+                      Deposit on folio: {formatOrgNumber(depositPaid)}
+                      {refunded > 0 ? ` · already refunded ${formatOrgNumber(refunded)}` : ""} · refundable{" "}
+                      {formatOrgNumber(refundableDeposit)}
                     </p>
                     <Field label="Refund amount">
                       <input

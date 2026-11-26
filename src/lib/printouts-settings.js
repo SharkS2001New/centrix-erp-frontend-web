@@ -151,7 +151,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_show_trip_expenses: true,
   loading_sheet_show_trip_profit: true,
   loading_sheet_default_checked_by: "",
-  show_load_tonnage: true,
+  show_load_tonnage: false,
 };
 
 /** Human labels for printout kinds shown in Admin → Printouts. */

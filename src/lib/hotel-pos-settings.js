@@ -6,6 +6,7 @@ import {
 } from "@/lib/hotel-pos-theme-templates";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { resolveHotelPosPaymentMethods } from "@/lib/hotel-pos-payment-methods";
+import { formatOrgNumber } from "@/lib/format";
 
 export const HOTEL_POS_GRID_COLUMNS_DEFAULT = 4;
 export const HOTEL_POS_GRID_COLUMNS_ALLOWED = [4, 5];
@@ -187,8 +188,8 @@ export { resolveHotelPosThemeTemplate };
 
 export function formatHotelMoney(amount) {
   const n = Number(amount);
-  if (!Number.isFinite(n)) return "0.00";
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!Number.isFinite(n)) return formatOrgNumber(0);
+  return formatOrgNumber(n);
 }
 
 /** Whole shillings for Hotel Collect payment Bill / Paid / Due (no decimals). */

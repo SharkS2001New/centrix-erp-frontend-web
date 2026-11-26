@@ -22,10 +22,10 @@ import {
   orgPrintPx,
 } from "@/lib/print-typography";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
+import { formatOrgNumber } from "@/lib/format";
 
 function formatKes(amount) {
-  const n = Number(amount) || 0;
-  return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return formatOrgNumber(amount ?? 0);
 }
 
 function formatProfitMargin(percent) {

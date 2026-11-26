@@ -362,6 +362,7 @@ export function MobileApplicationSettingsPanel({
                       showTripFields={false}
                       showFontNote
                       variant="picking"
+                      showWeightToggle={false}
                     />
                   </div>
                 </div>

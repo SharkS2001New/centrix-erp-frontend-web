@@ -21,6 +21,7 @@ import {
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { formatOrgNumber } from "@/lib/format";
 
 const EMPTY = {
   guest_name: "",
@@ -495,7 +496,7 @@ function ReservationsManager() {
                 { value: "", label: "Default / room type rate" },
                 ...plansForType.map((p) => ({
                   value: String(p.id),
-                  label: `${p.name || p.code} · ${Number(p.amount).toFixed(2)}`,
+                  label: `${p.name || p.code} · ${formatOrgNumber(p.amount)}`,
                 })),
               ]}
             />

@@ -433,6 +433,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     as_mobile_auto_generate_product_code: true,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
+    show_load_tonnage: deploymentProfile === "distribution" || deploymentProfile === "wholesale_retail",
     as_mobile_ask_quantity_on_add: false,
     as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
@@ -536,6 +537,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
       apiPayload.as_mobile_auto_generate_product_code !== false,
     as_mobile_show_images: Boolean(apiPayload.as_mobile_show_images),
     require_product_images: Boolean(apiPayload.require_product_images),
+    show_load_tonnage: Boolean(apiPayload.show_load_tonnage),
     as_mobile_ask_quantity_on_add: Boolean(apiPayload.as_mobile_ask_quantity_on_add),
     as_mobile_post_login_screen:
       apiPayload.as_mobile_post_login_screen === "operations_dashboard"
@@ -944,6 +946,12 @@ export function OrganizationPlatformSalesSettings({
                   ...(v ? { as_mobile_show_images: true } : {}),
                 })
               }
+            />
+            <Toggle
+              label="Enable product weights and tonnage"
+              description="Platform-controlled. When on, product weight is available on product registration and contributes to loading/picking tonnage."
+              checked={Boolean(salesPlatform?.show_load_tonnage)}
+              onChange={(v) => patch({ show_load_tonnage: v })}
             />
             <OrgRegisterField label="After login, open">
               <select

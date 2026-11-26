@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setActiveGeneralSettings } from "@/lib/general-settings";
 import {
   enrichSaleLinesForQtyPrint,
   resolveSaleLinePrintColumns,
@@ -182,6 +183,33 @@ describe("sale line receipt packaging qty", () => {
       package: "kg",
     });
     expect(saleLineQtyLabel(line, uomById)).toBe("75 kg");
+  });
+
+  it("prints sell-by-amount quantity in millilitres using org precision", () => {
+    setActiveGeneralSettings({ decimal_places: 0 });
+    try {
+      const line = {
+        product_code: "OIL",
+        quantity: 0.9,
+        on_wholesale_retail: 1,
+        product: {
+          sell_by_amount: true,
+          unit_id: 3,
+          unit: {
+            small_packaging_label: "l",
+            conversion_factor: 1,
+          },
+        },
+      };
+
+      expect(saleLineQtyLabel(line, new Map())).toBe("900 ml");
+      expect(saleLinePrintQtyPackage(line, new Map())).toEqual({
+        quantity: "900",
+        package: "ml",
+      });
+    } finally {
+      setActiveGeneralSettings(null);
+    }
   });
 
   it("prints wholesale fractional packs (37.5 kg → 1.5 bag)", () => {

@@ -256,11 +256,16 @@ export function damageBaseToDisplay(baseQty, packageType, uomOrFactor) {
 export function formatDisplayQty(displayQty, maxDecimals = 3) {
   const n = Number(displayQty ?? 0);
   if (!Number.isFinite(n)) return "0";
+  const configuredDecimals = Number(activeGeneralSettings()?.decimal_places ?? 2);
+  const decimalLimit = Math.min(
+    Math.max(0, Number.isInteger(maxDecimals) ? maxDecimals : 3),
+    Math.max(0, Math.min(4, configuredDecimals)),
+  );
   if (Math.abs(n - Math.round(n)) < 0.0001) {
     return Math.round(n).toLocaleString("en-KE");
   }
   return n.toLocaleString("en-KE", {
-    maximumFractionDigits: maxDecimals,
+    maximumFractionDigits: decimalLimit,
     minimumFractionDigits: 0,
   });
 }
@@ -580,3 +585,5 @@ export function saleLineQtyPartsForPrint(
 export function formatSmallUnitTotal(baseQty, uom) {
   return formatPosCartQty(baseQty, uom);
 }
+import { activeGeneralSettings } from "@/lib/general-settings";
+

@@ -17,22 +17,17 @@ import {
 import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
 import { escapeHtml } from "@/lib/html-escape";
 import { orgDocumentTemplateCss, resolveOrgDocumentTemplateId } from "@/lib/document-print-templates";
+import { formatOrgNumber } from "@/lib/format";
 
 export { escapeHtml };
 
 export function formatDocAmount(value) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(value);
 }
 
 export function formatDocQty(value) {
-  return Number(value ?? 0).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(value ?? 0);
 }
 
 export function formatDocDate(value) {

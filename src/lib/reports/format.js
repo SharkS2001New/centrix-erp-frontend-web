@@ -18,11 +18,14 @@ export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
   return formatOrgCurrency(n, settings);
 }
 
-export function formatReportNumber(value, decimals = 2, settings = GENERAL_DEFAULTS) {
+export function formatReportNumber(value, decimals = null, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  return formatOrgNumber(n, settings, { decimals });
+  const configuredDecimals = Number(settings?.decimal_places ?? 2);
+  return formatOrgNumber(n, settings, {
+    decimals: decimals === 0 ? 0 : configuredDecimals,
+  });
 }
 
 const REPORT_COUNT_FIELD_KEYS = new Set([
@@ -77,10 +80,10 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = 
     if (isReportCurrencyField(key)) {
       return formatReportKes(value, settings);
     }
-    if (isReportCountField(key) || /qty|quantity/i.test(key)) {
+    if (isReportCountField(key)) {
       return formatReportNumber(value, 0, settings);
     }
-    return formatReportNumber(value, 2, settings);
+    return formatReportNumber(value, null, settings);
   }
   if (typeof value === "string" && isPlainNumericString(value)) {
     if (row && (isInventoryQtyField(key) || isLpoPackQtyField(key))) {
@@ -88,8 +91,11 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = 
     }
     const n = Number(value);
     if (isReportCurrencyField(key)) return formatReportKes(n, settings);
-    if (isReportCountField(key) || /qty|quantity/i.test(key)) {
+    if (isReportCountField(key)) {
       return formatReportNumber(n, 0, settings);
+    }
+    if (/qty|quantity/i.test(key)) {
+      return formatReportNumber(n, null, settings);
     }
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {

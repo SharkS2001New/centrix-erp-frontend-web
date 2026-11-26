@@ -30,6 +30,7 @@ import {
   professionalA4Styles,
 } from "@/lib/professional-a4-print";
 import { resolveOrgDocumentTemplateId } from "@/lib/document-print-templates";
+import { formatDisplayQty } from "@/lib/stock-uom";
 
 function formatPrintDate(value) {
   if (!value) return "—";
@@ -44,10 +45,7 @@ function formatPrintDate(value) {
 }
 
 function formatQty(value) {
-  return Number(value ?? 0).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatDisplayQty(value);
 }
 
 export function sampleLpoPreviewData() {

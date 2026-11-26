@@ -9,6 +9,7 @@ import {
 import { formatDisplayQty } from "@/lib/stock-uom";
 import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 import { formatKraReportOrderNo } from "@/lib/sales";
+import { formatOrgCurrency } from "@/lib/format";
 
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean, sumFromRow?: (row: object) => number, footerCompute?: (rows: object[]) => number }} ReportColumn */
 
@@ -1907,11 +1908,11 @@ function sum(rows, field) {
 function kes(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return `KES ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(n);
 }
 
 function formatQty(value) {
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return formatDisplayQty(value);
 }
 
 function stockStatus(row) {

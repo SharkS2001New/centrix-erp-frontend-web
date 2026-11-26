@@ -1,6 +1,7 @@
 "use client";
 
 import { formatOrgCurrency } from "@/lib/format";
+import { formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import {
   formatLpoPackagingLabel,
@@ -44,8 +45,7 @@ export function sanitizeLpoOrderQty(raw) {
 
 /** Line amounts in order table — number only, no currency prefix. */
 export function formatLpoAmount(value) {
-  const n = Number(value ?? 0);
-  return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return formatOrgNumber(value ?? 0);
 }
 
 export function lpoCanDelete(lpo) {

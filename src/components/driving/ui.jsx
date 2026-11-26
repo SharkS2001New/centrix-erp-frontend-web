@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FilterToolbar, SearchInput } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
+import { formatOrgCurrency } from "@/lib/format";
 
 export function ScreenHeader({ title, subtitle, children }) {
   return (
@@ -829,5 +830,5 @@ export function Empty({ children }) {
 
 export function money(value) {
   const amount = Number(value) || 0;
-  return `KSh ${amount.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(amount);
 }

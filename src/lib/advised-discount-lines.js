@@ -1,9 +1,10 @@
 import { lineDiscountTotal } from "@/lib/pos-line";
+import { formatOrgCurrency } from "@/lib/format";
 
 export function formatAdvisedDiscountKes(value) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return "—";
-  return `Ksh ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(amount);
 }
 
 export function discountApprovalLinesFromSource(source) {

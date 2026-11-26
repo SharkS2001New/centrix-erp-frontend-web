@@ -1,5 +1,5 @@
 import { formatOrgNumber } from "@/lib/format";
-import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+import { activeGeneralSettings, GENERAL_DEFAULTS } from "@/lib/general-settings";
 
 /** Legacy payroll sheet column order (Moonlight-style). */
 export const PAYROLL_SHEET_COLUMNS = [
@@ -162,15 +162,16 @@ export function formatPayrollSheetExportAmount(value) {
  * @param {unknown} value
  * @param {object} [settings]
  */
-export function formatPayrollSheetDisplayAmount(value, settings = GENERAL_DEFAULTS) {
+export function formatPayrollSheetDisplayAmount(
+  value,
+  settings = activeGeneralSettings() ?? GENERAL_DEFAULTS,
+) {
   if (value == null || value === "") return "—";
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
 
-  const roundedCents = Math.round(amount * 100);
-  const decimals = roundedCents % 100 === 0 ? 0 : 2;
   const general = settings ?? GENERAL_DEFAULTS;
-  const number = formatOrgNumber(roundedCents / 100, general, { decimals });
+  const number = formatOrgNumber(amount, general);
   const currency = general.currency || "KES";
   return `${currency} ${number}`;
 }

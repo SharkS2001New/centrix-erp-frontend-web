@@ -239,6 +239,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
                 form={form}
                 setForm={setForm}
                 showFontNote
+                showWeightToggle={false}
               />
             </div>
           </div>

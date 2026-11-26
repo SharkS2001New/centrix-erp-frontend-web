@@ -17,6 +17,7 @@ import {
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { formatOrgNumber } from "@/lib/format";
 
 export function HospitalityNightAuditScreen() {
   const { capabilities } = useAuth();
@@ -65,7 +66,7 @@ function NightAuditManager() {
         method: "POST",
         body: { business_date: appliedDate },
       });
-      notifySuccess(`Posted ${res?.rooms_posted ?? 0} rooms · ${Number(res?.amount_posted ?? 0).toFixed(2)}`);
+      notifySuccess(`Posted ${res?.rooms_posted ?? 0} rooms · ${formatOrgNumber(res?.amount_posted ?? 0)}`);
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Night audit failed");
@@ -113,7 +114,7 @@ function NightAuditManager() {
       {preview?.already_run ? (
         <p className="mb-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           Already ran for this date ({preview.last_run?.rooms_posted} rooms,{" "}
-          {Number(preview.last_run?.amount_posted ?? 0).toFixed(2)}).
+          {formatOrgNumber(preview.last_run?.amount_posted ?? 0)}).
         </p>
       ) : null}
 
@@ -123,10 +124,10 @@ function NightAuditManager() {
             ["Arrivals", snapshot.arrivals],
             ["Departures", snapshot.departures],
             ["Open folios", snapshot.open_folios],
-            ["Folio bal", Number(snapshot.open_folio_balance ?? 0).toFixed(2)],
+            ["Folio bal", formatOrgNumber(snapshot.open_folio_balance ?? 0)],
             ["Open checks", snapshot.open_fnb_checks],
             ["Rooms to post", preview?.rooms_count ?? 0],
-            ["Post total", Number(preview?.total_amount ?? 0).toFixed(2)],
+            ["Post total", formatOrgNumber(preview?.total_amount ?? 0)],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -140,7 +141,7 @@ function NightAuditManager() {
       ) : null}
 
       <p className="theme-subtext mb-2 text-sm">
-        {preview?.rooms_count ?? 0} rooms to post · total {Number(preview?.total_amount ?? 0).toFixed(2)}
+        {preview?.rooms_count ?? 0} rooms to post · total {formatOrgNumber(preview?.total_amount ?? 0)}
       </p>
 
       <div className={`${TABLE_SHELL_CLASS} mb-8`}>
@@ -159,7 +160,7 @@ function NightAuditManager() {
                 <td className="px-3 py-2">{c.folio_number}</td>
                 <td className="px-3 py-2">{c.guest_name}</td>
                 <td className="px-3 py-2">{c.room_number}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{Number(c.amount).toFixed(2)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatOrgNumber(c.amount)}</td>
               </tr>
             ))}
             {!candidates.length ? (
@@ -188,7 +189,7 @@ function NightAuditManager() {
               <tr key={h.id} className={TABLE_BODY_ROW_CLASS}>
                 <td className="px-3 py-2">{h.business_date}</td>
                 <td className="px-3 py-2 text-right">{h.rooms_posted}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{Number(h.amount_posted).toFixed(2)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatOrgNumber(h.amount_posted)}</td>
               </tr>
             ))}
             {!history.length ? (

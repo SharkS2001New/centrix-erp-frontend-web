@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { formatOrgNumber } from "@/lib/format";
 import { renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
@@ -1036,10 +1037,11 @@ export function PosPaymentPanel({
   }
 
   function formatPaymentFillAmount(amount, { ceil = false } = {}) {
-    if (amount <= 0) return "0";
+    if (amount <= 0) {
+      return formatOrgNumber(0, undefined, { useGrouping: false });
+    }
     if (ceil) return String(Math.ceil(amount));
-    const rounded = Math.round(amount * 100) / 100;
-    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+    return formatOrgNumber(amount, undefined, { useGrouping: false });
   }
 
   /** Replace leading 0 when cashier starts typing (0 → 5, not 05). Keeps 0.5 decimals. */

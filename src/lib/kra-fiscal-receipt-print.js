@@ -11,6 +11,7 @@ import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { formatReportKes } from "@/lib/reports/format";
 import { formatKraReportOrderNo, saleCustomerLabel } from "@/lib/sales";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
+import { formatOrgNumber } from "@/lib/format";
 
 function parseJsonMaybe(value) {
   if (value == null || value === "") return null;
@@ -27,7 +28,7 @@ function formatReceiptMoney(value) {
   if (value == null || value === "") return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return String(value);
-  return n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatOrgNumber(n);
 }
 
 function formatReceiptDate(value) {

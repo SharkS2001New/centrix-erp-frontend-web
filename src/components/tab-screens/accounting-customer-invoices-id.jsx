@@ -24,6 +24,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { filterPaymentMethodsForOrg } from "@/lib/org-payment-methods";
+import { formatOrgInputNumber } from "@/lib/format";
 
 export function AccountingCustomerInvoicesIdScreen() {
   const params = useParams();
@@ -95,7 +96,10 @@ export function AccountingCustomerInvoicesIdScreen() {
       const customerName = normalized.customer_name || "";
       setPayForm((f) => ({
         ...f,
-        amount_paid: balance > 0.01 ? String(balance.toFixed(2)) : "",
+        amount_paid:
+          balance > 0.01
+            ? formatOrgInputNumber(balance)
+            : "",
         notes: customerName ? `Received from ${customerName}` : f.notes,
       }));
     } catch (e) {

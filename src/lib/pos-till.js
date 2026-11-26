@@ -1,21 +1,16 @@
 import { apiRequest } from "@/lib/api";
+import { formatOrgNumber } from "@/lib/format";
 
 const SESSION_STORAGE_KEY = "pos_erp_active_session";
 
 export function formatTillKes(value) {
   if (value == null || value === "") return "KES 0";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return `KES ${formatOrgNumber(value)}`;
 }
 
 export function formatTillKesExact(value) {
-  if (value == null || value === "") return "KES 0.00";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  if (value == null || value === "") return `KES ${formatOrgNumber(0)}`;
+  return `KES ${formatOrgNumber(value)}`;
 }
 
 /** Signed money for variance (+KES / −KES); balanced shows exact zero. */

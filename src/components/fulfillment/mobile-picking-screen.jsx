@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
+import { formatDisplayQty } from "@/lib/stock-uom";
 import {
   CatalogPageShell,
   Field,
@@ -49,8 +50,7 @@ function formatDisplayDate(dateStr) {
 }
 
 function formatQty(value) {
-  const n = Number(value) || 0;
-  return n % 1 === 0 ? String(Math.trunc(n)) : n.toLocaleString("en-KE", { maximumFractionDigits: 2 });
+  return formatDisplayQty(value);
 }
 
 function shortageQty(required, picked) {

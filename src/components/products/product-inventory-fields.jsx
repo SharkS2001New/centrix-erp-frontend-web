@@ -30,9 +30,10 @@ function StockLocationFields({ location, label, form, onChange, uom, readOnly = 
   const levels = uom ? uomStockTakeLevels(uom) : [{ key: "small", label: "units" }];
 
   if (levels.length === 1) {
-    const key = stockFieldKey(location, "small");
+    const level = levels[0];
+    const key = stockFieldKey(location, level.key);
     return (
-      <Field label={`${label} stock`}>
+      <Field label={readOnly ? `Current ${label} stock` : `${label} opening stock`}>
         <input
           type="text"
           inputMode="decimal"
@@ -44,7 +45,7 @@ function StockLocationFields({ location, label, form, onChange, uom, readOnly = 
           disabled={readOnly}
         />
         <p className="mt-1 text-xs text-slate-500">
-          {readOnly ? "Read-only — updated by inventory transactions." : `Count in ${levels[0].label}.`}
+          {readOnly ? "Read-only — updated by inventory transactions." : `Count in ${level.label}.`}
         </p>
       </Field>
     );
@@ -64,8 +65,14 @@ function StockLocationFields({ location, label, form, onChange, uom, readOnly = 
       <div className="grid gap-2 sm:grid-cols-2">
         {levels.map((level) => {
           const key = stockFieldKey(location, level.key);
+          const label =
+            level.key === "full"
+              ? `Full package count (${level.label})`
+              : level.key === "middle"
+                ? `Middle package count (${level.label})`
+                : `Loose quantity (${level.label})`;
           return (
-            <Field key={key} label={level.label}>
+            <Field key={key} label={label}>
               <input
                 type="text"
                 inputMode="decimal"

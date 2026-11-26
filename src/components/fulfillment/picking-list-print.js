@@ -23,6 +23,8 @@ import {
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
 import { isLoadTonnageEnabled } from "@/lib/loading-sheet-print-settings";
+import { formatOrgNumber } from "@/lib/format";
+import { formatDisplayQty } from "@/lib/stock-uom";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -33,14 +35,11 @@ function escapeHtml(value) {
 }
 
 function formatQty(value) {
-  const n = Number(value) || 0;
-  return n % 1 === 0 ? String(Math.trunc(n)) : n.toLocaleString("en-KE", { maximumFractionDigits: 2 });
+  return formatDisplayQty(value);
 }
 
 function formatKes(amount) {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return "0.00";
-  return n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatOrgNumber(amount);
 }
 
 /** Strip legacy W/R prefixes from quantity labels ("W 3 Bag" → "3 Bag"). */

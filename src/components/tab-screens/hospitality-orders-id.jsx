@@ -24,12 +24,10 @@ import {
   normalizeHospitalityCheckPrintSettings,
 } from "@/lib/hospitality-check-print-options";
 import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
+import { formatOrgNumber } from "@/lib/format";
 
 function formatMoney(value) {
-  return Number(value ?? 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(value);
 }
 
 function formatWhen(iso) {
