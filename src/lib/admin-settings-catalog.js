@@ -257,7 +257,7 @@ export const ADMIN_SETTINGS_CATALOG = [
   {
     id: "org.sales.pos",
     label: "Tills",
-    description: "Till float, barcode, customer name, credit checkout",
+    description: "Till float, barcode, customer name and phone prompts for Backoffice, POS, and CentrixAsMobile",
     keywords: [
       "till float",
       "float",
@@ -268,6 +268,10 @@ export const ADMIN_SETTINGS_CATALOG = [
       "invoice mode",
       "hold customer name",
       "walk-in name",
+      "backoffice customer name",
+      "centrixasmobile customer name",
+      "customer phone",
+      "phone number",
       "expected cash",
     ],
     group: "Organization settings",

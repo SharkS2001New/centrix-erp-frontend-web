@@ -31,6 +31,7 @@ import {
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
+import { customerPhoneFromRecord, isValidCustomerPhone } from "@/lib/customer-phone";
 
 function normalizeKenyanPhoneInput(value) {
   return String(value ?? "").replace(/\D/g, "");
@@ -235,6 +236,7 @@ export function PosPaymentPanel({
   prefillMpesaAmount = 0,
   prefillMpesaCode = "",
   prefillWalkInCustomerName = "",
+  prefillCustomerPhone = "",
   prefillMpesaPhone = "",
   /** Restored held-order tenders (cash / equity / etc.). */
   prefillCashAmount = 0,
@@ -293,6 +295,7 @@ export function PosPaymentPanel({
   const [chequeAmount, setChequeAmount] = useState("0");
   const [chequeNo, setChequeNo] = useState("");
   const [walkInCustomerName, setWalkInCustomerName] = useState("");
+  const [walkInCustomerPhone, setWalkInCustomerPhone] = useState("");
   /** Customer-name step: walk-in name vs registered customer (KRA / receipt link). */
   const [customerNameMode, setCustomerNameMode] = useState("walkin");
   const [receiptCustomerNum, setReceiptCustomerNum] = useState("");
@@ -308,6 +311,7 @@ export function PosPaymentPanel({
   const [completedOrder, setCompletedOrder] = useState(null);
   const confirmYesRef = useRef(null);
   const walkInNameRef = useRef(null);
+  const customerPhoneRef = useRef(null);
   const completeOkRef = useRef(null);
   const autoContinueStartedRef = useRef(false);
   const cashAmountRef = useRef(null);
@@ -399,6 +403,7 @@ export function PosPaymentPanel({
     setChequeAmount(chequePrefill > 0 ? String(chequePrefill) : "0");
     setChequeNo("");
     setWalkInCustomerName(String(prefillWalkInCustomerName ?? "").trim());
+    setWalkInCustomerPhone(String(prefillCustomerPhone ?? "").trim());
     setCustomerNameMode("walkin");
     setReceiptCustomerNum("");
     setSelectedReceiptCustomer(null);
@@ -416,6 +421,7 @@ export function PosPaymentPanel({
     prefillBankAmount,
     prefillBankType,
     prefillWalkInCustomerName,
+    prefillCustomerPhone,
     previousOrderEditAdjustment,
     signedEditDelta,
   ]);
@@ -592,10 +598,10 @@ export function PosPaymentPanel({
       : null;
 
   function needsCustomerNameStep() {
-    return (
-      cfg.enableCheckoutCustomerName &&
-      !hasCreditCustomer &&
-      !linkedReceiptCustomer
+    if (!cfg.enableCheckoutCustomerName) return false;
+    if (!hasCreditCustomer && !linkedReceiptCustomer) return true;
+    return !isValidCustomerPhone(
+      customerPhoneFromRecord(creditCustomer ?? linkedReceiptCustomer),
     );
   }
 
@@ -817,6 +823,10 @@ export function PosPaymentPanel({
     if (creditCustomer) {
       body.customer_num = creditCustomer.customer_num;
       body.customer_name_override = creditCustomer.customer_name;
+      const phone =
+        String(walkInCustomerPhone ?? "").trim() ||
+        customerPhoneFromRecord(creditCustomer);
+      if (phone) body.customer_phone = phone;
       const creditPin = String(creditCustomer.kra_pin ?? "").trim();
       if (creditPin) body.customer_kra_pin = creditPin;
       // Customer stays on the receipt when they paid in full after opening I;
@@ -825,6 +835,10 @@ export function PosPaymentPanel({
       // Paid sale linked to a registered customer (receipt / KRA PIN) — not credit A/R.
       body.customer_num = linkedReceiptCustomer.customer_num;
       body.customer_name_override = linkedReceiptCustomer.customer_name;
+      const phone =
+        String(walkInCustomerPhone ?? "").trim() ||
+        customerPhoneFromRecord(linkedReceiptCustomer);
+      if (phone) body.customer_phone = phone;
       const receiptPin = String(linkedReceiptCustomer.kra_pin ?? "").trim();
       if (receiptPin) body.customer_kra_pin = receiptPin;
     } else {
@@ -832,6 +846,8 @@ export function PosPaymentPanel({
       const mpesaName = String(mpesaPayerName || "").trim();
       if (walkIn) {
         body.customer_name_override = walkIn.toUpperCase();
+        const phone = String(walkInCustomerPhone ?? "").trim();
+        if (phone) body.customer_phone = phone;
       } else if (mpesaName) {
         body.customer_name_override = mpesaName;
       }
@@ -1301,6 +1317,19 @@ export function PosPaymentPanel({
       setMpesaPayerName(payerName);
       setWalkInCustomerName(payerName);
     }
+    if (onStkFullyPaid && needsCustomerNameStep()) {
+      setWalkInCustomerPhone(
+        (current) =>
+          current ||
+          String(nextCart?.mpesa_phone || mpesaPhone || prefillMpesaPhone || "").trim(),
+      );
+      stopStkWatch();
+      setStkCandidates(null);
+      setStkPhase("idle");
+      setStkInfo("M-Pesa received in full. Press Complete to enter the customer name and phone.");
+      setStep("payment");
+      return;
+    }
     stopStkWatch();
     setStkCandidates(null);
     setStkBusy(true);
@@ -1593,12 +1622,15 @@ export function PosPaymentPanel({
   function handleConfirmYes() {
     setLocalError(null);
     // Previous-order top-up/return (and any loaded receipt) already has the customer.
-    if (
-      !skipCustomerNameStep &&
-      cfg.enableCheckoutCustomerName &&
-      !hasCreditCustomer &&
-      !linkedReceiptCustomer
-    ) {
+    if (!skipCustomerNameStep && needsCustomerNameStep()) {
+      if (hasCreditCustomer && creditCustomer) {
+        const option = creditCustomerToOption(creditCustomer);
+        setCustomerNameMode("existing");
+        setReceiptCustomerNum(option.value);
+        setSelectedReceiptCustomer(creditCustomer);
+        setReceiptCustomerOptions([option]);
+        setWalkInCustomerPhone(customerPhoneFromRecord(creditCustomer));
+      }
       if (customerNameMode === "walkin" && !walkInCustomerName.trim()) {
         const prefill = String(prefillWalkInCustomerName ?? "").trim();
         if (prefill) setWalkInCustomerName(prefill);
@@ -1615,12 +1647,20 @@ export function PosPaymentPanel({
         setLocalError("Search and select an existing customer.");
         return;
       }
+      if (!isValidCustomerPhone(walkInCustomerPhone)) {
+        setLocalError("Enter a valid customer phone number.");
+        return;
+      }
       setLocalError(null);
       void submitCheckout();
       return;
     }
     if (!walkInCustomerName.trim()) {
       setLocalError("Enter the walk-in customer name.");
+      return;
+    }
+    if (!isValidCustomerPhone(walkInCustomerPhone)) {
+      setLocalError("Enter a valid customer phone number.");
       return;
     }
     setLocalError(null);
@@ -1897,6 +1937,7 @@ export function PosPaymentPanel({
               setReceiptCustomerNum("");
               setSelectedReceiptCustomer(null);
               setReceiptCustomerOptions([]);
+              setWalkInCustomerPhone("");
               setLocalError(null);
             }}
             className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
@@ -1911,6 +1952,7 @@ export function PosPaymentPanel({
             type="button"
             onClick={() => {
               setCustomerNameMode("existing");
+              setWalkInCustomerPhone("");
               setLocalError(null);
               window.requestAnimationFrame(() => {
                 receiptCustomerSelectRef.current?.openAndFocus?.();
@@ -1943,6 +1985,27 @@ export function PosPaymentPanel({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
+                    customerPhoneRef.current?.focus();
+                  }
+                }}
+              />
+            </PosField>
+            <PosField label="Customer phone number">
+              <input
+                ref={customerPhoneRef}
+                type="tel"
+                inputMode="tel"
+                className={inputCls}
+                value={walkInCustomerPhone}
+                onChange={(e) => {
+                  setWalkInCustomerPhone(e.target.value);
+                  setLocalError(null);
+                }}
+                placeholder="Phone number"
+                autoComplete="tel"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     handleCustomerNameContinue();
                   }
                 }}
@@ -1961,6 +2024,7 @@ export function PosPaymentPanel({
                 onChange={(nextValue, option) => {
                   setReceiptCustomerNum(nextValue);
                   setSelectedReceiptCustomer(option?.customer ?? null);
+                  setWalkInCustomerPhone(customerPhoneFromRecord(option?.customer));
                   setLocalError(null);
                 }}
                 options={receiptCustomerOptions}
@@ -1971,6 +2035,27 @@ export function PosPaymentPanel({
                 idleSearchLabel="Type a name, phone, KRA PIN, or customer #"
                 emptyLabel="No matching customers"
                 inputClassName={inputCls}
+              />
+            </PosField>
+            <PosField label="Customer phone number">
+              <input
+                ref={customerPhoneRef}
+                type="tel"
+                inputMode="tel"
+                className={inputCls}
+                value={walkInCustomerPhone}
+                onChange={(e) => {
+                  setWalkInCustomerPhone(e.target.value);
+                  setLocalError(null);
+                }}
+                placeholder="Phone number"
+                autoComplete="tel"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCustomerNameContinue();
+                  }
+                }}
               />
             </PosField>
             {selectedReceiptCustomer ? (

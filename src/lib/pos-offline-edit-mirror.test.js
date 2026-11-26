@@ -58,6 +58,7 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
         order_num: 32,
         pos_order_num: 32,
         customer_name_override: "TEST",
+        customer_phone: "0712345678",
         order_total: 4120,
         items: [
           {
@@ -81,7 +82,7 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
         { product_code: "SUGAR", quantity: 2, unit_price: 140 },
         { product_code: "COSMO", quantity: 2, unit_price: 1920 },
       ],
-      checkout_body: { client_sale_uuid: uuid },
+      checkout_body: { client_sale_uuid: uuid, customer_phone: "0712345678" },
     });
 
     const cart = {
@@ -91,6 +92,7 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
       pos_order_num: 32,
       offline_client_sale_uuid: uuid,
       customer_name_override: "TEST",
+      customer_phone: "0712345678",
       lines: [
         {
           client_line_id: "a",
@@ -119,6 +121,8 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
     expect(row.lines[0].quantity).toBe(1);
     expect(row.sale_payload.items[0].quantity).toBe(1);
     expect(row.sale_payload.order_total).toBe(3980);
+    expect(row.sale_payload.customer_phone).toBe("0712345678");
+    expect(row.checkout_body.customer_phone).toBe("0712345678");
     expect(row.sale_payload.payments?.[0]?.amount).toBe(4120);
     expect(row.content_revision).toBe(2);
 

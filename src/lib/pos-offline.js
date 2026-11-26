@@ -835,6 +835,7 @@ export function emptyLocalPosCart(seed = {}) {
     float_session_id: seed.float_session_id ?? null,
     customer_num: seed.customer_num ?? null,
     customer_name_override: seed.customer_name_override ?? null,
+    customer_phone: seed.customer_phone ?? null,
     updated_at_ms: Date.now(),
     offline: true,
   };
@@ -1208,6 +1209,7 @@ export async function savePreviousOrderEditDraft(cart) {
     till_id: cart.till_id ?? null,
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
+    customer_phone: cart.customer_phone ?? null,
     ...(cart.original_order_total != null
       ? { original_order_total: Number(cart.original_order_total) }
       : {}),
@@ -2105,6 +2107,7 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
     float_session_id: openCart.float_session_id ?? seed.float_session_id ?? null,
     customer_num: openCart.customer_num ?? null,
     customer_name_override: openCart.customer_name_override ?? null,
+    customer_phone: openCart.customer_phone ?? null,
     order_discount: Number(openCart.order_discount ?? 0) || 0,
     voucher_payment_amount: Number(openCart.voucher_payment_amount ?? 0) || 0,
     points_payment_amount: Number(openCart.points_payment_amount ?? 0) || 0,
@@ -2894,6 +2897,14 @@ export async function completeOfflineCashSale({
     String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
         null
       );
+  const customerPhone = revisingQueuedOffline
+    ? (String(cart.customer_phone ?? "").trim() || null)
+    : (
+      String(cart.customer_phone ?? "").trim() ||
+      String(existingOutbox?.sale_payload?.customer_phone ?? "").trim() ||
+      String(existingOutbox?.checkout_body?.customer_phone ?? "").trim() ||
+      null
+    );
   const customerKraPin = revisingQueuedOffline
     ? (String(cart.customer_kra_pin ?? "").trim() || null)
     : (
@@ -3098,6 +3109,7 @@ export async function completeOfflineCashSale({
     created_at_ms: soldAtMs,
     customer_num: customerNum,
     customer_name_override: customerNameOverride,
+    customer_phone: customerPhone,
     offline_pending_sync: true,
     superseded_sale_id: supersededSaleId,
     ...(reconciledEditAdjustments.length
@@ -3197,6 +3209,7 @@ export async function completeOfflineCashSale({
       ...(getPosDeviceIdentifier() ? { pos_device_id: getPosDeviceIdentifier() } : {}),
       customer_num: customerNum,
       customer_name_override: customerNameOverride,
+      customer_phone: customerPhone,
       ...(customerKraPin ? { customer_kra_pin: customerKraPin } : {}),
       total_vat: sale.total_vat,
       sales_workspace: "pos",
@@ -3494,6 +3507,7 @@ export function buildPreviousOrderEditPrintSale(
     customer_num: cart.customer_num ?? sourceSale?.customer_num ?? null,
     customer_name_override:
       cart.customer_name_override ?? sourceSale?.customer_name_override ?? null,
+    customer_phone: cart.customer_phone ?? sourceSale?.customer_phone ?? null,
     superseded_sale_id: cart.superseded_sale_id ?? null,
     payment_adjustments: reconciledAdjustments,
     ...(returnGiven > 0.0001 ? { _change_given: returnGiven, order_change: returnGiven } : {}),
@@ -4187,6 +4201,11 @@ export async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     String(row.checkout_body?.customer_name_override ?? "").trim() ||
     String(row.sale_payload?.customer_name_override ?? "").trim() ||
     null;
+  const customerPhone =
+    String(extras.customer_phone ?? "").trim() ||
+    String(row.checkout_body?.customer_phone ?? "").trim() ||
+    String(row.sale_payload?.customer_phone ?? "").trim() ||
+    null;
 
   const body = {
     ...row.checkout_body,
@@ -4241,6 +4260,9 @@ export async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   }
   if (customerNameOverride) {
     body.customer_name_override = customerNameOverride;
+  }
+  if (customerPhone) {
+    body.customer_phone = customerPhone;
   }
   const customerKraPin =
     String(extras.customer_kra_pin ?? "").trim() ||
@@ -5040,6 +5062,7 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
     customer_num: cart.customer_num ?? priorPayload.customer_num ?? null,
     customer_name_override:
       cart.customer_name_override ?? priorPayload.customer_name_override ?? null,
+    customer_phone: cart.customer_phone ?? priorPayload.customer_phone ?? null,
     order_discount: orderDiscount,
     order_total: summary.total,
     amount_due: summary.amountDue,
@@ -5057,6 +5080,7 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
           ...existing.checkout_body,
           customer_num: salePayload.customer_num,
           customer_name_override: salePayload.customer_name_override,
+          customer_phone: salePayload.customer_phone,
           total_vat: salePayload.total_vat,
           payment_method_code: paymentMethodCode,
           is_credit_sale: isCreditSale,
@@ -5266,6 +5290,7 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
       null,
     customer_num: sale.customer_num ?? null,
     customer_name_override: sale.customer_name_override ?? null,
+    customer_phone: sale.customer_phone ?? null,
     lines,
     updated_at_ms: Date.now(),
   };

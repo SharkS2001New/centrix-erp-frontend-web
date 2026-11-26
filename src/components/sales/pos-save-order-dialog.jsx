@@ -14,8 +14,30 @@ import {
 } from "@/lib/pos-edit-payment-adjustment";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
+import { customerPhoneFromRecord, isValidCustomerPhone } from "@/lib/customer-phone";
 
 const inputCls = INPUT_CLASS;
+
+function CustomerPhoneField({ value, onChange, disabled, inputRef = null }) {
+  return (
+    <label className="block">
+      <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
+        Customer phone number
+      </span>
+      <input
+        ref={inputRef}
+        type="tel"
+        inputMode="tel"
+        className={inputCls}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Phone number"
+        autoComplete="tel"
+        disabled={disabled}
+      />
+    </label>
+  );
+}
 
 /**
  * Hold / save order customer picker.
@@ -23,7 +45,7 @@ const inputCls = INPUT_CLASS;
  * (links customer_num + KRA PIN onto the sale for receipt / eTIMS).
  *
  * When `enableHeldAmountPaid` is on (hold mode), shows Amount Paid + payment method
- * (default Cash; shortcuts C/M/E/K). Enter on name (or amount) holds the order.
+ * (default Cash; shortcuts C/M/E/K). Enter on phone (or amount) holds the order.
  */
 export function PosSaveOrderDialog({
   open,
@@ -33,6 +55,7 @@ export function PosSaveOrderDialog({
   onSave,
   mode = "save",
   prefillWalkInName = "",
+  prefillWalkInPhone = "",
   prefillCustomerNum = "",
   saveStatusLabel = "",
   workflowPipeline = [],
@@ -45,6 +68,7 @@ export function PosSaveOrderDialog({
   /** "walkin" | "existing" */
   const [customerMode, setCustomerMode] = useState("walkin");
   const [walkInName, setWalkInName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [customerNum, setCustomerNum] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerOptions, setCustomerOptions] = useState([]);
@@ -54,6 +78,7 @@ export function PosSaveOrderDialog({
   const [paymentMethodInput, setPaymentMethodInput] = useState("CASH");
   const primaryActionRef = useRef(null);
   const walkInNameRef = useRef(null);
+  const customerPhoneRef = useRef(null);
   const amountPaidRef = useRef(null);
   const paymentMethodRef = useRef(null);
   const submitLockRef = useRef(false);
@@ -64,6 +89,7 @@ export function PosSaveOrderDialog({
     submitLockRef.current = false;
     if (!open) return;
     const prefillName = String(prefillWalkInName ?? "").trim();
+    const prefillPhone = String(prefillWalkInPhone ?? "").trim();
     const prefillNum = String(prefillCustomerNum ?? "").trim();
     const startExisting = Boolean(prefillNum);
     // Don't seed Hold with a generic "Walk-in" label — cashier types the name.
@@ -72,6 +98,7 @@ export function PosSaveOrderDialog({
       /^walk[\s-]*in(\s*\(auto-held\))?$/i.test(prefillName);
     setCustomerMode(startExisting ? "existing" : "walkin");
     setWalkInName(startExisting || genericWalkIn ? "" : prefillName);
+    setCustomerPhone(prefillPhone);
     setCustomerNum(prefillNum);
     setSelectedCustomer(null);
     setCustomerOptions([]);
@@ -110,6 +137,7 @@ export function PosSaveOrderDialog({
         setSelectedCustomer(customer);
         setCustomerOptions([option]);
         setCustomerMode("existing");
+        setCustomerPhone((current) => current || customerPhoneFromRecord(customer));
       })
       .catch(() => {
         if (!cancelled) setLocalError("Could not load the selected customer.");
@@ -123,7 +151,7 @@ export function PosSaveOrderDialog({
       window.clearTimeout(focusTimer);
       window.clearTimeout(focusTimer2);
     };
-  }, [open, prefillWalkInName, prefillCustomerNum, isHold]);
+  }, [open, prefillWalkInName, prefillWalkInPhone, prefillCustomerNum, isHold]);
 
   const searchCustomersForSelect = useCallback(async (query) => {
     const rows = await searchCreditCustomers(query, { perPage: 30 });
@@ -149,6 +177,7 @@ export function PosSaveOrderDialog({
     setCustomerNum("");
     setSelectedCustomer(null);
     setCustomerOptions([]);
+    setCustomerPhone("");
     setLocalError(null);
     window.setTimeout(() => {
       walkInNameRef.current?.focus();
@@ -159,12 +188,14 @@ export function PosSaveOrderDialog({
   function switchToExisting() {
     setCustomerMode("existing");
     setWalkInName("");
+    setCustomerPhone("");
     setLocalError(null);
   }
 
   function handleCustomerChange(nextValue, option) {
     setCustomerNum(nextValue);
     setSelectedCustomer(option?.customer ?? null);
+    setCustomerPhone(customerPhoneFromRecord(option?.customer));
     setLocalError(null);
     if (capturePaid && nextValue) {
       window.setTimeout(() => amountPaidRef.current?.focus(), 0);
@@ -180,7 +211,16 @@ export function PosSaveOrderDialog({
           setLocalError("Enter the walk-in customer's name.");
           return false;
         }
-        const payload = { walkIn: true, walkInName: name, hold: submitMode === "hold" };
+        if (!isValidCustomerPhone(customerPhone)) {
+          setLocalError("Enter a valid customer phone number.");
+          return false;
+        }
+        const payload = {
+          walkIn: true,
+          walkInName: name,
+          customerPhone: customerPhone.trim(),
+          hold: submitMode === "hold",
+        };
         if (capturePaid && submitMode === "hold") {
           const raw = String(amountPaid).replace(/,/g, "").trim();
           const paid = raw === "" ? 0 : Number(raw);
@@ -207,7 +247,16 @@ export function PosSaveOrderDialog({
         setLocalError("Search and select a valid customer.");
         return false;
       }
-      const payload = { walkIn: false, customer, hold: submitMode === "hold" };
+      if (!isValidCustomerPhone(customerPhone)) {
+        setLocalError("Enter a valid customer phone number.");
+        return false;
+      }
+      const payload = {
+        walkIn: false,
+        customer,
+        customerPhone: customerPhone.trim(),
+        hold: submitMode === "hold",
+      };
       if (capturePaid && submitMode === "hold") {
         const raw = String(amountPaid).replace(/,/g, "").trim();
         const paid = raw === "" ? 0 : Number(raw);
@@ -225,6 +274,7 @@ export function PosSaveOrderDialog({
       saving,
       customerMode,
       walkInName,
+      customerPhone,
       capturePaid,
       amountPaid,
       resolvedPaymentMethod,
@@ -252,17 +302,16 @@ export function PosSaveOrderDialog({
         if (target.tagName === "TEXTAREA") return;
       }
 
-      // Hold walk-in: Enter on name holds immediately (amount paid defaults to 0 if blank).
+      if (target === walkInNameRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        customerPhoneRef.current?.focus();
+        return;
+      }
+
       // Tab to Amount paid first when a deposit should be recorded before hold.
       if (capturePaid) {
         const el = target instanceof HTMLElement ? target : null;
-        if (el === walkInNameRef.current || el?.dataset?.holdField === "name") {
-          e.preventDefault();
-          e.stopPropagation();
-          if (submitLockRef.current) return;
-          if (handleSave("hold")) submitLockRef.current = true;
-          return;
-        }
         if (el === amountPaidRef.current || el?.dataset?.holdField === "amount") {
           e.preventDefault();
           e.stopPropagation();
@@ -356,25 +405,36 @@ export function PosSaveOrderDialog({
           </div>
 
           {customerMode === "walkin" ? (
-            <label className="block">
-              <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
-                Walk-in customer name
-              </span>
-              <input
-                ref={walkInNameRef}
-                type="text"
-                data-hold-field="name"
-                className={inputCls}
-                value={walkInName}
-                onChange={(e) => {
-                  setWalkInName(e.target.value);
+            <div className="space-y-2">
+              <label className="block">
+                <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
+                  Walk-in customer name
+                </span>
+                <input
+                  ref={walkInNameRef}
+                  type="text"
+                  data-hold-field="name"
+                  className={inputCls}
+                  value={walkInName}
+                  onChange={(e) => {
+                    setWalkInName(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder={isHold ? "Type customer name…" : "Customer name"}
+                  autoComplete="name"
+                  disabled={saving}
+                />
+              </label>
+              <CustomerPhoneField
+                inputRef={customerPhoneRef}
+                value={customerPhone}
+                onChange={(value) => {
+                  setCustomerPhone(value);
                   setLocalError(null);
                 }}
-                placeholder={isHold ? "Type customer name…" : "Customer name"}
-                autoComplete="off"
                 disabled={saving}
               />
-            </label>
+            </div>
           ) : (
             <div className="space-y-2">
               <label className="block">
@@ -421,6 +481,14 @@ export function PosSaveOrderDialog({
                   Use for registered customers when the receipt or KRA eTIMS must carry their PIN.
                 </p>
               )}
+              <CustomerPhoneField
+                value={customerPhone}
+                onChange={(value) => {
+                  setCustomerPhone(value);
+                  setLocalError(null);
+                }}
+                disabled={saving}
+              />
             </div>
           )}
 
@@ -446,7 +514,7 @@ export function PosSaveOrderDialog({
                   disabled={saving}
                 />
                 <span className="theme-text-muted mt-1 block text-[10px] leading-relaxed">
-                  Optional · Enter on name holds now (0 if blank) · Tab here for a deposit
+                  Optional · Enter on phone holds now (0 if blank) · Tab here for a deposit
                 </span>
               </label>
               <label className="block">

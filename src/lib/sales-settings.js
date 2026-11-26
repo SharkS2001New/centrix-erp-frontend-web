@@ -794,7 +794,6 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
 
   if (!hasPosSales) {
     next.enable_credit_payment = false;
-    next.enable_checkout_customer_name = false;
     next.enable_pos_auto_continue_after_print = false;
     next.allow_pos_edit_line_discount = false;
     next.allow_pos_edit_unit_price = false;
@@ -1771,9 +1770,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
     rejectOverpayment: checkoutContext === "order_payment",
     checkoutContext,
     enableCheckoutCustomerName:
-      checkoutContext === "pos" &&
-      hasPosSales &&
-      Boolean(sales.enable_checkout_customer_name),
+      checkoutContext === "pos" && Boolean(sales.enable_checkout_customer_name),
     otherBankLabel,
     bankOptions,
     hasBankPayments: useBankSelect

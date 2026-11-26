@@ -546,12 +546,6 @@ function TillsCheckoutSettingsTab({
             onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
           />
           <Toggle
-            label="Request customer name on POS save / hold / checkout"
-            description="When enabled, External POS prompts for a walk-in name or existing customer on Save order, Hold, and checkout. Backoffice Create order always prompts on Save. When off, External POS saves as Walk-in."
-            checked={salesForm.enable_checkout_customer_name}
-            onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
-          />
-          <Toggle
             label="Open next order after receipt prints"
             description="After F10 Complete, skip “Press Ok to Continue”. When the receipt has printed, External POS starts the next order automatically. If printing fails, the cashier still confirms with Ok. Off by default."
             checked={salesForm.enable_pos_auto_continue_after_print}
@@ -561,6 +555,16 @@ function TillsCheckoutSettingsTab({
           />
         </div>
       ) : null}
+
+      <div className="space-y-3">
+        <h3 className="theme-heading text-sm font-medium">Customer details</h3>
+        <Toggle
+          label="Request customer name and phone on save / checkout"
+          description="When enabled, prompt for a walk-in name and phone, or an existing customer with a phone, on Backoffice order checkout, External POS save / hold / checkout, and CentrixAsMobile sales. Backoffice Create order always requests a name on save."
+          checked={salesForm.enable_checkout_customer_name}
+          onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
+        />
+      </div>
     </div>
   );
 }
@@ -636,7 +640,7 @@ export function SalesSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Day-to-day pricing, payment recording, till close, barcode scanner, and POS customer prompts.
+          Day-to-day pricing, payment recording, till close, barcode scanner, and order customer prompts.
           Customer SMS/email alerts are under Messaging → Customer alerts. Color themes stay under
           Administration → Centrix ERP Themes.
         </p>

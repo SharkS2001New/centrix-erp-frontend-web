@@ -160,13 +160,14 @@ describe("pos-local-held", () => {
         ],
         branch_id: 1,
       },
-      { walkIn: true, walkInName: "Walk-in" },
+      { walkIn: true, walkInName: "Walk-in", customerPhone: "0712345678" },
     );
 
     expect(park.local_held).toBe(true);
     expect(park.hold_label).toBe("HOLD-1");
     expect(park.order_num).toBeNull();
     expect(park.order_total).toBe(200);
+    expect(park.customer_phone).toBe("0712345678");
     expect(park.items).toHaveLength(1);
     expect(isLocalHeldId(park.id)).toBe(true);
   });
@@ -183,7 +184,7 @@ describe("pos-local-held", () => {
           },
         ],
       },
-      { walkIn: true },
+      { walkIn: true, customerPhone: "0712345678" },
     );
 
     const { cart, park: restoredPark } = await restoreLocalHeldOrder(park.id);
@@ -193,6 +194,7 @@ describe("pos-local-held", () => {
     expect(cart.superseded_sale_id).toBeNull();
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0].product_code).toBe("SUGAR");
+    expect(cart.customer_phone).toBe("0712345678");
 
     await expect(restoreLocalHeldOrder(park.id)).rejects.toThrow(/not found/i);
   });

@@ -28,6 +28,7 @@ import {
   salesCartChannelForWorkspace,
   salesOrganizationFormFromApi,
   salesOrganizationPayloadFromForm,
+  sanitizeSalesOrganizationFormForModules,
   posChannelFromStockSource,
 } from "@/lib/sales-settings";
 
@@ -39,6 +40,43 @@ describe("organization shop debtors setting", () => {
     });
     expect(form.enable_shop_debtors).toBe(false);
     expect(salesOrganizationPayloadFromForm(form).enable_shop_debtors).toBe(false);
+  });
+});
+
+describe("customer-name checkout setting", () => {
+  it("preserves the setting for Backoffice and mobile-only sales organizations", () => {
+    const form = salesOrganizationFormFromApi({
+      sales: { enable_checkout_customer_name: true },
+    });
+    const capabilities = {
+      modules: { sales: true, "sales.pos": false, "sales.mobile": true },
+    };
+
+    expect(sanitizeSalesOrganizationFormForModules(form, capabilities).enable_checkout_customer_name)
+      .toBe(true);
+    expect(salesOrganizationPayloadFromForm(form, capabilities).enable_checkout_customer_name)
+      .toBe(true);
+  });
+
+  it("enables the customer-name prompt for direct checkout without External POS", () => {
+    const config = getCheckoutPaymentConfig(
+      { sales: { enable_checkout_customer_name: true } },
+      {
+        checkoutContext: "pos",
+        capabilities: { modules: { sales: true, "sales.pos": false } },
+      },
+    );
+
+    expect(config.enableCheckoutCustomerName).toBe(true);
+
+    const collectPaymentConfig = getCheckoutPaymentConfig(
+      { sales: { enable_checkout_customer_name: true } },
+      {
+        checkoutContext: "order_payment",
+        capabilities: { modules: { sales: true, "sales.pos": false } },
+      },
+    );
+    expect(collectPaymentConfig.enableCheckoutCustomerName).toBe(false);
   });
 });
 

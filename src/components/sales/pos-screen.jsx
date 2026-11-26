@@ -190,6 +190,7 @@ import {
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 import { validatePosDirectCheckoutPayment } from "@/lib/pos-checkout-credit-sale";
+import { customerPhoneFromRecord, isValidCustomerPhone } from "@/lib/customer-phone";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
 import { ClassicPosStatusFooter } from "./classic-pos-status-footer";
@@ -756,6 +757,7 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     customer_num: sourceSale?.customer_num ?? fromRestore?.customer_num ?? null,
     customer_name_override:
       sourceSale?.customer_name_override ?? fromRestore?.customer_name_override ?? null,
+    customer_phone: sourceSale?.customer_phone ?? fromRestore?.customer_phone ?? null,
     customer_display_name:
       sourceSale?.customer_display_name ?? fromRestore?.customer_display_name ?? null,
     customer: sourceSale?.customer ?? fromRestore?.customer ?? null,
@@ -784,6 +786,7 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     mergedSource?.customer?.customer_name ??
     mergedSource?.customer_display_name ??
     null;
+  const sourceCustomerPhone = mergedSource?.customer_phone ?? null;
 
   const withPosTicket = {
     ...base,
@@ -804,6 +807,9 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     sourceCustomerName &&
     String(sourceCustomerName).trim()
       ? { customer_name_override: String(sourceCustomerName).trim() }
+      : {}),
+    ...(!String(base.customer_phone ?? "").trim() && String(sourceCustomerPhone ?? "").trim()
+      ? { customer_phone: String(sourceCustomerPhone).trim() }
       : {}),
     // Keep original tender method across edit sync (outbox used to hardcode CASH).
     ...(!base.payment_method_code && mergedSource?.payment_method_code
@@ -921,6 +927,7 @@ function resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId) {
       customer_num: saleSnapshot.customer_num ?? fromRestore?.customer_num ?? null,
       customer_name_override:
         saleSnapshot.customer_name_override ?? fromRestore?.customer_name_override ?? null,
+      customer_phone: saleSnapshot.customer_phone ?? fromRestore?.customer_phone ?? null,
       customer_display_name:
         saleSnapshot.customer_display_name ?? fromRestore?.customer_display_name ?? null,
       pos_order_num: saleSnapshot.pos_order_num ?? fromRestore?.pos_order_num ?? null,
@@ -950,6 +957,7 @@ function buildOptimisticPreviousOrderCart(saleId, sourceSale, existingCart) {
     customer_num: sourceSale?.customer_num ?? sourceSale?.customer?.customer_num ?? null,
     customer_name_override:
       sourceSale?.customer_name_override ?? sourceSale?.customer_display_name ?? null,
+    customer_phone: sourceSale?.customer_phone ?? null,
     order_discount: Number(sourceSale?.order_discount ?? 0),
     lines: [],
     _optimistic_restore: true,
@@ -4993,6 +5001,7 @@ export function PosScreen({ standalone = false }) {
           ...(localCart.customer_name_override
             ? { customer_name_override: localCart.customer_name_override }
             : {}),
+          ...(localCart.customer_phone ? { customer_phone: localCart.customer_phone } : {}),
         };
         if (Object.keys(customerPatch).length > 0) {
           serverCart = { ...serverCart, ...customerPatch };
@@ -7181,6 +7190,7 @@ export function PosScreen({ standalone = false }) {
             : null,
           customer_num: working?.customer_num ?? null,
           customer_name_override: working?.customer_name_override ?? null,
+          customer_phone: working?.customer_phone ?? null,
           migrated_from_online_cart_id: working?.migrated_from_online_cart_id ?? null,
           // Carry the ticket the cashier already sees (New Order - 32) through offline adds.
           ...(working?.pos_order_num != null && Number(working.pos_order_num) > 0
@@ -12718,6 +12728,7 @@ export function PosScreen({ standalone = false }) {
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
             body?.customer_name_override ?? checkoutCart.customer_name_override,
+          customer_phone: body?.customer_phone ?? checkoutCart.customer_phone,
           ...(String(body?.customer_kra_pin ?? "").trim()
             ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
             : {}),
@@ -12845,6 +12856,7 @@ export function PosScreen({ standalone = false }) {
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
             body?.customer_name_override ?? checkoutCart.customer_name_override,
+          customer_phone: body?.customer_phone ?? checkoutCart.customer_phone,
           ...(String(body?.customer_kra_pin ?? "").trim()
             ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
             : {}),
@@ -12965,6 +12977,7 @@ export function PosScreen({ standalone = false }) {
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
             body?.customer_name_override ?? checkoutCart.customer_name_override,
+          customer_phone: body?.customer_phone ?? checkoutCart.customer_phone,
           ...(String(body?.customer_kra_pin ?? "").trim()
             ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
             : {}),
@@ -13480,6 +13493,13 @@ export function PosScreen({ standalone = false }) {
           cartForSync.customer_name_override ??
             editSourceSale?.customer_name_override ??
             editSourceSale?.customer?.customer_name ??
+            "",
+        ).trim() || null,
+      customer_phone:
+        String(
+          cartForSync.customer_phone ??
+            editSourceSale?.customer_phone ??
+            editSourceSale?.customer?.phone_number ??
             "",
         ).trim() || null,
       payment_method_code:
@@ -14077,6 +14097,40 @@ export function PosScreen({ standalone = false }) {
       Number(summary?.total ?? 0) > 0
         ? Number(summary.total)
         : amountDue + payNow;
+    const mpesaCustomerName = String(
+      options.customerName ??
+        updatedCart?.customer_name_override ??
+        cartRef.current?.customer_name_override ??
+        "",
+    ).trim();
+    const mpesaCustomerPhone = String(
+      options.customerPhone ??
+        updatedCart?.customer_phone ??
+        cartRef.current?.customer_phone ??
+        updatedCart?.mpesa_phone ??
+        cartRef.current?.mpesa_phone ??
+        "",
+    ).trim();
+    if (
+      posSalesConfig.enableCheckoutCustomerName &&
+      (!mpesaCustomerName || !isValidCustomerPhone(mpesaCustomerPhone))
+    ) {
+      const currentCart = cartRef.current ?? cart;
+      if (currentCart) {
+        const nextCart = {
+          ...currentCart,
+          ...(mpesaCustomerName ? { customer_name_override: mpesaCustomerName } : {}),
+          ...(mpesaCustomerPhone ? { customer_phone: mpesaCustomerPhone } : {}),
+        };
+        cartRef.current = nextCart;
+        setCart(nextCart);
+      }
+      flashPosShortcutMessage(
+        "M-Pesa received. Complete checkout in the payment panel to enter the customer name and phone.",
+      );
+      openPaymentDialog();
+      return null;
+    }
     const status = resolveCheckoutStatus({
       channel,
       isCredit: false,
@@ -14095,12 +14149,12 @@ export function PosScreen({ standalone = false }) {
       deduct_stock: true,
     };
 
-    const mpesaCustomerName = String(options.customerName ?? "").trim();
     if (mpesaCustomerName) {
       body.customer_name_override = mpesaCustomerName;
     } else if (posSalesConfig.enableCheckoutCustomerName) {
       body.customer_name_override = "Walk-in";
     }
+    if (mpesaCustomerPhone) body.customer_phone = mpesaCustomerPhone;
 
     const sale = await handleCheckout(body);
     if (sale) {
@@ -14126,6 +14180,7 @@ export function PosScreen({ standalone = false }) {
   async function handleSaveOrder({
     walkIn,
     walkInName,
+    customerPhone,
     customer,
     hold = false,
     heldAmountPaid,
@@ -14193,6 +14248,7 @@ export function PosScreen({ standalone = false }) {
         const park = await parkCartLocally(activeCart, {
           walkIn: Boolean(walkIn) || !customer,
           walkInName: holdWalkInName,
+          customerPhone,
           customer: walkIn ? null : customer,
           cashierId: user?.id ?? null,
           branchId: activeCart.branch_id ?? user?.branch_id ?? null,
@@ -14237,6 +14293,9 @@ export function PosScreen({ standalone = false }) {
         body.customer_num = customer.customer_num;
         body.customer_name_override = customer.customer_name;
       }
+      const resolvedCustomerPhone =
+        String(customerPhone ?? "").trim() || customerPhoneFromRecord(customer);
+      if (resolvedCustomerPhone) body.customer_phone = resolvedCustomerPhone;
       if (activeCart?.held_order_num) {
         if (walkIn) {
           rememberPosOrderCustomerName(activeCart.held_order_num, body.customer_name_override);
@@ -15201,6 +15260,14 @@ export function PosScreen({ standalone = false }) {
           enrichedSource.customer_name_override ?? enrichedSource.customer_display_name,
         ).trim();
       }
+      if (
+        !String(next.customer_phone ?? "").trim() &&
+        String(enrichedSource.customer_phone ?? enrichedSource.customer?.phone_number ?? "").trim()
+      ) {
+        next.customer_phone = String(
+          enrichedSource.customer_phone ?? enrichedSource.customer?.phone_number,
+        ).trim();
+      }
       cartData = next;
     }
     if (cartData) {
@@ -15298,6 +15365,7 @@ export function PosScreen({ standalone = false }) {
             localCart.customer_name_override ??
             frozenServerCart.customer_name_override ??
             "Walk-in",
+          customer_phone: localCart.customer_phone ?? frozenServerCart.customer_phone ?? null,
           mpesa_payment_amount: localCart.mpesa_payment_amount ?? 0,
           mpesa_transaction_code: localCart.mpesa_transaction_code ?? null,
           mpesa_phone: localCart.mpesa_phone ?? null,
@@ -15993,6 +16061,7 @@ export function PosScreen({ standalone = false }) {
           customer_num: live.customer_num ?? restoredCart.customer_num,
           customer_name_override:
             live.customer_name_override ?? restoredCart.customer_name_override,
+          customer_phone: live.customer_phone ?? restoredCart.customer_phone,
           order_discount: live.order_discount ?? restoredCart.order_discount,
           lines: live.lines,
           ...(dirty || liveChanged ? { _editDraftDirty: true } : {}),
@@ -19510,6 +19579,7 @@ export function PosScreen({ standalone = false }) {
             : ""
         }
         prefillWalkInCustomerName={prefilledEditCustomerName}
+        prefillCustomerPhone={cart?.customer_phone ?? ""}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
         cartId={cart?.id ?? null}
         enableStkPush={enableStkPushOnPos && !posNetworkPaymentsBlocked}
@@ -19545,6 +19615,7 @@ export function PosScreen({ standalone = false }) {
           setSaveOrderError(null);
         }}
         prefillWalkInName={prefilledEditCustomerName}
+        prefillWalkInPhone={cart?.customer_phone ?? ""}
         prefillCustomerNum={prefilledEditCustomerNum}
         saving={busy}
         error={saveOrderError}

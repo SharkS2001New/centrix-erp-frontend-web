@@ -157,6 +157,7 @@ export async function parkCartLocally(cart, options = {}) {
     float_session_id: cart?.float_session_id ?? options.floatSessionId ?? null,
     customer_num: customerNum,
     customer_name_override: customerName,
+    customer_phone: String(options.customerPhone ?? "").trim() || null,
     order_discount: Number(cart?.order_discount ?? 0) || 0,
   };
   const summary = summarizeLocalPosCart(draftCart);
@@ -191,6 +192,7 @@ export async function parkCartLocally(cart, options = {}) {
       ? { customer_num: customerNum, customer_name: customerName }
       : null,
     customer_name_override: customerName,
+    customer_phone: String(options.customerPhone ?? "").trim() || null,
     order_total: summary.total,
     total_vat: summary.vat,
     amount_paid: amountPaid,
@@ -209,6 +211,7 @@ export async function parkCartLocally(cart, options = {}) {
       route_id: draftCart.route_id,
       till_id: draftCart.till_id,
       float_session_id: draftCart.float_session_id,
+      customer_phone: draftCart.customer_phone,
       order_discount: draftCart.order_discount,
       channel: "pos",
       ...payments,
@@ -332,6 +335,7 @@ export function localCartFromHeldPark(park, seed = {}) {
     float_session_id: snap.float_session_id ?? seed.float_session_id ?? null,
     customer_num: park.customer_num ?? null,
     customer_name_override: park.customer_name_override ?? park.customer_name ?? "Walk-in",
+    customer_phone: park.customer_phone ?? snap.customer_phone ?? null,
     order_discount: Number(snap.order_discount ?? 0) || 0,
     ...payments,
     amount_paid: amountPaid,
