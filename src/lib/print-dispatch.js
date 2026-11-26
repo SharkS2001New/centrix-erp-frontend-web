@@ -161,7 +161,7 @@ export async function dispatchPrintJob({
   provider = getLocalPrintProvider(),
   /** When false with org fallback disabled, batch thermal may stay agent-only. */
   allowBrowserFallback = true,
-  /** Hotel POS receipts wait so shared-printer failures are not swallowed by the background queue. */
+  /** Wait for agent completion; receipts always wait so printer failures are surfaced. */
   wait = false,
 }) {
   if (!html?.trim()) {
@@ -180,7 +180,9 @@ export async function dispatchPrintJob({
 
   const activeProvider = provider;
   const canFallbackToBrowser = resolveAllowBrowserFallback(allowBrowserFallback, agentConfig);
+  const waitForAgentPrint = wait || jobType === "receipt";
   let agentError = null;
+  let agentPrintFailed = false;
 
   if (activeProvider === "agent" || (activeProvider === "browser" && isPrintAgentEnabled())) {
     const config = activeProvider === "agent" ? { ...agentConfig, enabled: true } : agentConfig;
@@ -189,42 +191,68 @@ export async function dispatchPrintJob({
         // Warm path: skip /v1/health when the agent answered recently (POS after first ping).
         if (isPrintAgentRecentlyHealthy({ ...config, enabled: true })) {
           try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
+            return await tryAgentPrint({
+              preparedHtml,
+              copies,
+              jobType,
+              documentId,
+              config,
+              wait: waitForAgentPrint,
+            });
           } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
             agentError = err instanceof Error ? err.message : "Print agent failed.";
+            agentPrintFailed = waitForAgentPrint;
           }
         }
 
-        let health = await checkPrintAgentHealth(
-          { ...config, enabled: true },
-          { quick: true },
-        );
-        // Quick ping can time out on a cold agent — retry once with the full timeout
-        // before falling back to the browser (common on backoffice first print).
-        if (!health?.ok) {
-          health = await checkPrintAgentHealth(
+        if (!agentPrintFailed) {
+          let health = await checkPrintAgentHealth(
             { ...config, enabled: true },
-            { quick: false, bypassCache: true },
+            { quick: true },
           );
-        }
-        if (health?.ok) {
-          try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
-          } catch (err) {
-            invalidatePrintAgentHealth({ ...config, enabled: true });
-            agentError = err instanceof Error ? err.message : "Print agent failed.";
-            // One retry after a failed warm/hot print (agent briefly busy).
-            try {
-              await new Promise((resolve) => setTimeout(resolve, 250));
-              return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
-            } catch (retryErr) {
-              agentError =
-                retryErr instanceof Error ? retryErr.message : agentError;
-            }
+          // Quick ping can time out on a cold agent — retry once with the full timeout
+          // before falling back to the browser (common on backoffice first print).
+          if (!health?.ok) {
+            health = await checkPrintAgentHealth(
+              { ...config, enabled: true },
+              { quick: false, bypassCache: true },
+            );
           }
-        } else {
-          agentError = agentError || "Print agent is offline or not found.";
+          if (health?.ok) {
+            try {
+              return await tryAgentPrint({
+                preparedHtml,
+                copies,
+                jobType,
+                documentId,
+                config,
+                wait: waitForAgentPrint,
+              });
+            } catch (err) {
+              invalidatePrintAgentHealth({ ...config, enabled: true });
+              agentError = err instanceof Error ? err.message : "Print agent failed.";
+              // Avoid repeating a synchronous receipt print after a definitive agent error.
+              if (!waitForAgentPrint) {
+                try {
+                  await new Promise((resolve) => setTimeout(resolve, 250));
+                  return await tryAgentPrint({
+                    preparedHtml,
+                    copies,
+                    jobType,
+                    documentId,
+                    config,
+                    wait: waitForAgentPrint,
+                  });
+                } catch (retryErr) {
+                  agentError =
+                    retryErr instanceof Error ? retryErr.message : agentError;
+                }
+              }
+            }
+          } else {
+            agentError = agentError || "Print agent is offline or not found.";
+          }
         }
       } catch (err) {
         agentError = err instanceof Error ? err.message : "Print agent unreachable.";

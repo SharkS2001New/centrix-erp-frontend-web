@@ -86,6 +86,13 @@ function Find-WkhtmlTopdfBin {
         (Join-Path $env:ProgramFiles "wkhtmltopdf\bin"),
         (Join-Path ${env:ProgramFiles(x86)} "wkhtmltopdf\bin")
     )
+    $usersRoot = Join-Path $env:SystemDrive "Users"
+    if (Test-Path $usersRoot) {
+        foreach ($profile in Get-ChildItem -Path $usersRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer }) {
+            $candidates += Join-Path $profile.FullName "AppData\Local\wkhtmltopdf\bin"
+            $candidates += Join-Path $profile.FullName "AppData\Local\Programs\wkhtmltopdf\bin"
+        }
+    }
     $pathExe = Find-ExecutableOnPath "wkhtmltopdf.exe"
     if ($pathExe) {
         $candidates += Split-Path -Parent $pathExe
@@ -136,7 +143,7 @@ function Ensure-WkhtmlTopdf([string]$TargetPublishDir) {
     }
 
     if (-not (Test-Path (Join-Path $targetBin "wkhtmltopdf.exe"))) {
-        Write-Host "WARNING: wkhtmltopdf is unavailable. Install it manually and rerun this script." -ForegroundColor Yellow
+        throw "wkhtmltopdf could not be found or bundled. Install it or allow the installer to download it, then rerun."
     }
 }
 
@@ -146,6 +153,12 @@ function Find-SumatraExecutable {
         (Join-Path ${env:ProgramFiles(x86)} "SumatraPDF\SumatraPDF.exe"),
         (Join-Path $env:LOCALAPPDATA "SumatraPDF\SumatraPDF.exe")
     )
+    $usersRoot = Join-Path $env:SystemDrive "Users"
+    if (Test-Path $usersRoot) {
+        foreach ($profile in Get-ChildItem -Path $usersRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer }) {
+            $candidates += Join-Path $profile.FullName "AppData\Local\SumatraPDF\SumatraPDF.exe"
+        }
+    }
     $pathExe = Find-ExecutableOnPath "SumatraPDF.exe"
     if ($pathExe) {
         $candidates += $pathExe
@@ -172,8 +185,7 @@ function Ensure-SumatraPdf([string]$TargetPublishDir) {
     }
 
     if ($SkipSumatraDownload) {
-        Write-Host "WARNING: SumatraPDF is missing. Install it and rerun the installer." -ForegroundColor Yellow
-        return $null
+        throw "SumatraPDF could not be found or bundled. Install it or allow the installer to download it, then rerun."
     }
 
     $toolsDir = Join-Path $TargetPublishDir "tools"
@@ -213,6 +225,12 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 Write-Host ("Installing Centrix Print Agent to {0}..." -f $InstallDir)
 Ensure-WkhtmlTopdf $publishDir
 Ensure-SumatraPdf $publishDir | Out-Null
+if (-not (Test-Path (Join-Path $publishDir "tools\wkhtmltopdf\bin\wkhtmltopdf.exe"))) {
+    throw "wkhtmltopdf is missing from the package; refusing to install an incomplete print agent."
+}
+if (-not (Test-Path (Join-Path $publishDir "tools\SumatraPDF\SumatraPDF.exe"))) {
+    throw "SumatraPDF is missing from the package; refusing to install an incomplete print agent."
+}
 
 if (-not $readyPackage) {
     foreach ($fileName in @("install-windows-service.ps1", "uninstall-windows-service.ps1", "PackageTools.cs")) {
@@ -256,6 +274,12 @@ if (-not (Test-Path $InstallDir)) {
 Get-ChildItem -Path $publishDir -Force | Where-Object {
     $_.Name -ne "CentrixPrintAgent-win-x64.zip"
 } | Copy-Item -Destination $InstallDir -Recurse -Force
+if (-not (Test-Path (Join-Path $InstallDir "tools\wkhtmltopdf\bin\wkhtmltopdf.exe"))) {
+    throw "wkhtmltopdf was not copied into the installed Print Agent tools folder."
+}
+if (-not (Test-Path (Join-Path $InstallDir "tools\SumatraPDF\SumatraPDF.exe"))) {
+    throw "SumatraPDF was not copied into the installed Print Agent tools folder."
+}
 $installedExe = Join-Path $InstallDir "Centrix.PrintAgent.exe"
 
 $taskScheduler = New-Object -ComObject "Schedule.Service"

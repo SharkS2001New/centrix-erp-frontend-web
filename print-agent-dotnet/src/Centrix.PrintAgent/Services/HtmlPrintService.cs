@@ -102,12 +102,27 @@ namespace Centrix.PrintAgent.Services
 
         private string ResolvePrinter(string requested)
         {
-            if (!String.IsNullOrWhiteSpace(requested) && _printers.PrinterExists(requested))
+            if (!String.IsNullOrWhiteSpace(requested))
             {
-                return requested;
+                if (_printers.PrinterExists(requested))
+                {
+                    return requested;
+                }
+
+                throw new InvalidOperationException(
+                    String.Format(
+                        "Configured printer \"{0}\" is not visible to the Centrix Print Agent. Check the printer name and the Windows account running the service.",
+                        requested));
             }
 
-            return _printers.DefaultPrinter();
+            var defaultPrinter = _printers.DefaultPrinter();
+            if (String.IsNullOrWhiteSpace(defaultPrinter))
+            {
+                throw new InvalidOperationException(
+                    "No Windows default printer is visible to the Centrix Print Agent.");
+            }
+
+            return defaultPrinter;
         }
 
         private static int RenderPdf(

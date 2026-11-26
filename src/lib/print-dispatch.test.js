@@ -124,4 +124,55 @@ describe("dispatchPrintJob browser fallback", () => {
     expect(result.mode).toBe("browser");
     expect(openBlankPrintWindow).toHaveBeenCalled();
   });
+
+  it("waits for the print agent to finish receipts before reporting success", async () => {
+    vi.mocked(checkPrintAgentHealth).mockResolvedValue({ ok: true });
+    vi.mocked(printViaAgent).mockResolvedValue({ ok: true, queued: false });
+
+    const result = await dispatchPrintJob({
+      html: "<html><body>Receipt</body></html>",
+      jobType: "receipt",
+      provider: "agent",
+    });
+
+    expect(printViaAgent).toHaveBeenCalledTimes(1);
+    expect(printViaAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ wait: true }),
+    );
+    expect(result).toMatchObject({ mode: "agent", ok: true });
+  });
+
+  it("falls back visibly after a synchronous receipt print failure without retrying", async () => {
+    vi.mocked(checkPrintAgentHealth).mockResolvedValue({ ok: true });
+    vi.mocked(printViaAgent).mockRejectedValue(new Error("Configured printer is not visible."));
+
+    const result = await dispatchPrintJob({
+      html: "<html><body>Receipt</body></html>",
+      jobType: "receipt",
+      provider: "agent",
+    });
+
+    expect(printViaAgent).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      mode: "browser",
+      ok: true,
+      agentFallback: true,
+      agentError: "Configured printer is not visible.",
+    });
+  });
+
+  it("keeps non-receipt print jobs queued by default", async () => {
+    vi.mocked(checkPrintAgentHealth).mockResolvedValue({ ok: true });
+    vi.mocked(printViaAgent).mockResolvedValue({ ok: true, queued: true });
+
+    await dispatchPrintJob({
+      html: "<html><body>Invoice</body></html>",
+      jobType: "invoice",
+      provider: "agent",
+    });
+
+    expect(printViaAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ wait: false }),
+    );
+  });
 });

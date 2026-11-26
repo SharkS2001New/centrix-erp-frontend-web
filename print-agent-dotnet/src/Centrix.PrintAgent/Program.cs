@@ -235,6 +235,7 @@ namespace Centrix.PrintAgent
         private Dictionary<string, object> BuildHealthResponse()
         {
             var printers = _printers.ListPrinters();
+            var wkhtmltopdfPath = WkhtmlPdfRenderer.FindExecutable();
             return new Dictionary<string, object>
             {
                 { "ok", true },
@@ -242,7 +243,8 @@ namespace Centrix.PrintAgent
                 { "platform", "win32" },
                 { "running_as_service", !Environment.UserInteractive },
                 { "async_print", true },
-                { "wkhtmltopdf_available", WkhtmlPdfRenderer.FindExecutable() != null },
+                { "wkhtmltopdf_available", wkhtmltopdfPath != null },
+                { "wkhtmltopdf_path", wkhtmltopdfPath },
                 { "sumatra_available", HtmlPrintService.IsSumatraAvailable() },
                 { "sumatra_path", HtmlPrintService.SumatraExecutablePath() },
                 { "default_printer", _printers.DefaultPrinter() },
