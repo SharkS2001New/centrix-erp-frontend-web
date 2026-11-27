@@ -102,6 +102,7 @@ function TransferReasonModal({ open, row, onClose }) {
 export function InventoryTransfersScreen() {
   const { date } = useOrgFormat();
   const { capabilities, user } = useAuth();
+  const repStockEnabled = Boolean(capabilities?.module_settings?.sales?.sales_rep_stock_enabled);
   const showInterBranch = isMultiBranchCatalog(capabilities);
   const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const [rows, setRows] = useState([]);
@@ -222,6 +223,15 @@ export function InventoryTransfersScreen() {
           <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
             New transfer
           </PrimaryLink>
+          {repStockEnabled ? (
+            <PrimaryLink
+              href="/reports/sales-rep-stock-movements"
+              permission={P.reports.stock_transfers.view}
+              showIcon={false}
+            >
+              Sales rep transfer report
+            </PrimaryLink>
+          ) : null}
           {showInterBranch ? (
             <>
               <PrimaryLink

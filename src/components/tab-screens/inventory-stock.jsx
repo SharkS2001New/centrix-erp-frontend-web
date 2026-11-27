@@ -206,6 +206,8 @@ export function InventoryStockScreen() {
     shop: 0,
     store: 0,
     all: 0,
+    stockShop: 0,
+    stockStore: 0,
     allocatedShop: 0,
     allocatedStore: 0,
     availableShop: 0,
@@ -391,6 +393,8 @@ export function InventoryStockScreen() {
               shop: 0,
               store: 0,
               all: 0,
+              stockShop: 0,
+              stockStore: 0,
               allocatedShop: 0,
               allocatedStore: 0,
               availableShop: 0,
@@ -404,6 +408,8 @@ export function InventoryStockScreen() {
             shop,
             store,
             all: Number(summary.total_cost_value ?? summary.cost_value) || shop + store,
+            stockShop: Number(summary.shop_quantity ?? 0),
+            stockStore: Number(summary.store_quantity ?? 0),
             allocatedShop: Number(summary.rep_allocated_shop ?? 0),
             allocatedStore: Number(summary.rep_allocated_store ?? 0),
             availableShop: Number(summary.available_shop_quantity ?? 0),
@@ -419,6 +425,8 @@ export function InventoryStockScreen() {
         shop: 0,
         store: 0,
         all: 0,
+        stockShop: 0,
+        stockStore: 0,
         allocatedShop: 0,
         allocatedStore: 0,
         availableShop: 0,
@@ -560,9 +568,10 @@ export function InventoryStockScreen() {
             {repStockEnabled ? (
               <div className="mt-1 w-full min-w-[16rem] rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2 font-semibold text-slate-700">
-                  <span>Rep allocations</span>
+                  <span>Sales rep stock</span>
                   <span>
-                    Total: {formatMixedStockDisplay(allocatedShop + allocatedStore, productUom, row.uomName).text}
+                    Total allocated:{" "}
+                    {formatMixedStockDisplay(allocatedShop + allocatedStore, productUom, row.uomName).text}
                   </span>
                 </div>
                 {reps.length ? (
@@ -570,12 +579,13 @@ export function InventoryStockScreen() {
                     {reps.map((rep) => (
                       <div key={rep.user_id} className="flex flex-wrap justify-between gap-x-3 text-slate-600">
                         <span className="font-medium">{rep.name}</span>
-                        <span>
+                        <span className="font-semibold text-slate-800">
+                          {formatMixedStockDisplay(rep.shop + rep.store, productUom, row.uomName).text} in stock
+                        </span>
+                        <span className="w-full text-right text-slate-500">
                           Shop {formatMixedStockDisplay(rep.shop, productUom, row.uomName).text}
                           {" · "}
                           Store {formatMixedStockDisplay(rep.store, productUom, row.uomName).text}
-                          {" · "}
-                          Total {formatMixedStockDisplay(rep.shop + rep.store, productUom, row.uomName).text}
                         </span>
                       </div>
                     ))}
@@ -751,6 +761,7 @@ export function InventoryStockScreen() {
     visibleTotalCost + (availableLocationSet.has("store") ? totals.store : 0);
   const allocatedTotal = totals.allocatedShop + totals.allocatedStore;
   const availableTotal = totals.availableShop + totals.availableStore;
+  const totalStock = totals.stockShop + totals.stockStore;
 
   return (
     <InventoryPageShell
@@ -880,9 +891,13 @@ export function InventoryStockScreen() {
             {availableLocationSet.has("store") ? `Store: ${formatInventoryKes(totals.store)} · ` : ""}
             Combined: {formatInventoryKes(combinedVisibleTotal)}
           </p>
+          <p className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+            Total stocks (filtered · base units): Shop {formatQty(totals.stockShop)}, Store{" "}
+            {formatQty(totals.stockStore)}, Combined {formatQty(totalStock)}.
+          </p>
           {repStockEnabled ? (
             <p className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-              Totals for filtered stock — Allocated to reps: Shop {formatQty(totals.allocatedShop)}, Store{" "}
+              Of total stocks, allocated to reps: Shop {formatQty(totals.allocatedShop)}, Store{" "}
               {formatQty(totals.allocatedStore)}, Combined {formatQty(allocatedTotal)} base units ·
               Unallocated available: Shop {formatQty(totals.availableShop)}, Store{" "}
               {formatQty(totals.availableStore)}, Combined {formatQty(availableTotal)} base units.
@@ -890,7 +905,7 @@ export function InventoryStockScreen() {
           ) : null}
           {repStockEnabled && repTotalsByUser.length ? (
             <p className="mb-3 text-xs text-slate-500">
-              Rep totals on this page:{" "}
+              Sales rep totals on this page:{" "}
               {repTotalsByUser.map((rep) => (
                 <span key={rep.user_id} className="mr-3 inline-block">
                   {rep.name}: Shop {formatQty(rep.shop)} · Store {formatQty(rep.store)} · Total{" "}

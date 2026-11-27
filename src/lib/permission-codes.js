@@ -470,6 +470,7 @@ export function reportPermissionCode(reportKey) {
     "stock-valuation": P.reports.stock_valuation.view,
     "stock-reservations": P.reports.stock_reservations.view,
     "stock-transfers": P.reports.stock_transfers.view,
+    "sales-rep-stock-movements": P.reports.stock_transfers.view,
     "branch-stock-transfers": P.reports.branch_stock_transfers.view,
     returns: P.reports.returns.view,
     "price-list": P.pricing_tax.price_list.view,

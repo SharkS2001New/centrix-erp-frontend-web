@@ -8,6 +8,7 @@ export const TRANSFER_FROM_OPTIONS = [
 export const TRANSFER_TO_OPTIONS = [
   { value: "store", label: "Store / warehouse", location: true },
   { value: "shop", label: "Shop", location: true },
+  { value: "sales_rep", label: "Sales rep", salesRep: true },
   { value: "internal_use", label: "For internal use" },
   { value: "donations", label: "Donations" },
   { value: "staff_consumption", label: "Staff consumption" },
@@ -17,8 +18,13 @@ export const TRANSFER_TO_OPTIONS = [
   { value: "display", label: "Display / merchandising" },
 ];
 
-export function transferToOptionsFor(from, availableLocations = ["shop", "store"]) {
+export function transferToOptionsFor(
+  from,
+  availableLocations = ["shop", "store"],
+  { includeSalesRep = false } = {},
+) {
   return TRANSFER_TO_OPTIONS.filter((opt) => {
+    if (opt.salesRep) return includeSalesRep;
     if (opt.location) return availableLocations.includes(opt.value) && opt.value !== from;
     return true;
   });
@@ -35,7 +41,7 @@ export function transferRouteLabel(from, to) {
 
 export function transferPurposeLabel(to) {
   return (
-    TRANSFER_TO_OPTIONS.find((o) => o.value === to && !o.location)?.label ??
+    TRANSFER_TO_OPTIONS.find((o) => o.value === to && !o.location && !o.salesRep)?.label ??
     String(to).replace(/_/g, " ")
   );
 }
@@ -46,4 +52,8 @@ export function isStoreToShopTransfer(from, to) {
 
 export function isLocationTransferTarget(to) {
   return to === "shop" || to === "store";
+}
+
+export function isSalesRepTransferTarget(to) {
+  return to === "sales_rep";
 }

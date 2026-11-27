@@ -231,6 +231,9 @@ export function InventoryTransactionsScreen() {
             }}
             disabled={loading || listLoading}
           />
+          <PrimaryLink href="/inventory/transfers" permission={P.inventory.transfers.view}>
+            Transfer report
+          </PrimaryLink>
           <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create}>
             Transfer stock
           </PrimaryLink>
@@ -294,12 +297,14 @@ export function InventoryTransactionsScreen() {
                     >
                       <ChevronIcon open={isOpen} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-2">
-                          <span className="font-medium text-slate-900">{group.product_name}</span>
-                          {group.product_name !== group.product_code ? (
+                        <p className="break-words font-medium text-slate-900">
+                          {group.product_name}
+                        </p>
+                        {group.product_name !== group.product_code ? (
+                          <div className="mt-0.5 min-w-0">
                             <ProductCodeLink code={group.product_code} />
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : null}
                         <p className="mt-0.5 text-xs text-slate-500">
                           {group.movements.length} movement{group.movements.length === 1 ? "" : "s"} ·{" "}
                           {group.typeSummary} · last{" "}

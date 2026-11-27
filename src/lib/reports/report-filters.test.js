@@ -34,3 +34,22 @@ describe("hospitality sales report user filters", () => {
     }
   });
 });
+
+describe("sales rep stock movement report filters", () => {
+  it("uses the report date range, branch, and search filters", () => {
+    expect(
+      buildReportQueryParams("sales-rep-stock-movements", {
+        fromDate: "2026-11-01",
+        toDate: "2026-11-27",
+        branchId: "4",
+        extraValues: { q: "Flour" },
+      }),
+    ).toMatchObject({
+      date_column: "created_at",
+      from_date: "2026-11-01",
+      to_date: "2026-11-27",
+      branch_id: "4",
+      q: "Flour",
+    });
+  });
+});

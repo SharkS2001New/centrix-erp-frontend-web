@@ -24,6 +24,7 @@ const REPORT_BACKOFFICE_SECTION = {
   "stock-valuation": "inventory",
   "stock-reservations": "inventory",
   "stock-transfers": "stock_movements",
+  "sales-rep-stock-movements": "stock_movements",
   "branch-stock-transfers": "stock_movements",
   "stock-receipts": "stock_movements",
   damages: "stock_movements",
@@ -141,6 +142,13 @@ export function isKraNavEnabled(capabilities) {
  */
 export function isReportNavEnabled(reportKey, capabilities) {
   if (!reportKey) return true;
+
+  if (
+    reportKey === "sales-rep-stock-movements" &&
+    !capabilities?.module_settings?.sales?.sales_rep_stock_enabled
+  ) {
+    return false;
+  }
 
   if (
     [

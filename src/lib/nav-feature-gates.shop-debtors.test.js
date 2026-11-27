@@ -138,3 +138,18 @@ describe("Backoffice till report visibility", () => {
     expect(isReportNavEnabled("discount-summary", backofficeCheckout)).toBe(false);
   });
 });
+
+describe("Sales rep stock movement report visibility", () => {
+  it("shows the report only when sales rep stock is enabled", () => {
+    expect(
+      isReportNavEnabled("sales-rep-stock-movements", {
+        module_settings: { sales: { sales_rep_stock_enabled: true } },
+      }),
+    ).toBe(true);
+    expect(
+      isReportNavEnabled("sales-rep-stock-movements", {
+        module_settings: { sales: { sales_rep_stock_enabled: false } },
+      }),
+    ).toBe(false);
+  });
+});

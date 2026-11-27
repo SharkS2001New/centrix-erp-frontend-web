@@ -231,7 +231,7 @@ export function ProductCodeLink({ code }) {
   return (
     <Link
       href={`/products/${encodeURIComponent(code)}`}
-      className="font-mono text-[#185FA5] hover:underline"
+      className="block max-w-full break-all font-mono text-[#185FA5] hover:underline"
     >
       {code}
     </Link>

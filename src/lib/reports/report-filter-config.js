@@ -168,6 +168,7 @@ export const REPORT_DATE_COLUMNS = {
   "credit-outstanding": "sale_date",
   "stock-movement": "created_at",
   "stock-transfers": "transfer_date",
+  "sales-rep-stock-movements": "created_at",
   "branch-stock-transfers": "transfer_date",
   returns: "return_date",
   "purchases-by-supplier": "order_date",
@@ -330,6 +331,9 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "from_location", label: "From", type: "select", optionsKey: "stockLocations" },
     { id: "to_location", label: "To", type: "select", optionsKey: "stockLocations" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
+  ],
+  "sales-rep-stock-movements": [
+    { id: "q", label: "Search", type: "text", placeholder: "Product, sales rep, or branch…" },
   ],
   "stock-receipts": [
     { id: "product_code", label: "Product", type: "select", optionsKey: "products" },

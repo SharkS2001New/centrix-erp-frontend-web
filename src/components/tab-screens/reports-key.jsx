@@ -28,6 +28,16 @@ const KNOWN_GENERIC_REPORT_META = Object.fromEntries(
     { key: r.key, path: `/reports/${r.key}`, label: r.label },
   ]),
 );
+KNOWN_GENERIC_REPORT_META["stock-transfers"] = {
+  key: "stock-transfers",
+  path: "/reports/stock-transfers",
+  label: "Stock Transfers Report",
+};
+KNOWN_GENERIC_REPORT_META["sales-rep-stock-movements"] = {
+  key: "sales-rep-stock-movements",
+  path: "/sales/rep-stock-allocations/movements",
+  label: "Sales Rep Stock Movements",
+};
 
 export function ReportsKeyScreen() {
   return (

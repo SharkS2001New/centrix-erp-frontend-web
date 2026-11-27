@@ -46,6 +46,11 @@ export const STATIC_CATALOG_REPORTS = {
     href: "/inventory/stock",
     categoryId: "inventory",
   },
+  "stock-transfers": {
+    label: "Stock Transfers Report",
+    href: "/reports/stock-transfers",
+    categoryId: "inventory",
+  },
 };
 
 export const REPORT_CATEGORY_DEFS = [
@@ -106,6 +111,7 @@ export const REPORT_CATEGORY_DEFS = [
       "stock-valuation",
       "stock-reservations",
       "stock-transfers",
+      "sales-rep-stock-movements",
       "branch-stock-transfers",
       "returns",
       "price-list",
