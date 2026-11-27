@@ -304,6 +304,7 @@ export function annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendere
 
 function paymentReferenceForSplit(code, amounts) {
   const normalized = String(code ?? "").toUpperCase();
+  if (normalized === "CASH") return null;
   if (normalized === "MPESA") return amounts.mpesaCode?.trim() || null;
   if (normalized === "CHEQUE") return amounts.chequeNo?.trim() || null;
   if (["EQUITY", "KCB", "OTHER", "BANK"].includes(normalized)) {

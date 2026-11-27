@@ -152,7 +152,9 @@ export function ProductStockHistoryPanel({
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="theme-heading text-sm font-semibold">{displayName}</span>
                 {displayName !== productCode ? (
-                  <span className="theme-subtext font-mono text-xs">{productCode}</span>
+                  <span className="theme-subtext min-w-0 break-all font-mono text-xs">
+                    {productCode}
+                  </span>
                 ) : null}
               </div>
               <p className="theme-subtext mt-0.5 text-xs">

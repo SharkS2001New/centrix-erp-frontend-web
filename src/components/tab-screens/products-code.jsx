@@ -842,8 +842,10 @@ export function ProductsCodeScreen() {
                 <h1 className="theme-heading mt-3 text-2xl font-semibold tracking-tight">
                   {enriched.product_name}
                 </h1>
-                <div className="theme-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  <span className="theme-heading font-mono">{enriched.product_code}</span>
+                <div className="theme-text-muted mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className="theme-heading min-w-0 break-all font-mono">
+                    {enriched.product_code}
+                  </span>
                   <span className="text-[var(--theme-border-strong)]">·</span>
                   <span>{enriched.category_name}</span>
                   <span className="text-[var(--theme-border-strong)]">/</span>
@@ -944,7 +946,9 @@ export function ProductsCodeScreen() {
             <div className="grid gap-4 lg:grid-cols-2">
               <SectionCard title="Classification" description="Catalogue and supplier details">
                 <DetailItem label="SKU">
-                  <span className="font-mono">{enriched.product_code}</span>
+                  <span className="block max-w-full break-all font-mono">
+                    {enriched.product_code}
+                  </span>
                 </DetailItem>
                 <DetailItem label="Category">{enriched.category_name}</DetailItem>
                 <DetailItem label="Sub-category">{enriched.subcategory_name}</DetailItem>

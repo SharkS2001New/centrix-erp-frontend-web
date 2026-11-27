@@ -277,6 +277,7 @@ export function buildSaleDocumentLineRows(
     layout = "thermal",
     legacyPrint = false,
     showFullPackageUomOnDocuments = false,
+    showProductCode = false,
     cashRound = false,
   } = {},
 ) {
@@ -290,7 +291,13 @@ export function buildSaleDocumentLineRows(
 
   return rows
     .map((line) => {
-      const description = escapeHtml(saleLineProductLabel(line));
+      const productLabel = saleLineProductLabel(line);
+      const description = escapeHtml(productLabel);
+      const productCode = String(line?.product_code ?? line?.product?.product_code ?? "").trim();
+      const productCodeHtml =
+        showProductCode && productCode && productCode !== String(productLabel).trim()
+          ? `<span class="product-code">${escapeHtml(productCode)}</span>`
+          : "";
       const uom = legacyPrint ? null : saleLineUom(line, uomById);
       const linePrintOptions = { legacyPrint, showFullPackageUomOnDocuments };
 
@@ -311,7 +318,7 @@ export function buildSaleDocumentLineRows(
 
         if (showDiscountColumn) {
           return `<tr>
-          <td class="desc">${description}</td>
+          <td class="desc">${description}${productCodeHtml}</td>
           <td class="qty">${qtyCell}</td>
           <td class="price">${escapeHtml(formatThermalPrintUnitPrice(unitPrice))}</td>
           <td class="disc">${escapeHtml(formatThermalPrintAmount(discount))}</td>
@@ -320,7 +327,7 @@ export function buildSaleDocumentLineRows(
         }
 
         return `<tr>
-          <td class="desc">${description}</td>
+          <td class="desc">${description}${productCodeHtml}</td>
           <td class="qty">${qtyCell}</td>
           <td class="price">${escapeHtml(formatThermalPrintUnitPrice(unitPrice))}</td>
           <td class="amount">${escapeHtml(formatThermalPrintAmount(amount))}</td>
@@ -347,7 +354,7 @@ export function buildSaleDocumentLineRows(
 
       if (showDiscountColumn) {
         return `<tr>
-          <td>${description}</td>
+          <td>${description}${productCodeHtml}</td>
           <td class="num">${qty}</td>
           <td class="num">${unitPrice}</td>
           <td class="num">${discount}</td>
@@ -356,7 +363,7 @@ export function buildSaleDocumentLineRows(
       }
 
       return `<tr>
-        <td>${description}</td>
+        <td>${description}${productCodeHtml}</td>
         <td class="num">${qty}</td>
         <td class="num">${unitPrice}</td>
         <td class="num">${amount}</td>

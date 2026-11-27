@@ -70,9 +70,31 @@ describe("OrganizationModuleToggles", () => {
     expect(markup).toContain("Distribute stock to sales reps");
     expect(markup).toContain("unallocated branch stock");
   });
+
+  it("shows the platform-controlled receipt product-code option", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: { show_product_code_on_receipt: false },
+        onChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Print product codes on receipts");
+    expect(markup).toContain("Off by default");
+  });
 });
 
 describe("defaultSalesPlatformState", () => {
+  it("defaults receipt product codes off and reads the platform setting", () => {
+    expect(defaultSalesPlatformState("small_shop").show_product_code_on_receipt).toBe(false);
+    expect(salesPlatformFromApi({}).show_product_code_on_receipt).toBe(false);
+    expect(
+      salesPlatformFromApi({ show_product_code_on_receipt: true }).show_product_code_on_receipt,
+    ).toBe(true);
+  });
+
   it("keeps sales-rep stock distribution disabled unless enabled by platform admin", () => {
     expect(defaultSalesPlatformState("small_shop").sales_rep_stock_enabled).toBe(false);
     expect(salesPlatformFromApi({}).sales_rep_stock_enabled).toBe(false);

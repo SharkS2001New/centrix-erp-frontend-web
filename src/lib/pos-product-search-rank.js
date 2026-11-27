@@ -143,6 +143,12 @@ function tokenMatchKind(token, hay, options = {}) {
   if (hay.name.startsWith(token)) return "name_prefix";
   if (hay.words.some((word) => word.startsWith(token))) return "word_prefix";
 
+  if (hay.code.endsWith(token) || hay.codeCompact.endsWith(token)) return "code_suffix";
+  if (hay.sku?.endsWith(token) || hay.skuCompact?.endsWith(token)) return "sku_suffix";
+  if (hay.barcode?.endsWith(token) || hay.barcodeCompact?.endsWith(token)) {
+    return "sku_suffix";
+  }
+
   if (hay.code.includes(token) || hay.codeCompact.includes(token)) return "code_contains";
   if (hay.name.includes(token) || hay.nameCompact.includes(token)) return "name_contains";
   if (hay.sku && (hay.sku.includes(token) || hay.skuCompact?.includes(token))) return "sku_contains";
@@ -187,6 +193,8 @@ const KIND_SCORE = {
   code_prefix: 88,
   name_prefix: 86,
   word_prefix: 80,
+  code_suffix: 84,
+  sku_suffix: 82,
   code_contains: 52,
   name_contains: 48,
   sku_contains: 44,
@@ -212,7 +220,9 @@ function isStrongWholeQueryHit(kinds, fullCompact, hay) {
     k === "exact_word" ||
     k === "exact_code" ||
     k === "exact_barcode" ||
-    k === "exact_sku",
+    k === "exact_sku" ||
+    k === "code_suffix" ||
+    k === "sku_suffix",
   );
 }
 
@@ -266,6 +276,15 @@ export function matchKindsForIndexed(hay, query, options = {}) {
     if (hay.words.includes(q.compact)) return ["exact_word"];
     if (hay.nameCompact.startsWith(q.compact) || hay.codeCompact.startsWith(q.compact)) {
       return ["name_prefix"];
+    }
+    if (/^\d{4}$/.test(q.compact)) {
+      if (hay.codeCompact.endsWith(q.compact)) return ["code_suffix"];
+      if (
+        hay.barcodeCompact.endsWith(q.compact) ||
+        hay.skuCompact.endsWith(q.compact)
+      ) {
+        return ["sku_suffix"];
+      }
     }
     if (hay.nameCompact.includes(q.compact) || hay.codeCompact.includes(q.compact)) {
       return ["compact_match"];

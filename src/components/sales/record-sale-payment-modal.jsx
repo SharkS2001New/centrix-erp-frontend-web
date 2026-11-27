@@ -61,7 +61,7 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
         body: {
           payment_method_id: Number(paymentMethodId),
           amount: entered,
-          reference_number: reference.trim() || null,
+          reference_number: kind === "cash" ? null : reference.trim() || null,
           ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
@@ -114,7 +114,10 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
                 type="radio"
                 name="sale_payment_method"
                 checked={String(method.id) === String(paymentMethodId)}
-                onChange={() => setPaymentMethodId(String(method.id))}
+                onChange={() => {
+                  setPaymentMethodId(String(method.id));
+                  if (getPaymentMethodKind(method) === "cash") setReference("");
+                }}
               />
               {method.method_name}
             </label>

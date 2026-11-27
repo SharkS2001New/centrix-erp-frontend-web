@@ -27,6 +27,8 @@ let indexedEntries = null;
 let prefixIndex = null;
 /** @type {Map<string, number[]>|null} compact barcode/code/sku → entry indexes */
 let exactCodeIndex = null;
+/** @type {Map<string, number[]>|null} final four digits of code fields → entry indexes */
+let fourDigitSuffixIndex = null;
 /** @type {number} */
 let catalogVersion = 0;
 /** @type {number|null} catalog_warmed_at tied to last hydrate/build */
@@ -118,6 +120,7 @@ function addExactKey(map, compact, idx) {
 function rebuildIndexes(entries) {
   const prefix = new Map();
   const exact = new Map();
+  const suffix = new Map();
   for (let i = 0; i < entries.length; i += 1) {
     const e = entries[i];
     addPrefixKeys(prefix, e.codeCompact, i);
@@ -131,9 +134,20 @@ function rebuildIndexes(entries) {
     addExactKey(exact, e.skuCompact, i);
     addExactKey(exact, e.barcodeCompact, i);
     addExactKey(exact, e.shortCompact, i);
+    addFourDigitSuffixKey(suffix, e.codeCompact, i);
+    addFourDigitSuffixKey(suffix, e.skuCompact, i);
+    addFourDigitSuffixKey(suffix, e.barcodeCompact, i);
+    addFourDigitSuffixKey(suffix, e.shortCompact, i);
   }
   prefixIndex = prefix;
   exactCodeIndex = exact;
+  fourDigitSuffixIndex = suffix;
+}
+
+/** @param {Map<string, number[]>} map @param {string} value @param {number} idx */
+function addFourDigitSuffixKey(map, value, idx) {
+  const suffix = value.slice(-4);
+  if (/^\d{4}$/.test(suffix)) addExactKey(map, suffix, idx);
 }
 
 /**
@@ -317,6 +331,10 @@ function indexEntryPostings(entry, idx) {
   addExactKey(exactCodeIndex, entry.skuCompact, idx);
   addExactKey(exactCodeIndex, entry.barcodeCompact, idx);
   addExactKey(exactCodeIndex, entry.shortCompact, idx);
+  addFourDigitSuffixKey(fourDigitSuffixIndex, entry.codeCompact, idx);
+  addFourDigitSuffixKey(fourDigitSuffixIndex, entry.skuCompact, idx);
+  addFourDigitSuffixKey(fourDigitSuffixIndex, entry.barcodeCompact, idx);
+  addFourDigitSuffixKey(fourDigitSuffixIndex, entry.shortCompact, idx);
 }
 
 /** True when the in-memory catalog already has this product code. */
@@ -359,14 +377,15 @@ function candidateEntryIndexes(query) {
   if (!raw) return null;
 
   const q = normalizeSearchText(raw);
+  const isFourDigitSuffixSearch = /^\d{4}$/.test(q.compact);
 
   // Exact code/barcode/sku — tiny candidate set.
   if (q.compact && exactCodeIndex?.has(q.compact)) {
-    return exactCodeIndex.get(q.compact) ?? [];
+    if (!isFourDigitSuffixSearch) return exactCodeIndex.get(q.compact) ?? [];
   }
 
   // Price search needs a full pass (no useful prefix).
-  if (parseAmountSearchTerm(raw) != null) return null;
+  if (parseAmountSearchTerm(raw) != null && !isFourDigitSuffixSearch) return null;
 
   if (q.compact.length < 2) return null;
 
@@ -382,6 +401,11 @@ function candidateEntryIndexes(query) {
     if (!bucket) continue;
     for (const idx of bucket) set.add(idx);
   }
+
+  if (isFourDigitSuffixSearch) {
+    for (const idx of fourDigitSuffixIndex?.get(q.compact) ?? []) set.add(idx);
+  }
+
   // Empty prefix set → full scan (first-2-char typos like "psaghetti").
   if (!set.size) return null;
   return [...set];
@@ -582,6 +606,7 @@ export function resetPosSearchCatalog() {
   indexedEntries = null;
   prefixIndex = null;
   exactCodeIndex = null;
+  fourDigitSuffixIndex = null;
   indexWarmedAt = null;
   catalogVersion += 1;
 }

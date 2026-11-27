@@ -103,7 +103,7 @@ export function PosEditPaymentAdjustmentDialog({
         methodRef.current?.focus();
         return;
       }
-      if (matched?.requires_reference && !reference.trim()) {
+      if (methodCode !== "CASH" && matched?.requires_reference && !reference.trim()) {
         setError("Enter a reference for this payment method.");
         return;
       }

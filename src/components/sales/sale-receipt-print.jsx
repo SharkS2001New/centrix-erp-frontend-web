@@ -285,6 +285,8 @@ export function buildSaleReceiptHtml(
     orderDiscountEnabled = false,
     moduleSettings = null,
     customerNameEnabled = true,
+    customerPhoneEnabled = null,
+    showProductCodeOnReceipt = null,
     showBranchOnReceipt = true,
     branding = null,
     kraData = null,
@@ -336,6 +338,20 @@ export function buildSaleReceiptHtml(
     ]
       .map((v) => (v == null ? "" : String(v).trim()))
       .find((v) => v !== "") ?? "";
+  const showCustomerPhone =
+    customerPhoneEnabled == null
+      ? Boolean(
+          salesSettings?.enable_checkout_customer_phone ??
+            moduleSettings?.sales?.enable_checkout_customer_phone,
+        )
+      : Boolean(customerPhoneEnabled);
+  const printProductCode =
+    showProductCodeOnReceipt == null
+      ? Boolean(
+            salesSettings?.show_product_code_on_receipt ??
+              moduleSettings?.sales?.show_product_code_on_receipt,
+        )
+      : Boolean(showProductCodeOnReceipt);
   const rawDate = resolveSaleReceiptTimestamp(sale);
   const dateTime = formatThermalReceiptDateTime(rawDate);
 
@@ -384,6 +400,7 @@ export function buildSaleReceiptHtml(
     layout: "thermal",
     legacyPrint: isLegacySale(sale),
     showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
+    showProductCode: printProductCode,
     cashRound: applyCashRound,
   });
   const tableHead = buildSaleDocumentTableHead({
@@ -483,6 +500,7 @@ export function buildSaleReceiptHtml(
       thermalLogoDims,
       templateCss: orgDocumentTemplateCss(salesSettings?.receipt_document_template, { layout: "thermal" }),
     })}
+    .table .product-code { display: block; font-size: 0.9em; line-height: 1.15; font-weight: 400; word-break: break-all; overflow-wrap: anywhere; }
   </style>
 </head>
 <body class="centrix-print-thermal">
@@ -497,7 +515,7 @@ export function buildSaleReceiptHtml(
       ${saleNumberMeta}
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerKraPin ? `<div class="meta-full"><span class="meta-label">Customer PIN:</span> ${escapeHtml(customerKraPin)}</div>` : ""}
-      ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
+      ${showCustomerPhone && customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
     </div>
     <div class="divider"></div>

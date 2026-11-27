@@ -180,6 +180,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     moduleSettings = null,
     kraData = null,
     kraQrDataUrl = null,
+    showProductCodeOnReceipt = null,
     documentFooterText = "",
     paymentInstructions = null,
     showPaymentInstructions = true,
@@ -258,6 +259,13 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   const documentTemplateId = resolveOrgDocumentTemplateId(
     salesSettings?.invoice_document_template,
   );
+  const printProductCode =
+    showProductCodeOnReceipt == null
+      ? Boolean(
+          salesSettings?.show_product_code_on_receipt ??
+            moduleSettings?.sales?.show_product_code_on_receipt,
+        )
+      : Boolean(showProductCodeOnReceipt);
 
   const itemRows = buildSaleDocumentLineRows(items, {
     uomById,
@@ -265,6 +273,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     layout: "a4",
     legacyPrint: isLegacySale(sale),
     showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
+    showProductCode: printProductCode,
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,
@@ -346,6 +355,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
     table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(10)}; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
+    table.items .product-code { display: block; font-size: 0.9em; line-height: 1.2; font-weight: 400; word-break: break-all; overflow-wrap: anywhere; }
     table.items tbody tr { break-inside: avoid; page-break-inside: avoid; }
     /* Allow closing sections to flow onto page 1 after a short line table. */
     .invoice-closing { break-inside: auto; page-break-inside: auto; margin-top: 4px; }

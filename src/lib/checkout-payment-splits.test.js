@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   alignPaymentSplitsToPayNow,
   annotateSaleWithReceiptTenders,
+  buildCheckoutPaymentSplits,
   buildReceiptTenderSnapshot,
   isPosCashChangeExcessive,
   MAX_POS_CASH_CHANGE,
@@ -65,6 +66,20 @@ describe("alignPaymentSplitsToPayNow", () => {
     expect(aligned).toEqual([
       { method_code: "CASH", amount: 200 },
       { method_code: "MPESA", amount: 300 },
+    ]);
+  });
+});
+
+describe("buildCheckoutPaymentSplits", () => {
+  it("keeps M-Pesa codes on the M-Pesa split and never assigns them to Cash", () => {
+    const splits = buildCheckoutPaymentSplits(
+      { enableMpesaAmount: true, showCheque: false },
+      { cashAmount: "700", mpesaAmount: "300", mpesaCode: " ABC123 " },
+    );
+
+    expect(splits).toEqual([
+      { method_code: "CASH", amount: 700, reference_number: null },
+      { method_code: "MPESA", amount: 300, reference_number: "ABC123" },
     ]);
   });
 });

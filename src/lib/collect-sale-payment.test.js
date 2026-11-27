@@ -65,6 +65,24 @@ describe("collectPaymentSplitsFromCheckoutBody", () => {
     ]);
   });
 
+  it("keeps the M-Pesa code with M-Pesa and removes references from Cash", () => {
+    const { splits } = collectPaymentSplitsFromCheckoutBody(
+      {
+        pay_now: 10000,
+        payment_splits: [
+          { method_code: "CASH", amount: 7000, reference_number: "STALE" },
+          { method_code: "MPESA", amount: 3000, reference_number: "ABC123" },
+        ],
+      },
+      10000,
+    );
+
+    expect(splits).toEqual([
+      { method_code: "CASH", amount: 7000, reference_number: null },
+      { method_code: "MPESA", amount: 3000, reference_number: "ABC123" },
+    ]);
+  });
+
   it("rejects a batch that exceeds the sale remaining", () => {
     expect(() =>
       collectPaymentSplitsFromCheckoutBody(

@@ -649,24 +649,24 @@ export function PosPaymentPanel({
     return cfg.enablePaymentDate ? paymentDate : todayDateString();
   }
 
-  function primaryMethodCode() {
+  function primaryMethodCode(amounts = resolveTenderAmountsSnapshot()) {
     const parts = [
-      { code: "CASH", amount: parseDecimalInput(cashAmount) },
+      { code: "CASH", amount: parseDecimalInput(amounts.cashAmount) },
       {
         code: "MPESA",
-        amount: cfg.enableMpesaAmount ? parseDecimalInput(mpesaAmount) : 0,
+        amount: cfg.enableMpesaAmount ? parseDecimalInput(amounts.mpesaAmount) : 0,
       },
-      { code: "CHEQUE", amount: cfg.showCheque ? parseDecimalInput(chequeAmount) : 0 },
+      { code: "CHEQUE", amount: cfg.showCheque ? parseDecimalInput(amounts.chequeAmount) : 0 },
     ];
     if (cfg.useBankSelect) {
       parts.push({
-        code: bankType || "BANK",
-        amount: parseDecimalInput(bankAmount),
+        code: amounts.bankType || "BANK",
+        amount: parseDecimalInput(amounts.bankAmount),
       });
     } else {
-      if (cfg.showEquityBank) parts.push({ code: "EQUITY", amount: parseDecimalInput(equityAmount) });
-      if (cfg.showKcbBank) parts.push({ code: "KCB", amount: parseDecimalInput(kcbAmount) });
-      if (cfg.showOtherBank) parts.push({ code: "OTHER", amount: parseDecimalInput(otherBankAmount) });
+      if (cfg.showEquityBank) parts.push({ code: "EQUITY", amount: parseDecimalInput(amounts.equityAmount) });
+      if (cfg.showKcbBank) parts.push({ code: "KCB", amount: parseDecimalInput(amounts.kcbAmount) });
+      if (cfg.showOtherBank) parts.push({ code: "OTHER", amount: parseDecimalInput(amounts.otherBankAmount) });
     }
     const preferred = String(preferredMethodRef.current ?? "").trim().toUpperCase();
     const preferredPart = parts.find(
@@ -677,12 +677,20 @@ export function PosPaymentPanel({
     return top?.code ?? "CASH";
   }
 
-  function paymentReferenceForPrimary() {
-    const code = primaryMethodCode();
-    if (code === "MPESA") return mpesaCode.trim() || null;
-    if (code === "CHEQUE") return chequeNo.trim() || null;
-    if (["EQUITY", "KCB", "OTHER", "BANK"].includes(code)) return bankRef.trim() || null;
-    return mpesaCode.trim() || chequeNo.trim() || bankRef.trim() || null;
+  function paymentReferenceForPrimary(amounts = resolveTenderAmountsSnapshot()) {
+    const code = primaryMethodCode(amounts);
+    if (code === "CASH") return null;
+    if (code === "MPESA") return amounts.mpesaCode?.trim() || null;
+    if (code === "CHEQUE") return amounts.chequeNo?.trim() || null;
+    if (["EQUITY", "KCB", "OTHER", "BANK"].includes(code)) {
+      return amounts.bankRef?.trim() || null;
+    }
+    return (
+      amounts.mpesaCode?.trim()
+      || amounts.chequeNo?.trim()
+      || amounts.bankRef?.trim()
+      || null
+    );
   }
 
   function validatePaymentFieldDetails() {
@@ -747,16 +755,6 @@ export function PosPaymentPanel({
       adjustmentMode,
     });
     const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(paid, confirmedTotal);
-    const paymentMethodCode = creditSale ? "CREDIT" : primaryMethodCode();
-    const status = resolveCheckoutStatus({
-      channel,
-      isCredit: creditSale,
-      payNow,
-      total: confirmedTotal,
-      workflow,
-      paymentMethodCode,
-      allowPartialPayment: cfg.allowPartialPayment,
-    });
 
     const cartMpesa = creditSale
       ? 0
@@ -790,6 +788,16 @@ export function PosPaymentPanel({
           chequeNo: chequeNoSnapshot,
           bankRef: bankRefSnapshot,
         };
+    const paymentMethodCode = creditSale ? "CREDIT" : primaryMethodCode(tenderAmounts);
+    const status = resolveCheckoutStatus({
+      channel,
+      isCredit: creditSale,
+      payNow,
+      total: confirmedTotal,
+      workflow,
+      paymentMethodCode,
+      allowPartialPayment: cfg.allowPartialPayment,
+    });
     const paymentSplits = creditSale
       ? []
       : alignPaymentSplitsToPayNow(
@@ -805,7 +813,7 @@ export function PosPaymentPanel({
       pay_now: payNow,
       __checkout_total: confirmedTotal,
       payment_method_code: paymentMethodCode,
-      payment_reference: creditSale ? null : paymentReferenceForPrimary(),
+      payment_reference: creditSale ? null : paymentReferenceForPrimary(tenderAmounts),
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,

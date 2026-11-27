@@ -4,6 +4,7 @@ import {
   buildUsedPaymentRows,
   resolveSaleReceiptTenders,
 } from "@/components/sales/sale-receipt-print";
+import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 
 const unpaidMobileSale = {
   id: 3917,
@@ -117,6 +118,73 @@ describe("sale receipt payment rows", () => {
     expect(html).toContain("Balance due");
     expect(html).toMatch(/Cash[\s\S]*?>0</);
     expect(html).not.toMatch(/Cash[\s\S]*?>15[,.]?880</);
+  });
+
+  it("prints the prompted customer phone only when phone collection is enabled", () => {
+    const sale = {
+      ...unpaidMobileSale,
+      customer_name_override: "Alex Customer",
+      customer_phone: "0712345678",
+    };
+    const options = {
+      seller: { name: "Test Shop" },
+      customerNameEnabled: true,
+      salesSettings: { enable_checkout_customer_phone: true },
+    };
+
+    const enabledHtml = buildSaleReceiptHtml(sale, options);
+    expect(enabledHtml).toContain("Phone:</span> 0712345678");
+    expect(enabledHtml).toContain("Customer Name:</span> ALEX CUSTOMER");
+
+    const disabledHtml = buildSaleReceiptHtml(sale, {
+      ...options,
+      salesSettings: { enable_checkout_customer_phone: false },
+    });
+    expect(disabledHtml).not.toContain("Phone:</span> 0712345678");
+  });
+
+  it("prints product code beneath the item name only when platform-enabled", () => {
+    const productCode = "351550586809716";
+    const sale = {
+      ...unpaidMobileSale,
+      items: [
+        {
+          product_code: productCode,
+          product_name: "SAMSUNG A06 128GB/4GB",
+          quantity: 1,
+          unit_price: 17500,
+          line_total: 17500,
+        },
+      ],
+    };
+    const enabledHtml = buildSaleReceiptHtml(sale, {
+      seller: { name: "Test Shop" },
+      salesSettings: { show_product_code_on_receipt: true },
+    });
+
+    expect(enabledHtml.indexOf("SAMSUNG A06 128GB/4GB")).toBeLessThan(
+      enabledHtml.indexOf(productCode),
+    );
+
+    const enabledA4Html = buildSaleInvoiceHtml(sale, {
+      seller: { name: "Test Shop" },
+      salesSettings: { show_product_code_on_receipt: true },
+    });
+    expect(enabledA4Html.indexOf("SAMSUNG A06 128GB/4GB")).toBeLessThan(
+      enabledA4Html.indexOf(productCode),
+    );
+
+    const disabledHtml = buildSaleReceiptHtml(sale, {
+      seller: { name: "Test Shop" },
+      salesSettings: { show_product_code_on_receipt: false },
+    });
+    expect(disabledHtml).not.toContain(productCode);
+
+    const disabledA4Html = buildSaleInvoiceHtml(sale, {
+      seller: { name: "Test Shop" },
+      salesSettings: { show_product_code_on_receipt: false },
+    });
+    expect(disabledA4Html).not.toContain(productCode);
   });
 
   it("keeps M-Pesa tendered amount and change instead of clamping to order total", () => {

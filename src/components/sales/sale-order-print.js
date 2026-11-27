@@ -575,6 +575,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
           sales.discount_approval_enabled_backoffice,
       ),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
+      customerPhoneEnabled: Boolean(sales.enable_checkout_customer_phone),
+      showProductCodeOnReceipt: Boolean(sales.show_product_code_on_receipt),
       showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
       documentFooterText: resolvePrintFooter(general, footerDocType),
       paymentInstructions,

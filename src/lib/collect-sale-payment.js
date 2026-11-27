@@ -51,11 +51,15 @@ export function collectPaymentSplitsFromCheckoutBody(body, balanceDue) {
         ];
 
   const splits = raw
-    .map((row) => ({
-      method_code: String(row?.method_code ?? "CASH").toUpperCase().trim() || "CASH",
-      amount: roundCollectMoney(Number(row?.amount ?? 0)),
-      reference_number: row?.reference_number || null,
-    }))
+    .map((row) => {
+      const methodCode = String(row?.method_code ?? "CASH").toUpperCase().trim() || "CASH";
+      return {
+        method_code: methodCode,
+        amount: roundCollectMoney(Number(row?.amount ?? 0)),
+        reference_number:
+          methodCode === "CASH" ? null : String(row?.reference_number ?? "").trim() || null,
+      };
+    })
     .filter((row) => row.amount > 0.009);
 
   if (splits.length === 0) {

@@ -208,6 +208,15 @@ describe("pos-product-search-index", () => {
     expect(searchPosCatalogIndex("6001234567890").map((p) => p.product_code)).toEqual(["P1"]);
   });
 
+  it("finds a product by the last four code digits despite other prefix matches", () => {
+    setPosSearchCatalog([
+      { product_code: "129999", product_name: "1234 unrelated" },
+      { product_code: "ABC991234", product_name: "Barcode target" },
+    ]);
+
+    expect(searchPosCatalogIndex("1234").map((p) => p.product_code)).toContain("ABC991234");
+  });
+
   it("searches a large catalog quickly", () => {
     const products = [];
     for (let i = 0; i < 5000; i += 1) {
