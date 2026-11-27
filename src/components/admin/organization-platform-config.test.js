@@ -84,9 +84,47 @@ describe("OrganizationModuleToggles", () => {
     expect(markup).toContain("Print product codes on receipts");
     expect(markup).toContain("Off by default");
   });
+
+  it("shows duplicate product-name import control only when product import is enabled", () => {
+    const enabledMarkup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: {
+          enable_advanced_data_import: true,
+          advanced_data_import_pages: { products: true },
+          allow_duplicate_product_names: true,
+        },
+        onChange: () => {},
+      }),
+    );
+    const disabledMarkup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: {
+          enable_advanced_data_import: true,
+          advanced_data_import_pages: { products: false },
+        },
+        onChange: () => {},
+      }),
+    );
+
+    expect(enabledMarkup).toContain("Allow duplicate product names");
+    expect(disabledMarkup).not.toContain("Allow duplicate product names");
+  });
 });
 
 describe("defaultSalesPlatformState", () => {
+  it("keeps duplicate product-name imports disabled unless configured", () => {
+    expect(defaultSalesPlatformState("small_shop").allow_duplicate_product_names).toBe(false);
+    expect(salesPlatformFromApi({}).allow_duplicate_product_names).toBe(false);
+    expect(
+      salesPlatformFromApi({ allow_duplicate_product_names: true })
+        .allow_duplicate_product_names,
+    ).toBe(true);
+  });
+
   it("defaults receipt product codes off and reads the platform setting", () => {
     expect(defaultSalesPlatformState("small_shop").show_product_code_on_receipt).toBe(false);
     expect(salesPlatformFromApi({}).show_product_code_on_receipt).toBe(false);

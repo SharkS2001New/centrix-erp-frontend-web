@@ -415,6 +415,14 @@ function AdvancedDataImportPlatformFields({ salesPlatform, onPatch, industry = "
               }
             />
           ))}
+          {salesPlatform?.advanced_data_import_pages?.products ? (
+            <Toggle
+              label="Allow duplicate product names"
+              description="Product imports may create multiple products with the same name. Duplicate product codes will still be skipped."
+              checked={Boolean(salesPlatform?.allow_duplicate_product_names)}
+              onChange={(enabled) => onPatch({ allow_duplicate_product_names: enabled })}
+            />
+          ) : null}
         </div>
       ) : null}
     </>
@@ -456,6 +464,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_investors: false,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
+    allow_duplicate_product_names: false,
     stock_deduct_on: {
       pos: "order_created",
       mobile: deploymentProfile === "distribution" ? "order_completed" : "order_created",
@@ -565,6 +574,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     enable_investors: Boolean(apiPayload.enable_investors ?? false),
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
+    allow_duplicate_product_names: Boolean(apiPayload.allow_duplicate_product_names ?? false),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
       hasPosSales: Boolean(apiPayload?.enabled_modules?.["sales.pos"]),
       showCheckoutOnCreate: posCheckout,
