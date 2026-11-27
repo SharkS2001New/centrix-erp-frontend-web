@@ -118,6 +118,8 @@ function enrichStockRow(row) {
     product_name: row.product_name,
     shop_quantity: shopQty,
     store_quantity: storeQty,
+    rep_allocated_shop: Number(row.rep_allocated_shop ?? 0),
+    rep_allocated_store: Number(row.rep_allocated_store ?? 0),
     shop_on_hand: shopOnHand,
     store_on_hand: storeOnHand,
     total_base_units: totalBase,
@@ -172,7 +174,7 @@ function readStoredColumnIds() {
 }
 
 export function InventoryStockScreen() {
-  const { user, capabilities, isOrgWide } = useAuth();
+  const { user, capabilities, isOrgWide, hasPermission } = useAuth();
   const globalBranchId = useGlobalBranchId();
   const { showBranchFilter } = useBranchScope();
   const { workspaceId } = useTabWorkspace();
@@ -182,7 +184,8 @@ export function InventoryStockScreen() {
   const availableLocationSet = useMemo(() => new Set(availableLocations), [availableLocations]);
   const singleLocation = availableLocations.length === 1 ? availableLocations[0] : null;
   const repStockEnabled = Boolean(capabilities?.module_settings?.sales?.sales_rep_stock_enabled);
-  const canManageRepStock = repStockEnabled && Boolean(user?.is_admin);
+  const canManageRepStock =
+    repStockEnabled && Boolean(user?.is_admin) && hasPermission("inventory.manage");
   const locationOptions = hotelCatalogue
     ? stockLocationOptionsFor(capabilities, [
         { value: "all", label: "All locations" },
@@ -199,7 +202,17 @@ export function InventoryStockScreen() {
   const [retailPackages, setRetailPackages] = useState([]);
   const [totalStockRows, setTotalStockRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [costTotals, setCostTotals] = useState({ shop: 0, store: 0, all: 0 });
+  const [costTotals, setCostTotals] = useState({
+    shop: 0,
+    store: 0,
+    all: 0,
+    allocatedShop: 0,
+    allocatedStore: 0,
+    availableShop: 0,
+    availableStore: 0,
+  });
+  const [repAllocationsByProduct, setRepAllocationsByProduct] = useState({});
+  const [repTotalsByUser, setRepTotalsByUser] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(true);
   const [buildingAllPriceList, setBuildingAllPriceList] = useState(false);
@@ -278,6 +291,7 @@ export function InventoryStockScreen() {
       const listExtra = {
         branch_id: branchId,
         in_stock_only: 1,
+        include_rep_allocated: repStockEnabled ? 1 : undefined,
         subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
         location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
         include_summary: 0,
@@ -295,6 +309,55 @@ export function InventoryStockScreen() {
       setTotalPages(parsed.totalPages);
 
       const codes = parsed.items.map((row) => row.product_code).filter(Boolean);
+      if (repStockEnabled && codes.length) {
+        try {
+          const allocations = await fetchAllPaginatedRowsSmart(
+            "/sales/rep-stock-allocations",
+            { branch_id: branchId, product_codes: codes.join(",") },
+            { perPage: 200 },
+          );
+          const byProduct = {};
+          const byUser = new Map();
+          for (const allocation of allocations ?? []) {
+            const productCode = String(allocation.product_code ?? "");
+            const userId = String(allocation.user_id ?? "");
+            if (!productCode || !userId) continue;
+
+            const repName = allocation.user?.name || allocation.user?.username || `User ${userId}`;
+            const productReps = (byProduct[productCode] ??= {});
+            const rep = (productReps[userId] ??= {
+              user_id: userId,
+              name: repName,
+              shop: 0,
+              store: 0,
+            });
+            const quantity = Number(allocation.remaining_quantity ?? 0);
+            if (allocation.stock_location === "shop") rep.shop += quantity;
+            if (allocation.stock_location === "store") rep.store += quantity;
+
+            const userTotal = byUser.get(userId) ?? { user_id: userId, name: repName, shop: 0, store: 0 };
+            if (allocation.stock_location === "shop") userTotal.shop += quantity;
+            if (allocation.stock_location === "store") userTotal.store += quantity;
+            byUser.set(userId, userTotal);
+          }
+          const normalizedByProduct = Object.fromEntries(
+            Object.entries(byProduct).map(([code, reps]) => [
+              code,
+              Object.values(reps).sort((a, b) => a.name.localeCompare(b.name)),
+            ]),
+          );
+          setRepAllocationsByProduct(normalizedByProduct);
+          setRepTotalsByUser([...byUser.values()].sort((a, b) => a.name.localeCompare(b.name)));
+        } catch (error) {
+          setRepAllocationsByProduct({});
+          setRepTotalsByUser([]);
+          notifyError(error instanceof Error ? error.message : "Could not load sales rep stock totals");
+        }
+      } else {
+        setRepAllocationsByProduct({});
+        setRepTotalsByUser([]);
+      }
+
       if (codes.length) {
         void fetchRetailPackagesForProductCodes(codes)
           .then((rows) => {
@@ -324,7 +387,15 @@ export function InventoryStockScreen() {
         .then((summaryRes) => {
           const summary = summaryRes?.summary;
           if (!summary) {
-            setCostTotals({ shop: 0, store: 0, all: 0 });
+            setCostTotals({
+              shop: 0,
+              store: 0,
+              all: 0,
+              allocatedShop: 0,
+              allocatedStore: 0,
+              availableShop: 0,
+              availableStore: 0,
+            });
             return;
           }
           const shop = Number(summary.shop_cost_value) || 0;
@@ -333,18 +404,30 @@ export function InventoryStockScreen() {
             shop,
             store,
             all: Number(summary.total_cost_value ?? summary.cost_value) || shop + store,
+            allocatedShop: Number(summary.rep_allocated_shop ?? 0),
+            allocatedStore: Number(summary.rep_allocated_store ?? 0),
+            availableShop: Number(summary.available_shop_quantity ?? 0),
+            availableStore: Number(summary.available_store_quantity ?? 0),
           });
         })
         .catch(() => {
-          /* keep last known totals */
+          notifyError("Could not load stock totals.");
         });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load current stock");
-      setCostTotals({ shop: 0, store: 0, all: 0 });
+      setCostTotals({
+        shop: 0,
+        store: 0,
+        all: 0,
+        allocatedShop: 0,
+        allocatedStore: 0,
+        availableShop: 0,
+        availableStore: 0,
+      });
     } finally {
       setListLoading(false);
     }
-  }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter, singleLocation]);
+  }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter, singleLocation, repStockEnabled]);
 
   useTabAwareDataLoad(loadReferenceData);
 
@@ -427,6 +510,7 @@ export function InventoryStockScreen() {
     const baseParams = {
       branch_id: branchId,
       in_stock_only: 1,
+      include_rep_allocated: repStockEnabled ? 1 : undefined,
       q: debouncedSearch || undefined,
       subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
       location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
@@ -436,7 +520,7 @@ export function InventoryStockScreen() {
       message: "Loading stock for export…",
     });
     return (allRows ?? []).map((row) => stockRowToExport(enrichStockRow(row)));
-  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter, singleLocation]);
+  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter, singleLocation, repStockEnabled]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -460,6 +544,11 @@ export function InventoryStockScreen() {
   function renderCell(row, colId) {
     switch (colId) {
       case "product":
+        {
+          const reps = repAllocationsByProduct[String(row.product_code)] ?? [];
+          const allocatedShop = reps.reduce((total, rep) => total + rep.shop, 0);
+          const allocatedStore = reps.reduce((total, rep) => total + rep.store, 0);
+          const productUom = row.uom ?? row.factor;
         return (
           <div className="flex flex-col items-start gap-1">
             <Link
@@ -468,17 +557,51 @@ export function InventoryStockScreen() {
             >
               {row.product_name}
             </Link>
+            {repStockEnabled ? (
+              <div className="mt-1 w-full min-w-[16rem] rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 font-semibold text-slate-700">
+                  <span>Rep allocations</span>
+                  <span>
+                    Total: {formatMixedStockDisplay(allocatedShop + allocatedStore, productUom, row.uomName).text}
+                  </span>
+                </div>
+                {reps.length ? (
+                  <div className="space-y-1">
+                    {reps.map((rep) => (
+                      <div key={rep.user_id} className="flex flex-wrap justify-between gap-x-3 text-slate-600">
+                        <span className="font-medium">{rep.name}</span>
+                        <span>
+                          Shop {formatMixedStockDisplay(rep.shop, productUom, row.uomName).text}
+                          {" · "}
+                          Store {formatMixedStockDisplay(rep.store, productUom, row.uomName).text}
+                          {" · "}
+                          Total {formatMixedStockDisplay(rep.shop + rep.store, productUom, row.uomName).text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">No stock allocated to reps.</p>
+                )}
+                <div className="mt-1 border-t border-slate-200 pt-1 text-slate-500">
+                  Unallocated branch stock: Shop {formatMixedStockDisplay(row.shop_quantity, productUom, row.uomName).text}
+                  {" · "}
+                  Store {formatMixedStockDisplay(row.store_quantity, productUom, row.uomName).text}
+                </div>
+              </div>
+            ) : null}
             {canManageRepStock ? (
               <button
                 type="button"
                 onClick={() => setAllocationProduct(row)}
-                className="text-xs font-medium text-[#185FA5] hover:underline"
+                className="mt-1 rounded-md border border-[#185FA5] px-2 py-1 text-xs font-medium text-[#185FA5] hover:bg-blue-50"
               >
-                Manage rep stock
+                Allocate stock to sales rep
               </button>
             ) : null}
           </div>
         );
+        }
       case "sku":
         return (
           <span className="block max-w-[10rem] break-all font-mono text-xs text-slate-500">
@@ -565,6 +688,7 @@ export function InventoryStockScreen() {
       const baseParams = {
         branch_id: branchId,
         in_stock_only: 1,
+        include_rep_allocated: repStockEnabled ? 1 : undefined,
         q: debouncedSearch || undefined,
         subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
         location: locationFilter !== "all" ? locationFilter : singleLocation ?? undefined,
@@ -625,6 +749,8 @@ export function InventoryStockScreen() {
   const visibleTotalCost = availableLocationSet.has("shop") ? totals.shop : 0;
   const combinedVisibleTotal =
     visibleTotalCost + (availableLocationSet.has("store") ? totals.store : 0);
+  const allocatedTotal = totals.allocatedShop + totals.allocatedStore;
+  const availableTotal = totals.availableShop + totals.availableStore;
 
   return (
     <InventoryPageShell
@@ -651,6 +777,14 @@ export function InventoryStockScreen() {
         </div>
       }
     >
+      {repStockEnabled ? (
+        <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          To allocate stock, select <strong>Allocate stock to sales rep</strong> beneath a
+          product name. Allocations use the selected branch; if your organization has one
+          branch, it is selected automatically. Organization admins with Inventory Manage
+          permission can allocate stock.
+        </p>
+      ) : null}
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
@@ -739,12 +873,33 @@ export function InventoryStockScreen() {
       </div>
 
       {!tableLoading && pageSlice.length > 0 ? (
-        <p className="mb-3 text-xs text-slate-500">
-          Stock cost totals{listLoading ? " · updating…" : ""} —{" "}
-          {availableLocationSet.has("shop") ? `Shop: ${formatInventoryKes(totals.shop)} · ` : ""}
-          {availableLocationSet.has("store") ? `Store: ${formatInventoryKes(totals.store)} · ` : ""}
-          Combined: {formatInventoryKes(combinedVisibleTotal)}
-        </p>
+        <>
+          <p className="mb-2 text-xs text-slate-500">
+            Stock cost totals{listLoading ? " · updating…" : ""} —{" "}
+            {availableLocationSet.has("shop") ? `Shop: ${formatInventoryKes(totals.shop)} · ` : ""}
+            {availableLocationSet.has("store") ? `Store: ${formatInventoryKes(totals.store)} · ` : ""}
+            Combined: {formatInventoryKes(combinedVisibleTotal)}
+          </p>
+          {repStockEnabled ? (
+            <p className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              Totals for filtered stock — Allocated to reps: Shop {formatQty(totals.allocatedShop)}, Store{" "}
+              {formatQty(totals.allocatedStore)}, Combined {formatQty(allocatedTotal)} base units ·
+              Unallocated available: Shop {formatQty(totals.availableShop)}, Store{" "}
+              {formatQty(totals.availableStore)}, Combined {formatQty(availableTotal)} base units.
+            </p>
+          ) : null}
+          {repStockEnabled && repTotalsByUser.length ? (
+            <p className="mb-3 text-xs text-slate-500">
+              Rep totals on this page:{" "}
+              {repTotalsByUser.map((rep) => (
+                <span key={rep.user_id} className="mr-3 inline-block">
+                  {rep.name}: Shop {formatQty(rep.shop)} · Store {formatQty(rep.store)} · Total{" "}
+                  {formatQty(rep.shop + rep.store)}
+                </span>
+              ))}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       <InventoryTableShell>
