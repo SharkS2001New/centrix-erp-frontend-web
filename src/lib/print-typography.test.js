@@ -88,7 +88,7 @@ describe("org print typography settings", () => {
     expect(html).toContain("Arial");
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(12)}`);
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(24)}`);
-    expect(html).toContain("Invoice Receipt");
+    expect(html).toContain("INVOICE RECEIPT");
     expect(html).not.toContain("Terms and Conditions");
   });
 

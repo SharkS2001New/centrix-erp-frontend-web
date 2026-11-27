@@ -38,6 +38,7 @@ const EMPTY_FORM = {
   addn_tel1: "",
   addn_tel2: "",
   org_address: "",
+  additional_info: "",
   vat_regno: "",
   primary_color: "",
 };
@@ -55,6 +56,7 @@ function mapOrganizationToForm(org) {
     addn_tel1: org.addn_tel1 ?? "",
     addn_tel2: org.addn_tel2 ?? "",
     org_address: org.org_address ?? "",
+    additional_info: org.additional_info ?? "",
     vat_regno: org.vat_regno ?? "",
     primary_color: org.primary_color ?? "",
   };
@@ -183,6 +185,7 @@ export function AdminCompanyScreen({ basePath = "/admin" }) {
             addn_tel1: form.addn_tel1.trim() || null,
             addn_tel2: form.addn_tel2.trim() || null,
             org_address: form.org_address.trim(),
+            additional_info: form.additional_info.trim() || null,
             org_pin: form.org_pin.trim() || null,
             vat_regno: form.vat_regno.trim() || null,
             primary_color: form.primary_color.trim() || null,
@@ -371,6 +374,20 @@ export function AdminCompanyScreen({ basePath = "/admin" }) {
                     required
                   />
                 </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="Additional business information">
+                  <textarea
+                    className={`${inputClassName()} min-h-[80px]`}
+                    value={form.additional_info}
+                    onChange={(e) => setForm((f) => ({ ...f, additional_info: e.target.value }))}
+                    maxLength={2000}
+                    placeholder="Dealers in: Mobile Phones, Accessories, TVs, Repairs, Charging, Wifi Installation, etc."
+                  />
+                </Field>
+                <p className="mt-1 text-xs text-slate-500">
+                  Optional line printed beneath your company name on sales receipts and invoices.
+                </p>
               </div>
             </div>
 

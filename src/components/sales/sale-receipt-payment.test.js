@@ -120,6 +120,36 @@ describe("sale receipt payment rows", () => {
     expect(html).not.toMatch(/Cash[\s\S]*?>15[,.]?880</);
   });
 
+  it("prints organization additional information on thermal and A4 receipts", () => {
+    const seller = {
+      name: "Shabash Communication Ltd",
+      additional_info: "Dealers in: Mobile Phones, Accessories, TVs.",
+    };
+    const thermalHtml = buildSaleReceiptHtml(unpaidMobileSale, { seller });
+    const a4Html = buildSaleInvoiceHtml(unpaidMobileSale, { seller });
+
+    expect(thermalHtml).toContain("Dealers in: Mobile Phones, Accessories, TVs.");
+    expect(a4Html).toContain("Dealers in: Mobile Phones, Accessories, TVs.");
+  });
+
+  it("labels paid receipts as Invoice Receipt and outstanding receipts as unpaid", () => {
+    const paidSale = {
+      ...unpaidMobileSale,
+      amount_paid: unpaidMobileSale.order_total,
+      cash: unpaidMobileSale.order_total,
+    };
+    const unpaidThermal = buildSaleReceiptHtml(unpaidMobileSale);
+    const unpaidA4 = buildSaleInvoiceHtml(unpaidMobileSale);
+    const paidThermal = buildSaleReceiptHtml(paidSale);
+    const paidA4 = buildSaleInvoiceHtml(paidSale);
+
+    expect(unpaidThermal).toContain("UNPAID INVOICE RECEIPT");
+    expect(unpaidA4).toContain("UNPAID INVOICE RECEIPT");
+    expect(paidThermal).toContain("INVOICE RECEIPT");
+    expect(paidA4).toContain("INVOICE RECEIPT");
+    expect(unpaidA4).toContain("Balance Due:");
+  });
+
   it("prints the prompted customer phone only when phone collection is enabled", () => {
     const sale = {
       ...unpaidMobileSale,

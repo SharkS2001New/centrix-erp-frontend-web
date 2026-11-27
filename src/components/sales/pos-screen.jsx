@@ -1402,7 +1402,7 @@ function saleHasPrintableItems(sale) {
   );
 }
 
-/** Fast POS reprint: skip redundant settings/org/network round-trips when capabilities are warm. */
+/** Fast POS reprint skips optional detail lookups; receipt settings and organization branding refresh. */
 function fastPosPrintOptions(sale, base = {}) {
   const offline = offlinePrintOptions(sale, base);
   if (offline !== base) return offline;

@@ -4,6 +4,7 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   ensureSaleForPrint,
   fetchPrintModuleSettings,
+  clearPrintModuleSettingsCache,
 } from "@/lib/print-module-settings";
 import { withPosReceiptTicket } from "@/lib/pos-offline";
 import { enrichSaleLinesForQtyPrint, saleLineProductName } from "@/lib/sale-line-items";
@@ -85,6 +86,13 @@ function isOfflineSalePrint(sale, options = {}) {
   );
 }
 
+function isOfflinePendingSale(sale) {
+  return (
+    Boolean(sale?.offline_pending_sync) ||
+    String(sale?.id ?? "").startsWith("offline:")
+  );
+}
+
 async function fetchOrganizationForPrint(organizationId) {
   if (!organizationId) return null;
   try {
@@ -112,6 +120,7 @@ function sellerFromOrganization(org) {
     name: org.org_name,
     address: org.org_address,
     email: org.org_email,
+    additional_info: org.additional_info,
     phone: org.primary_tel,
     secondary_phone: org.secondary_tel,
     tax_pin: org.org_pin,
@@ -210,6 +219,7 @@ async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
 export async function warmSalePrintBatch(sales, options = {}) {
   const batchCache = ensureBatchPrintCache(options.printCache);
   const rows = Array.isArray(sales) ? sales.filter(Boolean) : [];
+  const offlineBatch = rows.length > 0 && rows.every(isOfflinePendingSale);
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
   const organizationId =
@@ -220,14 +230,22 @@ export async function warmSalePrintBatch(sales, options = {}) {
   const organizationAlreadyUsable =
     Boolean(options.organization?.name) || Boolean(options.organizationName);
 
-  if (!(options.skipSettingsRefresh && fallbackModuleSettings) && !batchCache.moduleSettingsPromise) {
+  const skipSettingsRefresh = offlineBatch && options.skipSettingsRefresh === true;
+  const skipOrganizationRefresh = offlineBatch && options.skipOrganizationRefresh === true;
+  if (!skipSettingsRefresh || !skipOrganizationRefresh) {
+    batchCache.moduleSettingsPromise = null;
+    batchCache.organizationPromise = null;
+    batchCache.logoDataUrlPromise = null;
+    clearPrintModuleSettingsCache();
+  }
+  if (!(skipSettingsRefresh && fallbackModuleSettings) && !batchCache.moduleSettingsPromise) {
     batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
       .catch(() => fallbackModuleSettings ?? null);
   }
 
   if (
     !batchCache.organizationPromise &&
-    !(options.skipOrganizationRefresh && organizationAlreadyUsable) &&
+    !(skipOrganizationRefresh && organizationAlreadyUsable) &&
     organizationId
   ) {
     batchCache.organizationPromise = fetchOrganizationForPrint(organizationId).catch(() => null);
@@ -289,7 +307,18 @@ export async function resolveOrderPrintType(moduleSettings, explicitType) {
  * Print an order using the format configured in sales settings (receipt, invoice, or chosen).
  */
 export async function printSaleOrder(sale, options = {}) {
-  const job = await prepareSaleOrderPrintJob(sale, options);
+  let printOptions = options;
+  if (!isOfflinePendingSale(sale)) {
+    const printCache = ensureBatchPrintCache(
+      options.printCache ?? getSessionSalePrintCache(),
+    );
+    printCache.moduleSettingsPromise = null;
+    printCache.organizationPromise = null;
+    printCache.logoDataUrlPromise = null;
+    clearPrintModuleSettingsCache();
+    printOptions = { ...options, printCache };
+  }
+  const job = await prepareSaleOrderPrintJob(sale, printOptions);
   if (!job?.ok) {
     if (job?.cancelled) return null;
     throw new Error(job?.error || "Print failed.");
@@ -312,16 +341,32 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
 
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
+  const offlinePendingSale = isOfflinePendingSale(sale);
   // Reuse session cache when callers omit printCache (All sales Orders context menu).
   const batchCache = ensureBatchPrintCache(options.printCache ?? getSessionSalePrintCache());
-  const hasUsableModuleSettings =
-    Boolean(fallbackModuleSettings?.sales) || Boolean(fallbackModuleSettings?.general);
+  if (!offlinePendingSale && !options.printCache) {
+    batchCache.moduleSettingsPromise = null;
+    batchCache.organizationPromise = null;
+    batchCache.logoDataUrlPromise = null;
+    clearPrintModuleSettingsCache();
+  }
   const skipSettingsRefresh =
-    options.skipSettingsRefresh === true ||
-    (options.skipSettingsRefresh !== false && hasUsableModuleSettings);
+    offlinePendingSale && options.skipSettingsRefresh === true;
+  if (!skipSettingsRefresh && !batchCache.moduleSettingsPromise) {
+    batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
+      .catch(() => fallbackModuleSettings ?? null);
+  }
+  const moduleSettings =
+    skipSettingsRefresh && fallbackModuleSettings
+      ? fallbackModuleSettings
+      : await (
+        batchCache.moduleSettingsPromise
+          ?? (batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
+            .catch(() => fallbackModuleSettings ?? null))
+      );
 
   const documentType = await resolveOrderPrintType(
-    fallbackModuleSettings,
+    moduleSettings,
     options.documentType,
   );
   if (!documentType) {
@@ -372,14 +417,6 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       productByCode: options.productByCode ?? null,
       uomById: options.uomById ?? null,
     });
-    const moduleSettings =
-      skipSettingsRefresh && fallbackModuleSettings
-        ? fallbackModuleSettings
-        : await (
-          batchCache.moduleSettingsPromise
-            ?? (batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
-              .catch(() => fallbackModuleSettings ?? null))
-        );
     const sales = mergeSalesSettings(moduleSettings);
     const general = mergeGeneralSettings(moduleSettings);
     const organizationId =
@@ -391,10 +428,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
 
     const skipNetworkLookups = offlineSale || isOfflineSalePrint(saleForPrint, options);
 
-    const organizationAlreadyUsable =
-      Boolean(options.organization?.name) || Boolean(options.organizationName);
     const fetchedOrganization =
-      skipNetworkLookups || (options.skipOrganizationRefresh && organizationAlreadyUsable)
+      offlinePendingSale
         ? null
         : organizationId
           ? await (
@@ -467,7 +502,7 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
             : null,
     });
     const logoDataUrl =
-      options.skipLogoFetch || skipNetworkLookups
+      offlinePendingSale
         ? null
         : await (
           batchCache.logoDataUrlPromise

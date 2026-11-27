@@ -11,6 +11,7 @@ import {
   formatPrintAmount,
   resolveSaleDocumentStoreContact,
   resolveSaleOrderCreatorName,
+  saleReceiptDocumentTitle,
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
@@ -243,6 +244,23 @@ function buildClassicTaxInvoiceHtml(sale, options) {
 
   const totalVat = Number(sale.total_vat ?? 0);
   const orderTotal = Number(sale.order_total ?? 0);
+  const documentTitle = saleReceiptDocumentTitle(sale, orderTotal);
+  const rawBalanceDue = sale.balance_due ?? sale.balanceDue;
+  const hasAmountPaid = sale.amount_paid != null;
+  const amountPaid = hasAmountPaid
+    ? Math.max(0, Number(sale.amount_paid) || 0)
+    : rawBalanceDue != null
+      ? Math.max(0, orderTotal - Math.max(0, Number(rawBalanceDue) || 0))
+      : documentTitle === "INVOICE RECEIPT"
+        ? orderTotal
+        : 0;
+  const balanceDue = hasAmountPaid
+    ? Math.max(0, orderTotal - amountPaid)
+    : rawBalanceDue != null
+      ? Math.max(0, Number(rawBalanceDue) || 0)
+      : documentTitle === "INVOICE RECEIPT"
+        ? 0
+        : orderTotal;
   const totalDiscount =
     discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
 
@@ -333,7 +351,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escapeHtml(`Invoice Receipt ${invoiceNo}`)}</title>
+  <title>${escapeHtml(`${documentTitle} ${invoiceNo}`)}</title>
   <style>
     @page { size: A4; margin: 0; }
     body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
@@ -414,6 +432,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
       <div class="brand">
         ${orgHeader}
         <div class="brand-meta">
+          ${seller.additional_info ? `<div>${escapeHtml(seller.additional_info)}</div>` : ""}
           ${branchName ? `<div>${escapeHtml(branchName)}</div>` : ""}
           ${storeAddress ? `<div>${escapeHtml(storeAddress)}</div>` : ""}
           ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
@@ -423,7 +442,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
         </div>
       </div>
 
-      <div class="doc-title">Invoice Receipt</div>
+      <div class="doc-title">${escapeHtml(documentTitle)}</div>
 
       <div class="meta-sheet">
         ${metaSheetHtml}
@@ -441,6 +460,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
           <p><strong>Total Amount:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
           ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
           <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
+          ${balanceDue > 0.009 ? `<p><strong>Amount Paid:</strong> ${escapeHtml(formatPrintAmount(amountPaid))}</p><p><strong>Balance Due:</strong> ${escapeHtml(formatPrintAmount(balanceDue))}</p>` : ""}
           <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
           <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
         </div>

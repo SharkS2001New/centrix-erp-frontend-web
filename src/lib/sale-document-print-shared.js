@@ -67,6 +67,33 @@ export function formatThermalPrintAmount(value) {
   return formatPrintAmount(value, { decimals: 0 });
 }
 
+export function saleReceiptDocumentTitle(sale, total = sale?.order_total) {
+  const rawBalance = sale?.balance_due ?? sale?.balanceDue;
+  const balanceDue =
+    rawBalance == null
+      ? null
+      : Number.isFinite(Number(rawBalance))
+        ? Number(rawBalance)
+        : null;
+  const orderTotal = Number(total ?? 0);
+  const amountPaid =
+    sale?.amount_paid == null || sale.amount_paid === ""
+      ? null
+      : Number(sale.amount_paid);
+  const paymentStatus = String(sale?.payment_status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const unpaid =
+    amountPaid != null && Number.isFinite(amountPaid)
+        ? Math.max(0, orderTotal - amountPaid) > 0.009
+        : balanceDue != null
+          ? balanceDue > 0.009
+          : ["unpaid", "partial", "partially_paid", "credit"].includes(paymentStatus);
+
+  return unpaid ? "UNPAID INVOICE RECEIPT" : "INVOICE RECEIPT";
+}
+
 /**
  * Thermal unit-price column — keep cents when needed so qty × price can match amount
  * (e.g. 152.50 × 2 = 305; rounding to 153 alone looked wrong).

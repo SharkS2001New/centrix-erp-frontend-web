@@ -19,6 +19,7 @@ import {
   formatThermalPrintAmount,
   resolveSaleDocumentStoreContact,
   resolveSaleOrderCreatorName,
+  saleReceiptDocumentTitle,
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
@@ -391,6 +392,7 @@ export function buildSaleReceiptHtml(
     }) && discountTotals.lineDiscountTotal > 0.0001;
 
   const orderTotal = Number(sale.order_total ?? 0);
+  const documentTitle = saleReceiptDocumentTitle(sale, orderTotal);
   const vatAmount = Number(sale.total_vat ?? 0);
   const receiptTenders = resolveSaleReceiptTenders(sale, orderTotal);
 
@@ -491,7 +493,7 @@ export function buildSaleReceiptHtml(
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Receipt ${escapeHtml(cashSalesNo)}</title>
+  <title>${escapeHtml(`${documentTitle} ${cashSalesNo}`)}</title>
   <style>
     ${buildThermalReceiptCss({
       printPx,
@@ -500,14 +502,18 @@ export function buildSaleReceiptHtml(
       thermalLogoDims,
       templateCss: orgDocumentTemplateCss(salesSettings?.receipt_document_template, { layout: "thermal" }),
     })}
+    .receipt-document-title { text-align: center; font-size: ${printPx.header(14)}; font-weight: var(--print-w-header, 700); margin: 0 0 6px; }
     .table .product-code { display: block; font-size: 0.9em; line-height: 1.15; font-weight: 400; word-break: break-all; overflow-wrap: anywhere; }
   </style>
 </head>
 <body class="centrix-print-thermal">
   <div class="receipt">
+    <div class="receipt-document-title">${escapeHtml(documentTitle)}</div>
     ${orgHeader}
+    ${seller?.additional_info ? `<div class="company-meta">${escapeHtml(seller.additional_info)}</div>` : ""}
     ${branchName ? `<div class="company-meta">${escapeHtml(branchName)}</div>` : ""}
     ${storeAddress ? `<div class="company-meta">Address: ${escapeHtml(storeAddress)}</div>` : ""}
+    ${seller?.email ? `<div class="company-meta">Email: ${escapeHtml(seller.email)}</div>` : ""}
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
