@@ -73,7 +73,7 @@ const POS_ROUTE_RULES = [
   {
     prefix: "/sales/end-of-day",
     permission: P.pos.end_of_day.view,
-    altPermissions: [P.reports.hub.view],
+    altPermissions: [P.reports.hub.view, P.sales.orders.create],
   },
   {
     prefix: "/sales/payments-breakdown",
@@ -81,6 +81,7 @@ const POS_ROUTE_RULES = [
     altPermissions: [
       P.pos.end_of_day.view,
       P.pos.till_management.view,
+      P.sales.orders.create,
     ],
   },
 ];

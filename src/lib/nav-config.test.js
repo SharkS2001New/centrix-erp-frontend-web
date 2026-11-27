@@ -35,6 +35,19 @@ describe("products navigation active state", () => {
       }
     });
 
+    it("shows both links to users with Create Order permission", () => {
+      const section = navSections.find((row) => row.id === "pos");
+      const createOrderContext = {
+        ...context,
+        hasNavPermission: (code) => code === "sales.orders.create",
+      };
+      for (const href of ["/sales/end-of-day", "/sales/payments-breakdown"]) {
+        expect(
+          isNavItemVisible(section.items.find((item) => item.href === href), createOrderContext),
+        ).toBe(true);
+      }
+    });
+
     it("hides those links when Backoffice create-order checkout is disabled", () => {
       const section = navSections.find((row) => row.id === "pos");
       const disabledContext = {

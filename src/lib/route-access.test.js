@@ -55,6 +55,23 @@ describe("route-access", () => {
     },
   );
 
+  it.each(["/sales/end-of-day", "/sales/payments-breakdown"])(
+    "allows %s to users with Create Order permission",
+    (path) => {
+      const capabilities = {
+        modules: { sales: true, "sales.backend": true, "sales.pos": false },
+        module_settings: { sales: { show_checkout_on_create_order: true } },
+      };
+      expect(
+        canAccessRoute(path, {
+          ...baseCtx,
+          hasPermission: (code) => code === "sales.orders.create",
+          capabilities,
+        }),
+      ).toBe(true);
+    },
+  );
+
   it("denies Backoffice till reports when create-order checkout is disabled", () => {
     const capabilities = {
       modules: { sales: true, "sales.backend": true, "sales.pos": false },

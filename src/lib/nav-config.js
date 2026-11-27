@@ -160,7 +160,11 @@ const NAV_SECTION_DEFINITIONS = [
         label: "End of day report",
         moduleAny: ["sales.pos", "sales.backend"],
         requireTillOperations: true,
-        permission: P.pos.end_of_day.view,
+        permissionAny: [
+          P.pos.end_of_day.view,
+          P.reports.hub.view,
+          P.sales.orders.create,
+        ],
       },
       {
         href: "/sales/till-management",
@@ -184,6 +188,7 @@ const NAV_SECTION_DEFINITIONS = [
           P.pos.payments_breakdown.view,
           P.pos.end_of_day.view,
           P.pos.till_management.view,
+          P.sales.orders.create,
         ],
       },
     ],
