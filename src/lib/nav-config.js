@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import {
+  isTillOperationsEnabled,
   isReportNavEnabled,
   isSidebarFeatureEnabled,
 } from "@/lib/nav-feature-gates";
@@ -58,7 +59,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, excludePaths?: string[], ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean, requireHospitalityService?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, excludePaths?: string[], ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireTillOperations?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireHrPayroll?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requirePlatformInvestors?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, hideWhenCentrixPayments?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean, requireHospitalityService?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, requireHospitalityIndustry?: boolean, items: NavItem[] }} NavSection */
 
@@ -157,7 +158,8 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/sales/end-of-day",
         label: "End of day report",
-        module: "sales.pos",
+        moduleAny: ["sales.pos", "sales.backend"],
+        requireTillOperations: true,
         permission: P.pos.end_of_day.view,
       },
       {
@@ -176,7 +178,8 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/sales/payments-breakdown",
         label: "Payments breakdown",
-        module: "sales.pos",
+        moduleAny: ["sales.pos", "sales.backend"],
+        requireTillOperations: true,
         permissionAny: [
           P.pos.payments_breakdown.view,
           P.pos.end_of_day.view,
@@ -1698,6 +1701,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireHrPayroll && !capabilities?.modules?.hr_payroll) return false;
+  if (item.requireTillOperations && !isTillOperationsEnabled(capabilities)) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;

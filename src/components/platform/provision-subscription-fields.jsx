@@ -37,6 +37,7 @@ export function ProvisionSubscriptionFields({
   const selectedPlan = availablePlans.find((row) => String(row.id) === String(form.plan_id));
   const needsPlan = form.license_mode === "plan" || (isTrial && plans.length > 0);
   const trialMax = packageTrialMax(selectedPlan);
+  const minimumSeats = selectedPlan ? commercialTermsFromPlan(selectedPlan).seat_count : 1;
 
   function patch(partial) {
     onChange({ ...form, ...partial });
@@ -50,6 +51,7 @@ export function ProvisionSubscriptionFields({
     const modePlan = modePlans.some((row) => String(row.id) === String(form.plan_id))
       ? modePlans.find((row) => String(row.id) === String(form.plan_id))
       : modePlans[0];
+    const planTerms = modePlan ? commercialTermsFromPlan(modePlan) : null;
     if (license_mode === "trial") {
       const max = packageTrialMax(modePlan);
       const days = Math.min(max, Math.max(1, Number(form.trial_days) || max));
@@ -57,6 +59,7 @@ export function ProvisionSubscriptionFields({
         license_mode,
         status: "trialing",
         plan_id: modePlan ? String(modePlan.id) : "",
+        seat_count: planTerms ? String(planTerms.seat_count) : form.seat_count,
         trial_days: String(days),
         current_period_end: addCalendarDays(start, days),
       });
@@ -68,6 +71,7 @@ export function ProvisionSubscriptionFields({
         license_mode,
         status: "active",
         plan_id: form.plan_id || (plan ? String(plan.id) : ""),
+        seat_count: plan ? String(commercialTermsFromPlan(plan).seat_count) : form.seat_count,
         current_period_end: periodEndForPlanInterval(start, plan?.interval),
       });
       return;
@@ -92,10 +96,7 @@ export function ProvisionSubscriptionFields({
     const trialDays = Math.min(max, Math.max(1, Number(form.trial_days) || max));
     patch({
       plan_id: planId,
-      seat_count:
-        terms && form.license_mode === "plan"
-          ? String(terms.seat_count)
-          : form.seat_count,
+      seat_count: terms ? String(terms.seat_count) : form.seat_count,
       trial_days: form.license_mode === "trial" ? String(trialDays) : form.trial_days,
       current_period_end:
         form.license_mode === "trial"
@@ -225,7 +226,7 @@ export function ProvisionSubscriptionFields({
                 <span className="mb-1 block text-xs font-medium text-slate-600">Custom days</span>
                 <input
                   type="number"
-                  min="1"
+                  min={minimumSeats}
                   max={trialMax}
                   className={inputClass}
                   value={form.trial_days}

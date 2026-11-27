@@ -3,6 +3,7 @@ import {
   isDirectCheckoutCreditEnabled,
   isExternalPosEnabled,
   isReportNavEnabled,
+  isTillOperationsEnabled,
   shouldShowShopDebtors,
 } from "./nav-feature-gates";
 import { isRouteOnlyCustomers } from "./distribution-settings";
@@ -108,5 +109,32 @@ describe("isRouteOnlyCustomers with shop debtors", () => {
         modules: { distribution: true, "sales.pos": true },
       }),
     ).toBe(false);
+  });
+});
+
+describe("Backoffice till report visibility", () => {
+  const backofficeCheckout = {
+    modules: { "sales.backend": true, "sales.pos": false },
+    module_settings: { sales: { show_checkout_on_create_order: true } },
+  };
+
+  it("enables till operations and EOD reports for Backoffice checkout", () => {
+    expect(isTillOperationsEnabled(backofficeCheckout)).toBe(true);
+    expect(isReportNavEnabled("eod-report", backofficeCheckout)).toBe(true);
+    expect(isReportNavEnabled("eod-cashier", backofficeCheckout)).toBe(true);
+  });
+
+  it("requires Backoffice checkout-on-create when External POS is disabled", () => {
+    const checkoutDisabled = {
+      ...backofficeCheckout,
+      module_settings: { sales: { show_checkout_on_create_order: false } },
+    };
+
+    expect(isTillOperationsEnabled(checkoutDisabled)).toBe(false);
+    expect(isReportNavEnabled("eod-report", checkoutDisabled)).toBe(false);
+  });
+
+  it("keeps other POS reports restricted to External POS", () => {
+    expect(isReportNavEnabled("discount-summary", backofficeCheckout)).toBe(false);
   });
 });

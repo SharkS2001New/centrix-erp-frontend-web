@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  checkPrintAgentHealth,
   clearPrintAgentHealthCache,
   invalidatePrintAgentHealth,
   isPrintAgentRecentlyHealthy,
@@ -18,6 +19,7 @@ const config = {
 describe("print agent health cache", () => {
   beforeEach(() => {
     clearPrintAgentHealthCache();
+    vi.unstubAllGlobals();
   });
 
   it("treats a recent healthy mark as warm", () => {
@@ -30,5 +32,36 @@ describe("print agent health cache", () => {
     markPrintAgentHealthy(config);
     invalidatePrintAgentHealth(config);
     expect(isPrintAgentRecentlyHealthy(config)).toBe(false);
+  });
+
+  it("reports when renderers or printers are missing from the health response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            wkhtmltopdf_available: true,
+            wkhtmltopdf_path: "C:\\PrintAgent\\tools\\wkhtmltopdf\\bin\\wkhtmltopdf.exe",
+            sumatra_available: true,
+            sumatra_path: "C:\\PrintAgent\\tools\\SumatraPDF\\SumatraPDF.exe",
+            printer_count: 0,
+            print_ready: false,
+            printers: [],
+          }),
+      })),
+    );
+
+    const health = await checkPrintAgentHealth(config, { bypassCache: true });
+
+    expect(health).toMatchObject({
+      ok: true,
+      wkhtmltopdfAvailable: true,
+      wkhtmltopdfPath: "C:\\PrintAgent\\tools\\wkhtmltopdf\\bin\\wkhtmltopdf.exe",
+      sumatraAvailable: true,
+      printReady: false,
+      printers: [],
+    });
   });
 });

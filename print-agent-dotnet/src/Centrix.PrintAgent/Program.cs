@@ -236,6 +236,9 @@ namespace Centrix.PrintAgent
         {
             var printers = _printers.ListPrinters();
             var wkhtmltopdfPath = WkhtmlPdfRenderer.FindExecutable();
+            var wkhtmltopdfProbeError = WkhtmlPdfRenderer.ProbeError();
+            var sumatraPath = HtmlPrintService.SumatraExecutablePath();
+            var defaultPrinter = _printers.DefaultPrinter();
             return new Dictionary<string, object>
             {
                 { "ok", true },
@@ -243,11 +246,14 @@ namespace Centrix.PrintAgent
                 { "platform", "win32" },
                 { "running_as_service", !Environment.UserInteractive },
                 { "async_print", true },
-                { "wkhtmltopdf_available", wkhtmltopdfPath != null },
+                { "wkhtmltopdf_available", wkhtmltopdfProbeError == null },
                 { "wkhtmltopdf_path", wkhtmltopdfPath },
-                { "sumatra_available", HtmlPrintService.IsSumatraAvailable() },
-                { "sumatra_path", HtmlPrintService.SumatraExecutablePath() },
-                { "default_printer", _printers.DefaultPrinter() },
+                { "wkhtmltopdf_error", wkhtmltopdfProbeError },
+                { "sumatra_available", sumatraPath != null },
+                { "sumatra_path", sumatraPath },
+                { "default_printer", defaultPrinter },
+                { "printer_count", printers.Count },
+                { "print_ready", wkhtmltopdfProbeError == null && sumatraPath != null && printers.Count > 0 },
                 { "printers", printers }
             };
         }

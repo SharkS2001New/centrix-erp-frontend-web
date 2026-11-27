@@ -195,13 +195,28 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   async function handleTestConnection() {
     const result = await refreshHealth();
     if (result?.ok) {
-      const sumatraNote = result.sumatraAvailable
-        ? " SumatraPDF is ready."
-        : " SumatraPDF is missing — re-run BUILD-AND-INSTALL.bat as Administrator.";
+      if (!result.printDiagnosticsAvailable) {
+        notifyError(
+          "Print Agent is reachable but outdated. Reinstall the latest Windows print-agent package, then check health again.",
+        );
+        return;
+      }
+      if (result.printReady === false) {
+        const missing = [
+          !result.wkhtmltopdfAvailable && "wkhtmltopdf",
+          !result.sumatraAvailable && "SumatraPDF",
+          !result.printers?.length && "a printer visible to the agent account",
+        ].filter(Boolean);
+        notifyError(
+          `Agent is reachable, but print setup is incomplete: ${missing.join(", ")}. Check the health details below and run the test print.`,
+        );
+        return;
+      }
+
       notifySuccess(
-        (result.defaultPrinter
-          ? `Connected. Printers available — default: ${result.defaultPrinter}.`
-          : "Connected.") + sumatraNote,
+        result.defaultPrinter
+          ? `Connected and print-ready. Default printer: ${result.defaultPrinter}.`
+          : "Connected and print-ready.",
       );
     } else {
       notifyError(
@@ -232,12 +247,17 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       setHealth(status);
       setHealthDetailJson(JSON.stringify(status.raw ?? status, null, 2));
 
-      if (status.sumatraAvailable) {
-        notifySuccess('Health OK — "sumatra_available" is true.');
+      if (status.ok && !status.printDiagnosticsAvailable) {
+        notifyError("Print Agent is outdated. Reinstall the latest Windows print-agent package.");
+      } else if (status.ok && status.printReady === false) {
+        const missing = [
+          !status.wkhtmltopdfAvailable && "wkhtmltopdf",
+          !status.sumatraAvailable && "SumatraPDF",
+          !status.printers?.length && "a printer visible to the agent account",
+        ].filter(Boolean);
+        notifyError(`Agent is online but not ready to print: ${missing.join(", ")}.`);
       } else if (status.ok) {
-        notifyError(
-          'Agent is running but "sumatra_available" is false. Re-run BUILD-AND-INSTALL.bat as Administrator (bundles Sumatra).',
-        );
+        notifySuccess("Print agent health check passed.");
       } else {
         notifyError("Print agent returned an unhealthy status.");
       }
@@ -466,6 +486,24 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               <code className="text-[11px]">BUILD-AND-INSTALL.bat</code> as Administrator (it bundles Sumatra).
               Then click <strong>Check health</strong> — you need{" "}
               <code className="text-[11px]">sumatra_available: true</code>.
+            </p>
+          ) : null}
+          {health?.ok && health.wkhtmltopdfAvailable === false ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Print Agent is online but <strong>wkhtmltopdf is missing</strong>. Re-run{" "}
+              <code className="text-[11px]">BUILD-AND-INSTALL.bat</code> as Administrator.
+            </p>
+          ) : null}
+          {health?.ok && health.printers?.length === 0 ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              No printers are visible to the running agent account. Install the printer for that
+              Windows user or run the service as the account that can access it.
+            </p>
+          ) : null}
+          {health?.ok && !health.printDiagnosticsAvailable ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              This Print Agent version does not report print readiness. Reinstall the latest Windows
+              print-agent package before relying on silent printing.
             </p>
           ) : null}
           {healthDetailJson ? (

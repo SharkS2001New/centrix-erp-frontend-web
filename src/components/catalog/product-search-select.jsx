@@ -358,8 +358,10 @@ export function ProductSearchSelect({
                       isHighlighted || isSelected ? "pos-search-select-option-active" : ""
                     }`}
                   >
-                    <span className="font-medium">{p.product_name}</span>
-                    <span className="ml-1.5 font-mono text-xs opacity-80">{p.product_code}</span>
+                    <span className="block font-medium">{p.product_name}</span>
+                    <span className="mt-0.5 block max-w-full break-all font-mono text-xs opacity-80">
+                      {p.product_code}
+                    </span>
                   </button>
                 </li>
               );

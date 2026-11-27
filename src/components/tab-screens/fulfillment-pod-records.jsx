@@ -21,7 +21,7 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { POD_RECORD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
-import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, saleCustomerDisplayLabel } from "@/lib/sales";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 
@@ -205,7 +205,14 @@ export function FulfillmentPodRecordsScreen() {
                         {formatOrderNumber(record.sale ?? record.sale_id)}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">{record.sale ? saleCustomerLabel(record.sale) : "—"}</td>
+                    <td className="px-4 py-3">
+                      {record.sale
+                        ? saleCustomerDisplayLabel(
+                            record.sale,
+                            Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+                          )
+                        : "—"}
+                    </td>
                     <td className="px-4 py-3">{record.recipient_name}</td>
                     <td className="px-4 py-3 capitalize">{record.status}</td>
                     <td className="px-4 py-3">

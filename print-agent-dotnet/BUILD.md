@@ -17,7 +17,7 @@ The primary build and install path is compatible with Windows PowerShell 2.0, wh
 6. Wait for **SUCCESS**.
 7. Open `http://127.0.0.1:9247/v1/health`, then use **Test connection → Save** in Centrix.
 
-The build uses the C# compiler included with .NET Framework 4.8. The installer installs the Windows service and bundles wkhtmltopdf and a SumatraPDF version compatible with Windows 7.
+The build uses the C# compiler included with .NET Framework 4.8. The installer bundles wkhtmltopdf and a Windows 7-compatible SumatraPDF in `C:\Program Files\Centrix\PrintAgent\tools`. It copies them from standard Program Files or Windows user-profile locations when available, otherwise it downloads them. Installation fails rather than leaving an incomplete tools folder.
 It also creates `publish\CentrixPrintAgent-win-x64.zip`; upload that package to the server's configured print-agent download location to distribute it to other tills.
 
 For USB printers, set the service's **Log On** account to the Windows user who can access that printer, then restart the service.
@@ -42,7 +42,7 @@ Run PowerShell as Administrator from the extracted folder:
 | SumatraPDF download fails | Install a Windows 7-compatible SumatraPDF version manually and rerun `install-windows-service.ps1 -SkipSumatraDownload`. |
 | Port / health fails | Check that `CentrixPrintAgent` is running in Windows Services, then open `http://127.0.0.1:9247/v1/health`. |
 | Agent runs but Centrix says offline | Hard-refresh Centrix. HTTPS pages need the agent's Private Network Access headers. |
-| Agent is online but printing fails | Confirm `wkhtmltopdf_available` and `sumatra_available` are true in `/v1/health`; check the Windows default printer and service Log On account. |
+| Agent is online but printing fails | Confirm `print_ready` is true in `/v1/health`; `wkhtmltopdf_error`, renderer paths, and `printers` identify missing tools or printer access. For USB printers, set the service Log On account to the Windows account that can access the printer. |
 
 ## Uninstall
 

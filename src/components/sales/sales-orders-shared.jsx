@@ -53,7 +53,7 @@ import {
   formatSaleKes,
   formatSalePlacedDateTime,
   orderSourceLabel,
-  saleCustomerLabel,
+  saleCustomerDisplayLabel,
   saleHasRecordedPayment,
   salePaymentMethodDisplay,
   saleStatusLabel,
@@ -1417,7 +1417,12 @@ export function OrderListTableRow({
           </td>
         ) : null}
         {showCustomerColumn ? (
-          <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
+          <td className="px-4 py-3 text-slate-700">
+            {saleCustomerDisplayLabel(
+              sale,
+              Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+            )}
+          </td>
         ) : null}
         {showBranchColumn ? (
           <td className="px-4 py-3 text-slate-600">{branchName}</td>
@@ -1586,7 +1591,13 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
       </div>
 
       <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <DetailMeta label="Customer" value={saleCustomerLabel(sale)} />
+        <DetailMeta
+          label="Customer"
+          value={saleCustomerDisplayLabel(
+            sale,
+            Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+          )}
+        />
         <DetailMeta
           label="Created via"
           value={orderSourceLabel(sale.order_source, sale.channel, capabilities)}

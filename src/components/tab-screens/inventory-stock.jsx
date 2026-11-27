@@ -57,6 +57,7 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
+import { SalesRepStockAllocationDialog } from "@/components/inventory/sales-rep-stock-allocation-dialog";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
 
@@ -180,6 +181,8 @@ export function InventoryStockScreen() {
   const availableLocations = useMemo(() => availableStockLocations(capabilities), [capabilities]);
   const availableLocationSet = useMemo(() => new Set(availableLocations), [availableLocations]);
   const singleLocation = availableLocations.length === 1 ? availableLocations[0] : null;
+  const repStockEnabled = Boolean(capabilities?.module_settings?.sales?.sales_rep_stock_enabled);
+  const canManageRepStock = repStockEnabled && Boolean(user?.is_admin);
   const locationOptions = hotelCatalogue
     ? stockLocationOptionsFor(capabilities, [
         { value: "all", label: "All locations" },
@@ -202,6 +205,7 @@ export function InventoryStockScreen() {
   const [buildingAllPriceList, setBuildingAllPriceList] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [allocationProduct, setAllocationProduct] = useState(null);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -457,15 +461,30 @@ export function InventoryStockScreen() {
     switch (colId) {
       case "product":
         return (
-          <Link
-            href={`/products/${encodeURIComponent(row.product_code)}`}
-            className="font-medium text-slate-900 hover:text-[#185FA5]"
-          >
-            {row.product_name}
-          </Link>
+          <div className="flex flex-col items-start gap-1">
+            <Link
+              href={`/products/${encodeURIComponent(row.product_code)}`}
+              className="font-medium text-slate-900 hover:text-[#185FA5]"
+            >
+              {row.product_name}
+            </Link>
+            {canManageRepStock ? (
+              <button
+                type="button"
+                onClick={() => setAllocationProduct(row)}
+                className="text-xs font-medium text-[#185FA5] hover:underline"
+              >
+                Manage rep stock
+              </button>
+            ) : null}
+          </div>
         );
       case "sku":
-        return <span className="font-mono text-xs text-slate-500">{row.product_code}</span>;
+        return (
+          <span className="block max-w-[10rem] break-all font-mono text-xs text-slate-500">
+            {row.product_code}
+          </span>
+        );
       case "shop":
         return (
           <span title={`${row.shop_quantity} base pieces`}>
@@ -805,6 +824,16 @@ export function InventoryStockScreen() {
           Price list (selected)
         </button>
       </BatchActionBar>
+      {allocationProduct && branchId ? (
+        <SalesRepStockAllocationDialog
+          branchId={branchId}
+          organizationId={user?.organization_id}
+          product={allocationProduct}
+          locations={availableLocations}
+          onClose={() => setAllocationProduct(null)}
+          onChanged={() => void loadStock()}
+        />
+      ) : null}
     </InventoryPageShell>
   );
 }

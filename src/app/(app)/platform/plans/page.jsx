@@ -317,6 +317,83 @@ export default function PlatformPlansPage() {
                   ))}
                 </div>
               </fieldset>
+              {form.interval === "annual" ? (
+                <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-600">Yearly payment</span>
+                    <SearchableSelect
+                      className={inputClass}
+                      value={form.yearly_billing}
+                      nativeEvent
+                      onChange={(e) => setForm((f) => ({ ...f, yearly_billing: e.target.value }))}
+                      options={[
+                        { value: "one_time", label: "One-time for the full year" },
+                        { value: "subscription", label: "Yearly subscription" },
+                        { value: "installments", label: "Pay in installments" },
+                      ]}
+                    />
+                  </label>
+                  {form.yearly_billing === "one_time" ? (
+                    <>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={form.renewal_enabled}
+                          onChange={(e) => setForm((f) => ({ ...f, renewal_enabled: e.target.checked }))}
+                        />
+                        Offer a yearly renewal
+                      </label>
+                      {form.renewal_enabled ? (
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-medium text-slate-600">Renewal price (KES)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className={inputClass}
+                            value={form.renewal_price}
+                            onChange={(e) => setForm((f) => ({ ...f, renewal_price: e.target.value }))}
+                          />
+                        </label>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {form.yearly_billing === "installments" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium text-slate-600">Charge every</span>
+                        <SearchableSelect
+                          className={inputClass}
+                          value={form.installment_interval_months}
+                          nativeEvent
+                          onChange={(e) => setForm((f) => ({ ...f, installment_interval_months: e.target.value }))}
+                          options={[1, 2, 3, 4, 6, 12].map((months) => ({
+                            value: String(months),
+                            label: `${months} ${months === 1 ? "month" : "months"}`,
+                          }))}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium text-slate-600">Amount per installment (KES)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          className={inputClass}
+                          value={form.installment_amount}
+                          onChange={(e) => setForm((f) => ({ ...f, installment_amount: e.target.value }))}
+                        />
+                      </label>
+                      <p className="text-xs text-slate-500 sm:col-span-2">
+                        The annual total is the installment amount multiplied by the number of installments. Each payment grants access for its interval.
+                      </p>
+                    </div>
+                  ) : null}
+                  {form.yearly_billing === "subscription" ? (
+                    <p className="text-xs text-slate-500">The yearly price is charged at the start of each annual term.</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">First-time payment (KES)</span>
@@ -366,7 +443,12 @@ export default function PlatformPlansPage() {
                     min="0"
                     step="1"
                     className={inputClass}
-                    value={form.yearly_price}
+                    value={form.yearly_billing === "installments"
+                      ? (Number(form.installment_amount) > 0
+                        ? String(Number(form.installment_amount) * 12 / (Number(form.installment_interval_months) || 1))
+                        : "")
+                      : form.yearly_price}
+                    readOnly={form.yearly_billing === "installments"}
                     onChange={(e) => setForm((f) => ({ ...f, yearly_price: e.target.value }))}
                   />
                 </label>
@@ -375,6 +457,7 @@ export default function PlatformPlansPage() {
                 Customers pay the monthly or yearly amount on the Centrix Paybill. The account number is the organisation code or the admin phone.
               </p>
               {form.license_basis === "user" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Seat limit</span>
                   <input
@@ -387,6 +470,18 @@ export default function PlatformPlansPage() {
                     placeholder="Unlimited"
                   />
                 </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Minimum users</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    className={inputClass}
+                    value={form.minimum_seat_count}
+                    onChange={(e) => setForm((f) => ({ ...f, minimum_seat_count: e.target.value }))}
+                  />
+                </label>
+                </div>
               ) : null}
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Industry</span>

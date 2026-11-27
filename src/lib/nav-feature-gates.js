@@ -63,8 +63,21 @@ export const DISTRIBUTION_REPORT_KEYS = new Set([
   "driver-deliveries",
 ]);
 
+const BACKOFFICE_CHECKOUT_REPORT_KEYS = new Set(["eod-cashier", "eod-report"]);
+
 export function isExternalPosEnabled(capabilities) {
   return Boolean(capabilities?.modules?.["sales.pos"]);
+}
+
+/** Backoffice till reports are relevant only when checkout-on-create is available. */
+export function isTillOperationsEnabled(capabilities) {
+  if (isExternalPosEnabled(capabilities)) return true;
+  if (!capabilities?.modules?.["sales.backend"]) return false;
+
+  const sales = capabilities?.module_settings?.sales ?? {};
+  return Object.prototype.hasOwnProperty.call(sales, "show_checkout_on_create_order")
+    ? Boolean(sales.show_checkout_on_create_order)
+    : true;
 }
 
 export function isSidebarFeatureEnabled(capabilities, featureKey) {
@@ -157,7 +170,9 @@ export function isReportNavEnabled(reportKey, capabilities) {
   }
 
   if (POS_REPORT_KEYS.has(reportKey)) {
-    return isExternalPosEnabled(capabilities);
+    return BACKOFFICE_CHECKOUT_REPORT_KEYS.has(reportKey)
+      ? isTillOperationsEnabled(capabilities)
+      : isExternalPosEnabled(capabilities);
   }
 
   if (DISTRIBUTION_REPORT_KEYS.has(reportKey)) {

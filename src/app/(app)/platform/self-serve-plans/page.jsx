@@ -8,7 +8,7 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { INDUSTRIES, industryById } from "@/lib/erp-industries";
 import { useConfirm } from "@/lib/use-confirm";
-import { initialPackageAccess, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
+import { initialPackageAccess, installmentOffer, ManagedFreePlanCard, modulesForPlan, monthOffer, onceOffer, OneTimeQuoteCard, PaymentSimulation, PlanAccessFields, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]";
@@ -35,13 +35,17 @@ function previewPlan(plan, discount) {
     description: plan.description,
     interval: yearly ? "yearly" : "monthly",
     yearly_billing: yearly
-      ? (plan.yearly_billing === "subscription" ? "subscription" : "one_time")
+      ? (["subscription", "installments"].includes(plan.yearly_billing) ? plan.yearly_billing : "one_time")
       : null,
     currency: plan.currency || "KES",
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
     renewal_price: plan.renewal_price,
+    renewal_enabled: plan.renewal_enabled !== false,
+    installment_interval_months: plan.installment_interval_months,
+    installment_amount: plan.installment_amount,
     seat_limit: plan.seat_limit,
+    minimum_seat_count: plan.minimum_seat_count,
     trial_days: plan.trial_days,
     features,
     feature_details: Array.isArray(plan.feature_details) ? plan.feature_details : [],
@@ -92,11 +96,15 @@ function emptyForm() {
     industry: "commerce",
     trial_profile_keys: [],
     setup_profile_keys: [],
-    interval: "monthly",
+    interval: "yearly",
     yearly_billing: "one_time",
     price: "",
-    renewal_price: "",
+    renewal_enabled: true,
+    renewal_price: "5000",
+    installment_interval_months: "1",
+    installment_amount: "",
     seat_limit: "1",
+    minimum_seat_count: "1",
     trial_days: "14",
     feature_details: [{ label: "", detail: "" }],
     workspace_keys: [],
@@ -123,12 +131,31 @@ function recordToForm(plan, catalog) {
     trial_profile_keys: Array.isArray(plan.trial_profile_keys) ? [...plan.trial_profile_keys] : [],
     setup_profile_keys: Array.isArray(plan.setup_profile_keys) ? [...plan.setup_profile_keys] : [],
     interval: yearly ? "yearly" : "monthly",
-    yearly_billing: plan.yearly_billing === "subscription" ? "subscription" : "one_time",
+    yearly_billing: ["subscription", "installments"].includes(plan.yearly_billing)
+      ? plan.yearly_billing
+      : "one_time",
     price: yearly
       ? (plan.yearly_price != null ? String(plan.yearly_price) : "")
       : (plan.monthly_price != null ? String(plan.monthly_price) : ""),
-    renewal_price: plan.renewal_price != null ? String(plan.renewal_price) : "",
-    seat_limit: plan.seat_limit != null ? String(plan.seat_limit) : "1",
+    renewal_price: plan.renewal_price != null
+      ? String(plan.renewal_price)
+      : (yearly ? String(plan.yearly_price ?? "") : ""),
+    renewal_enabled: plan.renewal_enabled !== false,
+    installment_interval_months: plan.installment_interval_months != null
+      ? String(plan.installment_interval_months)
+      : "1",
+    installment_amount: plan.installment_amount != null ? String(plan.installment_amount) : "",
+    seat_limit: String(Math.max(
+      1,
+      Number(plan.seat_limit) || 1,
+      Number(plan.minimum_seat_count) || 1,
+      String(plan.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+    )),
+    minimum_seat_count: String(Math.max(
+      1,
+      Number(plan.minimum_seat_count) || 1,
+      String(plan.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+    )),
     trial_days: plan.trial_days != null ? String(plan.trial_days) : "14",
     feature_details: features,
     workspace_keys: selected.workspace_keys,
@@ -160,16 +187,35 @@ function PlanContents({ title, items }) {
 }
 
 function formToPayload(form) {
-  const amount = Number(form.price);
   const yearly = form.interval === "yearly";
   const yearlyBilling = yearly
-    ? (form.yearly_billing === "subscription" ? "subscription" : "one_time")
+    ? (["subscription", "installments"].includes(form.yearly_billing) ? form.yearly_billing : "one_time")
     : null;
-  const renewal =
-    yearly && yearlyBilling === "one_time" && form.renewal_price !== "" && form.renewal_price != null
-      ? Number(form.renewal_price)
-      : amount;
-  const seats = Math.max(1, Number(form.seat_limit) || 1);
+  const installmentMonths = Math.max(1, Number(form.installment_interval_months) || 1);
+  const installmentAmount = Number(form.installment_amount) || 0;
+  const amount = yearly && yearlyBilling === "installments"
+    ? installmentAmount * (12 / installmentMonths)
+    : Number(form.price);
+  const renewalEnabled = yearly && yearlyBilling === "one_time"
+    ? form.renewal_enabled !== false
+    : true;
+  const renewal = !yearly
+    ? amount
+    : yearlyBilling === "installments"
+      ? installmentAmount
+      : yearlyBilling === "subscription"
+        ? amount
+        : renewalEnabled && form.renewal_price !== "" && form.renewal_price != null
+          ? Number(form.renewal_price)
+          : renewalEnabled
+            ? amount
+            : 0;
+  const minimumSeats = Math.max(
+    1,
+    Number(form.minimum_seat_count) || 1,
+    String(form.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+  );
+  const seats = Math.max(minimumSeats, Number(form.seat_limit) || 1);
   const trialDays = Math.max(1, Math.min(365, Number(form.trial_days) || 14));
   return {
     name: form.name.trim(),
@@ -182,11 +228,15 @@ function formToPayload(form) {
     license_basis: "org",
     currency: "KES",
     price: amount,
-    first_payment_price: amount,
-    renewal_price: Number.isFinite(renewal) && renewal > 0 ? renewal : amount,
+    first_payment_price: yearlyBilling === "installments" ? installmentAmount : amount,
+    renewal_price: Number.isFinite(renewal) ? renewal : amount,
+    renewal_enabled: renewalEnabled,
+    installment_interval_months: yearlyBilling === "installments" ? installmentMonths : null,
+    installment_amount: yearlyBilling === "installments" ? installmentAmount : null,
     monthly_price: yearly ? null : amount,
     yearly_price: yearly ? amount : null,
     seat_limit: seats,
+    minimum_seat_count: minimumSeats,
     trial_days: trialDays,
     workspace_keys: form.workspace_keys ?? [],
     feature_keys: form.feature_keys && typeof form.feature_keys === "object" ? form.feature_keys : {},
@@ -213,12 +263,15 @@ function PlanPreview({ industryFilter, plans, discount, yearly = false, setYearl
   const yearlyPlans = published.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
   const monthly = monthlyPlans.map(monthOffer);
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
-  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription").map(onceOffer);
+  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription" && plan.yearly_billing !== "installments").map(onceOffer);
   const yearSubs = yearlyPlans.filter((plan) => plan.yearly_billing === "subscription").map((plan) => ({
     ...onceOffer(plan),
     kind: "year_sub",
   }));
-  const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
+  const installments = yearlyPlans
+    .filter((plan) => plan.yearly_billing === "installments")
+    .map(installmentOffer);
+  const offers = yearly ? [...prepaid, ...yearSubs, ...once, ...installments] : monthly;
   const quoteCard = <OneTimeQuoteCard preview />;
 
   return (
@@ -284,6 +337,10 @@ export default function SelfServePlansPage() {
   const [aiComposeOpen, setAiComposeOpen] = useState(false);
   const trialSetupProfiles = setupProfiles.filter((profile) => profile.industry === (form.industry || "commerce"));
   const packageSetupProfiles = trialSetupProfiles;
+  const isInstallmentPlan = form.interval === "yearly" && form.yearly_billing === "installments";
+  const installmentTotal = isInstallmentPlan && Number(form.installment_amount) > 0
+    ? String(Number(form.installment_amount) * 12 / (Number(form.installment_interval_months) || 1))
+    : "";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -347,13 +404,23 @@ export default function SelfServePlansPage() {
 
   async function handleSave(event) {
     event.preventDefault();
-    const amount = Number(form.price);
+    const installments = form.interval === "yearly" && form.yearly_billing === "installments";
+    const amount = installments ? Number(form.installment_amount) : Number(form.price);
     if (!form.name.trim()) {
       notifyError("Enter a plan name.");
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      notifyError(form.interval === "yearly" ? "Enter a yearly price greater than 0." : "Enter a monthly price greater than 0.");
+      notifyError(installments
+        ? "Enter an installment amount greater than 0."
+        : form.interval === "yearly"
+          ? "Enter a yearly price greater than 0."
+          : "Enter a monthly price greater than 0.");
+      return;
+    }
+    if (form.interval === "yearly" && form.yearly_billing === "one_time"
+      && form.renewal_enabled && !(Number(form.renewal_price) > 0)) {
+      notifyError("Enter a renewal price greater than 0, or turn off yearly renewal.");
       return;
     }
     setSaving(true);
@@ -456,14 +523,22 @@ export default function SelfServePlansPage() {
 
   async function saveCard(preview, draft) {
     const source = plans.find((plan) => plan.id === preview.id);
-    const amount = Number(draft.price);
+    const installments = draft.yearly_billing === "installments";
+    const amount = installments ? Number(draft.installment_amount) : Number(draft.price);
     if (!source) return;
     if (!String(draft.name ?? "").trim()) {
       notifyError("Enter a plan name.");
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      notifyError("Enter a price greater than 0.");
+      notifyError(installments ? "Enter an installment amount greater than 0." : "Enter a price greater than 0.");
+      return;
+    }
+    if ((source.interval === "yearly" || source.interval === "annual")
+      && draft.yearly_billing === "one_time"
+      && draft.renewal_enabled
+      && !(Number(draft.renewal_price) > 0)) {
+      notifyError("Enter a renewal price greater than 0, or turn off yearly renewal.");
       return;
     }
     setSavingCardId(source.id);
@@ -474,9 +549,13 @@ export default function SelfServePlansPage() {
         description: draft.description,
         price: String(amount),
         renewal_price: draft.renewal_price ?? "",
+        renewal_enabled: draft.renewal_enabled !== false,
         seat_limit: draft.seat_limit ?? "1",
+        minimum_seat_count: draft.minimum_seat_count ?? "1",
         trial_days: draft.trial_days ?? "14",
-        yearly_billing: draft.yearly_billing === "subscription" ? "subscription" : "one_time",
+        yearly_billing: draft.yearly_billing ?? "one_time",
+        installment_interval_months: draft.installment_interval_months ?? "1",
+        installment_amount: draft.installment_amount ?? "",
         feature_details: draft.features,
         is_active: draft.is_active,
         is_recommended: Boolean(draft.is_recommended),
@@ -796,7 +875,17 @@ export default function SelfServePlansPage() {
             <div className="mt-4 space-y-4">
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Name</span>
-                <input className={inputClass} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Sales essentials" />
+                <input
+                  className={inputClass}
+                  value={form.name}
+                  onChange={(e) => setForm((f) => {
+                    const name = e.target.value;
+                    if (name.trim().toLowerCase() !== "shop starter") return { ...f, name };
+                    const seats = Math.max(10, Number(f.seat_limit) || 1);
+                    return { ...f, name, seat_limit: String(seats), minimum_seat_count: "10" };
+                  })}
+                  placeholder="Sales essentials"
+                />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Short description</span>
@@ -828,6 +917,22 @@ export default function SelfServePlansPage() {
                 />
                 <span className="mt-1 block text-xs text-slate-500">
                   Overrides the selected website button label on this plan card.
+                </span>
+              </label>
+              <label className="block text-sm sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Minimum users</span>
+                <input
+                  className={inputClass}
+                  inputMode="numeric"
+                  min={form.name.trim().toLowerCase() === "shop starter" ? "10" : "1"}
+                  value={form.name.trim().toLowerCase() === "shop starter"
+                    ? String(Math.max(10, Number(form.minimum_seat_count) || 10))
+                    : form.minimum_seat_count}
+                  readOnly={form.name.trim().toLowerCase() === "shop starter"}
+                  onChange={(e) => setForm((f) => ({ ...f, minimum_seat_count: e.target.value }))}
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  The selected package pre-fills this user count and prevents assigning fewer seats.
                 </span>
               </label>
               <label className="block text-sm">
@@ -976,7 +1081,14 @@ export default function SelfServePlansPage() {
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">{form.interval === "yearly" ? "Yearly price (KES)" : "Monthly price (KES)"}</span>
-                  <input className={inputClass} inputMode="decimal" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder={form.interval === "yearly" ? "15000" : "2000"} />
+                  <input
+                    className={inputClass}
+                    inputMode="decimal"
+                    value={isInstallmentPlan ? installmentTotal : form.price}
+                    readOnly={isInstallmentPlan}
+                    onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                    placeholder={form.interval === "yearly" ? "15000" : "2000"}
+                  />
                 </label>
               </div>
 
@@ -991,28 +1103,75 @@ export default function SelfServePlansPage() {
                       options={[
                         { value: "one_time", label: "One-time payment" },
                         { value: "subscription", label: "Yearly subscription" },
+                        { value: "installments", label: "Installments" },
                       ]}
-                      placeholder="One-time or subscription"
+                      placeholder="Choose yearly payment"
                     />
                     <span className="mt-1 block text-xs text-slate-500">
-                      Subscription renews at the yearly price. One-time uses an agreed renewal amount.
+                      One-time charges the full annual price upfront. Installments charge a configured amount at each interval.
                     </span>
                   </label>
                   {form.yearly_billing === "one_time" ? (
-                    <label className="block text-sm">
-                      <span className="mb-1 block text-xs font-medium text-slate-600">Agreed renewal (KES)</span>
-                      <input
-                        className={inputClass}
-                        inputMode="decimal"
-                        value={form.renewal_price}
-                        onChange={(e) => setForm((f) => ({ ...f, renewal_price: e.target.value }))}
-                        placeholder={form.price || "Renewal amount"}
-                      />
-                    </label>
+                    <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={form.renewal_enabled}
+                            onChange={(e) => setForm((f) => ({ ...f, renewal_enabled: e.target.checked }))}
+                          />
+                          Offer yearly renewal
+                        </label>
+                        {form.renewal_enabled ? (
+                          <label className="block text-sm">
+                            <span className="mb-1 block text-xs font-medium text-slate-600">Agreed renewal (KES)</span>
+                            <input
+                              className={inputClass}
+                              inputMode="decimal"
+                              value={form.renewal_price}
+                              onChange={(e) => setForm((f) => ({ ...f, renewal_price: e.target.value }))}
+                              placeholder={form.price || "Renewal amount"}
+                            />
+                          </label>
+                        ) : null}
+                    </div>
+                  ) : null}
+                  {form.yearly_billing === "installments" ? (
+                    <div className="space-y-3">
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-medium text-slate-600">Installment interval</span>
+                          <SearchableSelect
+                            className={inputClass}
+                            value={form.installment_interval_months}
+                            nativeEvent
+                            onChange={(e) => setForm((f) => ({ ...f, installment_interval_months: e.target.value }))}
+                            options={[1, 2, 3, 4, 6, 12].map((months) => ({
+                              value: String(months),
+                              label: `Every ${months} ${months === 1 ? "month" : "months"}`,
+                            }))}
+                          />
+                        </label>
+                        <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-medium text-slate-600">Amount per installment (KES)</span>
+                          <input
+                            className={inputClass}
+                            inputMode="decimal"
+                            value={form.installment_amount}
+                            onChange={(e) => setForm((f) => ({ ...f, installment_amount: e.target.value }))}
+                          />
+                        </label>
+                        <p className="text-xs text-slate-500">
+                          Annual total: {formatBillingMoney(
+                            (Number(form.installment_amount) || 0) * (12 / (Number(form.installment_interval_months) || 1)),
+                            "KES",
+                          )}. Each paid installment grants access for its interval.
+                        </p>
+                    </div>
                   ) : (
-                    <p className="self-end text-xs text-slate-500 sm:pb-2">
-                      The yearly price above is the renewal amount.
-                    </p>
+                    form.yearly_billing === "subscription" ? (
+                        <p className="self-end text-xs text-slate-500 sm:pb-2">
+                          The yearly price above is charged at the start of each annual term.
+                        </p>
+                    ) : null
                   )}
                 </div>
               ) : (
@@ -1024,12 +1183,32 @@ export default function SelfServePlansPage() {
                 <input
                   className={inputClass}
                   inputMode="numeric"
-                  min="1"
+                  min={String(Math.max(
+                    1,
+                    Number(form.minimum_seat_count) || 1,
+                    form.name.trim().toLowerCase() === "shop starter" ? 10 : 1,
+                  ))}
                   value={form.seat_limit}
                   onChange={(e) => setForm((f) => ({ ...f, seat_limit: e.target.value }))}
                 />
                 <span className="mt-1 block text-xs text-slate-500">
                   Applied automatically when this package is assigned to an organisation.
+                </span>
+              </label>
+              <label className="block text-sm sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Minimum users</span>
+                <input
+                  className={inputClass}
+                  inputMode="numeric"
+                  min={form.name.trim().toLowerCase() === "shop starter" ? "10" : "1"}
+                  value={form.name.trim().toLowerCase() === "shop starter"
+                    ? String(Math.max(10, Number(form.minimum_seat_count) || 10))
+                    : form.minimum_seat_count}
+                  readOnly={form.name.trim().toLowerCase() === "shop starter"}
+                  onChange={(e) => setForm((f) => ({ ...f, minimum_seat_count: e.target.value }))}
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  The selected package pre-fills this seat count and cannot be assigned below it.
                 </span>
               </label>
 

@@ -20,7 +20,10 @@ import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isBackofficeSectionEnabled } from "@/lib/backoffice-sections";
 import { isAccountingSectionEnabled, isHrSectionEnabled } from "@/lib/menu-groups";
-import { isSidebarFeatureEnabled } from "@/lib/nav-feature-gates";
+import {
+  isSidebarFeatureEnabled,
+  isTillOperationsEnabled,
+} from "@/lib/nav-feature-gates";
 import { WORKSPACE_SECTION_IDS, defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
@@ -328,6 +331,13 @@ export function canAccessRoute(pathname, ctx, options = {}) {
 
   for (const rule of POS_ROUTE_RULES) {
     if (pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`)) {
+      if (
+        (rule.prefix === "/sales/end-of-day" ||
+          rule.prefix === "/sales/payments-breakdown") &&
+        !isTillOperationsEnabled(ctx.capabilities)
+      ) {
+        return false;
+      }
       if (ctx.hasPermission(rule.permission)) return true;
       if (rule.altPermissions?.some((code) => ctx.hasPermission(code))) return true;
       return false;

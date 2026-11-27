@@ -109,7 +109,7 @@ export function ProductNameCell({ product, showPhoto = false, deleted = false })
   return (
     <div className={`flex min-w-0 items-start ${showPhoto ? "gap-2.5" : ""}`}>
       {showPhoto ? <ProductPhotoThumb product={product} /> : null}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {deleted ? (
           <p className="text-sm font-medium text-[var(--theme-text)]">{product.product_name}</p>
         ) : (
@@ -120,7 +120,9 @@ export function ProductNameCell({ product, showPhoto = false, deleted = false })
             {product.product_name}
           </Link>
         )}
-        <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
+        <p className="theme-subtext mt-0.5 max-w-full break-all font-mono text-xs">
+          {product.product_code}
+        </p>
         <p className="theme-subtext mt-0.5 text-xs">
           {product.category_name} · {product.subcategory_name}
         </p>

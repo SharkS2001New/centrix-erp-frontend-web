@@ -56,9 +56,31 @@ describe("OrganizationModuleToggles", () => {
     expect(markup).toContain("Ask for quantity when adding to cart");
     expect(markup).toContain("products are added at quantity 1");
   });
+
+  it("shows the platform-controlled sales-rep stock distribution setting", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: { sales_rep_stock_enabled: false },
+        onChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Distribute stock to sales reps");
+    expect(markup).toContain("unallocated branch stock");
+  });
 });
 
 describe("defaultSalesPlatformState", () => {
+  it("keeps sales-rep stock distribution disabled unless enabled by platform admin", () => {
+    expect(defaultSalesPlatformState("small_shop").sales_rep_stock_enabled).toBe(false);
+    expect(salesPlatformFromApi({}).sales_rep_stock_enabled).toBe(false);
+    expect(salesPlatformFromApi({ sales_rep_stock_enabled: true }).sales_rep_stock_enabled).toBe(
+      true,
+    );
+  });
+
   it("enables the touch search keypad only for Hotel POS setup profiles", () => {
     expect(defaultSalesPlatformState("wholesale_retail").pos_touch_search_keypad).toBe(false);
     expect(defaultSalesPlatformState("distribution").pos_touch_search_keypad).toBe(false);
@@ -106,12 +128,27 @@ describe("defaultSalesPlatformState", () => {
     const defaults = defaultSalesPlatformState("small_shop").as_mobile_home_cards;
     expect(defaults.products).toBe(true);
     expect(defaults.reports).toBe(true);
+    expect(defaults.returns).toBe(true);
+    expect(defaults.debtors).toBe(true);
+    expect(defaults.receive_stock).toBe(true);
+    expect(defaults.stock_take).toBe(true);
 
     const fromApi = salesPlatformFromApi({
-      as_mobile_home_cards: { products: false, reports: false },
+      as_mobile_home_cards: {
+        products: false,
+        reports: false,
+        returns: false,
+        debtors: false,
+        receive_stock: false,
+        stock_take: false,
+      },
     }).as_mobile_home_cards;
     expect(fromApi.products).toBe(false);
     expect(fromApi.reports).toBe(false);
+    expect(fromApi.returns).toBe(false);
+    expect(fromApi.debtors).toBe(false);
+    expect(fromApi.receive_stock).toBe(false);
+    expect(fromApi.stock_take).toBe(false);
     expect(fromApi.sales).toBe(true);
   });
 

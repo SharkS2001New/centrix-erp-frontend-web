@@ -313,6 +313,7 @@ export async function printSecondCopyIfConfigured(
       copies: 1,
       jobType,
       documentId,
+      wait: jobType === "receipt",
       config: { ...getPrintAgentConfig(), enabled: true, printerName: printer },
     });
     const extra = { ok: true, printer };

@@ -15,6 +15,7 @@ import {
   resolveEditOrderStatuses,
   salesSettingsFromCapabilities,
 } from "@/lib/sales-settings";
+import { customerPhoneFromRecord } from "@/lib/customer-phone";
 
 export { formatSaleKes } from "@/lib/sale-currency";
 
@@ -457,6 +458,18 @@ export function saleCustomerLabel(sale) {
   if (flatName) return flatName;
   if (sale.customer_num) return `Customer #${sale.customer_num}`;
   return "Walk-in";
+}
+
+export function customerNameWithPhone(name, phone, showPhone = false) {
+  const customerName = String(name ?? "").trim() || "Walk-in";
+  const customerPhone = String(phone ?? "").trim();
+  return showPhone && customerPhone ? `${customerName} (${customerPhone})` : customerName;
+}
+
+export function saleCustomerDisplayLabel(sale, showPhone = false) {
+  const phone =
+    customerPhoneFromRecord(sale?.customer) || customerPhoneFromRecord(sale);
+  return customerNameWithPhone(saleCustomerLabel(sale), phone, showPhone);
 }
 
 export function isSaleToday(sale, reference = new Date()) {

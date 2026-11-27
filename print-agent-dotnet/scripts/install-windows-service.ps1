@@ -117,11 +117,18 @@ function Download-File([string]$Url, [string]$OutFile) {
 
 function Ensure-WkhtmlTopdf([string]$TargetPublishDir) {
     $targetBin = Join-Path $TargetPublishDir "tools\wkhtmltopdf\bin"
+    $systemBin = Find-WkhtmlTopdfBin
     if (Test-Path (Join-Path $targetBin "wkhtmltopdf.exe")) {
+        if ($systemBin) {
+            $sourcePath = [System.IO.Path]::GetFullPath($systemBin).TrimEnd("\")
+            $targetPath = [System.IO.Path]::GetFullPath($targetBin).TrimEnd("\")
+            if (-not [String]::Equals($sourcePath, $targetPath, [StringComparison]::OrdinalIgnoreCase)) {
+                Copy-WkhtmlTopdf $systemBin $targetBin
+            }
+        }
         return
     }
 
-    $systemBin = Find-WkhtmlTopdfBin
     if (-not $systemBin -and $DownloadWkhtml) {
         $toolsDir = Join-Path $TargetPublishDir "tools"
         New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
@@ -153,6 +160,9 @@ function Find-SumatraExecutable {
         (Join-Path ${env:ProgramFiles(x86)} "SumatraPDF\SumatraPDF.exe"),
         (Join-Path $env:LOCALAPPDATA "SumatraPDF\SumatraPDF.exe")
     )
+    if ($env:SUMATRA_PATH -and (Test-Path $env:SUMATRA_PATH)) {
+        $candidates += $env:SUMATRA_PATH
+    }
     $usersRoot = Join-Path $env:SystemDrive "Users"
     if (Test-Path $usersRoot) {
         foreach ($profile in Get-ChildItem -Path $usersRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer }) {

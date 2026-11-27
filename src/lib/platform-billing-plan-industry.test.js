@@ -139,4 +139,56 @@ describe("commercialTermsFromPlan", () => {
       "Yearly · one-time",
     );
   });
+
+  it("uses configured installments and the package minimum seat count", () => {
+    expect(
+      commercialTermsFromPlan({
+        name: "Shop Starter",
+        interval: "annual",
+        yearly_billing: "installments",
+        yearly_price: 30000,
+        installment_interval_months: 2,
+        installment_amount: 5000,
+        seat_limit: 1,
+        minimum_seat_count: 10,
+      }),
+    ).toEqual({
+      billing_cycle: "yearly",
+      first_payment_price: 5000,
+      renewal_price: 5000,
+      amount: 5000,
+      seat_count: 10,
+    });
+    expect(planBillingLabel({ interval: "annual", yearly_billing: "installments" })).toBe(
+      "Yearly · installments",
+    );
+  });
+
+  it("uses the annual total as the one-time price and permits renewal to be disabled", () => {
+    const form = emptyPlanForm({
+      name: "Shop",
+      interval: "annual",
+      yearly_billing: "installments",
+      installment_interval_months: "2",
+      installment_amount: "5000",
+    });
+    const installmentPayload = planFormToPayload(form);
+
+    expect(installmentPayload.yearly_price).toBe(30000);
+    expect(installmentPayload.installment_amount).toBe(5000);
+    expect(installmentPayload.installment_interval_months).toBe(2);
+
+    const oneTimePayload = planFormToPayload(emptyPlanForm({
+      name: "Shop",
+      interval: "annual",
+      yearly_price: "24000",
+      renewal_enabled: false,
+    }));
+    expect(oneTimePayload.yearly_billing).toBe("one_time");
+    expect(oneTimePayload.renewal_enabled).toBe(false);
+    expect(oneTimePayload.renewal_price).toBe(0);
+    expect(emptyPlanForm().interval).toBe("monthly");
+    expect(emptyPlanForm().yearly_billing).toBe("one_time");
+    expect(emptyPlanForm().renewal_enabled).toBe(true);
+  });
 });

@@ -558,7 +558,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         onClick={() => pick(product)}
                         className={keyboardActive ? "classic-pos-find-row--active" : undefined}
                       >
-                        <td>{product.product_code}</td>
+                        <td className="max-w-[8rem] break-all font-mono text-xs">
+                          {product.product_code}
+                        </td>
                         <td>
                           <span className="classic-pos-find-name">{product.product_name}</span>
                         </td>
@@ -704,7 +706,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                             : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
-                      <td className="px-2 py-1.5 font-mono text-[10px] tabular-nums text-slate-600">
+                      <td className="max-w-[8rem] break-all px-2 py-1.5 font-mono text-[10px] tabular-nums text-slate-600">
                         {product.product_code}
                       </td>
                       <td className="px-2 py-1.5 font-medium text-slate-900">

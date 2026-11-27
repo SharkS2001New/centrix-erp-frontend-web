@@ -21,11 +21,12 @@ import { SaleCreatedByCell } from "@/components/sales/sales-orders-columns";
 import {
   formatReceiptNumber,
   formatSaleKes,
-  saleCustomerLabel,
+  saleCustomerDisplayLabel,
   salePlacedAt,
 } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { todayCalendarDate } from "@/lib/datetime";
+import { useAuth } from "@/contexts/auth-context";
 
 const SALES_LINKS = [
   { href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout" },
@@ -35,6 +36,7 @@ const SALES_LINKS = [
 ];
 
 export function SalesScreen() {
+  const { capabilities } = useAuth();
   const [sales, setSales] = useState([]);
   const [orderSummary, setOrderSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -78,11 +80,14 @@ export function SalesScreen() {
           id: sale.id,
           sale,
           receipt: formatReceiptNumber(sale),
-          customer: saleCustomerLabel(sale),
+          customer: saleCustomerDisplayLabel(
+            sale,
+            Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+          ),
           total: sale.order_total,
           status: sale.status,
         })),
-    [sales],
+    [sales, capabilities?.module_settings?.sales?.enable_checkout_customer_phone],
   );
 
   return (

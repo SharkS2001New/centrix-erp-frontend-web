@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -24,13 +26,38 @@ namespace Centrix.PrintAgent.Services
             }
 
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var candidates = new[]
+            var candidates = new List<string>
             {
                 Path.Combine(baseDir, "tools", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
                 Path.Combine(baseDir, "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "wkhtmltopdf", "bin", "wkhtmltopdf.exe")
             };
+
+            var systemDrive = Path.GetPathRoot(Environment.SystemDirectory);
+            if (!String.IsNullOrWhiteSpace(systemDrive))
+            {
+                var usersRoot = Path.Combine(systemDrive, "Users");
+                if (Directory.Exists(usersRoot))
+                {
+                    try
+                    {
+                        foreach (var profile in Directory.GetDirectories(usersRoot))
+                        {
+                            candidates.Add(Path.Combine(profile, "AppData", "Local", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"));
+                            candidates.Add(Path.Combine(profile, "AppData", "Local", "Programs", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"));
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        // Continue with machine-wide locations when user profiles are inaccessible.
+                    }
+                    catch (IOException)
+                    {
+                        // Continue with machine-wide locations when user profiles are unavailable.
+                    }
+                }
+            }
 
             foreach (var candidate in candidates)
             {
@@ -41,6 +68,60 @@ namespace Centrix.PrintAgent.Services
             }
 
             return FindOnPath("wkhtmltopdf.exe");
+        }
+
+        public static string ProbeError()
+        {
+            var executable = FindExecutable();
+            if (executable == null)
+            {
+                return "wkhtmltopdf.exe was not found.";
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = executable,
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(executable) ?? AppDomain.CurrentDomain.BaseDirectory
+                };
+                using (var process = Process.Start(psi))
+                {
+                    if (process == null)
+                    {
+                        return "Windows could not start wkhtmltopdf.exe.";
+                    }
+
+                    if (!process.WaitForExit(5000))
+                    {
+                        process.Kill();
+                        return "wkhtmltopdf.exe did not respond to --version within 5 seconds.";
+                    }
+
+                    return process.ExitCode == 0
+                        ? null
+                        : "wkhtmltopdf.exe --version exited with code " + process.ExitCode + ".";
+                }
+            }
+            catch (Win32Exception ex)
+            {
+                return "Windows could not start wkhtmltopdf.exe: " + ex.Message;
+            }
+            catch (IOException ex)
+            {
+                return "wkhtmltopdf.exe could not be read: " + ex.Message;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return "wkhtmltopdf.exe could not be accessed: " + ex.Message;
+            }
+            catch (InvalidOperationException ex)
+            {
+                return "wkhtmltopdf.exe could not run: " + ex.Message;
+            }
         }
 
         public static bool IsThermalJob(string jobType, string html)

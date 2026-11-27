@@ -165,15 +165,24 @@ export async function checkPrintAgentHealth(
       method: "GET",
       timeoutMs: quick ? QUICK_HEALTH_TIMEOUT_MS : HEALTH_TIMEOUT_MS,
     });
+    const printers = Array.isArray(body.printers) ? body.printers : [];
+    const wkhtmltopdfAvailable = Boolean(body.wkhtmltopdf_available);
+    const sumatraAvailable = Boolean(body.sumatra_available);
     const result = {
       ok: Boolean(body.ok),
       version: body.version ?? null,
       platform: body.platform ?? null,
       defaultPrinter: body.default_printer ?? body.defaultPrinter ?? null,
-      printers: Array.isArray(body.printers) ? body.printers : [],
-      sumatraAvailable: Boolean(body.sumatra_available),
+      printers,
+      sumatraAvailable,
       sumatraPath: body.sumatra_path ?? null,
-      wkhtmltopdfAvailable: Boolean(body.wkhtmltopdf_available),
+      wkhtmltopdfAvailable,
+      wkhtmltopdfPath: body.wkhtmltopdf_path ?? null,
+      printDiagnosticsAvailable: typeof body.print_ready === "boolean",
+      printReady:
+        typeof body.print_ready === "boolean"
+          ? body.print_ready
+          : wkhtmltopdfAvailable && sumatraAvailable && printers.length > 0,
       runningAsService: Boolean(body.running_as_service),
       raw: body,
     };

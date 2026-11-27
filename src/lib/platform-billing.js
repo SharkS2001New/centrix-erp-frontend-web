@@ -67,13 +67,16 @@ export function planYearlyBilling(plan) {
   if (!plan) return null;
   const yearly = plan.interval === "yearly" || plan.interval === "annual";
   if (!yearly) return null;
-  return plan.yearly_billing === "subscription" ? "subscription" : "one_time";
+  return ["subscription", "installments"].includes(plan.yearly_billing)
+    ? plan.yearly_billing
+    : "one_time";
 }
 
 export function planBillingLabel(plan) {
   const mode = planYearlyBilling(plan);
   if (mode === "one_time") return "Yearly · one-time";
   if (mode === "subscription") return "Yearly · subscription";
+  if (mode === "installments") return "Yearly · installments";
   return "Monthly · subscription";
 }
 
@@ -83,7 +86,12 @@ export function planBillingLabel(plan) {
  * Yearly one-time: yearly price now, agreed renewal amount later.
  */
 export function commercialTermsFromPlan(plan) {
-  const seats = Math.max(1, Number(plan?.seat_limit) || 1);
+  const seats = Math.max(
+    1,
+    Number(plan?.seat_limit) || 1,
+    Number(plan?.minimum_seat_count) || 1,
+    String(plan?.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+  );
   const mode = planYearlyBilling(plan);
   if (!mode) {
     const amount = Number(plan?.monthly_price ?? plan?.renewal_price ?? plan?.price) || 0;
@@ -96,6 +104,16 @@ export function commercialTermsFromPlan(plan) {
     };
   }
   const yearAmount = Number(plan?.yearly_price ?? plan?.price) || 0;
+  if (mode === "installments") {
+    const amount = Number(plan?.installment_amount) || 0;
+    return {
+      billing_cycle: "yearly",
+      first_payment_price: amount,
+      renewal_price: amount,
+      amount,
+      seat_count: seats,
+    };
+  }
   if (mode === "subscription") {
     return {
       billing_cycle: "yearly",
@@ -105,7 +123,9 @@ export function commercialTermsFromPlan(plan) {
       seat_count: seats,
     };
   }
-  const renewal = Number(plan?.renewal_price ?? yearAmount) || 0;
+  const renewal = plan?.renewal_enabled === false
+    ? 0
+    : Number(plan?.renewal_price ?? yearAmount) || 0;
   return {
     billing_cycle: "yearly",
     first_payment_price: yearAmount,
@@ -123,6 +143,8 @@ export function platformPlanOptionLabel(plan) {
   const price =
     mode === "one_time"
       ? `${formatBillingMoney(terms.first_payment_price, plan.currency)} once · renew ${formatBillingMoney(terms.renewal_price, plan.currency)}`
+      : mode === "installments"
+        ? `${formatBillingMoney(terms.renewal_price, plan.currency)} every ${Number(plan.installment_interval_months) || 1} months`
       : `${formatBillingMoney(terms.renewal_price, plan.currency)}/${terms.billing_cycle === "yearly" ? "year" : "month"}`;
   return `${plan.name} · ${planBillingLabel(plan)} · ${price}`;
 }
@@ -297,14 +319,19 @@ export function emptyPlanForm(overrides = {}) {
     setup_profile_keys: [],
     description: "",
     interval: "monthly",
+    yearly_billing: "one_time",
     license_basis: "org",
     price: "",
     first_payment_price: "",
     renewal_price: "",
+    renewal_enabled: true,
     monthly_price: "",
     yearly_price: "",
+    installment_interval_months: "1",
+    installment_amount: "",
     currency: "KES",
     seat_limit: "",
+    minimum_seat_count: "1",
     workspace_keys: [],
     module_keys: [],
     section_keys: [],
@@ -330,12 +357,18 @@ export function planRecordToForm(record) {
     setup_profile_keys: Array.isArray(record.setup_profile_keys) ? [...record.setup_profile_keys] : [],
     description: record.description ?? "",
     interval: record.interval ?? "monthly",
+    yearly_billing: record.yearly_billing || "one_time",
     license_basis: record.license_basis === "user" ? "user" : "org",
     price: renewal != null ? String(renewal) : "",
     first_payment_price: first != null ? String(first) : "",
     renewal_price: renewal != null ? String(renewal) : "",
+    renewal_enabled: record.renewal_enabled !== false,
     monthly_price: record.monthly_price != null ? String(record.monthly_price) : "",
     yearly_price: record.yearly_price != null ? String(record.yearly_price) : "",
+    installment_interval_months: record.installment_interval_months != null
+      ? String(record.installment_interval_months)
+      : "1",
+    installment_amount: record.installment_amount != null ? String(record.installment_amount) : "",
     currency: record.currency ?? "KES",
     seat_limit: record.seat_limit != null ? String(record.seat_limit) : "",
     workspace_keys: Array.isArray(record.workspace_keys)
@@ -350,6 +383,9 @@ export function planRecordToForm(record) {
         }))
       : [],
     is_active: record.is_active !== false,
+    minimum_seat_count: record.minimum_seat_count != null
+      ? String(record.minimum_seat_count)
+      : (String(record.name ?? "").trim().toLowerCase() === "shop starter" ? "10" : "1"),
     cta_label: record.cta_label ?? "",
     auto_invoice_template_id: record.auto_invoice_template_id
       ? String(record.auto_invoice_template_id)
@@ -364,8 +400,32 @@ function optionalMoney(value) {
 }
 
 export function planFormToPayload(form) {
-  const renewal = Number(form.renewal_price || form.price) || 0;
-  const first = Number(form.first_payment_price || form.renewal_price || form.price) || 0;
+  const yearly = ["annual", "yearly"].includes(form.interval);
+  const yearlyBilling = yearly
+    ? ["subscription", "installments"].includes(form.yearly_billing)
+      ? form.yearly_billing
+      : "one_time"
+    : null;
+  const installmentMonths = Number(form.installment_interval_months) || 1;
+  const installmentAmount = Number(form.installment_amount) || 0;
+  const yearlyPrice = yearlyBilling === "installments"
+    ? Math.round(installmentAmount * (12 / installmentMonths) * 100) / 100
+    : optionalMoney(form.yearly_price);
+  const renewalEnabled = yearlyBilling === "one_time"
+    ? form.renewal_enabled !== false
+    : true;
+  const renewal = yearlyBilling === "installments"
+    ? installmentAmount
+    : yearlyBilling === "subscription"
+      ? (yearlyPrice ?? 0)
+      : yearlyBilling === "one_time" && !renewalEnabled
+        ? 0
+        : Number(form.renewal_price || form.price) || 0;
+  const first = yearlyBilling === "installments"
+    ? installmentAmount
+    : yearlyBilling === "subscription"
+      ? (yearlyPrice ?? 0)
+      : Number(form.first_payment_price || form.renewal_price || form.price) || 0;
   return {
     name: form.name.trim(),
     code: form.code.trim() || null,
@@ -374,12 +434,16 @@ export function planFormToPayload(form) {
     setup_profile_keys: form.setup_profile_keys ?? [],
     description: form.description.trim() || null,
     interval: form.interval || "monthly",
+    yearly_billing: yearlyBilling,
     license_basis: form.license_basis === "user" ? "user" : "org",
     price: renewal,
     first_payment_price: first,
     renewal_price: renewal,
+    renewal_enabled: renewalEnabled,
+    installment_interval_months: yearlyBilling === "installments" ? installmentMonths : null,
+    installment_amount: yearlyBilling === "installments" ? installmentAmount : null,
     monthly_price: optionalMoney(form.monthly_price),
-    yearly_price: optionalMoney(form.yearly_price),
+    yearly_price: yearlyPrice,
     currency: form.currency || "KES",
     seat_limit:
       form.license_basis === "user"
@@ -389,6 +453,11 @@ export function planFormToPayload(form) {
         : form.seat_limit === ""
           ? null
           : Number(form.seat_limit),
+    minimum_seat_count: Math.max(
+      1,
+      Number(form.minimum_seat_count) || 1,
+      String(form.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+    ),
     workspace_keys: (form.workspace_keys ?? []).filter((id) =>
       licensableWorkspacesForIndustry(form.industry || "commerce").some((ws) => ws.id === id),
     ),

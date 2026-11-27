@@ -11,23 +11,29 @@ import { resolveHomePath } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isTerminalWorkspace, workspaceHomePath } from "@/lib/workspaces";
 import { recallWorkspaceTabLandingPath } from "@/lib/tab-workspace";
-import { featureTitle, FreePlanCard, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
+import { featureTitle, FreePlanCard, installmentOffer, monthOffer, onceOffer, OneTimeQuoteCard, PlanGroup, prepaidOffer, YearlyBillingSwitch } from "@/components/platform/upgrade-plan-cards";
 
 const EMPTY_PLANS = [];
 const DEFAULT_DISCOUNT = { percent: 0, min_months: 3 };
 
 function renewalCharge(license) {
   const yearly = license?.billing_cycle === "yearly";
+  const months = Number(license?.renewal_interval_months) || (yearly ? 12 : 1);
+  const installment = license?.yearly_billing === "installments";
   return {
     kind: "renew",
     billing: "renew",
-    months: yearly ? 12 : 1,
+    months,
     amount: Number(license?.renewal_amount) || 0,
     currency: license?.currency || "KES",
     plan: {
       id: license?.plan_id,
       name: license?.plan_name || (yearly ? "Yearly plan" : "Monthly plan"),
-      features: [yearly ? "Another year on the current plan" : "Another month on the current plan"],
+      features: [
+        installment
+          ? `Another ${months}-month installment on the current plan`
+          : yearly ? "Another year on the current plan" : "Another month on the current plan",
+      ],
     },
   };
 }
@@ -82,7 +88,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
   const requestedPlanId = /^[1-9]\d*$/.test(searchParams.get("plan_id") || "")
     ? Number(searchParams.get("plan_id"))
     : null;
-  const requestedBilling = ["monthly", "yearly", "prepaid"].includes(searchParams.get("billing"))
+  const requestedBilling = ["monthly", "yearly", "prepaid", "installment"].includes(searchParams.get("billing"))
     ? searchParams.get("billing")
     : "monthly";
   const { organization, organizationLicense, capabilities, user, loading: authLoading, isSuperAdmin, isOrgAdmin, refreshCapabilities, logout } = useAuth();
@@ -130,7 +136,12 @@ export default function SubscribePage({ presentation = "page", locked = false })
     if (requestedBilling === "prepaid" && Number(plan.monthly_price) > 0) {
       offer = prepaidOffer(plan, discount);
     } else if (requestedBilling === "yearly" && Number(plan.yearly_price) > 0) {
-      offer = onceOffer(plan);
+      offer = {
+        ...onceOffer(plan),
+        kind: plan.yearly_billing === "subscription" ? "year_sub" : "once",
+      };
+    } else if (requestedBilling === "installment" && Number(plan.installment_amount) > 0) {
+      offer = installmentOffer(plan);
     } else if (requestedBilling === "monthly" && Number(plan.monthly_price) > 0) {
       offer = monthOffer(plan);
     }
@@ -414,7 +425,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
           : {
             plan_id: charge.plan.id,
             months: charge.months,
-            billing: charge.billing === "yearly" ? "yearly" : "monthly",
+            billing: charge.billing,
           },
       });
       setCheckoutId(res.checkout?.id ?? null);
@@ -439,7 +450,7 @@ export default function SubscribePage({ presentation = "page", locked = false })
           : {
             plan_id: charge.plan.id,
             months: charge.months,
-            billing: charge.billing === "yearly" ? "yearly" : "monthly",
+            billing: charge.billing,
           },
       });
       setEquityCheckout(res.checkout ?? null);
@@ -705,13 +716,16 @@ function PlansStep({
   const monthlyPlans = plans.filter((plan) => plan.interval !== "yearly" && Number(plan.monthly_price) > 0);
   const yearlyPlans = plans.filter((plan) => plan.interval === "yearly" && Number(plan.yearly_price) > 0);
   const prepaid = monthlyPlans.map((plan) => prepaidOffer(plan, discount));
-  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription").map(onceOffer);
+  const once = yearlyPlans.filter((plan) => plan.yearly_billing !== "subscription" && plan.yearly_billing !== "installments").map(onceOffer);
   const yearSubs = yearlyPlans.filter((plan) => plan.yearly_billing === "subscription").map((plan) => ({
     ...onceOffer(plan),
     kind: "year_sub",
   }));
+  const installments = yearlyPlans
+    .filter((plan) => plan.yearly_billing === "installments")
+    .map(installmentOffer);
   const monthly = monthlyPlans.map(monthOffer);
-  const offers = yearly ? [...prepaid, ...yearSubs, ...once] : monthly;
+  const offers = yearly ? [...prepaid, ...yearSubs, ...once, ...installments] : monthly;
   const saving = prepaid.some((offer) => offer.percent > 0);
   const quoteCard = (
     <OneTimeQuoteCard busy={quoteBusy} canPay={canPay} onQuote={onQuote} notice={quoteNotice} />
@@ -811,12 +825,18 @@ function CheckoutStep({
 }) {
   const features = (charge?.plan?.features ?? []).slice(0, 5).map(featureTitle).filter(Boolean);
   const product = charge?.kind === "renew"
-    ? `${charge.months === 12 ? "Yearly" : "Monthly"} renewal`
+    ? (charge.plan?.features?.[0]?.includes("installment")
+      ? `${charge.months}-month installment renewal`
+      : `${charge.months === 12 ? "Yearly" : "Monthly"} renewal`)
     : charge?.kind === "once"
-      ? "Yearly subscription"
+      ? "Yearly one-time payment"
+      : charge?.kind === "year_sub"
+        ? "Yearly subscription"
       : charge?.kind === "prepaid"
         ? "12 months paid in advance"
-        : "Monthly subscription";
+        : charge?.kind === "installment"
+          ? `${charge.months}-month installment`
+          : "Monthly subscription";
   const inputClass = "theme-input w-full rounded-xl border px-3 py-3 text-sm";
   const canPayByEquity = Boolean(
     paymentMethods?.equity && equityInstructions && (charge?.plan?.id || charge?.kind === "renew"),

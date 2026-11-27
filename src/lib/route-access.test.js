@@ -39,6 +39,35 @@ describe("route-access", () => {
     expect(canAccessRoute("/profile", baseCtx)).toBe(true);
   });
 
+  it.each(["/sales/end-of-day", "/sales/payments-breakdown"])(
+    "allows %s with Backoffice create-order checkout and no External POS",
+    (path) => {
+      const capabilities = {
+        modules: { sales: true, "sales.backend": true, "sales.pos": false },
+        module_settings: { sales: { show_checkout_on_create_order: true } },
+      };
+      expect(
+        canAccessRoute(path, {
+          ...baseCtx,
+          capabilities,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it("denies Backoffice till reports when create-order checkout is disabled", () => {
+    const capabilities = {
+      modules: { sales: true, "sales.backend": true, "sales.pos": false },
+      module_settings: { sales: { show_checkout_on_create_order: false } },
+    };
+    expect(
+      canAccessRoute("/sales/end-of-day", {
+        ...baseCtx,
+        capabilities,
+      }),
+    ).toBe(false);
+  });
+
   it("blocks setup-type sidebar features unless the organization receives an override", () => {
     const limitedCapabilities = {
       ...baseCtx.capabilities,

@@ -30,7 +30,7 @@ import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weig
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 import { dispatchReadyStatuses, isDistributionOpsEnabled, mergeDistributionSettings, shouldShowOrderAssignAction, assignActionLabel } from "@/lib/distribution-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
-import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes, saleCustomerDisplayLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function isoDate(d = new Date()) {
@@ -394,7 +394,10 @@ export function DispatchBoardContent() {
                     return {
                       id: order.id,
                       order_num: order.order_num,
-                      customer: saleCustomerLabel(order),
+                      customer: saleCustomerDisplayLabel(
+                        order,
+                        Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+                      ),
                       total: formatSaleKes(order.order_total),
                       status: order.status,
                       driver: driverId ? driverById.get(driverId)?.full_name ?? "—" : "—",

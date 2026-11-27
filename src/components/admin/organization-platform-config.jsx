@@ -109,9 +109,13 @@ const AS_MOBILE_HOME_CARD_OPTIONS = [
   { key: "sales", label: "Sales / POS" },
   { key: "stock", label: "Stock" },
   { key: "purchases", label: "Purchases / receiving" },
+  { key: "receive_stock", label: "Receive stock directly" },
   { key: "reprint", label: "Past sales" },
+  { key: "returns", label: "Returns" },
+  { key: "debtors", label: "Debtors" },
   { key: "expenses", label: "Expenses" },
   { key: "reconciliation", label: "Stock reconciliation" },
+  { key: "stock_take", label: "Stock take" },
   { key: "customers", label: "Customers / guests" },
   { key: "reports", label: "Reports" },
   { key: "repayment", label: "Repayments / folio pay" },
@@ -428,6 +432,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders_returns_card: false,
     enable_mobile_orders_payments_card: false,
     enable_mobile_orders_expenses_card: false,
+    sales_rep_stock_enabled: false,
     enable_centrix_as_mobile: true,
     as_mobile_home_cards: defaultAsMobileHomeCards(),
     as_mobile_auto_generate_product_code: true,
@@ -531,6 +536,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
+    sales_rep_stock_enabled: Boolean(apiPayload.sales_rep_stock_enabled),
     enable_centrix_as_mobile: apiPayload.enable_centrix_as_mobile !== false,
     as_mobile_home_cards: asMobileHomeCardsFromApi(apiPayload.as_mobile_home_cards),
     as_mobile_auto_generate_product_code:
@@ -861,6 +867,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, the mobile app, mobile user logins, and backoffice mobile-order views are available. When off, only backoffice (and external POS when enabled) can be used."
             checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
+          />
+          <Toggle
+            label="Distribute stock to sales reps"
+            description="When enabled, stock can be allocated from a branch's configured Shop/Store stock to individual sales reps. Rep sales deduct from their allocation; organization admins selling on the web use unallocated branch stock."
+            checked={Boolean(salesPlatform?.sales_rep_stock_enabled)}
+            onChange={(v) => patch({ sales_rep_stock_enabled: v })}
           />
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

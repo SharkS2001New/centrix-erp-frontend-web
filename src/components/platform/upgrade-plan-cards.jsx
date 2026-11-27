@@ -97,6 +97,22 @@ export function onceOffer(plan) {
   };
 }
 
+export function installmentOffer(plan) {
+  const months = Math.max(1, Number(plan.installment_interval_months) || 1);
+  const amount = Number(plan.installment_amount) || 0;
+  return {
+    plan,
+    billing: "installment",
+    months,
+    amount,
+    gross: amount * (12 / months),
+    discount: 0,
+    percent: 0,
+    kind: "installment",
+    currency: plan.currency || "KES",
+  };
+}
+
 export function monthOffer(plan) {
   return {
     plan,
@@ -420,6 +436,8 @@ function PlanCard({
               ? "Yearly subscription"
               : offer.kind === "once"
                 ? "Yearly one-time"
+                : offer.kind === "installment"
+                  ? `Every ${offer.months} ${offer.months === 1 ? "month" : "months"}`
                 : "Monthly"}
         </p>
         {current ? <CurrentBadge /> : recommended ? <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-primary)]">Recommended</span> : <span />}
@@ -428,14 +446,22 @@ function PlanCard({
       <p className="theme-subtext mt-2 min-h-[3.75rem] line-clamp-3 text-sm leading-5">{offer.plan.description || "\u00a0"}</p>
       <p className="theme-heading mt-5 text-4xl font-semibold tracking-tight">
         {formatBillingMoney(offer.amount, offer.currency)}
-        <span className="theme-subtext text-base font-normal"> {yearly ? "/ year" : "/ month"}</span>
+        <span className="theme-subtext text-base font-normal">
+          {offer.kind === "installment"
+            ? ` / ${offer.months} ${offer.months === 1 ? "month" : "months"}`
+            : yearly ? " / year" : " / month"}
+        </span>
       </p>
       {offer.kind === "prepaid" && offer.discount > 0 ? (
         <p className="theme-subtext mt-1 text-sm">
           <span className="line-through">{formatBillingMoney(offer.gross, offer.currency)}</span>
           <span className="ml-2 text-[var(--theme-primary)]">Save {offer.percent}%</span>
         </p>
-      ) : offer.kind === "once" && Number(offer.plan.renewal_price) > 0 ? (
+      ) : offer.kind === "installment" ? (
+        <p className="theme-subtext mt-1 text-sm">
+          {formatBillingMoney(offer.gross, offer.currency)} total per year
+        </p>
+      ) : offer.kind === "once" && offer.plan.renewal_enabled !== false && Number(offer.plan.renewal_price) > 0 ? (
         <p className="theme-subtext mt-1 text-sm">
           Renews at {formatBillingMoney(offer.plan.renewal_price, offer.currency)}
         </p>
@@ -479,7 +505,7 @@ function PlanCard({
 
 function cardDraft(offer, modules = []) {
   const access = initialPackageAccess(offer.plan, modules);
-  const yearly = offer.kind === "once" || offer.kind === "year_sub";
+  const yearly = ["once", "year_sub", "installment"].includes(offer.kind);
   const price = yearly ? offer.plan.yearly_price : offer.plan.monthly_price;
   const features = Array.isArray(offer.plan.feature_details) && offer.plan.feature_details.length > 0
     ? offer.plan.feature_details.map((row) => ({
@@ -491,12 +517,33 @@ function cardDraft(offer, modules = []) {
     name: offer.plan.name ?? "",
     description: offer.plan.description ?? "",
     price: price == null ? "" : String(price),
-    renewal_price: offer.plan.renewal_price != null ? String(offer.plan.renewal_price) : "",
-    seat_limit: offer.plan.seat_limit != null ? String(offer.plan.seat_limit) : "1",
+    renewal_price: offer.plan.renewal_price != null
+      ? String(offer.plan.renewal_price)
+      : (yearly ? String(price ?? "") : ""),
+    renewal_enabled: offer.plan.renewal_enabled !== false,
+    installment_interval_months: offer.plan.installment_interval_months != null
+      ? String(offer.plan.installment_interval_months)
+      : "1",
+    installment_amount: offer.plan.installment_amount != null
+      ? String(offer.plan.installment_amount)
+      : "",
+    seat_limit: String(Math.max(
+      1,
+      Number(offer.plan.seat_limit) || 1,
+      Number(offer.plan.minimum_seat_count) || 1,
+      String(offer.plan.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+    )),
+    minimum_seat_count: String(Math.max(
+      1,
+      Number(offer.plan.minimum_seat_count) || 1,
+      String(offer.plan.name ?? "").trim().toLowerCase() === "shop starter" ? 10 : 1,
+    )),
     trial_days: offer.plan.trial_days != null ? String(offer.plan.trial_days) : "14",
-    yearly_billing: offer.kind === "year_sub" || offer.plan.yearly_billing === "subscription"
-      ? "subscription"
-      : "one_time",
+    yearly_billing: offer.plan.yearly_billing === "installments"
+      ? "installments"
+      : offer.kind === "year_sub" || offer.plan.yearly_billing === "subscription"
+        ? "subscription"
+        : "one_time",
     features,
     is_active: offer.plan.is_active !== false,
     is_recommended: Boolean(offer.plan.is_recommended),
@@ -510,11 +557,15 @@ function cardDraft(offer, modules = []) {
 
 function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPreview }) {
   const [draft, setDraft] = useState(() => cardDraft(offer, modules));
-  const yearSub = draft.yearly_billing === "subscription" && (offer.kind === "once" || offer.kind === "year_sub");
-  const yearlyOnce = (offer.kind === "once" || offer.kind === "year_sub") && !yearSub;
-  const yearlyCard = offer.kind === "once" || offer.kind === "year_sub";
+  const yearlyCard = ["once", "year_sub", "installment"].includes(offer.kind);
+  const yearSub = draft.yearly_billing === "subscription" && yearlyCard;
+  const installmentMonths = Math.max(1, Number(draft.installment_interval_months) || 1);
+  const installmentAmount = Number(draft.installment_amount) || 0;
+  const installments = draft.yearly_billing === "installments" && yearlyCard;
+  const yearlyOnce = yearlyCard && !yearSub && !installments;
   const prepaid = offer.kind === "prepaid";
-  const unit = Number(draft.price) || 0;
+  const annualTotal = installmentAmount * (12 / installmentMonths);
+  const unit = installments ? annualTotal : Number(draft.price) || 0;
   const quotedYear = quoteMonths(
     unit,
     12,
@@ -541,7 +592,11 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
     offer.plan.monthly_price,
     offer.plan.yearly_price,
     offer.plan.renewal_price,
+    offer.plan.renewal_enabled,
+    offer.plan.installment_interval_months,
+    offer.plan.installment_amount,
     offer.plan.seat_limit,
+    offer.plan.minimum_seat_count,
     offer.plan.trial_days,
     offer.plan.yearly_billing,
     offer.plan.is_active,
@@ -566,7 +621,11 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
     } ${draft.is_active ? "" : "opacity-80"}`}>
       <div className="flex items-center justify-between gap-3">
         <p className="theme-subtext text-sm">
-          {prepaid ? "12 months" : yearSub ? "Yearly subscription" : yearlyOnce ? "Yearly one-time" : "Monthly"}
+          {prepaid
+            ? "12 months"
+            : installments
+              ? `Every ${installmentMonths} ${installmentMonths === 1 ? "month" : "months"}`
+              : yearSub ? "Yearly subscription" : yearlyOnce ? "Yearly one-time" : "Monthly"}
         </p>
         <div className="flex items-center gap-2">
           {draft.is_active ? null : <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hidden</span>}
@@ -577,7 +636,16 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
         className={`${fieldClass} theme-heading mt-2 text-2xl font-semibold tracking-tight`}
         value={draft.name}
         aria-label="Plan name"
-        onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+        onChange={(event) => setDraft((current) => {
+          const name = event.target.value;
+          if (name.trim().toLowerCase() !== "shop starter") return { ...current, name };
+          return {
+            ...current,
+            name,
+            seat_limit: String(Math.max(10, Number(current.seat_limit) || 1)),
+            minimum_seat_count: "10",
+          };
+        })}
       />
       <textarea
         className={`${fieldClass} theme-subtext mt-2 min-h-[4.5rem] resize-y text-sm leading-5`}
@@ -598,7 +666,8 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
             className={`${fieldClass} theme-heading w-40 text-3xl font-semibold tracking-tight`}
             inputMode="decimal"
             aria-label={yearlyCard ? "Yearly price" : "Monthly price"}
-            value={draft.price}
+            value={installments ? String(annualTotal || "") : draft.price}
+            readOnly={installments}
             onChange={(event) => setDraft((current) => ({ ...current, price: event.target.value }))}
           />
           <span className="theme-subtext text-sm">{yearlyCard ? "KES / year" : "KES / month"}</span>
@@ -611,6 +680,7 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
             {[
               { id: "one_time", label: "One-time payment" },
               { id: "subscription", label: "Yearly subscription" },
+              { id: "installments", label: "Installments" },
             ].map((option) => (
               <button
                 key={option.id}
@@ -627,19 +697,60 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
             ))}
           </div>
           {draft.yearly_billing === "one_time" ? (
-            <label className="block">
-              <span className="theme-subtext text-xs">Agreed renewal amount (KES)</span>
-              <input
-                className={`${fieldClass} mt-1 w-40 text-sm font-medium`}
-                inputMode="decimal"
-                value={draft.renewal_price}
-                placeholder={draft.price || "Renewal"}
-                onChange={(event) => setDraft((current) => ({ ...current, renewal_price: event.target.value }))}
-              />
-            </label>
-          ) : (
-            <p className="theme-subtext text-xs">The yearly price above is also the renewal amount.</p>
-          )}
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={draft.renewal_enabled}
+                  onChange={(event) => setDraft((current) => ({ ...current, renewal_enabled: event.target.checked }))}
+                />
+                Offer a yearly renewal
+              </label>
+              {draft.renewal_enabled ? (
+                <label className="block">
+                  <span className="theme-subtext text-xs">Agreed renewal amount (KES)</span>
+                  <input
+                    className={`${fieldClass} mt-1 w-40 text-sm font-medium`}
+                    inputMode="decimal"
+                    value={draft.renewal_price}
+                    placeholder={draft.price || "Renewal"}
+                    onChange={(event) => setDraft((current) => ({ ...current, renewal_price: event.target.value }))}
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : null}
+          {installments ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block">
+                <span className="theme-subtext text-xs">Charge every</span>
+                <select
+                  className={`${fieldClass} mt-1`}
+                  value={draft.installment_interval_months}
+                  onChange={(event) => setDraft((current) => ({ ...current, installment_interval_months: event.target.value }))}
+                >
+                  {[1, 2, 3, 4, 6, 12].map((months) => (
+                    <option key={months} value={months}>{months} {months === 1 ? "month" : "months"}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="theme-subtext text-xs">Amount per installment (KES)</span>
+                <input
+                  className={`${fieldClass} mt-1 text-sm font-medium`}
+                  inputMode="decimal"
+                  value={draft.installment_amount}
+                  onChange={(event) => setDraft((current) => ({ ...current, installment_amount: event.target.value }))}
+                />
+              </label>
+              <p className="theme-subtext text-xs sm:col-span-2">
+                {formatBillingMoney(annualTotal, offer.currency)} total per year. Each payment grants access for its interval.
+              </p>
+            </div>
+          ) : null}
+          {yearSub ? (
+            <p className="theme-subtext text-xs">The yearly price above is charged at the start of each annual term.</p>
+          ) : null}
         </div>
       ) : (
         <p className="theme-subtext mt-2 text-xs">The monthly price is the renewal amount.</p>
@@ -649,9 +760,20 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
         <input
           className={`${fieldClass} mt-1 w-24 text-sm font-medium`}
           inputMode="numeric"
-          min="1"
+          min={draft.name.trim().toLowerCase() === "shop starter" ? "10" : draft.minimum_seat_count}
           value={draft.seat_limit}
           onChange={(event) => setDraft((current) => ({ ...current, seat_limit: event.target.value }))}
+        />
+      </label>
+      <label className="mt-3 block">
+        <span className="theme-subtext text-xs">Minimum users</span>
+        <input
+          className={`${fieldClass} mt-1 w-24 text-sm font-medium`}
+          inputMode="numeric"
+          min={draft.name.trim().toLowerCase() === "shop starter" ? "10" : "1"}
+          value={draft.minimum_seat_count}
+          onChange={(event) => setDraft((current) => ({ ...current, minimum_seat_count: event.target.value }))}
+          readOnly={draft.name.trim().toLowerCase() === "shop starter"}
         />
       </label>
       <label className="mt-3 block">
@@ -753,7 +875,11 @@ function ManagedPlanCard({ offer, modules = [], saving, onSave, onRemove, onPrev
       </button>
       <button
         type="button"
-        onClick={() => onPreview(previewSnapshot(offer, draft, prepaid ? yearTotal : unit))}
+        onClick={() => onPreview(previewSnapshot(
+          offer,
+          draft,
+          installments ? installmentAmount : prepaid ? yearTotal : unit,
+        ))}
         className={`mt-5 w-full rounded-full px-4 py-2.5 text-sm font-semibold ${
           draft.is_recommended ? "theme-primary-btn" : "theme-secondary-btn"
         }`}
@@ -788,6 +914,7 @@ function previewSnapshot(offer, draft, amount) {
     kind: offer.kind,
     amount,
     currency: offer.currency || offer.plan.currency || "KES",
+    installment_interval_months: Number(draft.installment_interval_months) || 1,
     plan: {
       name: String(draft.name ?? "").trim() || offer.plan.name,
       description: draft.description ?? "",
@@ -811,7 +938,9 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
   const [receipt] = useState(() => `SIM${String(Date.now()).slice(-8)}`);
   const [startedAt] = useState(() => new Date());
   const yearlyKind = snapshot.kind === "once" || snapshot.kind === "year_sub";
-  const days = yearlyKind ? 365 : snapshot.kind === "prepaid" ? 360 : 30;
+  const days = snapshot.kind === "installment"
+    ? Math.max(1, Number(snapshot.installment_interval_months) || 1) * 30
+    : yearlyKind ? 365 : snapshot.kind === "prepaid" ? 360 : 30;
   const endsAt = addDays(startedAt, days);
   const product = snapshot.kind === "year_sub"
     ? "Yearly subscription"
@@ -819,6 +948,8 @@ export function PaymentSimulation({ snapshot, shortCode, onClose }) {
       ? "Yearly one-time"
       : snapshot.kind === "prepaid"
         ? "12 months paid in advance"
+        : snapshot.kind === "installment"
+          ? `Every ${snapshot.installment_interval_months} months`
         : "Monthly subscription";
   const features = Array.isArray(snapshot.plan?.features) ? snapshot.plan.features : [];
 

@@ -2218,6 +2218,9 @@ export default function SalesOrdersListScreen({
                 enabledReturns={showMobileReturnsCard}
                 enabledPayments={showMobilePaymentsCard}
                 enabledExpenses={showMobileExpensesCard}
+                showCustomerPhone={Boolean(
+                  capabilities?.module_settings?.sales?.enable_checkout_customer_phone,
+                )}
                 unpaidHintCount={(summary?.unpaid ?? 0) + (summary?.partial ?? 0)}
                 loadUnpaidOrders={async () => {
                   const searchParams = buildOrdersListSearchParams(1, 200);

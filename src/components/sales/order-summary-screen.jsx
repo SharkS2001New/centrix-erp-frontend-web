@@ -43,12 +43,14 @@ import {
   isOrderEditActionVisible,
   orderSourceLabel,
   resolveOrderSourceKey,
+  customerNameWithPhone,
   saleCustomerLabel,
   salePaymentMethodDisplay,
   saleStatusLabel,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
+import { customerPhoneFromRecord } from "@/lib/customer-phone";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   isLegacySale,
@@ -468,6 +470,13 @@ function CustomerOrderDetailsPanel({
   capabilities = null,
 }) {
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
+  const customerPhone =
+    customerPhoneFromRecord(customer) || customerPhoneFromRecord(sale);
+  const customerLabel = customerNameWithPhone(
+    customerName,
+    customerPhone,
+    Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+  );
   const meta = sale?.fulfillment_meta;
 
   return (
@@ -476,8 +485,8 @@ function CustomerOrderDetailsPanel({
         <div>
           <h3 className="text-sm font-medium text-slate-900">Customer information</h3>
           <dl className="mt-4 space-y-2 text-sm">
-            <DetailRow label="Name" value={customerName} />
-            <DetailRow label="Phone" value={customer?.phone_number ?? "—"} />
+            <DetailRow label="Name" value={customerLabel} />
+            <DetailRow label="Phone" value={customerPhone || "—"} />
             <DetailRow label="Email" value={customer?.email ?? "—"} />
             <DetailRow label="Address" value={customer?.physical_address ?? customer?.address ?? "—"} />
           </dl>
@@ -981,7 +990,11 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   }, [sale, fulfillment.routes, fulfillment.drivers, fulfillment.vehicles]);
 
   const customerProfileHref = sale?.customer_num ? `/customers/${sale.customer_num}` : null;
-  const customerCardName = customer?.customer_name ?? saleCustomerLabel(sale);
+  const customerCardName = customerNameWithPhone(
+    customer?.customer_name ?? saleCustomerLabel(sale),
+    customerPhoneFromRecord(customer) || customerPhoneFromRecord(sale),
+    Boolean(capabilities?.module_settings?.sales?.enable_checkout_customer_phone),
+  );
   const orderDateRaw = sale?.completed_at ?? sale?.created_at;
   const breadcrumbParent = orderDetailBreadcrumbParent(backHref);
   const orderCrumbLabel = sale ? `Order #${formatOrderNumber(sale)}` : "Order …";

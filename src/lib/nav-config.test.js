@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isNavItemActive, navSections } from "./nav-config";
+import { isNavItemActive, isNavItemVisible, navSections } from "./nav-config";
 import { formatNavLabel } from "./nav-label-format";
 
 describe("products navigation active state", () => {
@@ -14,6 +14,42 @@ describe("products navigation active state", () => {
     expect(isNavItemActive(deletedItem, "/products/deleted")).toBe(true);
     expect(isNavItemActive(catalogueItem, "/products")).toBe(true);
     expect(isNavItemActive(catalogueItem, "/products/ABC123")).toBe(true);
+  });
+
+  describe("Backoffice till operations navigation", () => {
+    const capabilities = {
+      modules: { "sales.backend": true, "sales.pos": false },
+      module_settings: { sales: { show_checkout_on_create_order: true } },
+    };
+    const context = {
+      capabilities,
+      isModuleEnabled: (key) => Boolean(capabilities.modules[key]),
+      hasPermission: () => true,
+      isSuperAdmin: () => false,
+    };
+
+    it("shows End of day and Payments breakdown without External POS", () => {
+      const section = navSections.find((row) => row.id === "pos");
+      for (const href of ["/sales/end-of-day", "/sales/payments-breakdown"]) {
+        expect(isNavItemVisible(section.items.find((item) => item.href === href), context)).toBe(true);
+      }
+    });
+
+    it("hides those links when Backoffice create-order checkout is disabled", () => {
+      const section = navSections.find((row) => row.id === "pos");
+      const disabledContext = {
+        ...context,
+        capabilities: {
+          ...capabilities,
+          module_settings: { sales: { show_checkout_on_create_order: false } },
+        },
+      };
+      for (const href of ["/sales/end-of-day", "/sales/payments-breakdown"]) {
+        expect(
+          isNavItemVisible(section.items.find((item) => item.href === href), disabledContext),
+        ).toBe(false);
+      }
+    });
   });
 
   describe("sidebar labels", () => {

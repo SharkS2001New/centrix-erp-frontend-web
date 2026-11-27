@@ -12,7 +12,10 @@ import {
 } from "@/lib/sale-line-items";
 import { formatSaleKes } from "@/components/sales/sales-shared";
 import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
-import { formatPosBrowseLabel, saleCustomerLabel } from "@/lib/sales";
+import {
+  formatPosBrowseLabel,
+  saleCustomerDisplayLabel,
+} from "@/lib/sales";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -38,9 +41,9 @@ function heldOrderLabel(order) {
   return formatPosBrowseLabel(order);
 }
 
-function heldCustomerName(order) {
+function heldCustomerName(order, showPhone = false) {
   return (
-    saleCustomerLabel(order) ||
+    saleCustomerDisplayLabel(order, showPhone) ||
     order?.customer_name ||
     order?.customer_name_override ||
     order?.customer?.customer_name ||
@@ -92,7 +95,10 @@ export function PosHeldOrdersOverlay({
   showHeldAmountPaid = false,
 }) {
   const confirm = useConfirm();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const showCustomerPhone = Boolean(
+    capabilities?.module_settings?.sales?.enable_checkout_customer_phone,
+  );
   const [mounted, setMounted] = useState(false);
   const [rows, setRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -629,7 +635,7 @@ export function PosHeldOrdersOverlay({
                   {" "}
                   Restore target:{" "}
                   <span className="theme-heading font-semibold">
-                    {heldCustomerName(selectedOrder)}
+                    {heldCustomerName(selectedOrder, showCustomerPhone)}
                   </span>
                   <span className="theme-text-subtle"> · {heldOrderLabel(selectedOrder)}</span>
                 </>
@@ -638,7 +644,9 @@ export function PosHeldOrdersOverlay({
           ) : selectedOrder ? (
             <p className="theme-text-muted mt-1.5 truncate text-xs">
               Selected:{" "}
-              <span className="theme-heading font-semibold">{heldCustomerName(selectedOrder)}</span>
+              <span className="theme-heading font-semibold">
+                {heldCustomerName(selectedOrder, showCustomerPhone)}
+              </span>
               <span className="theme-text-subtle"> · {heldOrderLabel(selectedOrder)}</span>
             </p>
           ) : filtered.length > 0 ? (
@@ -744,7 +752,7 @@ export function PosHeldOrdersOverlay({
                       >
                         <div className="min-w-0">
                           <div className="theme-heading truncate text-base font-bold leading-tight">
-                            {heldCustomerName(order)}
+                            {heldCustomerName(order, showCustomerPhone)}
                           </div>
                           <div className="theme-text-muted mt-0.5 truncate text-xs font-medium leading-tight">
                             {heldOrderLabel(order)}

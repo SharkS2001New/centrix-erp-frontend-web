@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatReceiptNumber, formatSaleKes, saleCustomerDisplayLabel } from "@/lib/sales";
 import { saleBalanceDue } from "@/lib/order-workflow";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
@@ -196,6 +196,7 @@ function ReturnsModal({
   toDate = "",
   cashierId = "",
   routeId = "",
+  showCustomerPhone = false,
 }) {
   const [tab, setTab] = useState("performed");
   const [loading, setLoading] = useState(false);
@@ -413,7 +414,7 @@ function ReturnsModal({
                           {row.sale ? formatReceiptNumber(row.sale) : "—"}
                         </td>
                         <td className="px-3 py-2 text-slate-700">
-                          {saleCustomerLabel(row.sale ?? row)}
+                          {saleCustomerDisplayLabel(row.sale ?? row, showCustomerPhone)}
                         </td>
                         <td className="px-3 py-2 text-slate-700">{returnedByLabel(row)}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-slate-600">
@@ -476,7 +477,7 @@ function ReturnsModal({
                       {row.sale ? formatReceiptNumber(row.sale) : "—"}
                     </td>
                     <td className="px-3 py-2 text-slate-700">
-                      {saleCustomerLabel(row.sale ?? row)}
+                      {saleCustomerDisplayLabel(row.sale ?? row, showCustomerPhone)}
                     </td>
                     <td className="px-3 py-2 text-slate-700">{returnedByLabel(row)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">
@@ -853,7 +854,7 @@ function PaymentsChoiceModal({ open, onClose, unpaidCount, loading, onMarkAll, o
   );
 }
 
-function SelectPaidModal({ open, orders, onClose, onConfirm }) {
+function SelectPaidModal({ open, orders, onClose, onConfirm, showCustomerPhone = false }) {
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
 
@@ -937,7 +938,9 @@ function SelectPaidModal({ open, orders, onClose, onConfirm }) {
                     />
                   </td>
                   <td className="px-3 py-2 font-medium text-slate-900">{formatReceiptNumber(sale)}</td>
-                  <td className="px-3 py-2 text-slate-700">{saleCustomerLabel(sale)}</td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {saleCustomerDisplayLabel(sale, showCustomerPhone)}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-800">
                     {formatSaleKes(sale.order_total)}
                   </td>
@@ -960,6 +963,7 @@ export function MobileOrdersQuickActions({
   enabledReturns = false,
   enabledPayments = false,
   enabledExpenses = false,
+  showCustomerPhone = false,
   unpaidHintCount = null,
   loadUnpaidOrders,
   pageOrders = [],
@@ -1075,6 +1079,7 @@ export function MobileOrdersQuickActions({
         open={returnsOpen}
         onClose={() => setReturnsOpen(false)}
         onApproved={onDone}
+        showCustomerPhone={showCustomerPhone}
         fromDate={fromDate}
         toDate={toDate}
         cashierId={cashierId}
@@ -1111,6 +1116,7 @@ export function MobileOrdersQuickActions({
         orders={unpaid}
         onClose={() => setSelectPaidOpen(false)}
         onConfirm={markPaid}
+        showCustomerPhone={showCustomerPhone}
       />
     </>
   );
