@@ -257,6 +257,12 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
           />
           <div className="mt-4 space-y-3">
             <OrderPrintFormatField form={form} setForm={setForm} />
+            <Toggle
+              label="Show Invoice Receipt title"
+              description="When enabled, receipts and A4 sales invoices show the Invoice Receipt or Unpaid Invoice Receipt heading. Hidden by default."
+              checked={Boolean(form.show_invoice_receipt_title)}
+              onChange={(v) => setForm((f) => ({ ...f, show_invoice_receipt_title: v }))}
+            />
             {showThermal ? (
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <Field label="Receipt copies">

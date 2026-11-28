@@ -443,12 +443,14 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     sales_rep_stock_enabled: false,
     show_product_code_on_receipt: false,
     enable_centrix_as_mobile: true,
+    as_mobile_allow_org_switch: false,
     as_mobile_home_cards: defaultAsMobileHomeCards(),
     as_mobile_auto_generate_product_code: true,
     as_mobile_show_images: deploymentProfile === "hotel_bar",
     require_product_images: false,
     show_load_tonnage: deploymentProfile === "distribution" || deploymentProfile === "wholesale_retail",
     as_mobile_ask_quantity_on_add: false,
+    as_mobile_legacy_pos_mode: false,
     as_mobile_post_login_screen: "module_home",
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
@@ -549,6 +551,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     sales_rep_stock_enabled: Boolean(apiPayload.sales_rep_stock_enabled),
     show_product_code_on_receipt: Boolean(apiPayload.show_product_code_on_receipt),
     enable_centrix_as_mobile: apiPayload.enable_centrix_as_mobile !== false,
+    as_mobile_allow_org_switch: Boolean(apiPayload.as_mobile_allow_org_switch),
     as_mobile_home_cards: asMobileHomeCardsFromApi(apiPayload.as_mobile_home_cards),
     as_mobile_auto_generate_product_code:
       apiPayload.as_mobile_auto_generate_product_code !== false,
@@ -556,6 +559,7 @@ export function salesPlatformFromApi(apiPayload, deploymentProfile = "wholesale_
     require_product_images: Boolean(apiPayload.require_product_images),
     show_load_tonnage: Boolean(apiPayload.show_load_tonnage),
     as_mobile_ask_quantity_on_add: Boolean(apiPayload.as_mobile_ask_quantity_on_add),
+    as_mobile_legacy_pos_mode: Boolean(apiPayload.as_mobile_legacy_pos_mode),
     as_mobile_post_login_screen:
       apiPayload.as_mobile_post_login_screen === "operations_dashboard"
         ? "operations_dashboard"
@@ -902,6 +906,13 @@ export function OrganizationPlatformSalesSettings({
               checked={salesPlatform?.enable_centrix_as_mobile !== false}
               onChange={(v) => patch({ enable_centrix_as_mobile: v })}
             />
+            <Toggle
+              label="Allow organization changes on sign-in"
+              description="When enabled, AS Mobile users can change the organization from the sign-in screen. Otherwise the app stays locked to this organization after setup."
+              checked={Boolean(salesPlatform?.as_mobile_allow_org_switch)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
+              onChange={(v) => patch({ as_mobile_allow_org_switch: v })}
+            />
             <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
               <p className="text-sm font-semibold text-slate-800">Home cards</p>
               <p className="text-xs text-slate-500">
@@ -945,6 +956,13 @@ export function OrganizationPlatformSalesSettings({
               onChange={(v) =>
                 patch({ as_mobile_ask_quantity_on_add: v })
               }
+            />
+            <Toggle
+              label="Enable legacy POS mode in Centrix AS Mobile"
+              description="When on, customer and payment method are selected on the POS screen and Process Sale saves directly without the modern payment prompts. Off by default; the current Modern mode stays active until enabled."
+              checked={Boolean(salesPlatform?.as_mobile_legacy_pos_mode)}
+              disabled={salesPlatform?.enable_centrix_as_mobile === false}
+              onChange={(v) => patch({ as_mobile_legacy_pos_mode: v })}
             />
             <Toggle
               label="Require till float for Centrix AS Mobile"

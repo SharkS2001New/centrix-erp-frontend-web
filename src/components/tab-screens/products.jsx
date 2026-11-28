@@ -81,6 +81,7 @@ import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { productExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 import { availableStockLocations } from "@/lib/inventory-settings";
 import { ProductNameCell } from "@/components/products/product-name-cell";
+import { productSellByAmountPriceLabel } from "@/lib/sell-by-amount";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-products-sort";
@@ -1587,7 +1588,20 @@ function renderProductCell(
           ) : null}
         </div>
       );
-    case "unit_price":
+    case "unit_price": {
+      const sellByAmountPriceLabel = productSellByAmountPriceLabel(product);
+      if (sellByAmountPriceLabel) {
+        return (
+          <InlineProductPriceCell
+            productCode={product.product_code}
+            price={product.sell_by_amount_price}
+            field="sell_by_amount_price"
+            displayValue={sellByAmountPriceLabel}
+            onSaved={onPriceSaved}
+            title="Click to update sell-by-amount price"
+          />
+        );
+      }
       return (
         <InlineProductPriceCell
           productCode={product.product_code}
@@ -1597,6 +1611,7 @@ function renderProductCell(
           title="Click to update selling price"
         />
       );
+    }
     case "cost_price":
       return (
         <InlineProductPriceCell
@@ -1778,7 +1793,14 @@ function VatBadge({ treatment }) {
   );
 }
 
-function InlineProductPriceCell({ productCode, price, field, onSaved, title }) {
+function InlineProductPriceCell({
+  productCode,
+  price,
+  field,
+  displayValue = formatMoneyAmount(price),
+  onSaved,
+  title,
+}) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(price ?? ""));
   const [saving, setSaving] = useState(false);
@@ -1815,7 +1837,7 @@ function InlineProductPriceCell({ productCode, price, field, onSaved, title }) {
   }
 
   if (!onSaved) {
-    return <span className="theme-text-muted">{formatMoneyAmount(price)}</span>;
+    return <span className="theme-text-muted">{displayValue}</span>;
   }
 
   if (!editing) {
@@ -1826,7 +1848,7 @@ function InlineProductPriceCell({ productCode, price, field, onSaved, title }) {
         className="theme-text-muted rounded px-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-link)]"
         title={title}
       >
-        {formatMoneyAmount(price)}
+        {displayValue}
       </button>
     );
   }

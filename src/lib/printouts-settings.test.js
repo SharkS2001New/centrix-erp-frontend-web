@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
+  printoutsSalesPayloadFromForm,
+  printoutsSalesFormFromApi,
   resolvePrintoutSections,
 } from "@/lib/printouts-settings";
 
@@ -52,5 +54,16 @@ describe("resolvePrintoutSections", () => {
 
     const payload = printoutsDistributionPayloadFromForm({ show_load_tonnage: false });
     expect(payload.show_load_tonnage).toBe(false);
+  });
+
+  it("hides the invoice receipt title by default and persists the printout toggle", () => {
+    const form = printoutsSalesFormFromApi({});
+    expect(form.show_invoice_receipt_title).toBe(false);
+    expect(
+      printoutsSalesPayloadFromForm({
+        ...form,
+        show_invoice_receipt_title: true,
+      }).show_invoice_receipt_title,
+    ).toBe(true);
   });
 });

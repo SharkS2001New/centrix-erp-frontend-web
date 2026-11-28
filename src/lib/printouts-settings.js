@@ -63,6 +63,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   print_footer_trip_chart: "",
   print_footer_payroll_receipt: "",
   order_document_type: "receipt",
+  show_invoice_receipt_title: false,
   receipt_copies: "1",
   show_branch_on_receipt: true,
   check_receipt_copies: "1",
@@ -293,6 +294,7 @@ export function printoutsSalesFormFromApi(res) {
   const sales = salesOrganizationFormFromApi(res);
   return {
     order_document_type: sales.order_document_type,
+    show_invoice_receipt_title: sales.show_invoice_receipt_title,
     receipt_copies: sales.receipt_copies,
     show_branch_on_receipt: sales.show_branch_on_receipt,
     show_full_package_uom_on_documents: sales.show_full_package_uom_on_documents,
@@ -419,6 +421,7 @@ export function printoutsSalesPayloadFromForm(form) {
     order_document_type: ["receipt", "invoice", "both"].includes(form.order_document_type)
       ? form.order_document_type
       : "receipt",
+    show_invoice_receipt_title: Boolean(form.show_invoice_receipt_title),
     receipt_copies: Number(form.receipt_copies) || 1,
     show_branch_on_receipt: Boolean(form.show_branch_on_receipt),
     show_full_package_uom_on_documents: Boolean(form.show_full_package_uom_on_documents),

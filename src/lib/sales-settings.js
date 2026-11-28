@@ -639,6 +639,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   blind_till_close: false,
   require_backoffice_till_float: false,
   order_document_type: "receipt",
+  show_invoice_receipt_title: false,
   invoice_valid_days: "7",
   show_branch_on_receipt: true,
   show_full_package_uom_on_documents: false,
@@ -744,6 +745,7 @@ export function salesOrganizationFormFromApi(res) {
     order_document_type: ["receipt", "invoice", "both"].includes(sales.order_document_type)
       ? sales.order_document_type
       : "receipt",
+    show_invoice_receipt_title: sales.show_invoice_receipt_title === true,
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
     show_full_package_uom_on_documents: sales.show_full_package_uom_on_documents === true,
@@ -861,6 +863,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
   });
   const {
     order_document_type: _orderDocumentType,
+    show_invoice_receipt_title: _showInvoiceReceiptTitle,
     receipt_copies: _receiptCopies,
     show_branch_on_receipt: _showBranchOnReceipt,
     show_full_package_uom_on_documents: _showFullPackageUomOnDocuments,

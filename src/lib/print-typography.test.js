@@ -81,6 +81,7 @@ describe("org print typography settings", () => {
     const general = generalWithFonts();
     const html = buildSaleInvoiceHtml(sampleSale, {
       generalSettings: general,
+      salesSettings: { show_invoice_receipt_title: true },
       seller: { name: "Test Org" },
       branding: { showHeader: true, display: "name", organizationName: "Test Org" },
     });

@@ -57,6 +57,19 @@ describe("OrganizationModuleToggles", () => {
     expect(markup).toContain("products are added at quantity 1");
   });
 
+  it("shows the Platform-controlled AS Mobile organization switching option", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OrganizationPlatformSalesSettings, {
+        enabledModules: { sales: true },
+        deploymentProfile: "small_shop",
+        salesPlatform: { enable_centrix_as_mobile: true },
+        onChange: () => {},
+      }),
+    );
+
+    expect(markup).toContain("Allow organization changes on sign-in");
+  });
+
   it("shows the platform-controlled sales-rep stock distribution setting", () => {
     const markup = renderToStaticMarkup(
       createElement(OrganizationPlatformSalesSettings, {
@@ -235,6 +248,22 @@ describe("defaultSalesPlatformState", () => {
       salesPlatformFromApi({ as_mobile_ask_quantity_on_add: false })
         .as_mobile_ask_quantity_on_add,
     ).toBe(false);
+  });
+
+  it("keeps AS Mobile legacy POS mode off unless enabled by platform admin", () => {
+    expect(defaultSalesPlatformState("small_shop").as_mobile_legacy_pos_mode).toBe(false);
+    expect(salesPlatformFromApi({}).as_mobile_legacy_pos_mode).toBe(false);
+    expect(
+      salesPlatformFromApi({ as_mobile_legacy_pos_mode: true }).as_mobile_legacy_pos_mode,
+    ).toBe(true);
+  });
+
+  it("keeps AS Mobile organization switching locked unless enabled by platform admin", () => {
+    expect(defaultSalesPlatformState("small_shop").as_mobile_allow_org_switch).toBe(false);
+    expect(salesPlatformFromApi({}).as_mobile_allow_org_switch).toBe(false);
+    expect(
+      salesPlatformFromApi({ as_mobile_allow_org_switch: true }).as_mobile_allow_org_switch,
+    ).toBe(true);
   });
 });
 

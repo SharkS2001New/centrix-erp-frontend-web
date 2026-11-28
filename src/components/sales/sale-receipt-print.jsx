@@ -393,6 +393,11 @@ export function buildSaleReceiptHtml(
 
   const orderTotal = Number(sale.order_total ?? 0);
   const documentTitle = saleReceiptDocumentTitle(sale, orderTotal);
+  const showInvoiceReceiptTitle = Boolean(
+    salesSettings?.show_invoice_receipt_title ??
+      moduleSettings?.sales?.show_invoice_receipt_title ??
+      moduleSettings?.show_invoice_receipt_title,
+  );
   const vatAmount = Number(sale.total_vat ?? 0);
   const receiptTenders = resolveSaleReceiptTenders(sale, orderTotal);
 
@@ -493,7 +498,7 @@ export function buildSaleReceiptHtml(
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escapeHtml(`${documentTitle} ${cashSalesNo}`)}</title>
+  <title>${escapeHtml(`${showInvoiceReceiptTitle ? `${documentTitle} ` : ""}${cashSalesNo}`)}</title>
   <style>
     ${buildThermalReceiptCss({
       printPx,
@@ -508,7 +513,7 @@ export function buildSaleReceiptHtml(
 </head>
 <body class="centrix-print-thermal">
   <div class="receipt">
-    <div class="receipt-document-title">${escapeHtml(documentTitle)}</div>
+    ${showInvoiceReceiptTitle ? `<div class="receipt-document-title">${escapeHtml(documentTitle)}</div>` : ""}
     ${orgHeader}
     ${seller?.additional_info ? `<div class="company-meta">${escapeHtml(seller.additional_info)}</div>` : ""}
     ${branchName ? `<div class="company-meta">${escapeHtml(branchName)}</div>` : ""}

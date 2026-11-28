@@ -245,6 +245,11 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   const totalVat = Number(sale.total_vat ?? 0);
   const orderTotal = Number(sale.order_total ?? 0);
   const documentTitle = saleReceiptDocumentTitle(sale, orderTotal);
+  const showInvoiceReceiptTitle = Boolean(
+    salesSettings?.show_invoice_receipt_title ??
+      moduleSettings?.sales?.show_invoice_receipt_title ??
+      moduleSettings?.show_invoice_receipt_title,
+  );
   const rawBalanceDue = sale.balance_due ?? sale.balanceDue;
   const hasAmountPaid = sale.amount_paid != null;
   const amountPaid = hasAmountPaid
@@ -351,7 +356,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escapeHtml(`${documentTitle} ${invoiceNo}`)}</title>
+  <title>${escapeHtml(`${showInvoiceReceiptTitle ? `${documentTitle} ` : ""}${invoiceNo}`)}</title>
   <style>
     @page { size: A4; margin: 0; }
     body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
@@ -442,7 +447,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
         </div>
       </div>
 
-      <div class="doc-title">${escapeHtml(documentTitle)}</div>
+      ${showInvoiceReceiptTitle ? `<div class="doc-title">${escapeHtml(documentTitle)}</div>` : ""}
 
       <div class="meta-sheet">
         ${metaSheetHtml}

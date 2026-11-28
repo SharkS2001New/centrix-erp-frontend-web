@@ -132,7 +132,7 @@ describe("sale receipt payment rows", () => {
     expect(a4Html).toContain("Dealers in: Mobile Phones, Accessories, TVs.");
   });
 
-  it("labels paid receipts as Invoice Receipt and outstanding receipts as unpaid", () => {
+  it("hides the invoice receipt heading by default and shows it when enabled", () => {
     const paidSale = {
       ...unpaidMobileSale,
       amount_paid: unpaidMobileSale.order_total,
@@ -142,11 +142,20 @@ describe("sale receipt payment rows", () => {
     const unpaidA4 = buildSaleInvoiceHtml(unpaidMobileSale);
     const paidThermal = buildSaleReceiptHtml(paidSale);
     const paidA4 = buildSaleInvoiceHtml(paidSale);
+    const enabledOptions = { salesSettings: { show_invoice_receipt_title: true } };
+    const enabledUnpaidThermal = buildSaleReceiptHtml(unpaidMobileSale, enabledOptions);
+    const enabledUnpaidA4 = buildSaleInvoiceHtml(unpaidMobileSale, enabledOptions);
+    const enabledPaidThermal = buildSaleReceiptHtml(paidSale, enabledOptions);
+    const enabledPaidA4 = buildSaleInvoiceHtml(paidSale, enabledOptions);
 
-    expect(unpaidThermal).toContain("UNPAID INVOICE RECEIPT");
-    expect(unpaidA4).toContain("UNPAID INVOICE RECEIPT");
-    expect(paidThermal).toContain("INVOICE RECEIPT");
-    expect(paidA4).toContain("INVOICE RECEIPT");
+    expect(unpaidThermal).not.toContain("UNPAID INVOICE RECEIPT");
+    expect(unpaidA4).not.toContain("UNPAID INVOICE RECEIPT");
+    expect(paidThermal).not.toContain("INVOICE RECEIPT");
+    expect(paidA4).not.toContain("INVOICE RECEIPT");
+    expect(enabledUnpaidThermal).toContain("UNPAID INVOICE RECEIPT");
+    expect(enabledUnpaidA4).toContain("UNPAID INVOICE RECEIPT");
+    expect(enabledPaidThermal).toContain("INVOICE RECEIPT");
+    expect(enabledPaidA4).toContain("INVOICE RECEIPT");
     expect(unpaidA4).toContain("Balance Due:");
   });
 
