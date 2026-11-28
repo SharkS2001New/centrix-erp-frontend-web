@@ -88,7 +88,17 @@ function sumAmounts(expenses) {
 
 export function ExpensesScreen() {
   const confirm = useConfirm();
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
+  const canManageExpenseGroups = Boolean(
+    user?.is_admin ||
+      user?.is_super_admin ||
+      capabilities?.is_admin ||
+      hasPermission("accounting.manage") ||
+      hasPermission("hospitality.settings.edit") ||
+      hasPermission("pos.till_management.create") ||
+      hasPermission("pos.till_management.edit") ||
+      hasPermission("sales.create"),
+  );
   const { branches, showBranchFilter, effectiveBranchId, lockedBranchId } = useBranchScope();
   const searchParams = useSearchParams();
   const urlFromDate = searchParams.get("from_date") ?? "";
@@ -138,6 +148,7 @@ export function ExpensesScreen() {
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [groupSaving, setGroupSaving] = useState(false);
+  const [groupDeletingId, setGroupDeletingId] = useState(null);
   const [groupError, setGroupError] = useState(null);
 
   const loadReferenceData = useCallback(async () => {
@@ -422,7 +433,10 @@ export function ExpensesScreen() {
 
   async function createGroup(e) {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim()) {
+      setGroupError("Enter a category name.");
+      return;
+    }
     setGroupSaving(true);
     setGroupError(null);
     try {
@@ -433,12 +447,45 @@ export function ExpensesScreen() {
       setGroups((prev) => [...prev, created].sort((a, b) => a.group_name.localeCompare(b.group_name)));
       setForm((prev) => ({ ...prev, expense_group_id: String(created.id) }));
       setNewGroupName("");
-      setGroupModalOpen(false);
     } catch (err) {
       setGroupError(err instanceof ApiError ? err.message : "Failed to create group");
     } finally {
       setGroupSaving(false);
     }
+  }
+
+  async function archiveGroup(group) {
+    const ok = await confirm({
+      title: "Archive expense category",
+      message: `Archive "${group.group_name}"? Existing expenses will keep this category in their history.`,
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setGroupDeletingId(group.id);
+    setGroupError(null);
+    try {
+      await apiRequest(`/expense-groups/${group.id}`, { method: "DELETE" });
+      setGroups((current) => current.filter((item) => item.id !== group.id));
+      setForm((current) =>
+        current.expense_group_id === String(group.id)
+          ? { ...current, expense_group_id: "" }
+          : current,
+      );
+      if (groupFilter === String(group.id)) setGroupFilter("all");
+      notifySuccess("Expense category archived");
+    } catch (err) {
+      setGroupError(err instanceof ApiError ? err.message : "Failed to archive category");
+    } finally {
+      setGroupDeletingId(null);
+    }
+  }
+
+  function openGroupManager() {
+    setGroupError(null);
+    setNewGroupName("");
+    setGroupModalOpen(true);
   }
 
   return (
@@ -455,6 +502,15 @@ export function ExpensesScreen() {
           >
             {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
+          {canManageExpenseGroups ? (
+            <button
+              type="button"
+              onClick={openGroupManager}
+              className={SECONDARY_BTN_CLASS}
+            >
+              Manage categories
+            </button>
+          ) : null}
           <CatalogListExport
             title="Expenses"
             apiPath="/expenses"
@@ -803,18 +859,16 @@ export function ExpensesScreen() {
                           label: g.group_name,
                         }))}
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGroupError(null);
-                          setNewGroupName("");
-                          setGroupModalOpen(true);
-                        }}
-                        className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-lg font-medium text-[#185FA5] hover:bg-slate-50"
-                        title="Create expense group"
-                      >
-                        +
-                      </button>
+                      {canManageExpenseGroups ? (
+                        <button
+                          type="button"
+                          onClick={openGroupManager}
+                          className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-lg font-medium text-[#185FA5] hover:bg-slate-50"
+                          title="Manage expense categories"
+                        >
+                          +
+                        </button>
+                      ) : null}
                     </div>
                   </Field>
 
@@ -897,7 +951,7 @@ export function ExpensesScreen() {
       )}
 
       <FormModal
-        title="Create expense group"
+        title="Manage expense categories"
         open={groupModalOpen}
         onClose={() => {
           setGroupModalOpen(false);
@@ -906,22 +960,44 @@ export function ExpensesScreen() {
         onSubmit={createGroup}
         saving={groupSaving}
         error={groupError}
-        submitLabel="Create group"
+        submitLabel="Add category"
       >
-        <Field label="Group name">
+        <Field label="New category name">
           <input
             type="text"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             required
-            autoFocus
+            maxLength={200}
             className={inputClassName()}
             placeholder="Internet subscription"
           />
         </Field>
         <p className="text-xs text-slate-500">
-          The new group will appear in the list and be selected automatically.
+          Categories are shared across Centrix ERP and its mobile apps.
         </p>
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-800">Current categories</h3>
+          {groups.length === 0 ? (
+            <p className="py-3 text-sm text-slate-500">No active categories.</p>
+          ) : (
+            <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+              {groups.map((group) => (
+                <li key={group.id} className="flex items-center justify-between gap-3 py-2">
+                  <span className="min-w-0 truncate text-sm text-slate-700">{group.group_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => void archiveGroup(group)}
+                    disabled={groupDeletingId !== null || groupSaving}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {groupDeletingId === group.id ? "Archiving…" : "Archive"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </FormModal>
     </CatalogPageShell>
   );

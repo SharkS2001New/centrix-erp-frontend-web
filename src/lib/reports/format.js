@@ -52,6 +52,10 @@ function isReportCountField(key) {
   return false;
 }
 
+function isReportIdentifierField(key) {
+  return /(?:^|_)(?:id|num|no|number|code|ref|reference|serial|barcode)$/i.test(key ?? "");
+}
+
 function isReportCurrencyField(key) {
   if (!key || isReportCountField(key) || isInventoryQtyField(key) || isLpoPackQtyField(key)) {
     return false;
@@ -67,6 +71,7 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = 
   if (key === "channel") return salesChannelLabel(value);
   if (key === "transaction_type") return inventoryTransactionTypeLabel(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (isReportIdentifierField(key)) return String(value);
 
   if (
     row &&
